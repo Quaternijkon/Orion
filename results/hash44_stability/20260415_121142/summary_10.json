@@ -1,0 +1,111 @@
+{
+  "all_runs": [
+    {
+      "run": 1,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 809.5792190392635,
+      "wall_s": 12.35209571197629
+    },
+    {
+      "run": 2,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 844.0156789552857,
+      "wall_s": 11.848121130140498
+    },
+    {
+      "run": 3,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 906.112523565075,
+      "wall_s": 11.036156923044473
+    },
+    {
+      "run": 4,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 906.8004737091734,
+      "wall_s": 11.027784270001575
+    },
+    {
+      "run": 5,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 929.5526746584342,
+      "wall_s": 10.757862650090829
+    },
+    {
+      "run": 6,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 966.1836934349166,
+      "wall_s": 10.349998730001971
+    },
+    {
+      "run": 7,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 937.8987504853069,
+      "wall_s": 10.66213170113042
+    },
+    {
+      "run": 8,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 948.6419678829926,
+      "wall_s": 10.541384777985513
+    },
+    {
+      "run": 9,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 964.566597534322,
+      "wall_s": 10.367350502870977
+    },
+    {
+      "run": 10,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 953.4894844298265,
+      "wall_s": 10.48779264301993
+    }
+  ],
+  "all_qps_mean": 916.6841063694596,
+  "all_qps_stdev": 52.38335805670762,
+  "last5_qps_mean": 954.1560987534729,
+  "last5_qps_stdev": 11.70675985609241,
+  "last5_qps_min": 937.8987504853069,
+  "last5_qps_max": 966.1836934349166,
+  "last5_recall_mean": 0.88083
+}

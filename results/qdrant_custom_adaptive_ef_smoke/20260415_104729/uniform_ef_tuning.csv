@@ -1,0 +1,2 @@
+candidate_type,nprobe,hnsw_ef,recall_at_k,qps,wall_s
+uniform_ef,44,64,0.8815,384.0853881313587,0.520717544015497

@@ -94,6 +94,11 @@ pub async fn search(
         query: QueryEnum::Nearest(NamedQuery::from(vector_struct)),
         filter: filter.map(|f| f.try_into()).transpose()?,
         params: params.map(|p| p.into()),
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: limit as usize,
         offset: offset.unwrap_or_default() as usize,
         with_payload: with_payload.map(|wp| wp.try_into()).transpose()?,

@@ -126,6 +126,7 @@ impl Segment {
             with_vector,
             filter,
             top,
+            None,
             params,
             &segment_query_context,
         )?;

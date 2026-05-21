@@ -1,0 +1,60 @@
+{
+  "base_url": "http://localhost:6733",
+  "collection": "qdrant_two_level_cluster44",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "num_shards": 44,
+  "shard_placement": "auto",
+  "discovered_peer_ids": [
+    4820216703983620,
+    6090138588350315,
+    6532353277756474
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 44,
+    "cluster_peer_count": 3,
+    "cluster_local_shards": 15,
+    "cluster_remote_shards": 29,
+    "cluster_active_shards": 44
+  },
+  "sample_denominator": 32,
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 36963
+  },
+  "best_tuning_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.8947,
+    "qps": 171.59637175562847,
+    "wall_s": 5.827629044651985,
+    "avg_visited_shards": 15.186,
+    "avg_upper_hits": 100.0,
+    "avg_assigned_ef_per_visited_shard": 58.34005004609509
+  },
+  "final_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.89568,
+    "qps": 173.37645782678797,
+    "wall_s": 57.677957695908844,
+    "avg_visited_shards": 15.0973,
+    "avg_upper_hits": 100.0,
+    "avg_assigned_ef_per_visited_shard": 58.49480370662304
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 173.1501846390537,
+    "qps_stdev": 3.920111016337848,
+    "recall_mean": 0.89568,
+    "recall_stdev": 0.0
+  }
+}

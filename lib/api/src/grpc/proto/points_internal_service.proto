@@ -267,6 +267,7 @@ message CoreSearchPoints {
   optional string vector_name = 9;
   optional WithVectorsSelector with_vectors = 10;
   optional ReadConsistency read_consistency = 11;
+  repeated PointId hnsw_entry_points = 12;
 }
 
 message CoreSearchBatchPointsInternal {

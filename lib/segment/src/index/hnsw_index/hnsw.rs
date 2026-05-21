@@ -1185,6 +1185,7 @@ impl HNSWIndex {
         filter: Option<&Filter>,
         top: usize,
         params: Option<&SearchParams>,
+        custom_entry_points: Option<&[PointOffsetType]>,
         vector_query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         vectors
@@ -1197,9 +1198,14 @@ impl HNSWIndex {
                     params,
                     vector_query_context,
                 ),
-                other => {
-                    self.search_with_graph(other, filter, top, params, None, vector_query_context)
-                }
+                other => self.search_with_graph(
+                    other,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    vector_query_context,
+                ),
             })
             .collect()
     }
@@ -1402,12 +1408,13 @@ impl HNSWIndex {
 }
 
 impl VectorIndex for HNSWIndex {
-    fn search(
+    fn search_with_custom_entry_points(
         &self,
         vectors: &[&QueryVector],
         filter: Option<&Filter>,
         top: usize,
         params: Option<&SearchParams>,
+        custom_entry_points: Option<&[PointOffsetType]>,
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         if top == 0 {
@@ -1459,7 +1466,14 @@ impl VectorIndex for HNSWIndex {
                 } else {
                     let _timer =
                         ScopeDurationMeasurer::new(&self.searches_telemetry.unfiltered_hnsw);
-                    self.search_vectors_with_graph(vectors, None, top, params, query_context)
+                    self.search_vectors_with_graph(
+                        vectors,
+                        None,
+                        top,
+                        params,
+                        custom_entry_points,
+                        query_context,
+                    )
                 }
             }
             Some(query_filter) => {
@@ -1523,6 +1537,7 @@ impl VectorIndex for HNSWIndex {
                         filter,
                         top,
                         params,
+                        custom_entry_points,
                         query_context,
                     );
                 }
@@ -1540,7 +1555,14 @@ impl VectorIndex for HNSWIndex {
                     // if cardinality is high enough - use HNSW index
                     let _timer =
                         ScopeDurationMeasurer::new(&self.searches_telemetry.large_cardinality);
-                    self.search_vectors_with_graph(vectors, filter, top, params, query_context)
+                    self.search_vectors_with_graph(
+                        vectors,
+                        filter,
+                        top,
+                        params,
+                        custom_entry_points,
+                        query_context,
+                    )
                 } else {
                     // if cardinality is small - use plain index
                     let _timer =

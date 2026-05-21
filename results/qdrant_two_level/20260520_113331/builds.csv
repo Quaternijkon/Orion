@@ -1,0 +1,2 @@
+collection,points_count,indexed_vectors_count,segments_count,shard_placement,discovered_peer_count,cluster_shard_count,cluster_peer_count,cluster_local_shards,cluster_remote_shards,cluster_active_shards
+qdrant_two_level_cluster44,1183514,1183514,88,auto,3,44,3,15,29,44

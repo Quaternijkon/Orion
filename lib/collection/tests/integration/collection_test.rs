@@ -84,6 +84,11 @@ async fn test_collection_updater_with_shards(shard_number: u32) {
         with_vector: None,
         filter: None,
         params: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 3,
         offset: None,
         score_threshold: None,
@@ -161,6 +166,11 @@ async fn test_collection_search_with_payload_and_vector_with_shards(shard_number
         with_vector: Some(true.into()),
         filter: None,
         params: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 3,
         offset: None,
         score_threshold: None,

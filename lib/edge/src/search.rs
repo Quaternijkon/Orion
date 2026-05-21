@@ -52,6 +52,10 @@ impl EdgeShard {
             query,
             filter,
             params,
+            hnsw_entry_points,
+            hnsw_entry_points_by_shard: _,
+            hnsw_ef_by_shard: _,
+            source_id_dedup_block_size: _,
             limit,
             offset,
             with_payload,
@@ -74,6 +78,7 @@ impl EdgeShard {
                 &with_vector,
                 filter.as_ref(),
                 offset + limit,
+                hnsw_entry_points.as_deref(),
                 params.as_ref(),
                 &context.get_segment_query_context(),
             )?;

@@ -1056,6 +1056,10 @@ impl<'a> From<CollectionCoreSearchRequest<'a>> for api::grpc::qdrant::CoreSearch
             with_payload,
             with_vector,
             params,
+            hnsw_entry_points,
+            hnsw_entry_points_by_shard: _,
+            hnsw_ef_by_shard: _,
+            source_id_dedup_block_size: _,
             score_threshold,
             offset,
         } = request;
@@ -1071,6 +1075,12 @@ impl<'a> From<CollectionCoreSearchRequest<'a>> for api::grpc::qdrant::CoreSearch
             offset: Some(*offset as u64),
             vector_name: Some(query.get_vector_name().to_owned()),
             read_consistency: None,
+            hnsw_entry_points: hnsw_entry_points
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 }

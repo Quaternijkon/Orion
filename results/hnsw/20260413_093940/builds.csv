@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_hdf5_smoke_glove_200_angular_d200_n5000_m32_efc100_fs10,0.014047855976969004,1.1898733749985695,0.5095175739843398,1.7134388049598783,5000,5000,2,,,ok

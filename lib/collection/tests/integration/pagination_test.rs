@@ -54,6 +54,11 @@ async fn test_collection_paginated_search_with_shards(shard_number: u32) {
     let full_search_request = SearchRequestInternal {
         vector: query_vector.clone().into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 100,
         offset: Some(0),
         with_payload: Some(WithPayloadInterface::Bool(true)),
@@ -82,6 +87,11 @@ async fn test_collection_paginated_search_with_shards(shard_number: u32) {
     let page_1_request = SearchRequestInternal {
         vector: query_vector.clone().into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 10,
         offset: Some(page_size),
         with_payload: Some(WithPayloadInterface::Bool(true)),
@@ -111,6 +121,11 @@ async fn test_collection_paginated_search_with_shards(shard_number: u32) {
     let page_9_request = SearchRequestInternal {
         vector: query_vector.into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 10,
         offset: Some(page_size * 9),
         with_payload: Some(WithPayloadInterface::Bool(true)),

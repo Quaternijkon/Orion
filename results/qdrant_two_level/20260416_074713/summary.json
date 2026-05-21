@@ -1,0 +1,46 @@
+{
+  "base_url": "http://localhost:6336",
+  "collection": "qdrant_custom_centroid44_cluster",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "num_shards": 44,
+  "sample_denominator": 32,
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 36963
+  },
+  "best_tuning_row": {
+    "upper_k": 80,
+    "base_ef": 12,
+    "factor": 6,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.8818,
+    "qps": 208.36938762474105,
+    "wall_s": 4.799169452860951,
+    "avg_visited_shards": 13.536,
+    "avg_upper_hits": 80.0,
+    "avg_assigned_ef_per_visited_shard": 47.46099290780142
+  },
+  "final_row": {
+    "upper_k": 80,
+    "base_ef": 12,
+    "factor": 6,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.88135,
+    "qps": 208.65230411828048,
+    "wall_s": 47.92662147805095,
+    "avg_visited_shards": 13.4218,
+    "avg_upper_hits": 80.0,
+    "avg_assigned_ef_per_visited_shard": 47.762714390022204
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 209.59033526789608,
+    "qps_stdev": 0.7604991141085277,
+    "recall_mean": 0.88135,
+    "recall_stdev": 0.0
+  }
+}

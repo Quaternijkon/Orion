@@ -1,0 +1,2 @@
+upper_k,base_ef,factor,query_count,top_k,recall_at_k,qps,wall_s,avg_visited_shards,avg_upper_hits,avg_assigned_ef_per_visited_shard
+100,32,4,1000,10,0.9001,133.58907185288643,7.485642247003852,17.369,110.097,57.35482756635385

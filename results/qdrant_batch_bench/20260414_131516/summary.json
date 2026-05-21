@@ -1,0 +1,16 @@
+{
+  "base_url": "http://localhost:6335",
+  "collection": "ideaqdrant44_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10",
+  "hdf5_path": "/home/taig/dry/dHNSW/hnswlib/datasets/glove-200-angular.hdf5",
+  "rows": [
+    {
+      "batch_size": 300,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88677,
+      "qps": 1363.001430917629,
+      "wall_s": 7.336749451002106
+    }
+  ]
+}

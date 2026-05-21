@@ -1,0 +1,4 @@
+collection,points_count,indexed_vectors_count,segments_count,scheme
+partcmp_smoke_hash_d200_n1183514_s44_m32_efc100,1183514,1183514,88,hash
+partcmp_smoke_kmeans_d200_n1183514_s44_m32_efc100,1183514,1183505,88,kmeans
+partcmp_smoke_balanced_kmeans_d200_n1183514_s44_m32_efc100,1183514,1183514,88,balanced_kmeans

@@ -1,0 +1,16 @@
+{
+  "base_url": "http://localhost:6633",
+  "collection": "hash45_compose_cluster_glove_200_angular_d200_n1183514_s45_m32_efc100_fs10",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "rows": [
+    {
+      "batch_size": 100,
+      "hnsw_ef": 36,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89851,
+      "qps": 935.3494330668492,
+      "wall_s": 10.691191598001751
+    }
+  ]
+}

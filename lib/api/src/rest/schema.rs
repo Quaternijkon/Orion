@@ -1179,6 +1179,22 @@ pub struct SearchRequestInternal {
     /// Additional search params
     #[validate(nested)]
     pub params: Option<SearchParams>,
+    /// Optional HNSW entry points used to start graph search from specific point IDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hnsw_entry_points: Option<Vec<PointIdType>>,
+    /// Optional per-shard HNSW entry points. The collection layer specializes this map
+    /// into `hnsw_entry_points` before dispatching each shard search.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hnsw_entry_points_by_shard: Option<HashMap<ShardKey, Vec<PointIdType>>>,
+    /// Optional per-shard HNSW EF values. The collection layer specializes this map
+    /// into `params.hnsw_ef` before dispatching each shard search.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hnsw_ef_by_shard: Option<HashMap<ShardKey, usize>>,
+    /// Optional block size for experiment collections that encode copies as
+    /// `shard_id * block_size + source_id + 1`. When set, shard merge uses the
+    /// decoded source id for de-duplication before applying the final limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id_dedup_block_size: Option<u64>,
     /// Max number of result to return
     #[serde(alias = "top")]
     #[validate(range(min = 1))]

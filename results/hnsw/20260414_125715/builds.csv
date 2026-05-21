@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+ideaqdrant44_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10,0.31514439592137933,226.91775897983462,17.38436173205264,244.61726510780863,1183514,1183514,88,,,ok

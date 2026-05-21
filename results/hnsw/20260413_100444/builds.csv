@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_glove_qdrant31_glove_200_angular_d200_n1183514_s31_m32_efc100_fs10,0.23851779592223465,269.63414323795587,10.773869939846918,280.646530973725,1183514,1183514,62,,,ok

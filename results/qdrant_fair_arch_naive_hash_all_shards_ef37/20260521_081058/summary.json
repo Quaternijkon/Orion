@@ -1,0 +1,70 @@
+{
+  "base_url": "http://localhost:6733",
+  "collection": "qdrant_naive_hash_all_shards_cluster45_20260521",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "routing_mode": "naive_hash_all_shards",
+  "initial_num_shards": 45,
+  "num_shards": 45,
+  "shard_placement": "auto",
+  "discovered_peer_ids": [
+    4820216703983620,
+    6090138588350315,
+    6532353277756474
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 45,
+    "cluster_peer_count": 3,
+    "cluster_local_shards": 15,
+    "cluster_remote_shards": 30,
+    "cluster_active_shards": 45
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "multi_assign": false,
+  "fission_enabled": false,
+  "fair_architecture_note": "faithful_original_rest and naive_hash_all_shards both use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: idea routes to upper-selected shards, while naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": null,
+  "rng_equivalence_note": null,
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 0
+  },
+  "original_routing": null,
+  "best_tuning_row": {
+    "upper_k": 0,
+    "base_ef": 37,
+    "factor": 0,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.8974,
+    "qps": 544.0818140774061,
+    "wall_s": 1.8379588770039845,
+    "avg_visited_shards": 45.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 37.0
+  },
+  "final_row": {
+    "upper_k": 0,
+    "base_ef": 37,
+    "factor": 0,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.90129,
+    "qps": 561.6572960134547,
+    "wall_s": 17.804451346004498,
+    "avg_visited_shards": 45.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 37.0
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 561.9036642938349,
+    "qps_stdev": 1.5798544300940336,
+    "recall_mean": 0.90129,
+    "recall_stdev": 0.0
+  }
+}

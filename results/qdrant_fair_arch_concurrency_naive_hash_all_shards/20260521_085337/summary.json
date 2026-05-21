@@ -1,0 +1,118 @@
+{
+  "base_url": "http://localhost:6733",
+  "collection": "qdrant_naive_hash_all_shards_cluster45_20260521",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "routing_mode": "naive_hash_all_shards",
+  "initial_num_shards": 45,
+  "num_shards": 45,
+  "shard_placement": "auto",
+  "discovered_peer_ids": [
+    4820216703983620,
+    6090138588350315,
+    6532353277756474
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 45,
+    "cluster_peer_count": 3,
+    "cluster_local_shards": 15,
+    "cluster_remote_shards": 30,
+    "cluster_active_shards": 45
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "multi_assign": false,
+  "fission_enabled": false,
+  "fair_architecture_note": "faithful_original_rest and naive_hash_all_shards both use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: idea routes to upper-selected shards, while naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": null,
+  "rng_equivalence_note": null,
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 0
+  },
+  "original_routing": null,
+  "best_tuning_row": {
+    "upper_k": 0,
+    "base_ef": 36,
+    "factor": 0,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.8936,
+    "qps": 479.54389536777177,
+    "wall_s": 2.085314836993348,
+    "avg_visited_shards": 45.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 36.0
+  },
+  "final_row": {
+    "upper_k": 0,
+    "base_ef": 36,
+    "factor": 0,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.89865,
+    "qps": 474.7800635825892,
+    "wall_s": 21.062383968994254,
+    "avg_visited_shards": 45.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 36.0
+  },
+  "stability_summary": {
+    "runs": 0,
+    "qps_mean": null,
+    "qps_stdev": 0.0,
+    "recall_mean": null,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [
+    {
+      "concurrency": 1,
+      "upper_k": 0,
+      "base_ef": 36,
+      "factor": 0,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89865,
+      "qps": 500.1067189980036,
+      "wall_s": 19.995732151000993,
+      "avg_visited_shards": 45.0,
+      "avg_upper_hits": 0.0,
+      "avg_assigned_ef_per_visited_shard": 36.0,
+      "routing_plan_wall_s_excluded_from_qps": 0.32565611599420663
+    },
+    {
+      "concurrency": 2,
+      "upper_k": 0,
+      "base_ef": 36,
+      "factor": 0,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89865,
+      "qps": 571.9439240833727,
+      "wall_s": 17.484231545997318,
+      "avg_visited_shards": 45.0,
+      "avg_upper_hits": 0.0,
+      "avg_assigned_ef_per_visited_shard": 36.0,
+      "routing_plan_wall_s_excluded_from_qps": 0.32565611599420663
+    },
+    {
+      "concurrency": 4,
+      "upper_k": 0,
+      "base_ef": 36,
+      "factor": 0,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89865,
+      "qps": 271.3278392945646,
+      "wall_s": 36.855783121995046,
+      "avg_visited_shards": 45.0,
+      "avg_upper_hits": 0.0,
+      "avg_assigned_ef_per_visited_shard": 36.0,
+      "routing_plan_wall_s_excluded_from_qps": 0.32565611599420663
+    }
+  ],
+  "concurrency_note": "Optional concurrency rows precompute per-query routing/search plans before timing, then measure concurrent REST batch dispatch and result merge. The timed QPS therefore isolates Docker/Qdrant search pressure and excludes routing_plan_wall_s_excluded_from_qps."
+}

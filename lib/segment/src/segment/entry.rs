@@ -66,6 +66,7 @@ impl ReadSegmentEntry for Segment {
         with_vector: &WithVector,
         filter: Option<&Filter>,
         top: usize,
+        hnsw_entry_points: Option<&[PointIdType]>,
         params: Option<&SearchParams>,
         query_context: &SegmentQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPoint>>> {
@@ -76,11 +77,19 @@ impl ReadSegmentEntry for Segment {
             .ok_or_else(|| OperationError::vector_name_not_exists(vector_name))?;
         let vector_query_context =
             query_context.get_vector_context(vector_name, self.deferred_internal_id());
-        let internal_results = vector_data.vector_index.borrow().search(
+        let custom_entry_points = hnsw_entry_points.map(|entry_points| {
+            let id_tracker = self.id_tracker.borrow();
+            entry_points
+                .iter()
+                .filter_map(|point_id| id_tracker.internal_id(*point_id))
+                .collect::<Vec<_>>()
+        });
+        let internal_results = vector_data.vector_index.borrow().search_with_custom_entry_points(
             query_vectors,
             filter,
             top,
             params,
+            custom_entry_points.as_deref(),
             &vector_query_context,
         )?;
 

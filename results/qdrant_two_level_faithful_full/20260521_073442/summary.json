@@ -1,0 +1,113 @@
+{
+  "base_url": "http://localhost:6733",
+  "collection": "qdrant_original_idea_cluster_20260521",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 31,
+  "num_shards": 45,
+  "shard_placement": "auto",
+  "discovered_peer_ids": [
+    4820216703983620,
+    6090138588350315,
+    6532353277756474
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 45,
+    "cluster_peer_count": 3,
+    "cluster_local_shards": 15,
+    "cluster_remote_shards": 30,
+    "cluster_active_shards": 45
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "multi_assign": true,
+  "fission_enabled": true,
+  "qdrant_rest_equivalence_gap": "Qdrant public REST search accepts shard_key and hnsw_ef, but not per-shard HNSW entry point IDs. This run preserves original construction, routing, multi-assignment, and dynamic-ef counts, but lower-tier search is still Qdrant's normal shard-local HNSW entrypoint search rather than hnswlib searchBaseLayerST_MultiEP.",
+  "rng_equivalence_note": "The port preserves the original seed roles and algorithm order (upper sample seed 100, KMeans random initialization stream, weighted balanced assignment), but Python/NumPy RNG streams are not bit-identical to libstdc++ std::mt19937/std::shuffle or C rand().",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 36984
+  },
+  "original_routing": {
+    "topology_iterations": 20,
+    "total_assigned": 1390750,
+    "expansion_ratio": 1.1751022801589166,
+    "fission_events": [
+      {
+        "source_shard": 0,
+        "expected_weight": 71246,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 3,
+        "expected_weight": 67591,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 15,
+        "expected_weight": 60779,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 19,
+        "expected_weight": 321056,
+        "accepted": true,
+        "split_k": 8
+      },
+      {
+        "source_shard": 23,
+        "expected_weight": 85742,
+        "accepted": true,
+        "split_k": 3
+      },
+      {
+        "source_shard": 28,
+        "expected_weight": 82091,
+        "accepted": true,
+        "split_k": 3
+      }
+    ],
+    "shard_count_min": 4619,
+    "shard_count_max": 73352
+  },
+  "best_tuning_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.9045,
+    "qps": 151.4521514129055,
+    "wall_s": 6.602745426003821,
+    "avg_visited_shards": 17.062,
+    "avg_upper_hits": 109.41,
+    "avg_assigned_ef_per_visited_shard": 57.649982417067164
+  },
+  "final_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.89808,
+    "qps": 141.4495614907895,
+    "wall_s": 70.69657830399956,
+    "avg_visited_shards": 16.866,
+    "avg_upper_hits": 109.0808,
+    "avg_assigned_ef_per_visited_shard": 57.869986956006166
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 136.47513820859794,
+    "qps_stdev": 1.7233126590028478,
+    "recall_mean": 0.8980799999999999,
+    "recall_stdev": 1.3597399555105182e-16
+  }
+}

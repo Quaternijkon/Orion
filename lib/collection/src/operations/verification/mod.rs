@@ -444,6 +444,11 @@ mod test {
                         vector: api::rest::NamedVectorStruct::Default(vec![0.2, 0.1, 0.9, 0.7]),
                         filter: None,
                         params: None,
+                        hnsw_entry_points: None,
+                        hnsw_entry_points_by_shard: None,
+                        hnsw_ef_by_shard: None,
+
+                        source_id_dedup_block_size: None,
                         limit: 3,
                         offset: None,
                         with_payload: None,
@@ -464,6 +469,11 @@ mod test {
                         vector: api::rest::NamedVectorStruct::Default(vec![0.2, 0.1, 0.9, 0.7]),
                         filter: None,
                         params: None,
+                        hnsw_entry_points: None,
+                        hnsw_entry_points_by_shard: None,
+                        hnsw_ef_by_shard: None,
+
+                        source_id_dedup_block_size: None,
                         limit: 3,
                         offset: None,
                         with_payload: None,

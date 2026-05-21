@@ -382,6 +382,11 @@ fn leaf_source_from_scoring_query(
                 query: query_enum,
                 filter,
                 params,
+                hnsw_entry_points: None,
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+
+                source_id_dedup_block_size: None,
                 limit,
                 offset: 0,
                 with_vector: Some(WithVector::from(false)),
@@ -448,6 +453,11 @@ fn leaf_source_from_scoring_query(
                 with_payload: Some(WithPayloadInterface::from(false)),
                 offset: 0,
                 params,
+                hnsw_entry_points: None,
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+
+                source_id_dedup_block_size: None,
                 limit: candidates_limit,
             };
 

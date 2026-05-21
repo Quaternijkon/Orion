@@ -204,6 +204,10 @@ impl From<CoreSearchRequest> for ShardQueryRequest {
             limit,
             offset,
             params,
+            hnsw_entry_points: _,
+            hnsw_entry_points_by_shard: _,
+            hnsw_ef_by_shard: _,
+            source_id_dedup_block_size: _,
             with_vector,
             with_payload,
         } = value;

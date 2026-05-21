@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hash45_compose_cluster_glove_200_angular_d200_n1183514_s45_m32_efc100_fs10,0.4258901059947675,218.89908908399957,14.755472373995872,234.0804515639902,1183514,1183514,90,,,ok

@@ -1,0 +1,94 @@
+{
+  "generated_at_utc": "2026-04-13T09:57:14Z",
+  "args": {
+    "base_url": "http://localhost:6333",
+    "collection_prefix": "hnsw_qdrant31_smoke",
+    "output_dir": "results/hnsw",
+    "dataset_source": "hdf5",
+    "hdf5_path": "/home/taig/dry/dHNSW/hnswlib/datasets/glove-200-angular.hdf5",
+    "hdf5_train_key": "train",
+    "hdf5_query_key": "test",
+    "hdf5_neighbors_key": "__missing__",
+    "num_points": 5000,
+    "num_queries": 20,
+    "exact_num_queries": 20,
+    "dim": 200,
+    "distance": "Cosine",
+    "num_clusters": 20,
+    "batch_size": 512,
+    "seed": 42,
+    "top_k": 10,
+    "warmup_queries": 5,
+    "m_values": [
+      32
+    ],
+    "ef_construct_values": [
+      100
+    ],
+    "query_ef_values": [
+      60
+    ],
+    "full_scan_threshold": 10,
+    "indexing_threshold": 10,
+    "max_indexing_threads": 0,
+    "collection_shard_number": 31,
+    "timeout_sec": 1200.0,
+    "poll_interval_sec": 0.5,
+    "keep_collections": false
+  },
+  "dataset": {
+    "name": "glove-200-angular",
+    "num_points": 5000,
+    "num_queries": 20,
+    "dim": 200,
+    "ground_truth_source": "qdrant_exact",
+    "hdf5_path": "/home/taig/dry/dHNSW/hnswlib/datasets/glove-200-angular.hdf5",
+    "hdf5_train_key": "train"
+  },
+  "builds": [
+    {
+      "collection_name": "hnsw_qdrant31_smoke_glove_200_angular_d200_n5000_s31_m32_efc100_fs10",
+      "create_secs": 0.18993019685149193,
+      "upsert_secs": 1.0823746621608734,
+      "wait_index_secs": 6.112282152986154,
+      "total_build_secs": 7.384587011998519,
+      "points_count": 5000,
+      "indexed_vectors_count": 5000,
+      "segments_count": 62,
+      "ram_data_size": null,
+      "disk_data_size": null,
+      "optimizer_status": "ok"
+    }
+  ],
+  "search_results": [
+    {
+      "collection_name": "hnsw_qdrant31_smoke_glove_200_angular_d200_n5000_s31_m32_efc100_fs10",
+      "ground_truth_source": "qdrant_exact",
+      "evaluated_queries": 20,
+      "exact_latency_queries": 20,
+      "m": 32,
+      "ef_construct": 100,
+      "query_ef": 60,
+      "full_scan_threshold": 10,
+      "indexing_threshold": 10,
+      "top_k": 10,
+      "exact_latency_mean_ms": 4.04670275747776,
+      "exact_latency_p50_ms": 4.011383978649974,
+      "exact_latency_p95_ms": 4.329310788307339,
+      "approx_latency_mean_ms": 4.002958699129522,
+      "approx_latency_p50_ms": 4.029293893836439,
+      "approx_latency_p95_ms": 4.171906458213925,
+      "approx_server_time_mean_ms": 1.7239341,
+      "recall_at_k_mean": 1.0,
+      "recall_at_k_stddev": 0.0,
+      "hit_at_1_mean": 1.0,
+      "build_secs": 7.384587011998519,
+      "wait_index_secs": 6.112282152986154,
+      "indexed_vectors_count": 5000,
+      "points_count": 5000,
+      "segments_count": 62,
+      "ram_data_size": null,
+      "disk_data_size": null
+    }
+  ]
+}

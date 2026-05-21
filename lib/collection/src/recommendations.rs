@@ -396,6 +396,11 @@ fn recommend_by_avg_vector(
         with_payload,
         with_vector,
         params,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit,
         score_threshold,
         offset: offset.unwrap_or_default(),
@@ -459,6 +464,11 @@ fn recommend_by_custom_score(
             })]),
         }),
         params,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit,
         offset: offset.unwrap_or_default(),
         with_payload,

@@ -1,0 +1,4 @@
+concurrency,concurrency_evaluation_mode,search_dispatch_mode,upper_k,base_ef,factor,query_count,top_k,recall_at_k,qps,wall_s,avg_visited_shards,avg_upper_hits,avg_assigned_ef_per_visited_shard,search_batch_calls,avg_search_requests_per_query,routing_plan_wall_s_excluded_from_qps
+1,end_to_end,direct_peer,0,36,0,3000,10,0.8977333333333334,574.9135050203005,5.218176253998536,46.0,0.0,36.0,90,3.0,
+2,end_to_end,direct_peer,0,36,0,3000,10,0.8977333333333334,687.0287803158284,4.366629296986503,46.0,0.0,36.0,90,3.0,
+4,end_to_end,direct_peer,0,36,0,3000,10,0.8977333333333334,920.2080072761618,3.2601324660063256,46.0,0.0,36.0,90,3.0,

@@ -1,0 +1,80 @@
+{
+  "base_url": "http://localhost:6335",
+  "hdf5_path": "/home/taig/dry/dHNSW/hnswlib/datasets/glove-200-angular.hdf5",
+  "num_shards": 44,
+  "hnsw_m": 32,
+  "ef_construct": 100,
+  "hnsw_ef": 32,
+  "nprobe_rows": [
+    {
+      "nprobe": 1,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.49051,
+      "qps": 2928.0311746235675,
+      "wall_s": 3.415264183888212,
+      "avg_selected_shards": 1.0
+    },
+    {
+      "nprobe": 2,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.61194,
+      "qps": 1524.63962381538,
+      "wall_s": 6.558927003992721,
+      "avg_selected_shards": 2.0
+    },
+    {
+      "nprobe": 4,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.69437,
+      "qps": 775.9746231598701,
+      "wall_s": 12.887019370915368,
+      "avg_selected_shards": 4.0
+    },
+    {
+      "nprobe": 8,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.7482,
+      "qps": 397.9960928062441,
+      "wall_s": 25.1258748031687,
+      "avg_selected_shards": 8.0
+    },
+    {
+      "nprobe": 16,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.78343,
+      "qps": 199.9864990037472,
+      "wall_s": 50.0033754769247,
+      "avg_selected_shards": 16.0
+    },
+    {
+      "nprobe": 32,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.80254,
+      "qps": 99.68176115197113,
+      "wall_s": 100.319254840957,
+      "avg_selected_shards": 32.0
+    },
+    {
+      "nprobe": 44,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.80748,
+      "qps": 73.32856544882203,
+      "wall_s": 136.3725028410554,
+      "avg_selected_shards": 44.0
+    }
+  ]
+}

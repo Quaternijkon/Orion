@@ -31,6 +31,19 @@ pub trait VectorIndex {
         top: usize,
         params: Option<&SearchParams>,
         query_context: &VectorQueryContext,
+    ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
+        self.search_with_custom_entry_points(vectors, filter, top, params, None, query_context)
+    }
+
+    /// Search with optional HNSW entry points. Non-HNSW indexes ignore the entry points.
+    fn search_with_custom_entry_points(
+        &self,
+        vectors: &[&QueryVector],
+        filter: Option<&Filter>,
+        top: usize,
+        params: Option<&SearchParams>,
+        custom_entry_points: Option<&[PointOffsetType]>,
+        query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>>;
 
     fn get_telemetry_data(&self, detail: TelemetryDetail) -> VectorIndexSearchesTelemetry;
@@ -193,47 +206,125 @@ impl VectorIndexEnum {
 }
 
 impl VectorIndex for VectorIndexEnum {
-    fn search(
+    fn search_with_custom_entry_points(
         &self,
         vectors: &[&QueryVector],
         filter: Option<&Filter>,
         top: usize,
         params: Option<&SearchParams>,
+        custom_entry_points: Option<&[PointOffsetType]>,
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         match self {
             VectorIndexEnum::Plain(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::Hnsw(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseRam(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseImmutableRam(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseMmap(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedImmutableRamF32(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedImmutableRamF16(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedImmutableRamU8(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedMmapF32(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedMmapF16(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
             VectorIndexEnum::SparseCompressedMmapU8(index) => {
-                index.search(vectors, filter, top, params, query_context)
+                index.search_with_custom_entry_points(
+                    vectors,
+                    filter,
+                    top,
+                    params,
+                    custom_entry_points,
+                    query_context,
+                )
             }
         }
     }

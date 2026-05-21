@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_cluster_smoke_synthetic_d64_n2000_s44_m8_efc64_fs10,0.4006243124604225,0.18770137894898653,2.0372486039996147,2.6255742954090238,2000,1519,76,,,ok

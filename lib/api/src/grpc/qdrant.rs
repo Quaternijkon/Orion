@@ -10708,6 +10708,8 @@ pub struct CoreSearchPoints {
     pub with_vectors: ::core::option::Option<WithVectorsSelector>,
     #[prost(message, optional, tag = "11")]
     pub read_consistency: ::core::option::Option<ReadConsistency>,
+    #[prost(message, repeated, tag = "12")]
+    pub hnsw_entry_points: ::prost::alloc::vec::Vec<PointId>,
 }
 #[derive(serde::Serialize)]
 #[derive(validator::Validate)]

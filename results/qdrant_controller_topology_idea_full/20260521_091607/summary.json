@@ -1,0 +1,119 @@
+{
+  "base_url": "http://localhost:6833",
+  "collection": "qdrant_controller_idea_full_20260521",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 31,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "placement_peer_uri_contains": [
+    "qdrant_shard_"
+  ],
+  "discovered_peer_ids": [
+    2980601005324529,
+    6015626418395790,
+    6846760844865837
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "multi_assign": true,
+  "fission_enabled": true,
+  "fair_architecture_note": "faithful_original_rest and naive_hash_all_shards both use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: idea routes to upper-selected shards, while naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": "Qdrant public REST search accepts shard_key and hnsw_ef, but not per-shard HNSW entry point IDs. This run preserves original construction, routing, multi-assignment, and dynamic-ef counts, but lower-tier search is still Qdrant's normal shard-local HNSW entrypoint search rather than hnswlib searchBaseLayerST_MultiEP.",
+  "rng_equivalence_note": "The port preserves the original seed roles and algorithm order (upper sample seed 100, KMeans random initialization stream, weighted balanced assignment), but Python/NumPy RNG streams are not bit-identical to libstdc++ std::mt19937/std::shuffle or C rand().",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 36984
+  },
+  "original_routing": {
+    "topology_iterations": 20,
+    "total_assigned": 1393742,
+    "expansion_ratio": 1.1776303448881889,
+    "fission_events": [
+      {
+        "source_shard": 0,
+        "expected_weight": 71314,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 3,
+        "expected_weight": 67537,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 15,
+        "expected_weight": 60723,
+        "accepted": true,
+        "split_k": 2
+      },
+      {
+        "source_shard": 19,
+        "expected_weight": 321123,
+        "accepted": true,
+        "split_k": 9
+      },
+      {
+        "source_shard": 23,
+        "expected_weight": 85816,
+        "accepted": true,
+        "split_k": 3
+      },
+      {
+        "source_shard": 28,
+        "expected_weight": 82035,
+        "accepted": true,
+        "split_k": 3
+      }
+    ],
+    "shard_count_min": 4765,
+    "shard_count_max": 63424
+  },
+  "best_tuning_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 1000,
+    "top_k": 10,
+    "recall_at_k": 0.9001,
+    "qps": 133.58907185288643,
+    "wall_s": 7.485642247003852,
+    "avg_visited_shards": 17.369,
+    "avg_upper_hits": 110.097,
+    "avg_assigned_ef_per_visited_shard": 57.35482756635385
+  },
+  "final_row": {
+    "upper_k": 100,
+    "base_ef": 32,
+    "factor": 4,
+    "query_count": 10000,
+    "top_k": 10,
+    "recall_at_k": 0.89796,
+    "qps": 131.58282675218385,
+    "wall_s": 75.99775933400088,
+    "avg_visited_shards": 17.187,
+    "avg_upper_hits": 109.7174,
+    "avg_assigned_ef_per_visited_shard": 57.5349741083377
+  },
+  "stability_summary": {
+    "runs": 0,
+    "qps_mean": null,
+    "qps_stdev": 0.0,
+    "recall_mean": null,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

@@ -1,0 +1,19 @@
+{
+  "base_url": "http://localhost:6335",
+  "collection": "pressure16_glove_200_angular_d200_n1183514_s1_m32_efc100_fs10",
+  "exact": false,
+  "query_ef": 1860,
+  "concurrency": 64,
+  "total_requests": 40000,
+  "query_count": 2000,
+  "throughput_rps": 897.3442565279993,
+  "latency_mean_ms": 71.23625631236355,
+  "latency_p50_ms": 71.19066710583866,
+  "latency_p95_ms": 81.59413678804412,
+  "latency_p99_ms": 89.34011733392258,
+  "server_time_mean_ms": 68.25241639415,
+  "wall_time_sec": 44.57598040997982,
+  "docker_cpu_mean_pct": 1605.2095454545454,
+  "docker_cpu_max_pct": 1611.07,
+  "docker_samples": 22
+}

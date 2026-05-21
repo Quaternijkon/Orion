@@ -431,6 +431,11 @@ mod tests_ops {
             strategy: Some(RecommendStrategy::AverageVector),
             filter: None,
             params: Some(SearchParams::default()),
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: None,
+            hnsw_ef_by_shard: None,
+
+            source_id_dedup_block_size: None,
             limit: 100,
             offset: Some(100),
             with_payload: Some(WithPayloadInterface::Bool(true)),

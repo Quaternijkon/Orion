@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_qdrant31_smoke_glove_200_angular_d200_n5000_s31_m32_efc100_fs10,0.18993019685149193,1.0823746621608734,6.112282152986154,7.384587011998519,5000,5000,62,,,ok

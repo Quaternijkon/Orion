@@ -1,0 +1,2 @@
+collection,points_count,indexed_vectors_count,segments_count,shard_placement,discovered_peer_count,logical_points_count,assigned_points_count,cluster_shard_count,cluster_peer_count,cluster_local_shards,cluster_remote_shards,cluster_active_shards
+qdrant_original_idea_cluster_20260521,1390750,1390750,90,auto,3,1183514,1390750,45,3,15,30,45

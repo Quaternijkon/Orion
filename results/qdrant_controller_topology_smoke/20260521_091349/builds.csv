@@ -1,0 +1,2 @@
+collection,points_count,indexed_vectors_count,segments_count,shard_placement,discovered_peer_count,logical_points_count,assigned_points_count,cluster_shard_count,cluster_peer_count,cluster_local_shards,cluster_remote_shards,cluster_active_shards
+qdrant_controller_smoke_idea,2796,2789,18,round_robin,3,2000,2796,11,4,0,11,11

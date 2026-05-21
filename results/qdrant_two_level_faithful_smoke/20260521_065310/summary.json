@@ -1,0 +1,82 @@
+{
+  "base_url": "http://localhost:6733",
+  "collection": "idea_faithful_original_smoke",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": 2000,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 8,
+  "num_shards": 11,
+  "shard_placement": "auto",
+  "discovered_peer_ids": [
+    4820216703983620,
+    6090138588350315,
+    6532353277756474
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 11,
+    "cluster_peer_count": 3,
+    "cluster_local_shards": 4,
+    "cluster_remote_shards": 7,
+    "cluster_active_shards": 11
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "multi_assign": true,
+  "fission_enabled": true,
+  "qdrant_rest_equivalence_gap": "Qdrant public REST search accepts shard_key and hnsw_ef, but not per-shard HNSW entry point IDs. This run preserves original construction, routing, multi-assignment, and dynamic-ef counts, but lower-tier search is still Qdrant's normal shard-local HNSW entrypoint search rather than hnswlib searchBaseLayerST_MultiEP.",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 62
+  },
+  "original_routing": {
+    "topology_iterations": 10,
+    "total_assigned": 2755,
+    "expansion_ratio": 1.3775,
+    "fission_events": [
+      {
+        "source_shard": 2,
+        "expected_weight": 1739,
+        "accepted": true,
+        "split_k": 4
+      }
+    ],
+    "shard_count_min": 0,
+    "shard_count_max": 790
+  },
+  "best_tuning_row": {
+    "upper_k": 100,
+    "base_ef": 20,
+    "factor": 4,
+    "query_count": 20,
+    "top_k": 10,
+    "recall_at_k": 0.0,
+    "qps": 184.47050545524564,
+    "wall_s": 0.10841841599904001,
+    "avg_visited_shards": 6.0,
+    "avg_upper_hits": 69.0,
+    "avg_assigned_ef_per_visited_shard": 66.0
+  },
+  "final_row": {
+    "upper_k": 100,
+    "base_ef": 20,
+    "factor": 4,
+    "query_count": 20,
+    "top_k": 10,
+    "recall_at_k": 0.0,
+    "qps": 179.49372179771493,
+    "wall_s": 0.1114245100034168,
+    "avg_visited_shards": 6.0,
+    "avg_upper_hits": 69.0,
+    "avg_assigned_ef_per_visited_shard": 66.0
+  },
+  "stability_summary": {
+    "runs": 1,
+    "qps_mean": 176.12169065052444,
+    "qps_stdev": 0.0,
+    "recall_mean": 0.0,
+    "recall_stdev": 0.0
+  }
+}

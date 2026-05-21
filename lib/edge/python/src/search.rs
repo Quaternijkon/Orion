@@ -43,6 +43,13 @@ impl PySearchRequest {
             offset: offset.unwrap_or(0),
             filter: filter.map(Filter::from),
             params: params.map(SearchParams::from),
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: None,
+
+            hnsw_ef_by_shard: None,
+
+
+            source_id_dedup_block_size: None,
             with_vector: with_vector.map(WithVector::from),
             with_payload: with_payload.map(WithPayloadInterface::from),
             score_threshold,
@@ -101,6 +108,10 @@ impl PySearchRequest {
             query: _,
             filter: _,
             params: _,
+            hnsw_entry_points: _,
+            hnsw_entry_points_by_shard: _,
+            hnsw_ef_by_shard: _,
+            source_id_dedup_block_size: _,
             limit: _,
             offset: _,
             with_vector: _,

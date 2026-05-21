@@ -564,12 +564,13 @@ impl<TInvertedIndex: InvertedIndex> SparseVectorIndex<TInvertedIndex> {
 }
 
 impl<TInvertedIndex: InvertedIndex> VectorIndex for SparseVectorIndex<TInvertedIndex> {
-    fn search(
+    fn search_with_custom_entry_points(
         &self,
         vectors: &[&QueryVector],
         filter: Option<&Filter>,
         top: usize,
         _params: Option<&SearchParams>,
+        _custom_entry_points: Option<&[PointOffsetType]>,
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         let mut results = Vec::with_capacity(vectors.len());

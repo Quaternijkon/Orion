@@ -63,6 +63,7 @@ impl ReadSegmentEntry for ProxySegment {
         with_vector: &WithVector,
         filter: Option<&Filter>,
         top: usize,
+        hnsw_entry_points: Option<&[PointIdType]>,
         params: Option<&SearchParams>,
         query_context: &SegmentQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPoint>>> {
@@ -86,6 +87,7 @@ impl ReadSegmentEntry for ProxySegment {
                     with_vector,
                     filter,
                     top,
+                    hnsw_entry_points,
                     params,
                     &query_context_with_deleted,
                 );
@@ -104,6 +106,7 @@ impl ReadSegmentEntry for ProxySegment {
                     with_vector,
                     Some(&wrapped_filter),
                     top,
+                    hnsw_entry_points,
                     params,
                     query_context,
                 )?
@@ -116,6 +119,7 @@ impl ReadSegmentEntry for ProxySegment {
                 with_vector,
                 filter,
                 top,
+                hnsw_entry_points,
                 params,
                 query_context,
             )?

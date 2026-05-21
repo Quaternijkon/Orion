@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+pressure16_glove_200_angular_d200_n1183514_s1_m32_efc100_fs10,0.018241361947730184,267.9387493878603,27.36191189312376,295.3189026429318,1183514,1183514,2,,,ok

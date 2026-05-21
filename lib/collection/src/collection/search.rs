@@ -7,7 +7,7 @@ use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::{TryFutureExt, future};
 use itertools::{Either, Itertools};
 use segment::types::{
-    ExtendedPointId, Filter, Order, ScoredPoint, WithPayloadInterface, WithVector,
+    ExtendedPointId, Filter, Order, ScoredPoint, ShardKey, WithPayloadInterface, WithVector,
 };
 use shard::retrieve::record_internal::RecordInternal;
 use shard::search::CoreSearchRequestBatch;
@@ -18,6 +18,68 @@ use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
+
+fn search_batch_requires_shard_specialization(request: &CoreSearchRequestBatch) -> bool {
+    request.searches.iter().any(|search| {
+        search.hnsw_entry_points_by_shard.is_some() || search.hnsw_ef_by_shard.is_some()
+    })
+}
+
+pub(crate) fn specialize_search_batch_for_shard(
+    request: &CoreSearchRequestBatch,
+    shard_key: Option<&ShardKey>,
+) -> CoreSearchRequestBatch {
+    let searches = request
+        .searches
+        .iter()
+        .map(|search| {
+            let mut specialized = search.clone();
+
+            if let Some(shard_key) = shard_key {
+                if let Some(entry_points) = search
+                    .hnsw_entry_points_by_shard
+                    .as_ref()
+                    .and_then(|entry_points_by_shard| entry_points_by_shard.get(shard_key))
+                {
+                    specialized.hnsw_entry_points = Some(entry_points.clone());
+                }
+
+                if let Some(hnsw_ef) = search
+                    .hnsw_ef_by_shard
+                    .as_ref()
+                    .and_then(|ef_by_shard| ef_by_shard.get(shard_key))
+                    .copied()
+                {
+                    let mut params = specialized.params.unwrap_or_default();
+                    params.hnsw_ef = Some(hnsw_ef);
+                    specialized.params = Some(params);
+                }
+            }
+
+            specialized.hnsw_entry_points_by_shard = None;
+            specialized.hnsw_ef_by_shard = None;
+            specialized
+        })
+        .collect();
+
+    CoreSearchRequestBatch { searches }
+}
+
+fn search_dedup_point_id(
+    point_id: ExtendedPointId,
+    source_id_dedup_block_size: Option<u64>,
+) -> ExtendedPointId {
+    let Some(block_size) = source_id_dedup_block_size.filter(|block_size| *block_size > 0) else {
+        return point_id;
+    };
+    let ExtendedPointId::NumId(point_num_id) = point_id else {
+        return point_id;
+    };
+    if point_num_id == 0 {
+        return point_id;
+    }
+    ExtendedPointId::NumId((point_num_id - 1) % block_size)
+}
 
 impl Collection {
     #[cfg(feature = "testing")]
@@ -152,6 +214,7 @@ impl Collection {
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let request = Arc::new(request);
+        let requires_shard_specialization = search_batch_requires_shard_specialization(&request);
 
         let instant = Instant::now();
 
@@ -161,9 +224,17 @@ impl Collection {
             let target_shards = shard_holder.select_shards(shard_selection)?;
             let all_searches = target_shards.into_iter().map(|(shard, shard_key)| {
                 let shard_key = shard_key.cloned();
+                let shard_request = if requires_shard_specialization {
+                    Arc::new(specialize_search_batch_for_shard(
+                        &request,
+                        shard_key.as_ref(),
+                    ))
+                } else {
+                    request.clone()
+                };
                 shard
                     .core_search(
-                        request.clone(),
+                        shard_request,
                         read_consistency,
                         shard_selection.is_shard_id(),
                         timeout,
@@ -292,7 +363,12 @@ impl Collection {
                 Order::LargeBetter => Either::Left(results_from_shards.kmerge_by(|a, b| a > b)),
                 Order::SmallBetter => Either::Right(results_from_shards.kmerge_by(|a, b| a < b)),
             }
-            .filter(|point| seen_ids.insert(point.id));
+            .filter(|point| {
+                seen_ids.insert(search_dedup_point_id(
+                    point.id,
+                    request.source_id_dedup_block_size,
+                ))
+            });
 
             // Skip `offset` only for client requests
             // to avoid applying `offset` twice in distributed mode.
@@ -329,5 +405,106 @@ impl Collection {
                 schema,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use segment::types::{PointIdType, SearchParams, ShardKey};
+    use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
+
+    use super::*;
+
+    #[test]
+    fn specialize_search_batch_applies_per_shard_entry_points_and_ef() {
+        let request = CoreSearchRequest {
+            query: vec![1.0, 2.0, 3.0, 4.0].into(),
+            filter: None,
+            params: Some(SearchParams {
+                hnsw_ef: Some(100),
+                ..Default::default()
+            }),
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: Some(HashMap::from([
+                (ShardKey::from("centroid_00"), vec![PointIdType::from(11)]),
+                (
+                    ShardKey::from("centroid_01"),
+                    vec![PointIdType::from(29), PointIdType::from(31)],
+                ),
+            ])),
+            hnsw_ef_by_shard: Some(HashMap::from([
+                (ShardKey::from("centroid_00"), 24),
+                (ShardKey::from("centroid_01"), 28),
+            ])),
+            source_id_dedup_block_size: None,
+            limit: 10,
+            offset: 0,
+            with_payload: None,
+            with_vector: None,
+            score_threshold: None,
+        };
+        let batch = CoreSearchRequestBatch {
+            searches: vec![request],
+        };
+
+        let specialized =
+            specialize_search_batch_for_shard(&batch, Some(&ShardKey::from("centroid_01")));
+
+        assert_eq!(
+            specialized.searches[0].hnsw_entry_points,
+            Some(vec![PointIdType::from(29), PointIdType::from(31)])
+        );
+        assert_eq!(
+            specialized.searches[0].params.as_ref().and_then(|params| params.hnsw_ef),
+            Some(28)
+        );
+        assert!(specialized.searches[0].hnsw_entry_points_by_shard.is_none());
+        assert!(specialized.searches[0].hnsw_ef_by_shard.is_none());
+    }
+
+    #[test]
+    fn specialize_search_batch_clears_per_shard_maps_when_key_is_absent() {
+        let request = CoreSearchRequest {
+            query: vec![1.0, 2.0, 3.0, 4.0].into(),
+            filter: None,
+            params: None,
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: Some(HashMap::from([(
+                ShardKey::from("centroid_00"),
+                vec![PointIdType::from(11)],
+            )])),
+            hnsw_ef_by_shard: Some(HashMap::from([(ShardKey::from("centroid_00"), 24)])),
+            source_id_dedup_block_size: None,
+            limit: 10,
+            offset: 0,
+            with_payload: None,
+            with_vector: None,
+            score_threshold: None,
+        };
+        let batch = CoreSearchRequestBatch {
+            searches: vec![request],
+        };
+
+        let specialized =
+            specialize_search_batch_for_shard(&batch, Some(&ShardKey::from("centroid_01")));
+
+        assert_eq!(specialized.searches[0].hnsw_entry_points, None);
+        assert_eq!(specialized.searches[0].params, None);
+        assert!(specialized.searches[0].hnsw_entry_points_by_shard.is_none());
+        assert!(specialized.searches[0].hnsw_ef_by_shard.is_none());
+    }
+
+    #[test]
+    fn search_dedup_point_id_decodes_copy_id_when_block_size_is_set() {
+        assert_eq!(
+            search_dedup_point_id(ExtendedPointId::NumId(2_000_045), Some(1_000_001)),
+            ExtendedPointId::NumId(42)
+        );
+        assert_eq!(
+            search_dedup_point_id(ExtendedPointId::NumId(2_000_045), None),
+            ExtendedPointId::NumId(2_000_045)
+        );
     }
 }

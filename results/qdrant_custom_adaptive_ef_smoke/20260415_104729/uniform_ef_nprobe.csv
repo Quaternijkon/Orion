@@ -1,0 +1,2 @@
+strategy,nprobe,hnsw_ef,schedule_name,schedule,query_count,top_k,recall_at_k,qps,wall_s,avg_selected_shards
+uniform,44,64,,,200,10,0.8815,373.6819752793083,0.535214469069615,44.0

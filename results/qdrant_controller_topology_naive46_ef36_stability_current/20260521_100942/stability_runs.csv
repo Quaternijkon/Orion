@@ -1,0 +1,4 @@
+run,upper_k,base_ef,factor,query_count,top_k,recall_at_k,qps,wall_s,avg_visited_shards,avg_upper_hits,avg_assigned_ef_per_visited_shard,search_batch_calls,avg_search_requests_per_query
+1,0,36,0,10000,10,0.89942,415.5792692407139,24.062797979000607,46.0,0.0,36.0,100,1.0
+2,0,36,0,10000,10,0.89942,408.84479228663446,24.45915953599615,46.0,0.0,36.0,100,1.0
+3,0,36,0,10000,10,0.89942,414.5185638678192,24.124371913989307,46.0,0.0,36.0,100,1.0

@@ -95,6 +95,7 @@ fn test_search_batch_equivalence_single() {
             None,
             10,
             None,
+            None,
             &segment_query_context,
         )
         .unwrap();
@@ -644,6 +645,7 @@ fn test_vector_compatibility_checks() {
                 &WithVector::Bool(true),
                 None,
                 1,
+                None,
                 None,
                 &segment_query_context,
             )

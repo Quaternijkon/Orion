@@ -1,0 +1,121 @@
+{
+  "base_url": "http://localhost:6336",
+  "collection": "qdrant_custom_centroid44_cluster",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "num_shards": 44,
+  "query_count": 200,
+  "top_k": 10,
+  "hnsw_m": 32,
+  "ef_construct": 100,
+  "target_recall": 0.75,
+  "chosen_uniform": {
+    "candidate_type": "uniform_ef",
+    "nprobe": 44,
+    "hnsw_ef": 64,
+    "recall_at_k": 0.8815,
+    "qps": 384.0853881313587,
+    "wall_s": 0.520717544015497
+  },
+  "chosen_adaptive": {
+    "candidate_type": "adaptive_schedule",
+    "nprobe": 44,
+    "schedule_name": "sched_a_4_28_44__128_64_48",
+    "schedule": "[[4, 128], [28, 64], [44, 48]]",
+    "recall_at_k": 0.916,
+    "qps": 333.12389060828514,
+    "wall_s": 0.6003772339317948
+  },
+  "uniform_tuning_rows": [
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 64,
+      "recall_at_k": 0.8815,
+      "qps": 384.0853881313587,
+      "wall_s": 0.520717544015497
+    }
+  ],
+  "adaptive_tuning_rows": [
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_a_4_28_44__128_64_48",
+      "schedule": "[[4, 128], [28, 64], [44, 48]]",
+      "recall_at_k": 0.916,
+      "qps": 333.12389060828514,
+      "wall_s": 0.6003772339317948
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_b_8_28_44__96_64_48",
+      "schedule": "[[8, 96], [28, 64], [44, 48]]",
+      "recall_at_k": 0.9065,
+      "qps": 311.65512387736976,
+      "wall_s": 0.6417349970433861
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "recall_at_k": 0.916,
+      "qps": 312.7537884608159,
+      "wall_s": 0.639480662997812
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_d_8_32_44__96_64_56",
+      "schedule": "[[8, 96], [32, 64], [44, 56]]",
+      "recall_at_k": 0.907,
+      "qps": 318.5991318421329,
+      "wall_s": 0.6277481010183692
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_e_4_16_32_44__160_80_64_48",
+      "schedule": "[[4, 160], [16, 80], [32, 64], [44, 48]]",
+      "recall_at_k": 0.9295,
+      "qps": 251.33823787367172,
+      "wall_s": 0.7957404400222003
+    }
+  ],
+  "uniform_rows": [
+    {
+      "strategy": "uniform",
+      "nprobe": 44,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 200,
+      "top_k": 10,
+      "recall_at_k": 0.8815,
+      "qps": 373.6819752793083,
+      "wall_s": 0.535214469069615,
+      "avg_selected_shards": 44.0
+    }
+  ],
+  "adaptive_rows": [
+    {
+      "strategy": "adaptive",
+      "nprobe": 44,
+      "hnsw_ef": "",
+      "schedule_name": "sched_a_4_28_44__128_64_48",
+      "schedule": "[[4, 128], [28, 64], [44, 48]]",
+      "query_count": 200,
+      "top_k": 10,
+      "recall_at_k": 0.916,
+      "qps": 286.06353700432766,
+      "wall_s": 0.6991453790105879,
+      "avg_selected_shards": 44.0
+    }
+  ],
+  "build_row": {
+    "collection": "qdrant_custom_centroid44_cluster",
+    "points_count": 1183514,
+    "indexed_vectors_count": 1183514,
+    "segments_count": 88
+  }
+}

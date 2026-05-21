@@ -1,0 +1,3 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_smoke_d64_n2000_m8_efc64_fs10,0.014118660008534789,0.23365067993290722,0.5124275840353221,0.7601969239767641,2000,2000,2,,,ok
+hnsw_smoke_d64_n2000_m16_efc64_fs10,0.013106897007673979,0.29683370096608996,0.5096474308520555,0.8195880288258195,2000,2000,2,,,ok

@@ -1,0 +1,34 @@
+{
+  "base_url": "http://localhost:6633",
+  "collection": "hash44_compose_cluster_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "rows": [
+    {
+      "batch_size": 50,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 852.6672747791713,
+      "wall_s": 11.727904067374766
+    },
+    {
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 854.907084245712,
+      "wall_s": 11.69717760477215
+    },
+    {
+      "batch_size": 200,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 1035.412327937959,
+      "wall_s": 9.657988156192005
+    }
+  ]
+}

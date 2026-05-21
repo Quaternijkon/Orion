@@ -81,12 +81,13 @@ impl PlainVectorIndex {
 }
 
 impl VectorIndex for PlainVectorIndex {
-    fn search(
+    fn search_with_custom_entry_points(
         &self,
         query_vectors: &[&QueryVector],
         filter: Option<&Filter>,
         top: usize,
         params: Option<&SearchParams>,
+        _custom_entry_points: Option<&[PointOffsetType]>,
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         let is_indexed_only = params.map(|p| p.indexed_only).unwrap_or(false);

@@ -130,6 +130,11 @@ async fn test_multi_vec_with_shards(shard_number: u32) {
         }
         .into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 10,
         offset: None,
         with_payload: Some(WithPayloadInterface::Bool(true)),
@@ -166,6 +171,11 @@ async fn test_multi_vec_with_shards(shard_number: u32) {
     let failed_search_request = SearchRequestInternal {
         vector: query_vector.clone().into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 10,
         offset: None,
         with_payload: Some(WithPayloadInterface::Bool(true)),
@@ -197,6 +207,11 @@ async fn test_multi_vec_with_shards(shard_number: u32) {
         }
         .into(),
         filter: None,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: 10,
         offset: None,
         with_payload: Some(WithPayloadInterface::Bool(true)),

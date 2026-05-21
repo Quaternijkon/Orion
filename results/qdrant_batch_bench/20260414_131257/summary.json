@@ -1,0 +1,43 @@
+{
+  "base_url": "http://localhost:6335",
+  "collection": "ideaqdrant44_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10",
+  "hdf5_path": "/home/taig/dry/dHNSW/hnswlib/datasets/glove-200-angular.hdf5",
+  "rows": [
+    {
+      "batch_size": 150,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88677,
+      "qps": 1350.6250704195172,
+      "wall_s": 7.403979253023863
+    },
+    {
+      "batch_size": 250,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88677,
+      "qps": 1435.5560475610328,
+      "wall_s": 6.965941885020584
+    },
+    {
+      "batch_size": 300,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88677,
+      "qps": 1440.445320570436,
+      "wall_s": 6.942297536181286
+    },
+    {
+      "batch_size": 400,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88677,
+      "qps": 1429.37247711451,
+      "wall_s": 6.996077061863616
+    }
+  ]
+}

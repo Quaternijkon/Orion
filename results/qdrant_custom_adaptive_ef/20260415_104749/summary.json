@@ -1,0 +1,309 @@
+{
+  "base_url": "http://localhost:6336",
+  "collection": "qdrant_custom_centroid44_cluster",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "num_shards": 44,
+  "query_count": 10000,
+  "top_k": 10,
+  "hnsw_m": 32,
+  "ef_construct": 100,
+  "target_recall": 0.88,
+  "chosen_uniform": {
+    "candidate_type": "uniform_ef",
+    "nprobe": 44,
+    "hnsw_ef": 64,
+    "recall_at_k": 0.88159,
+    "qps": 332.5119457120531,
+    "wall_s": 30.07410749886185
+  },
+  "chosen_adaptive": {
+    "candidate_type": "adaptive_schedule",
+    "nprobe": 44,
+    "schedule_name": "sched_c_4_20_44__128_64_56",
+    "schedule": "[[4, 128], [20, 64], [44, 56]]",
+    "recall_at_k": 0.92097,
+    "qps": 282.96543147393555,
+    "wall_s": 35.340005837148055
+  },
+  "uniform_tuning_rows": [
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 48,
+      "recall_at_k": 0.85364,
+      "qps": 409.8084103554375,
+      "wall_s": 24.401646592188627
+    },
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 64,
+      "recall_at_k": 0.88159,
+      "qps": 332.5119457120531,
+      "wall_s": 30.07410749886185
+    },
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 80,
+      "recall_at_k": 0.9012,
+      "qps": 301.2805982720303,
+      "wall_s": 33.191649436950684
+    },
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 96,
+      "recall_at_k": 0.915,
+      "qps": 275.2756106575316,
+      "wall_s": 36.32722846791148
+    },
+    {
+      "candidate_type": "uniform_ef",
+      "nprobe": 44,
+      "hnsw_ef": 128,
+      "recall_at_k": 0.93486,
+      "qps": 242.4475230046978,
+      "wall_s": 41.24603904411197
+    }
+  ],
+  "adaptive_tuning_rows": [
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_a_4_28_44__128_64_48",
+      "schedule": "[[4, 128], [28, 64], [44, 48]]",
+      "recall_at_k": 0.92113,
+      "qps": 265.89406071909303,
+      "wall_s": 37.608963408041745
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_b_8_28_44__96_64_48",
+      "schedule": "[[8, 96], [28, 64], [44, 48]]",
+      "recall_at_k": 0.91018,
+      "qps": 260.7194245449798,
+      "wall_s": 38.35540837608278
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "recall_at_k": 0.92097,
+      "qps": 282.96543147393555,
+      "wall_s": 35.340005837148055
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_d_8_32_44__96_64_56",
+      "schedule": "[[8, 96], [32, 64], [44, 56]]",
+      "recall_at_k": 0.91032,
+      "qps": 276.02636425894815,
+      "wall_s": 36.22842342196964
+    },
+    {
+      "candidate_type": "adaptive_schedule",
+      "nprobe": 44,
+      "schedule_name": "sched_e_4_16_32_44__160_80_64_48",
+      "schedule": "[[4, 160], [16, 80], [32, 64], [44, 48]]",
+      "recall_at_k": 0.93484,
+      "qps": 244.82320015119544,
+      "wall_s": 40.84580216999166
+    }
+  ],
+  "uniform_rows": [
+    {
+      "strategy": "uniform",
+      "nprobe": 1,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.52841,
+      "qps": 2936.9192945954264,
+      "wall_s": 3.4049284290522337,
+      "avg_selected_shards": 1.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 2,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.66122,
+      "qps": 2242.517033265984,
+      "wall_s": 4.459274936001748,
+      "avg_selected_shards": 2.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 4,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.75211,
+      "qps": 1576.058967056519,
+      "wall_s": 6.3449402649421245,
+      "avg_selected_shards": 4.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 8,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.81341,
+      "qps": 1103.4211681654822,
+      "wall_s": 9.062722638016567,
+      "avg_selected_shards": 8.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 16,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.85431,
+      "qps": 717.8683638360095,
+      "wall_s": 13.9301305138506,
+      "avg_selected_shards": 16.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 32,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.87643,
+      "qps": 411.6293110895068,
+      "wall_s": 24.29370244196616,
+      "avg_selected_shards": 32.0
+    },
+    {
+      "strategy": "uniform",
+      "nprobe": 44,
+      "hnsw_ef": 64,
+      "schedule_name": "",
+      "schedule": "",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88159,
+      "qps": 331.6988030859379,
+      "wall_s": 30.147832632996142,
+      "avg_selected_shards": 44.0
+    }
+  ],
+  "adaptive_rows": [
+    {
+      "strategy": "adaptive",
+      "nprobe": 1,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.55306,
+      "qps": 2360.8070500855492,
+      "wall_s": 4.235839603934437,
+      "avg_selected_shards": 1.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 2,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.69389,
+      "qps": 1932.138427178262,
+      "wall_s": 5.175612605875358,
+      "avg_selected_shards": 2.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 4,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.79183,
+      "qps": 1547.094973924006,
+      "wall_s": 6.463727287948132,
+      "avg_selected_shards": 4.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 8,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.85313,
+      "qps": 851.6371187722079,
+      "wall_s": 11.74209035700187,
+      "avg_selected_shards": 8.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 16,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89403,
+      "qps": 602.8445120630066,
+      "wall_s": 16.588025270029902,
+      "avg_selected_shards": 16.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 32,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.91585,
+      "qps": 352.7464385160096,
+      "wall_s": 28.348975094035268,
+      "avg_selected_shards": 32.0
+    },
+    {
+      "strategy": "adaptive",
+      "nprobe": 44,
+      "hnsw_ef": "",
+      "schedule_name": "sched_c_4_20_44__128_64_56",
+      "schedule": "[[4, 128], [20, 64], [44, 56]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.92097,
+      "qps": 274.1051367030964,
+      "wall_s": 36.48235170007683,
+      "avg_selected_shards": 44.0
+    }
+  ],
+  "build_row": {
+    "collection": "qdrant_custom_centroid44_cluster",
+    "points_count": 1183514,
+    "indexed_vectors_count": 1183514,
+    "segments_count": 88
+  }
+}

@@ -73,6 +73,11 @@ async fn test_hw_metrics_cancellation() {
             }),
             filter: None,
             params: None,
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: None,
+            hnsw_ef_by_shard: None,
+
+            source_id_dedup_block_size: None,
             limit: 1010,
             offset: 0,
             with_payload: None,

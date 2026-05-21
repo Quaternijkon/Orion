@@ -1,0 +1,72 @@
+{
+  "base_url": "http://localhost:6335",
+  "collection": "hash44_envref_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "hnsw_ef": 30,
+  "batch_size": 100,
+  "query_count": 10000,
+  "top_k": 10,
+  "runs": [
+    {
+      "run": 1,
+      "started_at_epoch": 1776255045.7794037,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 809.5792190392635,
+      "wall_s": 12.35209571197629
+    },
+    {
+      "run": 2,
+      "started_at_epoch": 1776255058.132009,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 844.0156789552857,
+      "wall_s": 11.848121130140498
+    },
+    {
+      "run": 3,
+      "started_at_epoch": 1776255069.9805906,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 906.112523565075,
+      "wall_s": 11.036156923044473
+    },
+    {
+      "run": 4,
+      "started_at_epoch": 1776255081.0172124,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 906.8004737091734,
+      "wall_s": 11.027784270001575
+    },
+    {
+      "run": 5,
+      "started_at_epoch": 1776255092.0455246,
+      "batch_size": 100,
+      "hnsw_ef": 30,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.88083,
+      "qps": 929.5526746584342,
+      "wall_s": 10.757862650090829
+    }
+  ],
+  "qps_mean": 879.2121139854463,
+  "qps_stdev": 50.265422444476584,
+  "qps_min": 809.5792190392635,
+  "qps_max": 929.5526746584342,
+  "recall_mean": 0.88083,
+  "recall_stdev": 0.0
+}

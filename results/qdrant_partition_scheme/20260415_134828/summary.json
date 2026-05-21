@@ -1,0 +1,186 @@
+{
+  "base_url": "http://localhost:6336",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "num_shards": 44,
+  "tuning_query_count": 2000,
+  "eval_query_count": 10000,
+  "top_k": 10,
+  "hnsw_m": 32,
+  "ef_construct": 100,
+  "target_recall": 0.88,
+  "ef_candidates": [
+    24,
+    32,
+    40,
+    48,
+    64,
+    80,
+    96
+  ],
+  "nprobe_candidates": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    44
+  ],
+  "best_rows": [
+    {
+      "scheme": "hash",
+      "scenario": "full",
+      "nprobe": 44,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "recall_at_k": 0.88581,
+      "qps": 932.028789246045,
+      "wall_s": 10.729282309068367
+    },
+    {
+      "scheme": "hash",
+      "scenario": "selective",
+      "nprobe": 44,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "recall_at_k": 0.88581,
+      "qps": 424.22801577133026,
+      "wall_s": 23.57222915091552
+    },
+    {
+      "scheme": "kmeans",
+      "scenario": "full",
+      "nprobe": 44,
+      "hnsw_ef": 80,
+      "query_count": 10000,
+      "recall_at_k": 0.90023,
+      "qps": 677.3934254012232,
+      "wall_s": 14.762469821842387
+    },
+    {
+      "scheme": "kmeans",
+      "scenario": "selective",
+      "nprobe": 16,
+      "hnsw_ef": 96,
+      "query_count": 10000,
+      "recall_at_k": 0.88547,
+      "qps": 593.9722537086019,
+      "wall_s": 16.835803251015022
+    },
+    {
+      "scheme": "balanced_kmeans",
+      "scenario": "full",
+      "nprobe": 44,
+      "hnsw_ef": 64,
+      "query_count": 10000,
+      "recall_at_k": 0.89799,
+      "qps": 742.9062610935111,
+      "wall_s": 13.460648434003815
+    },
+    {
+      "scheme": "balanced_kmeans",
+      "scenario": "selective",
+      "nprobe": 32,
+      "hnsw_ef": 80,
+      "query_count": 10000,
+      "recall_at_k": 0.89965,
+      "qps": 366.2537309294074,
+      "wall_s": 27.30347613012418
+    }
+  ],
+  "partition_summary": [
+    {
+      "scheme": "hash",
+      "mean_points": 26898.045454545456,
+      "std_points": 146.2260010683112,
+      "cv": 0.005436305820637265,
+      "min_points": 26580,
+      "max_points": 27155
+    },
+    {
+      "scheme": "kmeans",
+      "mean_points": 26898.045454545456,
+      "std_points": 11682.997840596756,
+      "cv": 0.43434374666143133,
+      "min_points": 9123,
+      "max_points": 52028
+    },
+    {
+      "scheme": "balanced_kmeans",
+      "mean_points": 26898.045454545456,
+      "std_points": 0.20829889522526548,
+      "cv": 7.744016031843883e-06,
+      "min_points": 26898,
+      "max_points": 26899
+    }
+  ],
+  "stability_summary": [
+    {
+      "scheme": "hash",
+      "scenario": "full",
+      "runs": 3,
+      "qps_mean": 920.2986320899417,
+      "qps_stdev": 12.185228202398067,
+      "qps_min": 908.5633099268193,
+      "qps_max": 932.888751549233,
+      "recall_mean": 0.88581,
+      "recall_stdev": 0.0
+    },
+    {
+      "scheme": "hash",
+      "scenario": "selective",
+      "runs": 3,
+      "qps_mean": 428.2240615048557,
+      "qps_stdev": 4.661223031087623,
+      "qps_min": 425.2950716551072,
+      "qps_max": 433.5991528024836,
+      "recall_mean": 0.88581,
+      "recall_stdev": 0.0
+    },
+    {
+      "scheme": "kmeans",
+      "scenario": "full",
+      "runs": 3,
+      "qps_mean": 673.1710856462995,
+      "qps_stdev": 6.594731604974878,
+      "qps_min": 668.6390905958187,
+      "qps_max": 680.7367294416666,
+      "recall_mean": 0.90023,
+      "recall_stdev": 0.0
+    },
+    {
+      "scheme": "kmeans",
+      "scenario": "selective",
+      "runs": 3,
+      "qps_mean": 596.6216868974412,
+      "qps_stdev": 4.320204884227358,
+      "qps_min": 594.0417295687911,
+      "qps_max": 601.6092371132661,
+      "recall_mean": 0.88547,
+      "recall_stdev": 0.0
+    },
+    {
+      "scheme": "balanced_kmeans",
+      "scenario": "full",
+      "runs": 3,
+      "qps_mean": 741.9172418982175,
+      "qps_stdev": 2.750981626237987,
+      "qps_min": 739.737793611547,
+      "qps_max": 745.0083165311462,
+      "recall_mean": 0.89799,
+      "recall_stdev": 0.0
+    },
+    {
+      "scheme": "balanced_kmeans",
+      "scenario": "selective",
+      "runs": 3,
+      "qps_mean": 366.59512977554374,
+      "qps_stdev": 1.440045209886613,
+      "qps_min": 365.17879100780794,
+      "qps_max": 368.05776491593997,
+      "recall_mean": 0.89965,
+      "recall_stdev": 0.0
+    }
+  ],
+  "note": "Compare these controlled custom-sharding results against the existing auto-hash reference under results/hnsw/20260415_120959 and results/hash44_stability/20260415_121142 to separate architecture effects from partition effects."
+}

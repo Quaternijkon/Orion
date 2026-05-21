@@ -114,6 +114,11 @@ fn discover_into_core_search(
         query,
         filter,
         params: request.params,
+        hnsw_entry_points: None,
+        hnsw_entry_points_by_shard: None,
+        hnsw_ef_by_shard: None,
+
+        source_id_dedup_block_size: None,
         limit: request.limit,
         offset: request.offset.unwrap_or_default(),
         with_payload: request.with_payload,

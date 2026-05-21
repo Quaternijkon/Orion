@@ -1,0 +1,151 @@
+{
+  "chosen": {
+    "candidate_type": "adaptive_schedule_refine",
+    "nprobe": 44,
+    "schedule_name": "sched_i_4_20_44__96_56_40",
+    "schedule": "[[4, 96], [20, 56], [44, 40]]",
+    "recall_at_k": 0.90279,
+    "qps": 362.67636647922905,
+    "wall_s": 27.572791955200955
+  },
+  "rows": [
+    {
+      "candidate_type": "adaptive_schedule_refine",
+      "nprobe": 44,
+      "schedule_name": "sched_f_4_20_44__96_56_48",
+      "schedule": "[[4, 96], [20, 56], [44, 48]]",
+      "recall_at_k": 0.90328,
+      "qps": 317.9427287238457,
+      "wall_s": 31.4522053708788
+    },
+    {
+      "candidate_type": "adaptive_schedule_refine",
+      "nprobe": 44,
+      "schedule_name": "sched_g_8_20_44__80_56_48",
+      "schedule": "[[8, 80], [20, 56], [44, 48]]",
+      "recall_at_k": 0.89659,
+      "qps": 292.4742924348992,
+      "wall_s": 34.19103920808993
+    },
+    {
+      "candidate_type": "adaptive_schedule_refine",
+      "nprobe": 44,
+      "schedule_name": "sched_h_4_20_44__80_56_48",
+      "schedule": "[[4, 80], [20, 56], [44, 48]]",
+      "recall_at_k": 0.89313,
+      "qps": 306.36049461640795,
+      "wall_s": 32.64128429000266
+    },
+    {
+      "candidate_type": "adaptive_schedule_refine",
+      "nprobe": 44,
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "recall_at_k": 0.90279,
+      "qps": 362.67636647922905,
+      "wall_s": 27.572791955200955
+    },
+    {
+      "candidate_type": "adaptive_schedule_refine",
+      "nprobe": 44,
+      "schedule_name": "sched_j_4_16_32_44__96_64_56_48",
+      "schedule": "[[4, 96], [16, 64], [32, 56], [44, 48]]",
+      "recall_at_k": 0.90594,
+      "qps": 302.006964940655,
+      "wall_s": 33.11181913292967
+    }
+  ],
+  "nprobe_rows": [
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 1,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.54402,
+      "qps": 2644.5662394589517,
+      "wall_s": 3.7813384481705725,
+      "avg_selected_shards": 1.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 2,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.68199,
+      "qps": 2021.044348182708,
+      "wall_s": 4.9479369460605085,
+      "avg_selected_shards": 2.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 4,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.77712,
+      "qps": 1454.257279794409,
+      "wall_s": 6.8763623458798975,
+      "avg_selected_shards": 4.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 8,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.83715,
+      "qps": 773.6644747735096,
+      "wall_s": 12.92549978196621,
+      "avg_selected_shards": 8.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 16,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.87706,
+      "qps": 576.431310929372,
+      "wall_s": 17.348120774142444,
+      "avg_selected_shards": 16.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 32,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.89775,
+      "qps": 348.32944389306124,
+      "wall_s": 28.708454525796697,
+      "avg_selected_shards": 32.0
+    },
+    {
+      "strategy": "adaptive_refine",
+      "nprobe": 44,
+      "hnsw_ef": "",
+      "schedule_name": "sched_i_4_20_44__96_56_40",
+      "schedule": "[[4, 96], [20, 56], [44, 40]]",
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.90279,
+      "qps": 366.90859351051046,
+      "wall_s": 27.254744579084218,
+      "avg_selected_shards": 44.0
+    }
+  ]
+}

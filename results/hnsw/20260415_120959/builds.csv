@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hash44_envref_glove_200_angular_d200_n1183514_s44_m32_efc100_fs10,0.3099516339134425,225.84487439109944,21.48939200118184,247.64421802619472,1183514,1183514,88,,,ok

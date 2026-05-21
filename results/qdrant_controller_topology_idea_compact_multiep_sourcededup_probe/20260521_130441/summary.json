@@ -1,0 +1,87 @@
+{
+  "base_url": "http://localhost:6833",
+  "collection": "qdrant_controller_idea_full_20260521",
+  "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+  "train_limit": null,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 31,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "placement_peer_uri_contains": [
+    "qdrant_shard_"
+  ],
+  "discovered_peer_ids": [
+    2980601005324529,
+    6015626418395790,
+    6846760844865837
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46
+  },
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "concurrency_evaluation_mode": "preplanned_search",
+  "search_dispatch_mode": "coordinator",
+  "direct_peer_http_urls": null,
+  "routed_execution_mode": "compact_multi_ep",
+  "compact_ef_mode": null,
+  "routed_result_limit_mode": "top_k",
+  "routed_result_limit_multiplier": null,
+  "source_id_dedup_block_size": 1183515,
+  "multi_assign": true,
+  "fission_enabled": true,
+  "fair_architecture_note": "faithful_original_rest and naive_hash_all_shards both use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: idea routes to upper-selected shards, while naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": "Qdrant public REST search accepts shard_key and hnsw_ef, but not per-shard HNSW entry point IDs. This run preserves original construction, routing, multi-assignment, and dynamic-ef counts, but lower-tier search is still Qdrant's normal shard-local HNSW entrypoint search rather than hnswlib searchBaseLayerST_MultiEP.",
+  "rng_equivalence_note": "The port preserves the original seed roles and algorithm order (upper sample seed 100, KMeans random initialization stream, weighted balanced assignment), but Python/NumPy RNG streams are not bit-identical to libstdc++ std::mt19937/std::shuffle or C rand().",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 100,
+    "sample_points": 36984
+  },
+  "original_routing": null,
+  "best_tuning_row": {
+    "upper_k": 100,
+    "base_ef": 40,
+    "factor": 3,
+    "query_count": 500,
+    "top_k": 10,
+    "recall_at_k": 0.899,
+    "qps": 451.61461405586664,
+    "wall_s": 1.1071386630064808,
+    "avg_visited_shards": 17.41,
+    "avg_upper_hits": 110.19,
+    "avg_assigned_ef_per_visited_shard": 58.98736358414704,
+    "search_batch_calls": 5,
+    "avg_search_requests_per_query": 1.0
+  },
+  "final_row": {
+    "upper_k": 100,
+    "base_ef": 40,
+    "factor": 3,
+    "query_count": 3000,
+    "top_k": 10,
+    "recall_at_k": 0.8955,
+    "qps": 434.60240811352196,
+    "wall_s": 6.902860968999448,
+    "avg_visited_shards": 17.350666666666665,
+    "avg_upper_hits": 109.833,
+    "avg_assigned_ef_per_visited_shard": 58.99056712518251,
+    "search_batch_calls": 30,
+    "avg_search_requests_per_query": 1.0
+  },
+  "stability_summary": {
+    "runs": 0,
+    "qps_mean": null,
+    "qps_stdev": 0.0,
+    "recall_mean": null,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

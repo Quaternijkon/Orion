@@ -1,0 +1,79 @@
+{
+  "collection": "qdrant_custom_centroid44_cluster",
+  "num_shards": 44,
+  "hnsw_m": 32,
+  "ef_construct": 100,
+  "hnsw_ef": 32,
+  "rows": [
+    {
+      "nprobe": 1,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.49182,
+      "qps": 3101.889878281373,
+      "wall_s": 3.223841075086966,
+      "avg_selected_shards": 1.0
+    },
+    {
+      "nprobe": 2,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.61103,
+      "qps": 2728.5403873351697,
+      "wall_s": 3.6649631599429995,
+      "avg_selected_shards": 2.0
+    },
+    {
+      "nprobe": 4,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.69466,
+      "qps": 2202.3294116902844,
+      "wall_s": 4.540646801935509,
+      "avg_selected_shards": 4.0
+    },
+    {
+      "nprobe": 8,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.74925,
+      "qps": 1347.9191513927797,
+      "wall_s": 7.41884258389473,
+      "avg_selected_shards": 8.0
+    },
+    {
+      "nprobe": 16,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.78458,
+      "qps": 942.9697782866995,
+      "wall_s": 10.604793738108128,
+      "avg_selected_shards": 16.0
+    },
+    {
+      "nprobe": 32,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.80353,
+      "qps": 549.4484908934785,
+      "wall_s": 18.200068187899888,
+      "avg_selected_shards": 32.0
+    },
+    {
+      "nprobe": 44,
+      "hnsw_ef": 32,
+      "query_count": 10000,
+      "top_k": 10,
+      "recall_at_k": 0.8084,
+      "qps": 476.0439049007989,
+      "wall_s": 21.00646578404121,
+      "avg_selected_shards": 44.0
+    }
+  ]
+}

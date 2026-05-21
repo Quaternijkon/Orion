@@ -566,6 +566,7 @@ struct BatchSearchParams<'a> {
     pub with_payload: WithPayload,
     pub with_vector: WithVector,
     pub top: usize,
+    pub hnsw_entry_points: Option<&'a [PointIdType]>,
     pub params: Option<&'a SearchParams>,
 }
 
@@ -647,6 +648,7 @@ fn search_in_segment(
             with_payload: WithPayload::from(with_payload_interface),
             with_vector: search_query.with_vector.clone().unwrap_or_default(),
             top: search_query.limit + search_query.offset,
+            hnsw_entry_points: search_query.hnsw_entry_points.as_deref(),
             params: search_query.params.as_ref(),
         };
 
@@ -733,6 +735,7 @@ fn execute_batch_search(
         &search_params.with_vector,
         search_params.filter,
         top,
+        search_params.hnsw_entry_points,
         search_params.params,
         segment_query_context,
     )?;
@@ -836,6 +839,11 @@ mod tests {
             with_vector: None,
             filter: None,
             params: None,
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: None,
+            hnsw_ef_by_shard: None,
+
+            source_id_dedup_block_size: None,
             limit: 5,
             score_threshold: None,
             offset: 0,
@@ -893,6 +901,11 @@ mod tests {
                 with_vector: None,
                 filter: None,
                 params: None,
+                hnsw_entry_points: None,
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+
+                source_id_dedup_block_size: None,
                 score_threshold: None,
             };
             let req2 = SearchRequestInternal {
@@ -901,6 +914,11 @@ mod tests {
                 offset: None,
                 filter: None,
                 params: None,
+                hnsw_entry_points: None,
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+
+                source_id_dedup_block_size: None,
                 with_payload: None,
                 with_vector: None,
                 score_threshold: None,

@@ -1,0 +1,12 @@
+shard_id,shard_key,points_count,sample_count
+0,centroid_00,0,0
+1,centroid_01,7,3
+2,centroid_02,645,13
+3,centroid_03,0,1
+4,centroid_04,0,0
+5,centroid_05,992,14
+6,centroid_06,44,4
+7,centroid_07,56,5
+8,centroid_08,521,8
+9,centroid_09,270,6
+10,centroid_10,261,8

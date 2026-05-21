@@ -1,0 +1,2 @@
+collection_name,create_secs,upsert_secs,wait_index_secs,total_build_secs,points_count,indexed_vectors_count,segments_count,ram_data_size,disk_data_size,optimizer_status
+hnsw_glove_single_efscale_glove_200_angular_d200_n1183514_s1_m32_efc100_fs10,0.010774679947644472,276.1717395200394,18.30536886001937,294.4878830600064,1183514,1183514,2,,,ok

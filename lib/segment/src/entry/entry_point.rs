@@ -51,6 +51,7 @@ pub trait ReadSegmentEntry: SnapshotEntry {
         with_vector: &WithVector,
         filter: Option<&Filter>,
         top: usize,
+        hnsw_entry_points: Option<&[PointIdType]>,
         params: Option<&SearchParams>,
         query_context: &SegmentQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPoint>>>;

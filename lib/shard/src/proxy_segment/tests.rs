@@ -41,6 +41,7 @@ impl ProxySegment {
             with_vector,
             filter,
             top,
+            None,
             params,
             &segment_query_context,
         )?;
@@ -102,6 +103,7 @@ fn test_search_batch_equivalence_single() {
             None,
             10,
             None,
+            None,
             &segment_query_context,
         )
         .unwrap();
@@ -146,6 +148,7 @@ fn test_search_batch_equivalence_single_random() {
             &false.into(),
             None,
             10,
+            None,
             None,
             &segment_query_context,
         )
@@ -200,6 +203,7 @@ fn test_search_batch_equivalence_multi_random() {
             &false.into(),
             None,
             10,
+            None,
             None,
             &segment_query_context,
         )

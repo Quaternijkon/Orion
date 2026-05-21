@@ -1,0 +1,2 @@
+collection,points_count,indexed_vectors_count,segments_count,shard_placement,discovered_peer_count,cluster_shard_count,cluster_peer_count,cluster_local_shards,cluster_remote_shards,cluster_active_shards
+idea_cluster_smoke,5000,5000,24,auto,3,12,3,4,8,12

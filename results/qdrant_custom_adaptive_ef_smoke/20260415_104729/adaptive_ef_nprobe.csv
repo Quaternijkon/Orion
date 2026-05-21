@@ -1,0 +1,2 @@
+strategy,nprobe,hnsw_ef,schedule_name,schedule,query_count,top_k,recall_at_k,qps,wall_s,avg_selected_shards
+adaptive,44,,sched_a_4_28_44__128_64_48,"[[4, 128], [28, 64], [44, 48]]",200,10,0.916,286.06353700432766,0.6991453790105879,44.0
