@@ -457,7 +457,10 @@ mod tests {
             Some(vec![PointIdType::from(29), PointIdType::from(31)])
         );
         assert_eq!(
-            specialized.searches[0].params.as_ref().and_then(|params| params.hnsw_ef),
+            specialized.searches[0]
+                .params
+                .as_ref()
+                .and_then(|params| params.hnsw_ef),
             Some(28)
         );
         assert!(specialized.searches[0].hnsw_entry_points_by_shard.is_none());

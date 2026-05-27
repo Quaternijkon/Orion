@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run a Qdrant two-level routing experiment. The default mode mirrors the original "
-            "C++ idea construction/routing path as far as Qdrant's public search API allows."
+            "C++ idea construction/routing path using the patched Qdrant MultiEP search path."
         )
     )
     parser.add_argument("--base-url", default="http://localhost:6336")
@@ -147,6 +147,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1,
         help="Candidate multiplier used when --routed-result-limit-mode=fixed_multiplier.",
+    )
+    parser.add_argument(
+        "--routed-planning-mode",
+        choices=["per_batch", "materialized"],
+        default="per_batch",
+        help=(
+            "per_batch preserves the original benchmark implementation and builds route "
+            "plans inside each search batch. materialized computes upper routing and "
+            "route plans once for the evaluation set inside the timed path, then reuses "
+            "the same method4 plans for batched lower-tier searches. This keeps method4 "
+            "semantics and timing coverage while reducing Python batch-loop overhead."
+        ),
     )
     parser.add_argument(
         "--source-id-dedup-block-size",
@@ -1212,6 +1224,13 @@ def decode_copy_id(copy_id: int, num_points: int) -> tuple[int, int]:
     return int(point_index), int(shard_id)
 
 
+def encode_entry_point_id(source_id: int, shard_key: str, source_id_dedup_block_size: int | None) -> int:
+    if source_id_dedup_block_size is None:
+        return int(source_id)
+    shard_id = int(shard_key.rsplit("_", 1)[1])
+    return shard_id * int(source_id_dedup_block_size) + int(source_id) + 1
+
+
 def source_id_from_scrolled_point(point: dict[str, Any], num_points: int) -> int:
     payload = point.get("payload") or {}
     if "source_id" in payload:
@@ -1611,6 +1630,121 @@ def evaluate_config(
     }
 
 
+def evaluate_config_materialized_routing(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    upper_index: Any,
+    upper_k: int,
+    base_ef: int,
+    factor: int,
+    batch_size: int,
+    label_to_shard: dict[int, str] | None = None,
+    point_to_shards: list[list[int]] | None = None,
+    num_shards: int | None = None,
+    search_all_shards: bool = False,
+    use_payload_source_id: bool = False,
+    routed_execution_mode: str = "grouped_by_ef",
+    compact_ef_mode: str = "max",
+    routed_result_limit_mode: str = "top_k",
+    routed_result_limit_multiplier: float = 1,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if label_to_shard is None and point_to_shards is None:
+        raise ValueError("either label_to_shard or point_to_shards must be provided")
+    if point_to_shards is not None and num_shards is None:
+        raise ValueError("num_shards is required with point_to_shards")
+
+    total_queries = len(queries)
+    start = time.perf_counter()
+    upper_labels = compute_upper_labels(upper_index, queries, upper_k)
+    if point_to_shards is not None:
+        query_plans = build_routed_search_plans(
+            queries,
+            upper_labels,
+            point_to_shards,
+            int(num_shards),
+            top_k,
+            base_ef,
+            factor,
+            search_all_shards,
+            use_payload_source_id,
+            routed_execution_mode,
+            compact_ef_mode,
+            routed_result_limit_mode,
+            routed_result_limit_multiplier,
+            source_id_dedup_block_size,
+        )
+    else:
+        assert label_to_shard is not None
+        query_plans = [
+            legacy_routed_search_plan(
+                query.tolist(),
+                labels_row,
+                label_to_shard,
+                top_k,
+                base_ef,
+                factor,
+                use_payload_source_id,
+                routed_execution_mode,
+                compact_ef_mode,
+                routed_result_limit_mode,
+                routed_result_limit_multiplier,
+                source_id_dedup_block_size,
+            )
+            for query, labels_row in zip(queries, upper_labels)
+        ]
+
+    total_hits = 0
+    total_executed_queries = 0
+    total_visited_shards = 0
+    total_upper_hits = 0
+    total_assigned_ef = 0
+    total_assigned_ef_count = 0
+    search_batch_calls = 0
+    search_request_count = 0
+
+    for start_idx in range(0, total_queries, batch_size):
+        end_idx = min(start_idx + batch_size, total_queries)
+        result = execute_query_plans_once(
+            base_url,
+            collection,
+            query_plans[start_idx:end_idx],
+            neighbors[start_idx:end_idx],
+            top_k,
+            direct_peer_urls=direct_peer_urls,
+            shard_key_to_peer=shard_key_to_peer,
+        )
+        total_hits += int(result["hits"])
+        total_executed_queries += int(result["query_count"])
+        total_visited_shards += int(result["visited_shards"])
+        total_upper_hits += int(result["upper_hits"])
+        total_assigned_ef += int(result["assigned_ef_sum"])
+        total_assigned_ef_count += int(result["assigned_ef_count"])
+        search_batch_calls += int(result["search_batch_calls"])
+        search_request_count += int(result["search_request_count"])
+
+    wall = time.perf_counter() - start
+    return {
+        "recall_at_k": total_hits / (total_executed_queries * top_k),
+        "qps": total_executed_queries / wall,
+        "wall_s": wall,
+        "avg_visited_shards": total_visited_shards / total_executed_queries,
+        "avg_upper_hits": total_upper_hits / total_executed_queries,
+        "avg_assigned_ef_per_visited_shard": (
+            total_assigned_ef / total_assigned_ef_count if total_assigned_ef_count > 0 else 0.0
+        ),
+        "search_batch_calls": search_batch_calls,
+        "avg_search_requests_per_query": search_request_count / total_executed_queries,
+    }
+
+
 def evaluate_all_shards_config(
     base_url: str,
     collection: str,
@@ -1682,10 +1816,19 @@ def search_request(
         "shard_key": shard_keys,
     }
     if hnsw_entry_points:
-        request["hnsw_entry_points"] = [int(point_id) for point_id in hnsw_entry_points]
+        if source_id_dedup_block_size is not None and len(shard_keys) != 1:
+            raise ValueError("single-shard hnsw_entry_points are required when encoding copied point IDs")
+        shard_key = shard_keys[0] if source_id_dedup_block_size is not None else ""
+        request["hnsw_entry_points"] = [
+            encode_entry_point_id(point_id, shard_key, source_id_dedup_block_size)
+            for point_id in hnsw_entry_points
+        ]
     if hnsw_entry_points_by_shard:
         request["hnsw_entry_points_by_shard"] = {
-            str(shard_key): [int(point_id) for point_id in entry_points]
+            str(shard_key): [
+                encode_entry_point_id(point_id, str(shard_key), source_id_dedup_block_size)
+                for point_id in entry_points
+            ]
             for shard_key, entry_points in hnsw_entry_points_by_shard.items()
         }
     if hnsw_ef_by_shard:
@@ -2773,7 +2916,12 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                 )
             else:
-                result = evaluate_config(
+                routed_evaluator = (
+                    evaluate_config_materialized_routing
+                    if args.routed_planning_mode == "materialized"
+                    else evaluate_config
+                )
+                result = routed_evaluator(
                     args.base_url,
                     args.collection,
                     tuning_queries,
@@ -2874,7 +3022,12 @@ def main() -> int:
                 shard_key_to_peer=shard_key_to_peer,
             )
         else:
-            final_result = evaluate_config(
+            routed_evaluator = (
+                evaluate_config_materialized_routing
+                if args.routed_planning_mode == "materialized"
+                else evaluate_config
+            )
+            final_result = routed_evaluator(
                 args.base_url,
                 args.collection,
                 eval_queries,
@@ -2973,7 +3126,12 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                 )
             else:
-                result = evaluate_config(
+                routed_evaluator = (
+                    evaluate_config_materialized_routing
+                    if args.routed_planning_mode == "materialized"
+                    else evaluate_config
+                )
+                result = routed_evaluator(
                     args.base_url,
                     args.collection,
                     eval_queries,
@@ -3175,6 +3333,7 @@ def main() -> int:
         "search_dispatch_mode": args.search_dispatch_mode,
         "direct_peer_http_urls": args.direct_peer_http_urls if args.search_dispatch_mode == "direct_peer" else None,
         "routed_execution_mode": args.routed_execution_mode,
+        "routed_planning_mode": args.routed_planning_mode,
         "compact_ef_mode": args.compact_ef_mode if args.routed_execution_mode == "compact_query_ef" else None,
         "routed_result_limit_mode": args.routed_result_limit_mode,
         "routed_result_limit_multiplier": (
@@ -3192,11 +3351,13 @@ def main() -> int:
             else None
         ),
         "qdrant_rest_equivalence_gap": (
-            "Qdrant public REST search accepts shard_key and hnsw_ef, but not per-shard "
-            "HNSW entry point IDs. This run preserves original construction, routing, "
-            "multi-assignment, and dynamic-ef counts, but lower-tier search is still "
-            "Qdrant's normal shard-local HNSW entrypoint search rather than hnswlib "
-            "searchBaseLayerST_MultiEP."
+            "This patched Qdrant build accepts per-shard HNSW entry point IDs and "
+            "per-shard dynamic EF, and lower-tier custom-entry searches use a "
+            "base-layer MultiEP path matching hnswlib searchBaseLayerST_MultiEP. "
+            "The remaining non-bit-identical gap is graph construction: bottom "
+            "shards are still built by Qdrant's HNSW builder, so level RNG, "
+            "parallel insertion scheduling, and neighbor-link tie behavior are "
+            "not guaranteed to be byte-for-byte identical to hnswlib."
             if args.routing_mode == "faithful_original_rest"
             else None
         ),

@@ -147,6 +147,57 @@ pub trait GraphLayersBase {
         Ok(search_context.nearest)
     }
 
+    /// Beam search for closest points within a single graph layer, seeded from
+    /// multiple entry points.
+    ///
+    /// This matches the lower-tier path used by hnswlib's
+    /// `searchBaseLayerST_MultiEP`: all routed entry points are inserted into
+    /// the base-layer candidate queue before graph expansion starts.
+    fn search_on_level_multi_ep(
+        &self,
+        level_entries: &[ScoredPointOffset],
+        level: usize,
+        ef: usize,
+        points_scorer: &mut FilteredScorer,
+        is_stopped: &AtomicBool,
+    ) -> CancellableResult<FixedLengthPriorityQueue<ScoredPointOffset>> {
+        let mut visited_list = self.get_visited_list_from_pool();
+
+        let mut search_context = SearchContext::new(ef);
+        for &level_entry in level_entries {
+            if !visited_list.check_and_update_visited(level_entry.idx) {
+                search_context.process_candidate(level_entry);
+            }
+        }
+
+        let limit = self.get_m(level);
+        let mut points_ids: Vec<PointOffsetType> = Vec::with_capacity(2 * limit);
+
+        while let Some(candidate) = search_context.candidates.pop() {
+            check_process_stopped(is_stopped)?;
+
+            if candidate.score < search_context.lower_bound() {
+                break;
+            }
+
+            points_ids.clear();
+            self.for_each_link(candidate.idx, level, |link| {
+                if !visited_list.check(link) {
+                    points_ids.push(link);
+                }
+            });
+
+            points_scorer
+                .score_points(&mut points_ids, limit)
+                .for_each(|score_point| {
+                    search_context.process_candidate(score_point);
+                    visited_list.check_and_update_visited(score_point.idx);
+                });
+        }
+
+        Ok(search_context.nearest)
+    }
+
     /// Variation of [`GraphLayersBase::search_on_level`] that implements the
     /// ACORN-1 algorithm.
     ///
@@ -536,6 +587,41 @@ impl GraphLayers {
         custom_entry_points: Option<&[PointOffsetType]>,
         is_stopped: &AtomicBool,
     ) -> CancellableResult<Vec<ScoredPointOffset>> {
+        if let Some(custom_entry_points) = custom_entry_points {
+            let level_entries = custom_entry_points
+                .iter()
+                .copied()
+                .filter(|&point_id| points_scorer.filters().check_vector(point_id))
+                .map(|idx| ScoredPointOffset {
+                    idx,
+                    score: points_scorer.score_point(idx),
+                })
+                .collect_vec();
+
+            if level_entries.is_empty() {
+                return Ok(Vec::default());
+            }
+
+            let ef = max(ef, top);
+            let nearest = match algorithm {
+                SearchAlgorithm::Hnsw => self.search_on_level_multi_ep(
+                    &level_entries,
+                    0,
+                    ef,
+                    &mut points_scorer,
+                    is_stopped,
+                ),
+                SearchAlgorithm::Acorn => self.search_on_level_multi_ep(
+                    &level_entries,
+                    0,
+                    ef,
+                    &mut points_scorer,
+                    is_stopped,
+                ),
+            }?;
+            return Ok(nearest.into_iter_sorted().take(top).collect_vec());
+        }
+
         let Some(entry_point) = self.get_entry_point(points_scorer.filters(), custom_entry_points)
         else {
             return Ok(Vec::default());
@@ -713,6 +799,8 @@ impl GraphLayers {
 
 #[cfg(test)]
 mod tests {
+    use common::bitvec::BitVec;
+    use common::counter::hardware_counter::HardwareCounterCell;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use rstest::rstest;
@@ -727,6 +815,7 @@ mod tests {
     use crate::spaces::metric::Metric;
     use crate::spaces::simple::CosineMetric;
     use crate::types::Distance;
+    use crate::vector_storage::dense::volatile_dense_vector_storage::new_volatile_dense_vector_storage;
     use crate::vector_storage::{DEFAULT_STOPPED, VectorStorage};
 
     fn search_in_graph(
@@ -751,6 +840,70 @@ mod tests {
     }
 
     const M: usize = 8;
+
+    #[test]
+    fn custom_entry_points_seed_base_layer_search_from_all_points() {
+        let dim = 2;
+        let hnsw_m = HnswM::new2(8);
+        let num_vectors = 4;
+
+        let mut vector_storage = new_volatile_dense_vector_storage(dim, Distance::Dot);
+        let hw_counter = HardwareCounterCell::new();
+        let vectors = [
+            vec![0.1, 0.0],
+            vec![0.0, 0.1],
+            vec![0.8, 0.0],
+            vec![1.0, 0.0],
+        ];
+        for (idx, vector) in vectors.iter().enumerate() {
+            vector_storage
+                .insert_vector(
+                    idx as PointOffsetType,
+                    vector.as_slice().into(),
+                    &hw_counter,
+                )
+                .unwrap();
+        }
+
+        let graph_links = vec![
+            vec![vec![1], vec![]],
+            vec![vec![0]],
+            vec![vec![3]],
+            vec![vec![2]],
+        ];
+        let graph_layers = GraphLayers {
+            hnsw_m,
+            links: GraphLinks::new_from_edges(graph_links, GraphLinksFormatParam::Plain, hnsw_m)
+                .unwrap(),
+            entry_points: EntryPoints::new(1),
+            visited_pool: VisitedPool::new(),
+        };
+
+        let deleted_points = BitVec::repeat(false, num_vectors);
+        let query = vec![1.0, 0.0];
+        let scorer = FilteredScorer::new(
+            query.as_slice().into(),
+            &vector_storage,
+            None,
+            None,
+            &deleted_points,
+            HardwareCounterCell::new(),
+        )
+        .unwrap();
+
+        let result = graph_layers
+            .search(
+                1,
+                1,
+                SearchAlgorithm::Hnsw,
+                scorer,
+                Some(&[0, 3]),
+                &DEFAULT_STOPPED,
+            )
+            .unwrap();
+
+        assert_eq!(result[0].idx, 3);
+    }
 
     #[rstest]
     #[case::uncompressed(GraphLinksFormat::Plain)]

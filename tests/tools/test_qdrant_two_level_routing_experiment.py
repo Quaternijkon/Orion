@@ -176,6 +176,87 @@ def test_parse_args_supports_end_to_end_concurrency_mode(monkeypatch):
     assert args.direct_peer_http_urls == ["101=http://localhost:6843"]
 
 
+def test_parse_args_supports_materialized_routed_planning(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--routed-planning-mode",
+            "materialized",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.routed_planning_mode == "materialized"
+
+
+def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monkeypatch):
+    module = load_module()
+
+    calls = {"upper": 0, "execute": []}
+
+    def fake_compute_upper_labels(_upper_index, queries, upper_k):
+        calls["upper"] += 1
+        assert len(queries) == 3
+        assert upper_k == 2
+        return module.np.array([[1, 2], [2, 3], [1, 3]], dtype=module.np.int64)
+
+    def fake_execute_query_plans_once(
+        _base_url,
+        _collection,
+        query_plans,
+        neighbors,
+        top_k,
+        direct_peer_urls=None,
+        shard_key_to_peer=None,
+    ):
+        calls["execute"].append((query_plans, neighbors.tolist()))
+        return {
+            "hits": len(query_plans) * top_k,
+            "query_count": len(query_plans),
+            "visited_shards": sum(plan["visited_shards"] for plan in query_plans),
+            "upper_hits": sum(plan["upper_hits"] for plan in query_plans),
+            "assigned_ef_sum": sum(plan["assigned_ef_sum"] for plan in query_plans),
+            "assigned_ef_count": sum(plan["assigned_ef_count"] for plan in query_plans),
+            "search_batch_calls": 1,
+            "search_request_count": sum(len(plan["searches"]) for plan in query_plans),
+        }
+
+    monkeypatch.setattr(module, "compute_upper_labels", fake_compute_upper_labels)
+    monkeypatch.setattr(module, "execute_query_plans_once", fake_execute_query_plans_once)
+
+    queries = module.np.array([[0.1], [0.2], [0.3]], dtype=module.np.float32)
+    neighbors = module.np.array([[1], [2], [3]], dtype=module.np.int32)
+    result = module.evaluate_config_materialized_routing(
+        "http://qdrant",
+        "collection",
+        queries,
+        neighbors,
+        top_k=1,
+        upper_index=object(),
+        upper_k=2,
+        base_ef=20,
+        factor=4,
+        batch_size=2,
+        point_to_shards=[[], [0, 2], [1], [2]],
+        num_shards=3,
+        use_payload_source_id=False,
+        routed_execution_mode="compact_multi_ep",
+    )
+
+    assert calls["upper"] == 1
+    assert [len(batch[0]) for batch in calls["execute"]] == [2, 1]
+    assert result["recall_at_k"] == 1.0
+    assert result["avg_visited_shards"] == 7 / 3
+    assert result["avg_upper_hits"] == 8 / 3
+    assert result["search_batch_calls"] == 2
+    assert result["avg_search_requests_per_query"] == 1.0
+
+
 def test_global_upper_indices_uses_one_global_sample_before_partitioning():
     module = load_module()
 
@@ -507,9 +588,9 @@ def test_routed_search_plan_can_compact_multi_ep_by_shard():
             "with_vector": False,
             "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
             "hnsw_entry_points_by_shard": {
-                "centroid_00": [1],
-                "centroid_01": [2, 4],
-                "centroid_02": [1, 3],
+                "centroid_00": [2],
+                "centroid_01": [1004, 1006],
+                "centroid_02": [2004, 2006],
             },
             "hnsw_ef_by_shard": {
                 "centroid_00": 24,

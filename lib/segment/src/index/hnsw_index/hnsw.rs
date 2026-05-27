@@ -1086,6 +1086,9 @@ impl HNSWIndex {
                 // ACORN is not implemented for graph with vectors yet (but possible)
                 SearchAlgorithm::Acorn => return Ok(None),
             }
+            if custom_entry_points.is_some() {
+                return Ok(None);
+            }
             if !self.graph.has_inline_vectors()
                 || !is_quantized_search(quantized_vectors.as_ref(), params)
             {

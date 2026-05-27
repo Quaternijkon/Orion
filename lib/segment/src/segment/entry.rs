@@ -84,14 +84,17 @@ impl ReadSegmentEntry for Segment {
                 .filter_map(|point_id| id_tracker.internal_id(*point_id))
                 .collect::<Vec<_>>()
         });
-        let internal_results = vector_data.vector_index.borrow().search_with_custom_entry_points(
-            query_vectors,
-            filter,
-            top,
-            params,
-            custom_entry_points.as_deref(),
-            &vector_query_context,
-        )?;
+        let internal_results = vector_data
+            .vector_index
+            .borrow()
+            .search_with_custom_entry_points(
+                query_vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points.as_deref(),
+                &vector_query_context,
+            )?;
 
         check_stopped(&vector_query_context.is_stopped())?;
 

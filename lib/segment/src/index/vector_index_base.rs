@@ -216,116 +216,100 @@ impl VectorIndex for VectorIndexEnum {
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
         match self {
-            VectorIndexEnum::Plain(index) => {
-                index.search_with_custom_entry_points(
+            VectorIndexEnum::Plain(index) => index.search_with_custom_entry_points(
+                vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points,
+                query_context,
+            ),
+            VectorIndexEnum::Hnsw(index) => index.search_with_custom_entry_points(
+                vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points,
+                query_context,
+            ),
+            VectorIndexEnum::SparseRam(index) => index.search_with_custom_entry_points(
+                vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points,
+                query_context,
+            ),
+            VectorIndexEnum::SparseImmutableRam(index) => index.search_with_custom_entry_points(
+                vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points,
+                query_context,
+            ),
+            VectorIndexEnum::SparseMmap(index) => index.search_with_custom_entry_points(
+                vectors,
+                filter,
+                top,
+                params,
+                custom_entry_points,
+                query_context,
+            ),
+            VectorIndexEnum::SparseCompressedImmutableRamF32(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::Hnsw(index) => {
-                index.search_with_custom_entry_points(
+                ),
+            VectorIndexEnum::SparseCompressedImmutableRamF16(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::SparseRam(index) => {
-                index.search_with_custom_entry_points(
+                ),
+            VectorIndexEnum::SparseCompressedImmutableRamU8(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::SparseImmutableRam(index) => {
-                index.search_with_custom_entry_points(
+                ),
+            VectorIndexEnum::SparseCompressedMmapF32(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::SparseMmap(index) => {
-                index.search_with_custom_entry_points(
+                ),
+            VectorIndexEnum::SparseCompressedMmapF16(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedImmutableRamF32(index) => {
-                index.search_with_custom_entry_points(
+                ),
+            VectorIndexEnum::SparseCompressedMmapU8(index) => index
+                .search_with_custom_entry_points(
                     vectors,
                     filter,
                     top,
                     params,
                     custom_entry_points,
                     query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedImmutableRamF16(index) => {
-                index.search_with_custom_entry_points(
-                    vectors,
-                    filter,
-                    top,
-                    params,
-                    custom_entry_points,
-                    query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedImmutableRamU8(index) => {
-                index.search_with_custom_entry_points(
-                    vectors,
-                    filter,
-                    top,
-                    params,
-                    custom_entry_points,
-                    query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedMmapF32(index) => {
-                index.search_with_custom_entry_points(
-                    vectors,
-                    filter,
-                    top,
-                    params,
-                    custom_entry_points,
-                    query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedMmapF16(index) => {
-                index.search_with_custom_entry_points(
-                    vectors,
-                    filter,
-                    top,
-                    params,
-                    custom_entry_points,
-                    query_context,
-                )
-            }
-            VectorIndexEnum::SparseCompressedMmapU8(index) => {
-                index.search_with_custom_entry_points(
-                    vectors,
-                    filter,
-                    top,
-                    params,
-                    custom_entry_points,
-                    query_context,
-                )
-            }
+                ),
         }
     }
 

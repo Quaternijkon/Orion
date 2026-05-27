@@ -174,7 +174,7 @@ impl TryFrom<api::grpc::qdrant::CoreSearchPoints> for CoreSearchRequest {
                         .hnsw_entry_points
                         .into_iter()
                         .map(PointIdType::try_from)
-                    .collect::<Result<Vec<_>, _>>()?,
+                        .collect::<Result<Vec<_>, _>>()?,
                 )
             },
             hnsw_entry_points_by_shard: None,
@@ -280,9 +280,9 @@ mod tests {
     use std::collections::HashMap;
 
     use api::grpc::qdrant;
-    use serde_json::json;
     use segment::data_types::vectors::VectorInternal;
     use segment::types::{PointIdType, ShardKey};
+    use serde_json::json;
 
     use super::*;
 
