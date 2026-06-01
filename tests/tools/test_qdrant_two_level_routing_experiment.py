@@ -252,6 +252,24 @@ def test_parse_args_supports_materialized_routed_planning(monkeypatch):
     assert args.routed_planning_mode == "materialized"
 
 
+def test_parse_args_supports_compact_materialized_routed_planning(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--routed-planning-mode",
+            "compact_materialized",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.routed_planning_mode == "compact_materialized"
+
+
 def test_parse_args_supports_placement_simulation(monkeypatch):
     module = load_module()
 
@@ -678,6 +696,107 @@ def test_routed_search_plan_can_compact_multi_ep_by_shard():
             "source_id_dedup_block_size": 1001,
         }
     ]
+
+
+def test_compact_routed_search_plan_matches_original_compact_multi_ep_request():
+    module = load_module()
+
+    point_to_shards = [[], [0, 2], [1], [2], [1], []]
+    manifest = module.build_compact_routing_manifest(
+        point_to_shards,
+        num_shards=3,
+        source_id_dedup_block_size=1001,
+    )
+
+    compact_plan = module.compact_routed_search_plan(
+        query=[0.1, 0.2],
+        upper_labels=[1, 2, 3, 4],
+        manifest=manifest,
+        top_k=10,
+        base_ef=20,
+        factor=4,
+        search_all_shards=False,
+        use_payload_source_id=False,
+        routed_result_limit_mode="top_k",
+        routed_result_limit_multiplier=1,
+    )
+    original_plan = module.routed_search_plan(
+        query=[0.1, 0.2],
+        upper_labels=[1, 2, 3, 4],
+        point_to_shards=point_to_shards,
+        num_shards=3,
+        top_k=10,
+        base_ef=20,
+        factor=4,
+        search_all_shards=False,
+        use_payload_source_id=False,
+        routed_execution_mode="compact_multi_ep",
+        source_id_dedup_block_size=1001,
+    )
+
+    assert compact_plan == original_plan
+
+
+def test_compact_materialized_evaluator_uses_compact_plans(monkeypatch):
+    module = load_module()
+
+    calls = {"upper": 0, "execute": []}
+
+    def fake_compute_upper_labels(_upper_index, queries, upper_k):
+        calls["upper"] += 1
+        assert len(queries) == 2
+        assert upper_k == 2
+        return module.np.array([[1, 2], [2, 3]], dtype=module.np.int64)
+
+    def fake_execute_query_plans_once(
+        _base_url,
+        _collection,
+        query_plans,
+        neighbors,
+        top_k,
+        direct_peer_urls=None,
+        shard_key_to_peer=None,
+    ):
+        calls["execute"].append(query_plans)
+        assert query_plans[0]["searches"][0]["hnsw_entry_points_by_shard"] == {
+            "centroid_00": [2],
+            "centroid_01": [1004],
+        }
+        return {
+            "hits": len(query_plans) * top_k,
+            "query_count": len(query_plans),
+            "visited_shards": sum(plan["visited_shards"] for plan in query_plans),
+            "upper_hits": sum(plan["upper_hits"] for plan in query_plans),
+            "assigned_ef_sum": sum(plan["assigned_ef_sum"] for plan in query_plans),
+            "assigned_ef_count": sum(plan["assigned_ef_count"] for plan in query_plans),
+            "search_batch_calls": 1,
+            "search_request_count": sum(len(plan["searches"]) for plan in query_plans),
+        }
+
+    monkeypatch.setattr(module, "compute_upper_labels", fake_compute_upper_labels)
+    monkeypatch.setattr(module, "execute_query_plans_once", fake_execute_query_plans_once)
+
+    result = module.evaluate_config_compact_materialized_routing(
+        "http://qdrant",
+        "collection",
+        module.np.array([[0.1], [0.2]], dtype=module.np.float32),
+        module.np.array([[1], [2]], dtype=module.np.int32),
+        top_k=1,
+        upper_index=object(),
+        upper_k=2,
+        base_ef=20,
+        factor=4,
+        batch_size=2,
+        point_to_shards=[[], [0], [1], [1]],
+        num_shards=2,
+        use_payload_source_id=False,
+        source_id_dedup_block_size=1001,
+    )
+
+    assert calls["upper"] == 1
+    assert len(calls["execute"]) == 1
+    assert result["recall_at_k"] == 1.0
+    assert result["avg_search_requests_per_query"] == 1.0
 
 
 def test_preplanned_concurrent_evaluator_merges_multiple_searches_per_query(monkeypatch):

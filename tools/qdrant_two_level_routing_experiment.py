@@ -150,14 +150,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--routed-planning-mode",
-        choices=["per_batch", "materialized"],
+        choices=["per_batch", "materialized", "compact_materialized"],
         default="per_batch",
         help=(
             "per_batch preserves the original benchmark implementation and builds route "
             "plans inside each search batch. materialized computes upper routing and "
             "route plans once for the evaluation set inside the timed path, then reuses "
-            "the same method4 plans for batched lower-tier searches. This keeps method4 "
-            "semantics and timing coverage while reducing Python batch-loop overhead."
+            "the same method4 plans for batched lower-tier searches. compact_materialized "
+            "uses a compact CSR routing manifest and pre-encoded entry point IDs before "
+            "executing the same compact MultiEP search requests."
         ),
     )
     parser.add_argument(
@@ -1704,6 +1705,162 @@ def routed_result_limit(top_k: int, shard_count: int, mode: str, multiplier: flo
     raise ValueError(f"unsupported routed result limit mode: {mode}")
 
 
+class CompactRoutingManifest:
+    def __init__(
+        self,
+        point_offsets: np.ndarray,
+        shard_ids: np.ndarray,
+        shard_keys: list[str],
+        num_shards: int,
+        source_id_dedup_block_size: int | None = None,
+    ) -> None:
+        self.point_offsets = point_offsets
+        self.shard_ids = shard_ids
+        self.shard_keys = shard_keys
+        self.num_shards = int(num_shards)
+        self.source_id_dedup_block_size = source_id_dedup_block_size
+
+
+def build_compact_routing_manifest(
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    source_id_dedup_block_size: int | None = None,
+) -> CompactRoutingManifest:
+    offsets = np.zeros(len(point_to_shards) + 1, dtype=np.int64)
+    flat_shards: list[int] = []
+    for point_id, shard_ids in enumerate(point_to_shards):
+        offsets[point_id] = len(flat_shards)
+        for shard_id in shard_ids:
+            flat_shards.append(int(shard_id))
+    offsets[len(point_to_shards)] = len(flat_shards)
+    return CompactRoutingManifest(
+        point_offsets=offsets,
+        shard_ids=np.asarray(flat_shards, dtype=np.int32),
+        shard_keys=[shard_key_for_id(shard_id) for shard_id in range(num_shards)],
+        num_shards=int(num_shards),
+        source_id_dedup_block_size=source_id_dedup_block_size,
+    )
+
+
+def compact_entry_point_id(
+    source_id: int,
+    shard_id: int,
+    source_id_dedup_block_size: int | None,
+) -> int:
+    if source_id_dedup_block_size is None:
+        return int(source_id)
+    return int(shard_id) * int(source_id_dedup_block_size) + int(source_id) + 1
+
+
+def compact_routed_search_plan(
+    query: list[float],
+    upper_labels: list[int] | np.ndarray,
+    manifest: CompactRoutingManifest,
+    top_k: int,
+    base_ef: int,
+    factor: int,
+    search_all_shards: bool,
+    use_payload_source_id: bool,
+    routed_result_limit_mode: str = "top_k",
+    routed_result_limit_multiplier: float = 1,
+) -> dict[str, Any]:
+    eps_by_shard: list[list[int]] = [[] for _ in range(manifest.num_shards)]
+    touched = np.zeros(manifest.num_shards, dtype=np.bool_)
+    touched_shards: list[int] = []
+
+    for label in list(upper_labels):
+        point_id = int(label)
+        if point_id < 0 or point_id + 1 >= len(manifest.point_offsets):
+            continue
+        start = int(manifest.point_offsets[point_id])
+        end = int(manifest.point_offsets[point_id + 1])
+        for pos in range(start, end):
+            shard_id = int(manifest.shard_ids[pos])
+            if shard_id < 0 or shard_id >= manifest.num_shards:
+                continue
+            if not bool(touched[shard_id]):
+                touched[shard_id] = True
+                touched_shards.append(shard_id)
+            eps_by_shard[shard_id].append(
+                compact_entry_point_id(
+                    point_id,
+                    shard_id,
+                    manifest.source_id_dedup_block_size,
+                )
+            )
+
+    if search_all_shards:
+        shard_ids = list(range(manifest.num_shards))
+    else:
+        shard_ids = sorted(touched_shards)
+    shard_keys = [manifest.shard_keys[shard_id] for shard_id in shard_ids]
+    ef_values = [int(base_ef) + int(factor) * len(eps_by_shard[shard_id]) for shard_id in shard_ids]
+
+    searches: list[dict[str, Any]] = []
+    if shard_keys:
+        request = {
+            "vector": query,
+            "limit": routed_result_limit(
+                top_k,
+                len(shard_keys),
+                routed_result_limit_mode,
+                routed_result_limit_multiplier,
+            ),
+            "params": {"hnsw_ef": int(max(ef_values))},
+            "with_payload": ["source_id"] if use_payload_source_id else False,
+            "with_vector": False,
+            "shard_key": shard_keys,
+            "hnsw_entry_points_by_shard": {
+                manifest.shard_keys[shard_id]: eps_by_shard[shard_id]
+                for shard_id in shard_ids
+            },
+            "hnsw_ef_by_shard": {
+                manifest.shard_keys[shard_id]: int(ef_value)
+                for shard_id, ef_value in zip(shard_ids, ef_values)
+            },
+        }
+        if manifest.source_id_dedup_block_size is not None:
+            request["source_id_dedup_block_size"] = int(manifest.source_id_dedup_block_size)
+        searches.append(request)
+
+    return {
+        "searches": searches,
+        "visited_shards": len(shard_keys),
+        "upper_hits": int(sum(len(eps_by_shard[shard_id]) for shard_id in touched_shards)),
+        "assigned_ef_sum": int(sum(ef_values)),
+        "assigned_ef_count": len(ef_values),
+    }
+
+
+def build_compact_routed_search_plans(
+    queries: np.ndarray,
+    upper_labels: np.ndarray,
+    manifest: CompactRoutingManifest,
+    top_k: int,
+    base_ef: int,
+    factor: int,
+    search_all_shards: bool,
+    use_payload_source_id: bool,
+    routed_result_limit_mode: str = "top_k",
+    routed_result_limit_multiplier: float = 1,
+) -> list[dict[str, Any]]:
+    return [
+        compact_routed_search_plan(
+            query.tolist(),
+            labels_row,
+            manifest,
+            top_k,
+            base_ef,
+            factor,
+            search_all_shards,
+            use_payload_source_id,
+            routed_result_limit_mode,
+            routed_result_limit_multiplier,
+        )
+        for query, labels_row in zip(queries, upper_labels)
+    ]
+
+
 def merge_topk_candidates(candidate_groups: list[list[tuple[float, int]]], top_k: int) -> list[int]:
     best_by_id: dict[int, float] = {}
     for group in candidate_groups:
@@ -2008,6 +2165,117 @@ def evaluate_config_materialized_routing(
         "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
     }
+
+
+def evaluate_config_compact_materialized_routing(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    upper_index: Any,
+    upper_k: int,
+    base_ef: int,
+    factor: int,
+    batch_size: int,
+    label_to_shard: dict[int, str] | None = None,
+    point_to_shards: list[list[int]] | None = None,
+    num_shards: int | None = None,
+    search_all_shards: bool = False,
+    use_payload_source_id: bool = False,
+    routed_execution_mode: str = "compact_multi_ep",
+    compact_ef_mode: str = "max",
+    routed_result_limit_mode: str = "top_k",
+    routed_result_limit_multiplier: float = 1,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    if routed_execution_mode != "compact_multi_ep":
+        raise ValueError("compact_materialized planning requires --routed-execution-mode compact_multi_ep")
+    if compact_ef_mode != "max":
+        raise ValueError("compact_materialized planning does not support compact EF reduction modes")
+    if label_to_shard is not None:
+        raise ValueError("compact_materialized planning requires point_to_shards, not label_to_shard")
+    if point_to_shards is None or num_shards is None:
+        raise ValueError("compact_materialized planning requires point_to_shards and num_shards")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    manifest = build_compact_routing_manifest(
+        point_to_shards,
+        int(num_shards),
+        source_id_dedup_block_size,
+    )
+
+    total_queries = len(queries)
+    start = time.perf_counter()
+    upper_labels = compute_upper_labels(upper_index, queries, upper_k)
+    query_plans = build_compact_routed_search_plans(
+        queries,
+        upper_labels,
+        manifest,
+        top_k,
+        base_ef,
+        factor,
+        search_all_shards,
+        use_payload_source_id,
+        routed_result_limit_mode,
+        routed_result_limit_multiplier,
+    )
+
+    total_hits = 0
+    total_executed_queries = 0
+    total_visited_shards = 0
+    total_upper_hits = 0
+    total_assigned_ef = 0
+    total_assigned_ef_count = 0
+    search_batch_calls = 0
+    search_request_count = 0
+
+    for start_idx in range(0, total_queries, batch_size):
+        end_idx = min(start_idx + batch_size, total_queries)
+        result = execute_query_plans_once(
+            base_url,
+            collection,
+            query_plans[start_idx:end_idx],
+            neighbors[start_idx:end_idx],
+            top_k,
+            direct_peer_urls=direct_peer_urls,
+            shard_key_to_peer=shard_key_to_peer,
+        )
+        total_hits += int(result["hits"])
+        total_executed_queries += int(result["query_count"])
+        total_visited_shards += int(result["visited_shards"])
+        total_upper_hits += int(result["upper_hits"])
+        total_assigned_ef += int(result["assigned_ef_sum"])
+        total_assigned_ef_count += int(result["assigned_ef_count"])
+        search_batch_calls += int(result["search_batch_calls"])
+        search_request_count += int(result["search_request_count"])
+
+    wall = time.perf_counter() - start
+    return {
+        "recall_at_k": total_hits / (total_executed_queries * top_k),
+        "qps": total_executed_queries / wall,
+        "wall_s": wall,
+        "avg_visited_shards": total_visited_shards / total_executed_queries,
+        "avg_upper_hits": total_upper_hits / total_executed_queries,
+        "avg_assigned_ef_per_visited_shard": (
+            total_assigned_ef / total_assigned_ef_count if total_assigned_ef_count > 0 else 0.0
+        ),
+        "search_batch_calls": search_batch_calls,
+        "avg_search_requests_per_query": search_request_count / total_executed_queries,
+    }
+
+
+def routed_evaluator_for_planning_mode(mode: str) -> Any:
+    if mode == "materialized":
+        return evaluate_config_materialized_routing
+    if mode == "compact_materialized":
+        return evaluate_config_compact_materialized_routing
+    if mode == "per_batch":
+        return evaluate_config
+    raise ValueError(f"unsupported routed planning mode: {mode}")
 
 
 def evaluate_all_shards_config(
@@ -3195,11 +3463,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                 )
             else:
-                routed_evaluator = (
-                    evaluate_config_materialized_routing
-                    if args.routed_planning_mode == "materialized"
-                    else evaluate_config
-                )
+                routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
                 result = routed_evaluator(
                     args.base_url,
                     args.collection,
@@ -3301,11 +3565,7 @@ def main() -> int:
                 shard_key_to_peer=shard_key_to_peer,
             )
         else:
-            routed_evaluator = (
-                evaluate_config_materialized_routing
-                if args.routed_planning_mode == "materialized"
-                else evaluate_config
-            )
+            routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
             final_result = routed_evaluator(
                 args.base_url,
                 args.collection,
@@ -3405,11 +3665,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                 )
             else:
-                routed_evaluator = (
-                    evaluate_config_materialized_routing
-                    if args.routed_planning_mode == "materialized"
-                    else evaluate_config
-                )
+                routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
                 result = routed_evaluator(
                     args.base_url,
                     args.collection,
