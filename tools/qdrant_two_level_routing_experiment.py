@@ -106,6 +106,17 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--lower-execution-order",
+        choices=["query_major", "shard_major"],
+        default="query_major",
+        help=(
+            "query_major preserves the original client request order. shard_major expands "
+            "multi-shard lower searches into single-shard searches and orders each HTTP "
+            "batch by shard key, so Qdrant can execute one contiguous shard-local batch "
+            "per lower shard."
+        ),
+    )
+    parser.add_argument(
         "--direct-peer-http-urls",
         nargs="+",
         default=None,
@@ -1442,6 +1453,64 @@ def search_batch(
     return rows
 
 
+def shard_major_searches_for_query(search: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    shard_keys = [str(shard_key) for shard_key in search.get("shard_key") or []]
+    if not shard_keys:
+        return [("", dict(search))]
+
+    entry_points_by_shard = search.get("hnsw_entry_points_by_shard")
+    ef_by_shard = search.get("hnsw_ef_by_shard")
+    expanded: list[tuple[str, dict[str, Any]]] = []
+    for shard_key in shard_keys:
+        single = dict(search)
+        single["shard_key"] = [shard_key]
+
+        if entry_points_by_shard is not None:
+            single.pop("hnsw_entry_points_by_shard", None)
+            entry_points = entry_points_by_shard.get(shard_key)
+            if entry_points:
+                single["hnsw_entry_points"] = list(entry_points)
+            else:
+                single.pop("hnsw_entry_points", None)
+
+        if ef_by_shard is not None:
+            single.pop("hnsw_ef_by_shard", None)
+            if shard_key in ef_by_shard:
+                params = dict(single.get("params") or {})
+                params["hnsw_ef"] = int(ef_by_shard[shard_key])
+                single["params"] = params
+
+        expanded.append((shard_key, single))
+    return expanded
+
+
+def shard_major_flattened_searches(
+    query_positions: list[int],
+    searches: list[dict[str, Any]],
+) -> tuple[list[int], list[dict[str, Any]]]:
+    entries: list[tuple[str, int, int, dict[str, Any]]] = []
+    for original_order, (query_idx, search) in enumerate(zip(query_positions, searches)):
+        for shard_key, single_search in shard_major_searches_for_query(search):
+            entries.append((shard_key, int(query_idx), original_order, single_search))
+    entries.sort(key=lambda item: (item[0], item[2]))
+    return [query_idx for _shard_key, query_idx, _order, _search in entries], [
+        search for _shard_key, _query_idx, _order, search in entries
+    ]
+
+
+def executed_search_count_for_plans(
+    query_plans: list[dict[str, Any]],
+    lower_execution_order: str,
+) -> int:
+    if lower_execution_order == "shard_major":
+        return sum(
+            len(shard_major_searches_for_query(search))
+            for plan in query_plans
+            for search in plan["searches"]
+        )
+    return sum(len(plan["searches"]) for plan in query_plans)
+
+
 def query_shard_cost_traces(query_plans: list[dict[str, Any]]) -> list[dict[str, float]]:
     traces: list[dict[str, float]] = []
     for plan in query_plans:
@@ -1893,6 +1962,7 @@ def evaluate_config(
     routed_result_limit_mode: str = "top_k",
     routed_result_limit_multiplier: float = 1,
     source_id_dedup_block_size: int | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
         raise ValueError("either label_to_shard or point_to_shards must be provided")
@@ -1900,6 +1970,8 @@ def evaluate_config(
         raise ValueError("num_shards is required with point_to_shards")
     if routed_execution_mode not in {"grouped_by_ef", "compact_query_ef", "per_shard_multi_ep", "compact_multi_ep"}:
         raise ValueError(f"unsupported routed execution mode: {routed_execution_mode}")
+    if lower_execution_order not in {"query_major", "shard_major"}:
+        raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
 
     total_hits = 0
     total_queries = len(queries)
@@ -2026,6 +2098,11 @@ def evaluate_config(
                     )
 
         if flat_searches:
+            if lower_execution_order == "shard_major":
+                flat_query_positions, flat_searches = shard_major_flattened_searches(
+                    flat_query_positions,
+                    flat_searches,
+                )
             search_batch_calls += 1
             search_request_count += len(flat_searches)
             results = search_batch(base_url, collection, flat_searches)
@@ -2075,6 +2152,7 @@ def evaluate_config_materialized_routing(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -2142,6 +2220,7 @@ def evaluate_config_materialized_routing(
             top_k,
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2190,6 +2269,7 @@ def evaluate_config_compact_materialized_routing(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if routed_execution_mode != "compact_multi_ep":
         raise ValueError("compact_materialized planning requires --routed-execution-mode compact_multi_ep")
@@ -2243,6 +2323,7 @@ def evaluate_config_compact_materialized_routing(
             top_k,
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2289,10 +2370,14 @@ def evaluate_all_shards_config(
     batch_size: int,
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
+    if lower_execution_order not in {"query_major", "shard_major"}:
+        raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
     total_hits = 0
     total_queries = len(queries)
     shard_keys, _ef_values = all_shard_keys_and_ef(num_shards, hnsw_ef)
+    search_request_count = 0
     start = time.perf_counter()
 
     for start_idx in range(0, total_queries, batch_size):
@@ -2310,9 +2395,19 @@ def evaluate_all_shards_config(
             if source_id_dedup_block_size is not None:
                 request["source_id_dedup_block_size"] = int(source_id_dedup_block_size)
             searches.append(request)
+        query_positions = list(range(len(searches)))
+        if lower_execution_order == "shard_major":
+            query_positions, searches = shard_major_flattened_searches(
+                query_positions,
+                searches,
+            )
+        search_request_count += len(searches)
         results = search_batch(base_url, collection, searches)
-        for local_idx, result in enumerate(results):
-            top_ids = merge_topk_candidates([result], top_k)
+        per_query_candidates: list[list[list[tuple[float, int]]]] = [[] for _ in range(len(chunk))]
+        for local_idx, result in zip(query_positions, results):
+            per_query_candidates[local_idx].append(result)
+        for local_idx, candidate_groups in enumerate(per_query_candidates):
+            top_ids = merge_topk_candidates(candidate_groups, top_k)
             gt = set(map(int, neighbors[start_idx + local_idx]))
             total_hits += len(set(top_ids) & gt)
 
@@ -2325,7 +2420,7 @@ def evaluate_all_shards_config(
         "avg_upper_hits": 0.0,
         "avg_assigned_ef_per_visited_shard": float(hnsw_ef),
         "search_batch_calls": int(ceil(total_queries / batch_size)),
-        "avg_search_requests_per_query": 1.0,
+        "avg_search_requests_per_query": search_request_count / total_queries,
     }
 
 
@@ -2574,7 +2669,11 @@ def execute_query_plans_once(
     top_k: int,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
+    if lower_execution_order not in {"query_major", "shard_major"}:
+        raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
+
     per_query_candidates: list[list[list[tuple[float, int]]]] = [
         [] for _ in range(len(query_plans))
     ]
@@ -2589,17 +2688,32 @@ def execute_query_plans_once(
         peer_batches: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
         for query_idx, plan in enumerate(query_plans):
             for search in plan["searches"]:
-                keys_by_peer: dict[int, list[str]] = defaultdict(list)
-                for shard_key in search.get("shard_key") or []:
-                    if shard_key not in shard_key_to_peer:
-                        raise ValueError(f"missing peer mapping for shard key {shard_key}")
-                    keys_by_peer[int(shard_key_to_peer[shard_key])].append(shard_key)
-                for peer_id, shard_keys in keys_by_peer.items():
-                    if peer_id not in direct_peer_urls:
-                        raise ValueError(f"missing direct HTTP URL for peer {peer_id}")
-                    split_search = dict(search)
-                    split_search["shard_key"] = shard_keys
-                    peer_batches[peer_id].append((query_idx, split_search))
+                if lower_execution_order == "shard_major":
+                    for shard_key, single_search in shard_major_searches_for_query(search):
+                        if not shard_key:
+                            raise ValueError("shard_major direct_peer execution requires shard_key")
+                        if shard_key not in shard_key_to_peer:
+                            raise ValueError(f"missing peer mapping for shard key {shard_key}")
+                        peer_id = int(shard_key_to_peer[shard_key])
+                        if peer_id not in direct_peer_urls:
+                            raise ValueError(f"missing direct HTTP URL for peer {peer_id}")
+                        peer_batches[peer_id].append((query_idx, single_search))
+                else:
+                    keys_by_peer: dict[int, list[str]] = defaultdict(list)
+                    for shard_key in search.get("shard_key") or []:
+                        if shard_key not in shard_key_to_peer:
+                            raise ValueError(f"missing peer mapping for shard key {shard_key}")
+                        keys_by_peer[int(shard_key_to_peer[shard_key])].append(shard_key)
+                    for peer_id, shard_keys in keys_by_peer.items():
+                        if peer_id not in direct_peer_urls:
+                            raise ValueError(f"missing direct HTTP URL for peer {peer_id}")
+                        split_search = dict(search)
+                        split_search["shard_key"] = shard_keys
+                        peer_batches[peer_id].append((query_idx, split_search))
+
+        if lower_execution_order == "shard_major":
+            for items in peer_batches.values():
+                items.sort(key=lambda item: ((item[1].get("shard_key") or [""])[0], item[0]))
 
         search_batch_calls = len(peer_batches)
         search_request_count = sum(len(items) for items in peer_batches.values())
@@ -2642,6 +2756,12 @@ def execute_query_plans_once(
             for search in plan["searches"]:
                 query_positions.append(query_idx)
                 flat_searches.append(search)
+
+        if lower_execution_order == "shard_major":
+            query_positions, flat_searches = shard_major_flattened_searches(
+                query_positions,
+                flat_searches,
+            )
 
         search_request_count = len(flat_searches)
         if flat_searches:
@@ -2796,6 +2916,7 @@ def evaluate_routed_config_batch(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
         raise ValueError("either label_to_shard or point_to_shards must be provided")
@@ -2848,6 +2969,7 @@ def evaluate_routed_config_batch(
         top_k,
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
+        lower_execution_order=lower_execution_order,
     )
 
 
@@ -2863,6 +2985,7 @@ def evaluate_all_shards_config_batch(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     query_plans = build_all_shard_search_plans(
         queries,
@@ -2880,6 +3003,7 @@ def evaluate_all_shards_config_batch(
         top_k,
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
+        lower_execution_order=lower_execution_order,
     )
 
 
@@ -2935,6 +3059,7 @@ def evaluate_config_concurrent(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -2971,6 +3096,7 @@ def evaluate_config_concurrent(
             source_id_dedup_block_size=source_id_dedup_block_size,
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
         )
 
     start = time.perf_counter()
@@ -3002,6 +3128,7 @@ def evaluate_all_shards_config_concurrent(
     source_id_dedup_block_size: int | None = None,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3028,6 +3155,7 @@ def evaluate_all_shards_config_concurrent(
             source_id_dedup_block_size,
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
         )
 
     start = time.perf_counter()
@@ -3055,6 +3183,7 @@ def evaluate_preplanned_search_batch(
     end_idx: int,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> tuple[int, int]:
     result = execute_query_plans_once(
         base_url,
@@ -3064,6 +3193,7 @@ def evaluate_preplanned_search_batch(
         top_k,
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
+        lower_execution_order=lower_execution_order,
     )
     return int(result["hits"]), int(result["query_count"])
 
@@ -3078,6 +3208,7 @@ def evaluate_preplanned_searches_concurrent(
     concurrency: int,
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3106,6 +3237,7 @@ def evaluate_preplanned_searches_concurrent(
                 end_idx,
                 direct_peer_urls,
                 shard_key_to_peer,
+                lower_execution_order,
             )
             total_hits += hits
             total_queries += count
@@ -3123,6 +3255,7 @@ def evaluate_preplanned_searches_concurrent(
                     end_idx,
                     direct_peer_urls,
                     shard_key_to_peer,
+                    lower_execution_order,
                 )
                 for start_idx, end_idx in ranges
             ]
@@ -3147,7 +3280,7 @@ def evaluate_preplanned_searches_concurrent(
         ),
         "search_batch_calls": len(ranges),
         "avg_search_requests_per_query": (
-            sum(len(plan["searches"]) for plan in query_plans) / total_queries
+            executed_search_count_for_plans(query_plans, lower_execution_order) / total_queries
         ),
     }
 
@@ -3420,6 +3553,7 @@ def main() -> int:
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3433,6 +3567,7 @@ def main() -> int:
                     args.batch_size,
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
+                    lower_execution_order=args.lower_execution_order,
                 )
         else:
             assert upper_index is not None
@@ -3461,6 +3596,7 @@ def main() -> int:
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3485,6 +3621,7 @@ def main() -> int:
                     compact_ef_mode=args.compact_ef_mode,
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+                    lower_execution_order=args.lower_execution_order,
                 )
         row = {
             "upper_k": upper_k,
@@ -3522,6 +3659,7 @@ def main() -> int:
                 source_id_dedup_block_size=source_id_dedup_block_size,
                 direct_peer_urls=direct_peer_urls,
                 shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
             )
         else:
             final_result = evaluate_all_shards_config(
@@ -3535,6 +3673,7 @@ def main() -> int:
                 args.batch_size,
                 use_payload_source_id=use_payload_source_id,
                 source_id_dedup_block_size=source_id_dedup_block_size,
+                lower_execution_order=args.lower_execution_order,
             )
     else:
         assert upper_index is not None
@@ -3563,6 +3702,7 @@ def main() -> int:
                 routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                 direct_peer_urls=direct_peer_urls,
                 shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
             )
         else:
             routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3587,6 +3727,7 @@ def main() -> int:
                 compact_ef_mode=args.compact_ef_mode,
                 routed_result_limit_mode=args.routed_result_limit_mode,
                 routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+                lower_execution_order=args.lower_execution_order,
             )
     final_row = {
         "upper_k": int(best["upper_k"]),
@@ -3622,6 +3763,7 @@ def main() -> int:
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3635,6 +3777,7 @@ def main() -> int:
                     args.batch_size,
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
+                    lower_execution_order=args.lower_execution_order,
                 )
         else:
             assert upper_index is not None
@@ -3663,6 +3806,7 @@ def main() -> int:
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3687,6 +3831,7 @@ def main() -> int:
                     compact_ef_mode=args.compact_ef_mode,
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+                    lower_execution_order=args.lower_execution_order,
                 )
         row = {
             "run": run_idx,
@@ -3776,6 +3921,7 @@ def main() -> int:
                     int(concurrency),
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             elif args.routing_mode == "naive_hash_all_shards":
                 result = evaluate_all_shards_config_concurrent(
@@ -3792,6 +3938,7 @@ def main() -> int:
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             else:
                 assert upper_index is not None
@@ -3819,11 +3966,13 @@ def main() -> int:
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
                 )
             row = {
                 "concurrency": int(concurrency),
                 "concurrency_evaluation_mode": args.concurrency_evaluation_mode,
                 "search_dispatch_mode": args.search_dispatch_mode,
+                "lower_execution_order": args.lower_execution_order,
                 "upper_k": int(best["upper_k"]),
                 "base_ef": int(best["base_ef"]),
                 "factor": int(best["factor"]),
@@ -3906,6 +4055,7 @@ def main() -> int:
         "search_all_shards": args.search_all_shards,
         "concurrency_evaluation_mode": args.concurrency_evaluation_mode,
         "search_dispatch_mode": args.search_dispatch_mode,
+        "lower_execution_order": args.lower_execution_order,
         "direct_peer_http_urls": args.direct_peer_http_urls if args.search_dispatch_mode == "direct_peer" else None,
         "routed_execution_mode": args.routed_execution_mode,
         "routed_planning_mode": args.routed_planning_mode,

@@ -270,6 +270,24 @@ def test_parse_args_supports_compact_materialized_routed_planning(monkeypatch):
     assert args.routed_planning_mode == "compact_materialized"
 
 
+def test_parse_args_supports_shard_major_lower_execution(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--lower-execution-order",
+            "shard_major",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.lower_execution_order == "shard_major"
+
+
 def test_parse_args_supports_placement_simulation(monkeypatch):
     module = load_module()
 
@@ -309,8 +327,10 @@ def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monke
         top_k,
         direct_peer_urls=None,
         shard_key_to_peer=None,
+        lower_execution_order="query_major",
     ):
         calls["execute"].append((query_plans, neighbors.tolist()))
+        assert lower_execution_order == "query_major"
         return {
             "hits": len(query_plans) * top_k,
             "query_count": len(query_plans),
@@ -756,8 +776,10 @@ def test_compact_materialized_evaluator_uses_compact_plans(monkeypatch):
         top_k,
         direct_peer_urls=None,
         shard_key_to_peer=None,
+        lower_execution_order="query_major",
     ):
         calls["execute"].append(query_plans)
+        assert lower_execution_order == "query_major"
         assert query_plans[0]["searches"][0]["hnsw_entry_points_by_shard"] == {
             "centroid_00": [2],
             "centroid_01": [1004],
@@ -797,6 +819,116 @@ def test_compact_materialized_evaluator_uses_compact_plans(monkeypatch):
     assert len(calls["execute"]) == 1
     assert result["recall_at_k"] == 1.0
     assert result["avg_search_requests_per_query"] == 1.0
+
+
+def test_shard_major_expands_compact_multi_ep_searches_to_single_shard_requests():
+    module = load_module()
+
+    search = {
+        "vector": [0.1, 0.2],
+        "limit": 10,
+        "params": {"hnsw_ef": 28},
+        "with_payload": False,
+        "with_vector": False,
+        "shard_key": ["centroid_00", "centroid_01"],
+        "hnsw_entry_points_by_shard": {
+            "centroid_00": [11, 13],
+            "centroid_01": [1011],
+        },
+        "hnsw_ef_by_shard": {
+            "centroid_00": 24,
+            "centroid_01": 28,
+        },
+        "source_id_dedup_block_size": 1001,
+    }
+
+    expanded = module.shard_major_searches_for_query(search)
+
+    assert expanded == [
+        (
+            "centroid_00",
+            {
+                "vector": [0.1, 0.2],
+                "limit": 10,
+                "params": {"hnsw_ef": 24},
+                "with_payload": False,
+                "with_vector": False,
+                "shard_key": ["centroid_00"],
+                "source_id_dedup_block_size": 1001,
+                "hnsw_entry_points": [11, 13],
+            },
+        ),
+        (
+            "centroid_01",
+            {
+                "vector": [0.1, 0.2],
+                "limit": 10,
+                "params": {"hnsw_ef": 28},
+                "with_payload": False,
+                "with_vector": False,
+                "shard_key": ["centroid_01"],
+                "source_id_dedup_block_size": 1001,
+                "hnsw_entry_points": [1011],
+            },
+        ),
+    ]
+
+
+def test_shard_major_execution_groups_searches_by_shard_and_merges_by_original_query(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_search_batch(_base_url, _collection, searches):
+        calls.append([search["shard_key"][0] for search in searches])
+        rows = []
+        for search in searches:
+            shard = search["shard_key"][0]
+            marker = search["marker"]
+            if shard == "centroid_00" and marker == "q0":
+                rows.append([(0.90, 10)])
+            elif shard == "centroid_00" and marker == "q1":
+                rows.append([(0.95, 30)])
+            elif shard == "centroid_01" and marker == "q0":
+                rows.append([(0.99, 20)])
+            else:
+                rows.append([])
+        return rows
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+
+    result = module.execute_query_plans_once(
+        base_url="http://controller:6333",
+        collection="collection",
+        query_plans=[
+            {
+                "searches": [
+                    {"marker": "q0", "shard_key": ["centroid_01"], "limit": 2},
+                    {"marker": "q0", "shard_key": ["centroid_00"], "limit": 2},
+                ],
+                "visited_shards": 2,
+                "upper_hits": 2,
+                "assigned_ef_sum": 48,
+                "assigned_ef_count": 2,
+            },
+            {
+                "searches": [
+                    {"marker": "q1", "shard_key": ["centroid_00"], "limit": 2},
+                ],
+                "visited_shards": 1,
+                "upper_hits": 1,
+                "assigned_ef_sum": 24,
+                "assigned_ef_count": 1,
+            },
+        ],
+        neighbors=[[20, 99], [30, 99]],
+        top_k=2,
+        lower_execution_order="shard_major",
+    )
+
+    assert calls == [["centroid_00", "centroid_00", "centroid_01"]]
+    assert result["hits"] == 2
+    assert result["search_batch_calls"] == 1
+    assert result["search_request_count"] == 3
 
 
 def test_preplanned_concurrent_evaluator_merges_multiple_searches_per_query(monkeypatch):
