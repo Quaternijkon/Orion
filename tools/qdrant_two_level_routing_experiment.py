@@ -206,6 +206,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--placement-simulation",
+        action="store_true",
+        help=(
+            "For faithful routed materialized runs, compute a method4-aware physical "
+            "placement simulation from the actual query routing trace and include it "
+            "in summary.json. This does not change the deployed collection."
+        ),
+    )
+    parser.add_argument(
+        "--placement-simulation-peer-count",
+        type=int,
+        default=3,
+        help="Number of bottom workers to use in the method4-aware placement simulation.",
+    )
+    parser.add_argument(
         "--train-limit",
         type=int,
         default=None,
@@ -1378,6 +1393,210 @@ def search_batch(
             row.append((float(item["score"]), point_id))
         rows.append(row)
     return rows
+
+
+def query_shard_cost_traces(query_plans: list[dict[str, Any]]) -> list[dict[str, float]]:
+    traces: list[dict[str, float]] = []
+    for plan in query_plans:
+        trace: dict[str, float] = defaultdict(float)
+        for search in plan.get("searches", []):
+            shard_keys = [str(shard_key) for shard_key in search.get("shard_key") or []]
+            if not shard_keys:
+                continue
+            hnsw_ef = float((search.get("params") or {}).get("hnsw_ef", 0))
+            ef_by_shard = search.get("hnsw_ef_by_shard") or {}
+            for shard_key in shard_keys:
+                trace[shard_key] += float(ef_by_shard.get(shard_key, hnsw_ef))
+        traces.append(dict(sorted(trace.items())))
+    return traces
+
+
+def percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    if q <= 0:
+        return float(min(values))
+    if q >= 100:
+        return float(max(values))
+    ordered = sorted(values)
+    pos = (len(ordered) - 1) * (q / 100.0)
+    lower = int(pos)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = pos - lower
+    return float(ordered[lower] * (1.0 - weight) + ordered[upper] * weight)
+
+
+def evaluate_query_peer_loads(
+    traces: list[dict[str, float]],
+    placement: dict[str, int],
+) -> dict[str, float]:
+    if not traces:
+        return {
+            "query_count": 0,
+            "avg_query_max_peer_load": 0.0,
+            "p95_query_max_peer_load": 0.0,
+            "max_query_max_peer_load": 0.0,
+            "avg_active_peers_per_query": 0.0,
+            "max_total_peer_load": 0.0,
+            "min_total_peer_load": 0.0,
+            "peer_load_cv_pct": 0.0,
+        }
+
+    total_peer_load: dict[int, float] = defaultdict(float)
+    query_max_loads: list[float] = []
+    active_peer_counts: list[float] = []
+    for trace in traces:
+        peer_loads: dict[int, float] = defaultdict(float)
+        for shard_key, cost in trace.items():
+            if shard_key not in placement:
+                raise ValueError(f"missing placement for shard {shard_key}")
+            peer_id = int(placement[shard_key])
+            peer_loads[peer_id] += float(cost)
+            total_peer_load[peer_id] += float(cost)
+        query_max_loads.append(max(peer_loads.values()) if peer_loads else 0.0)
+        active_peer_counts.append(float(len(peer_loads)))
+
+    peer_values = list(total_peer_load.values())
+    mean_peer_load = sum(peer_values) / len(peer_values) if peer_values else 0.0
+    if mean_peer_load > 0:
+        variance = sum((value - mean_peer_load) ** 2 for value in peer_values) / len(peer_values)
+        peer_load_cv_pct = (variance ** 0.5) / mean_peer_load * 100.0
+    else:
+        peer_load_cv_pct = 0.0
+
+    return {
+        "query_count": len(traces),
+        "avg_query_max_peer_load": sum(query_max_loads) / len(query_max_loads),
+        "p95_query_max_peer_load": percentile(query_max_loads, 95),
+        "max_query_max_peer_load": max(query_max_loads),
+        "avg_active_peers_per_query": sum(active_peer_counts) / len(active_peer_counts),
+        "max_total_peer_load": max(peer_values) if peer_values else 0.0,
+        "min_total_peer_load": min(peer_values) if peer_values else 0.0,
+        "peer_load_cv_pct": peer_load_cv_pct,
+    }
+
+
+def greedy_method4_aware_placement(
+    traces: list[dict[str, float]],
+    peer_count: int,
+    initial_placement: dict[str, int] | None = None,
+) -> dict[str, int]:
+    if peer_count <= 0:
+        raise ValueError("peer_count must be positive")
+
+    shard_total_cost: dict[str, float] = defaultdict(float)
+    for trace in traces:
+        for shard_key, cost in trace.items():
+            shard_total_cost[str(shard_key)] += float(cost)
+
+    if initial_placement:
+        for shard_key in initial_placement:
+            shard_total_cost.setdefault(str(shard_key), 0.0)
+
+    shard_order = sorted(shard_total_cost, key=lambda shard_key: (-shard_total_cost[shard_key], shard_key))
+    placement: dict[str, int] = {}
+    total_peer_load = [0.0 for _ in range(peer_count)]
+
+    for shard_key in shard_order:
+        best_peer = 0
+        best_score: tuple[float, float, float, int] | None = None
+        for peer_id in range(peer_count):
+            candidate = dict(placement)
+            candidate[shard_key] = peer_id
+            projected_peer_load = list(total_peer_load)
+            projected_peer_load[peer_id] += shard_total_cost[shard_key]
+
+            query_max_loads: list[float] = []
+            for trace in traces:
+                peer_loads: dict[int, float] = defaultdict(float)
+                for trace_shard, cost in trace.items():
+                    assigned_peer = candidate.get(trace_shard)
+                    if assigned_peer is not None:
+                        peer_loads[assigned_peer] += float(cost)
+                query_max_loads.append(max(peer_loads.values()) if peer_loads else 0.0)
+            avg_query_max = sum(query_max_loads) / len(query_max_loads) if query_max_loads else 0.0
+            score = (
+                avg_query_max,
+                max(projected_peer_load),
+                projected_peer_load[peer_id],
+                peer_id,
+            )
+            if best_score is None or score < best_score:
+                best_score = score
+                best_peer = peer_id
+
+        placement[shard_key] = best_peer
+        total_peer_load[best_peer] += shard_total_cost[shard_key]
+
+    return dict(sorted(placement.items()))
+
+
+def shard_key_sort_key(shard_key: str) -> tuple[int, str]:
+    try:
+        return int(shard_key.rsplit("_", 1)[1]), shard_key
+    except (IndexError, ValueError):
+        return 0, shard_key
+
+
+def round_robin_simulated_placement(shard_keys: list[str], peer_count: int) -> dict[str, int]:
+    if peer_count <= 0:
+        raise ValueError("peer_count must be positive")
+    return {
+        shard_key: idx % peer_count
+        for idx, shard_key in enumerate(sorted(set(shard_keys), key=shard_key_sort_key))
+    }
+
+
+def placement_improvement_pct(before: dict[str, float], after: dict[str, float], metric: str) -> float:
+    before_value = float(before.get(metric, 0.0))
+    after_value = float(after.get(metric, 0.0))
+    if before_value <= 0:
+        return 0.0
+    return (before_value - after_value) / before_value * 100.0
+
+
+def placement_simulation_summary(
+    query_plans: list[dict[str, Any]],
+    peer_count: int,
+) -> dict[str, Any]:
+    traces = query_shard_cost_traces(query_plans)
+    shard_keys = sorted({shard_key for trace in traces for shard_key in trace}, key=shard_key_sort_key)
+    round_robin = round_robin_simulated_placement(shard_keys, peer_count)
+    method4_aware = greedy_method4_aware_placement(
+        traces,
+        peer_count,
+        initial_placement=round_robin,
+    )
+    round_robin_metrics = evaluate_query_peer_loads(traces, round_robin)
+    method4_aware_metrics = evaluate_query_peer_loads(traces, method4_aware)
+    return {
+        "peer_count": peer_count,
+        "query_count": len(traces),
+        "shard_count": len(shard_keys),
+        "round_robin": round_robin_metrics,
+        "method4_aware": method4_aware_metrics,
+        "improvement_pct": {
+            "avg_query_max_peer_load": placement_improvement_pct(
+                round_robin_metrics,
+                method4_aware_metrics,
+                "avg_query_max_peer_load",
+            ),
+            "p95_query_max_peer_load": placement_improvement_pct(
+                round_robin_metrics,
+                method4_aware_metrics,
+                "p95_query_max_peer_load",
+            ),
+            "max_total_peer_load": placement_improvement_pct(
+                round_robin_metrics,
+                method4_aware_metrics,
+                "max_total_peer_load",
+            ),
+        },
+        "placements": {
+            "round_robin": round_robin,
+            "method4_aware": method4_aware,
+        },
+    }
 
 
 def compute_upper_labels(
@@ -3307,12 +3526,50 @@ def main() -> int:
             concurrency_rows.append(row)
             print(json.dumps(row, ensure_ascii=False), flush=True)
 
+    placement_simulation: dict[str, Any] | None = None
+    if args.placement_simulation:
+        if args.routing_mode != "faithful_original_rest":
+            raise ValueError("--placement-simulation is only supported for faithful_original_rest")
+        if args.routed_planning_mode != "materialized":
+            raise ValueError("--placement-simulation requires --routed-planning-mode materialized")
+        if args.placement_simulation_peer_count <= 0:
+            raise ValueError("--placement-simulation-peer-count must be positive")
+        if point_to_shards is None:
+            raise ValueError("--placement-simulation requires point_to_shards routing metadata")
+        assert upper_index is not None
+        upper_labels = compute_upper_labels(upper_index, eval_queries, int(best["upper_k"]))
+        placement_query_plans = build_routed_search_plans(
+            eval_queries,
+            upper_labels,
+            point_to_shards,
+            effective_num_shards,
+            args.top_k,
+            int(best["base_ef"]),
+            int(best["factor"]),
+            args.search_all_shards,
+            use_payload_source_id=use_payload_source_id,
+            routed_execution_mode=args.routed_execution_mode,
+            compact_ef_mode=args.compact_ef_mode,
+            routed_result_limit_mode=args.routed_result_limit_mode,
+            routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+            source_id_dedup_block_size=source_id_dedup_block_size,
+        )
+        placement_simulation = placement_simulation_summary(
+            placement_query_plans,
+            args.placement_simulation_peer_count,
+        )
+
     write_csv(output_dir / "builds.csv", [build_row])
     write_csv(output_dir / "upper_sample_stats.csv", sample_rows)
     write_csv(output_dir / "routing_tuning.csv", tuning_rows)
     write_csv(output_dir / "final_metrics.csv", [final_row])
     write_csv(output_dir / "stability_runs.csv", stability_rows)
     write_csv(output_dir / "concurrency_runs.csv", concurrency_rows)
+    if placement_simulation is not None:
+        (output_dir / "placement_simulation.json").write_text(
+            json.dumps(placement_simulation, indent=2),
+            encoding="utf-8",
+        )
 
     summary = {
         "base_url": args.base_url,
@@ -3334,6 +3591,7 @@ def main() -> int:
         "direct_peer_http_urls": args.direct_peer_http_urls if args.search_dispatch_mode == "direct_peer" else None,
         "routed_execution_mode": args.routed_execution_mode,
         "routed_planning_mode": args.routed_planning_mode,
+        "placement_simulation": placement_simulation,
         "compact_ef_mode": args.compact_ef_mode if args.routed_execution_mode == "compact_query_ef" else None,
         "routed_result_limit_mode": args.routed_result_limit_mode,
         "routed_result_limit_multiplier": (

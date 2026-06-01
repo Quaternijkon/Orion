@@ -194,6 +194,26 @@ def test_parse_args_supports_materialized_routed_planning(monkeypatch):
     assert args.routed_planning_mode == "materialized"
 
 
+def test_parse_args_supports_placement_simulation(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--placement-simulation",
+            "--placement-simulation-peer-count",
+            "3",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.placement_simulation is True
+    assert args.placement_simulation_peer_count == 3
+
+
 def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monkeypatch):
     module = load_module()
 
@@ -707,6 +727,112 @@ def test_direct_peer_execution_splits_searches_by_shard_owner(monkeypatch):
     assert result["hits"] == 2
     assert result["search_batch_calls"] == 2
     assert result["search_request_count"] == 2
+
+
+def test_extract_shard_costs_from_compact_multi_ep_query_plans():
+    module = load_module()
+    plans = [
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_00", "centroid_02"],
+                    "hnsw_ef_by_shard": {"centroid_00": 40, "centroid_02": 80},
+                }
+            ],
+            "visited_shards": 2,
+            "upper_hits": 3,
+            "assigned_ef_sum": 120,
+            "assigned_ef_count": 2,
+        },
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_01"],
+                    "hnsw_ef_by_shard": {"centroid_01": 60},
+                }
+            ],
+            "visited_shards": 1,
+            "upper_hits": 1,
+            "assigned_ef_sum": 60,
+            "assigned_ef_count": 1,
+        },
+    ]
+
+    traces = module.query_shard_cost_traces(plans)
+
+    assert traces == [
+        {"centroid_00": 40.0, "centroid_02": 80.0},
+        {"centroid_01": 60.0},
+    ]
+
+
+def test_method4_aware_placement_reduces_estimated_tail_load():
+    module = load_module()
+    traces = [
+        {"centroid_00": 100.0, "centroid_01": 90.0, "centroid_02": 10.0},
+        {"centroid_00": 100.0, "centroid_01": 90.0, "centroid_03": 10.0},
+    ]
+    round_robin = {
+        "centroid_00": 0,
+        "centroid_01": 0,
+        "centroid_02": 1,
+        "centroid_03": 1,
+    }
+
+    optimized = module.greedy_method4_aware_placement(
+        traces,
+        peer_count=2,
+        initial_placement=round_robin,
+    )
+    before = module.evaluate_query_peer_loads(traces, round_robin)
+    after = module.evaluate_query_peer_loads(traces, optimized)
+
+    assert after["avg_query_max_peer_load"] < before["avg_query_max_peer_load"]
+    assert optimized["centroid_00"] != optimized["centroid_01"]
+
+
+def test_placement_simulation_summary_reports_improvement():
+    module = load_module()
+    plans = [
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
+                    "hnsw_ef_by_shard": {
+                        "centroid_00": 100,
+                        "centroid_01": 90,
+                        "centroid_02": 10,
+                    },
+                }
+            ],
+            "visited_shards": 3,
+            "upper_hits": 3,
+            "assigned_ef_sum": 200,
+            "assigned_ef_count": 3,
+        },
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_00", "centroid_01", "centroid_03"],
+                    "hnsw_ef_by_shard": {
+                        "centroid_00": 100,
+                        "centroid_01": 90,
+                        "centroid_03": 10,
+                    },
+                }
+            ],
+            "visited_shards": 3,
+            "upper_hits": 3,
+            "assigned_ef_sum": 200,
+            "assigned_ef_count": 3,
+        },
+    ]
+
+    summary = module.placement_simulation_summary(plans, peer_count=2)
+
+    assert summary["peer_count"] == 2
+    assert summary["method4_aware"]["avg_query_max_peer_load"] < summary["round_robin"]["avg_query_max_peer_load"]
+    assert summary["improvement_pct"]["avg_query_max_peer_load"] > 0
 
 
 def test_routed_end_to_end_concurrent_evaluator_includes_upper_routing(monkeypatch):
