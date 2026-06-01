@@ -187,13 +187,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-all-shards", action="store_true")
     parser.add_argument(
         "--shard-placement",
-        choices=["auto", "round_robin", "none"],
+        choices=["auto", "round_robin", "none", "map"],
         default="auto",
         help=(
             "Physical placement for custom shard keys. Does not change the "
             "KMeans/routing algorithm; it only selects which Qdrant peer owns "
             "each custom shard in cluster deployments."
         ),
+    )
+    parser.add_argument(
+        "--shard-placement-map",
+        default=None,
+        help=(
+            "JSON placement map used when --shard-placement=map. Accepts either "
+            "a direct {shard_key: peer_id_or_ordinal} object or a placement "
+            "simulation JSON containing placements[--shard-placement-map-name]."
+        ),
+    )
+    parser.add_argument(
+        "--shard-placement-map-name",
+        default="method4_aware",
+        help="Named placement to load from a placement simulation JSON file.",
     )
     parser.add_argument(
         "--placement-peer-uri-contains",
@@ -304,16 +318,46 @@ def placement_for_shard_key(
     shard_index: int,
     peer_ids: list[int],
     mode: str,
+    placement_map: dict[str, int] | None = None,
 ) -> list[int] | None:
     if mode == "none":
         return None
     if mode == "auto" and len(peer_ids) <= 1:
         return None
+    if mode == "map":
+        if placement_map is None:
+            raise ValueError("--shard-placement map requires --shard-placement-map")
+        shard_key = shard_key_for_id(shard_index)
+        if shard_key not in placement_map:
+            raise ValueError(f"missing placement map entry for {shard_key}")
+        peer_value = int(placement_map[shard_key])
+        if peer_value in peer_ids:
+            return [peer_value]
+        if 0 <= peer_value < len(peer_ids):
+            return [int(peer_ids[peer_value])]
+        raise ValueError(
+            f"placement map value for {shard_key} must be a peer id or peer ordinal; got {peer_value}"
+        )
     if mode not in {"auto", "round_robin"}:
         raise ValueError(f"unsupported shard placement mode: {mode}")
     if not peer_ids:
         return None
     return [int(peer_ids[shard_index % len(peer_ids)])]
+
+
+def load_shard_placement_map(path: str | Path, map_name: str) -> dict[str, int]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if "placements" in data:
+        placements = data["placements"]
+        if map_name not in placements:
+            raise ValueError(f"placement map {map_name!r} not found in {path}")
+        data = placements[map_name]
+    if not isinstance(data, dict):
+        raise ValueError(f"placement map in {path} must be a JSON object")
+    result: dict[str, int] = {}
+    for shard_key, peer_value in data.items():
+        result[str(shard_key)] = int(peer_value)
+    return result
 
 
 def shard_create_body(
@@ -1192,13 +1236,14 @@ def ensure_collection(
     reuse_existing: bool,
     shard_placement: str,
     peer_ids: list[int],
+    shard_placement_map: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     if not reuse_existing or not collection_exists(base_url, collection):
         delete_collection_if_exists(base_url, collection)
         create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct)
         for shard_id, shard_key in enumerate(shard_keys):
-            placement = placement_for_shard_key(shard_id, peer_ids, shard_placement)
+            placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
         for shard_id, shard_key in enumerate(shard_keys):
             point_indices = np.where(assignments == shard_id)[0]
@@ -1333,6 +1378,7 @@ def ensure_collection_from_point_shards(
     reuse_existing: bool,
     shard_placement: str,
     peer_ids: list[int],
+    shard_placement_map: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     expected_points = total_assigned_points(point_to_shards)
@@ -1340,7 +1386,7 @@ def ensure_collection_from_point_shards(
         delete_collection_if_exists(base_url, collection)
         create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct)
         for shard_id, shard_key in enumerate(shard_keys):
-            placement = placement_for_shard_key(shard_id, peer_ids, shard_placement)
+            placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
 
         points_by_shard = point_indices_by_shard(point_to_shards, num_shards, upper_indices)
@@ -2883,6 +2929,17 @@ def main() -> int:
     eval_queries = normalize_rows(eval_queries)
 
     peers = cluster_peer_ids(args.base_url, args.placement_peer_uri_contains)
+    shard_placement_map: dict[str, int] | None = None
+    if args.shard_placement == "map":
+        if not args.shard_placement_map:
+            raise ValueError("--shard-placement map requires --shard-placement-map")
+        shard_placement_map = load_shard_placement_map(
+            args.shard_placement_map,
+            args.shard_placement_map_name,
+        )
+    elif args.shard_placement_map:
+        raise ValueError("--shard-placement-map requires --shard-placement map")
+
     label_to_shard: dict[int, str] | None = None
     point_to_shards: list[list[int]] | None = None
     routing_state: OriginalRoutingState | None = None
@@ -2908,6 +2965,7 @@ def main() -> int:
             args.reuse_existing,
             args.shard_placement,
             peers,
+            shard_placement_map,
         )
 
         upper_vectors, upper_ids, label_to_shard, sample_rows = sample_upper_points(
@@ -2943,6 +3001,7 @@ def main() -> int:
             args.reuse_existing,
             args.shard_placement,
             peers,
+            shard_placement_map,
         )
         shard_counts = np.bincount(
             np.asarray([shards[0] for shards in point_to_shards], dtype=np.int64),
@@ -3044,6 +3103,7 @@ def main() -> int:
                 args.reuse_existing,
                 args.shard_placement,
                 peers,
+                shard_placement_map,
             )
             sample_rows = original_upper_sample_rows(routing_state)
         upper_ids = upper_indices
@@ -3580,6 +3640,8 @@ def main() -> int:
         "initial_num_shards": args.num_shards,
         "num_shards": effective_num_shards,
         "shard_placement": args.shard_placement,
+        "shard_placement_map": args.shard_placement_map if args.shard_placement == "map" else None,
+        "shard_placement_map_name": args.shard_placement_map_name if args.shard_placement == "map" else None,
         "placement_peer_uri_contains": args.placement_peer_uri_contains,
         "discovered_peer_ids": peers,
         "collection_cluster": collection_cluster_summary(collection_cluster_info(args.base_url, args.collection)),

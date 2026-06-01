@@ -61,6 +61,64 @@ def test_placement_for_shard_key_modes_do_not_change_routing_algorithm_inputs():
     assert module.placement_for_shard_key(0, peers, "auto") == [101]
     assert module.placement_for_shard_key(1, peers, "round_robin") == [202]
     assert module.placement_for_shard_key(5, peers, "round_robin") == [303]
+    assert module.placement_for_shard_key(
+        2,
+        peers,
+        "map",
+        {"centroid_02": 1},
+    ) == [202]
+    assert module.placement_for_shard_key(
+        3,
+        peers,
+        "map",
+        {"centroid_03": 303},
+    ) == [303]
+
+
+def test_load_shard_placement_map_reads_named_simulation_map(tmp_path):
+    module = load_module()
+    path = tmp_path / "placement_simulation.json"
+    path.write_text(
+        module.json.dumps(
+            {
+                "placements": {
+                    "method4_aware": {
+                        "centroid_00": 2,
+                        "centroid_01": 0,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    placement = module.load_shard_placement_map(path, "method4_aware")
+
+    assert placement == {"centroid_00": 2, "centroid_01": 0}
+
+
+def test_parse_args_supports_shard_placement_map(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--shard-placement",
+            "map",
+            "--shard-placement-map",
+            "placement_simulation.json",
+            "--shard-placement-map-name",
+            "method4_aware",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.shard_placement == "map"
+    assert args.shard_placement_map == "placement_simulation.json"
+    assert args.shard_placement_map_name == "method4_aware"
 
 
 def test_shard_create_body_includes_placement_only_when_requested():
