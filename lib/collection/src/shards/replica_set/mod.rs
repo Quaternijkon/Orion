@@ -406,6 +406,15 @@ impl ShardReplicaSet {
         !self.remotes.read().await.is_empty()
     }
 
+    pub(crate) async fn remote_shard_for_peer(&self, peer_id: PeerId) -> Option<RemoteShard> {
+        self.remotes
+            .read()
+            .await
+            .iter()
+            .find(|remote| remote.peer_id == peer_id)
+            .cloned()
+    }
+
     pub async fn has_local_shard(&self) -> bool {
         self.local.read().await.is_some()
     }

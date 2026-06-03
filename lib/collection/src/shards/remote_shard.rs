@@ -9,13 +9,14 @@ use api::grpc::qdrant::qdrant_client::QdrantClient;
 use api::grpc::qdrant::shard_snapshot_location::Location;
 use api::grpc::qdrant::shard_snapshots_client::ShardSnapshotsClient;
 use api::grpc::qdrant::{
-    CollectionOperationResponse, CoreSearchBatchPointsInternal, CountPoints, CountPointsInternal,
-    CountResponse, FacetCountsInternal, GetCollectionInfoRequest, GetCollectionInfoRequestInternal,
-    GetPoints, GetPointsInternal, GetShardOptimizationsRequest, GetShardRecoveryPointRequest,
-    HealthCheckRequest, InitiateShardTransferRequest, QueryBatchPointsInternal,
-    QueryBatchResponseInternal, QueryShardPoints, RecoverShardSnapshotRequest,
-    RecoverSnapshotResponse, ScrollPoints, ScrollPointsInternal, SearchBatchResponse,
-    ShardSnapshotLocation, UpdateShardCutoffPointRequest, WaitForShardStateRequest,
+    CollectionOperationResponse, CoreSearchBatchByShardInternal, CoreSearchBatchPointsInternal,
+    CountPoints, CountPointsInternal, CountResponse, FacetCountsInternal, GetCollectionInfoRequest,
+    GetCollectionInfoRequestInternal, GetPoints, GetPointsInternal, GetShardOptimizationsRequest,
+    GetShardRecoveryPointRequest, HealthCheckRequest, InitiateShardTransferRequest,
+    QueryBatchPointsInternal, QueryBatchResponseInternal, QueryShardPoints,
+    RecoverShardSnapshotRequest, RecoverSnapshotResponse, ScrollPoints, ScrollPointsInternal,
+    SearchBatchResponse, ShardSnapshotLocation, UpdateShardCutoffPointRequest,
+    WaitForShardStateRequest,
 };
 use api::grpc::transport_channel_pool::{AddTimeout, MAX_GRPC_CHANNEL_TIMEOUT};
 use api::grpc::update_operation::Update;
@@ -995,6 +996,65 @@ impl RemoteShard {
             .into_inner();
 
         Ok(())
+    }
+
+    pub async fn core_search_batch_by_shard(
+        &self,
+        request: CoreSearchBatchByShardInternal,
+        processed_timeout: Option<Duration>,
+        is_payload_required_by_query: Vec<bool>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let mut timer = ScopeDurationMeasurer::new(&self.telemetry_search_durations);
+        timer.set_success(false);
+
+        let search_batch_response = self
+            .with_points_client(|mut client| {
+                let request = request.clone();
+                async move {
+                    let mut request = tonic::Request::new(request);
+
+                    if let Some(timeout) = processed_timeout {
+                        request.set_timeout(timeout);
+                    }
+
+                    client.core_search_batch_by_shard(request).await
+                }
+            })
+            .await?
+            .into_inner();
+
+        let SearchBatchResponse {
+            result,
+            time: _,
+            usage,
+        } = search_batch_response;
+
+        if let Some(hw_usage) = usage.unwrap_or_default().hardware {
+            hw_measurement_acc.accumulate_request(hw_usage);
+        }
+
+        let result: Result<Vec<Vec<ScoredPoint>>, Status> = result
+            .into_iter()
+            .enumerate()
+            .map(|(query_index, batch_result)| {
+                let is_payload_required = is_payload_required_by_query
+                    .get(query_index)
+                    .copied()
+                    .unwrap_or(false);
+
+                batch_result
+                    .result
+                    .into_iter()
+                    .map(|point| try_scored_point_from_grpc(point, is_payload_required))
+                    .collect()
+            })
+            .collect();
+        let result = result.map_err(|e| e.into());
+        if result.is_ok() {
+            timer.set_success(true);
+        }
+        result
     }
 
     /// Validate timeout before making a read operation.

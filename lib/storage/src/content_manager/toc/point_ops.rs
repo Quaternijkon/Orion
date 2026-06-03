@@ -155,6 +155,40 @@ impl TableOfContent {
             .map_err(|err| err.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub async fn core_search_batch_shard_major_peer_premerge(
+        &self,
+        collection_name: &str,
+        mut requests: Vec<(CoreSearchRequest, ShardSelectorInternal)>,
+        read_consistency: Option<ReadConsistency>,
+        auth: Auth,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> StorageResult<Option<Vec<Vec<ScoredPoint>>>> {
+        let mut collection_pass = None;
+        for (request, _shard_selector) in &mut requests {
+            collection_pass = Some(auth.check_point_op(
+                collection_name,
+                request,
+                "core_search_batch_shard_major_peer_premerge",
+            )?);
+        }
+        let Some(collection_pass) = collection_pass else {
+            return Ok(Some(vec![]));
+        };
+
+        let collection = self.get_collection(&collection_pass).await?;
+        collection
+            .core_search_batch_shard_major_peer_premerge(
+                requests,
+                read_consistency,
+                timeout,
+                hw_measurement_acc,
+            )
+            .await
+            .map_err(|err| err.into())
+    }
+
     /// Count points in the collection.
     ///
     /// # Arguments

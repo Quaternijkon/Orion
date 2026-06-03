@@ -10734,6 +10734,43 @@ pub struct CoreSearchBatchPointsInternal {
 #[derive(validator::Validate)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CoreSearchByShardEntry {
+    #[prost(uint64, tag = "1")]
+    pub query_index: u64,
+    #[prost(uint32, tag = "2")]
+    pub shard_id: u32,
+    #[prost(message, optional, tag = "3")]
+    #[validate(nested)]
+    pub search_points: ::core::option::Option<CoreSearchPoints>,
+    #[prost(uint64, tag = "4")]
+    #[validate(range(min = 1))]
+    pub final_limit: u64,
+    #[prost(uint64, optional, tag = "5")]
+    pub final_offset: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub source_id_dedup_block_size: ::core::option::Option<u64>,
+}
+#[derive(serde::Serialize)]
+#[derive(validator::Validate)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CoreSearchBatchByShardInternal {
+    #[prost(string, tag = "1")]
+    #[validate(
+        length(min = 1, max = 255),
+        custom(function = "common::validation::validate_collection_name_legacy")
+    )]
+    pub collection_name: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    #[validate(nested)]
+    pub searches: ::prost::alloc::vec::Vec<CoreSearchByShardEntry>,
+    #[prost(uint64, optional, tag = "3")]
+    pub timeout: ::core::option::Option<u64>,
+}
+#[derive(serde::Serialize)]
+#[derive(validator::Validate)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollPointsInternal {
     #[prost(message, optional, tag = "1")]
     #[validate(nested)]
@@ -11545,6 +11582,33 @@ pub mod points_internal_client {
                 .insert(GrpcMethod::new("qdrant.PointsInternal", "CoreSearchBatch"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn core_search_batch_by_shard(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CoreSearchBatchByShardInternal>,
+        ) -> std::result::Result<
+            tonic::Response<super::SearchBatchResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/qdrant.PointsInternal/CoreSearchBatchByShard",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("qdrant.PointsInternal", "CoreSearchBatchByShard"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn scroll(
             &mut self,
             request: impl tonic::IntoRequest<super::ScrollPointsInternal>,
@@ -11781,6 +11845,13 @@ pub mod points_internal_server {
         async fn core_search_batch(
             &self,
             request: tonic::Request<super::CoreSearchBatchPointsInternal>,
+        ) -> std::result::Result<
+            tonic::Response<super::SearchBatchResponse>,
+            tonic::Status,
+        >;
+        async fn core_search_batch_by_shard(
+            &self,
+            request: tonic::Request<super::CoreSearchBatchByShardInternal>,
         ) -> std::result::Result<
             tonic::Response<super::SearchBatchResponse>,
             tonic::Status,
@@ -12491,6 +12562,58 @@ pub mod points_internal_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = CoreSearchBatchSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/qdrant.PointsInternal/CoreSearchBatchByShard" => {
+                    #[allow(non_camel_case_types)]
+                    struct CoreSearchBatchByShardSvc<T: PointsInternal>(pub Arc<T>);
+                    impl<
+                        T: PointsInternal,
+                    > tonic::server::UnaryService<super::CoreSearchBatchByShardInternal>
+                    for CoreSearchBatchByShardSvc<T> {
+                        type Response = super::SearchBatchResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                super::CoreSearchBatchByShardInternal,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PointsInternal>::core_search_batch_by_shard(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = CoreSearchBatchByShardSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

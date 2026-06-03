@@ -63,6 +63,13 @@ fn should_use_shard_major_search_batch(
         })
 }
 
+fn shard_major_peer_premerge_disabled() -> bool {
+    std::env::var("QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE").is_ok_and(|value| {
+        let value = value.to_ascii_lowercase();
+        matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    })
+}
+
 fn specialize_core_search_for_shard(
     request: &CoreSearchRequest,
     shard_key: &ShardKey,
@@ -123,7 +130,7 @@ fn infer_large_better(candidate_groups: &[Vec<ScoredPoint>]) -> bool {
     true
 }
 
-fn merge_shard_major_candidates(
+pub(crate) fn merge_shard_major_candidates(
     candidate_groups: Vec<Vec<ScoredPoint>>,
     limit: usize,
     offset: usize,
@@ -141,16 +148,14 @@ fn merge_shard_major_candidates(
     candidates
         .into_iter()
         .filter(|point| {
-            seen_ids.insert(search_dedup_point_id(
-                point.id,
-                source_id_dedup_block_size,
-            ))
+            seen_ids.insert(search_dedup_point_id(point.id, source_id_dedup_block_size))
         })
         .skip(offset)
         .take(limit)
         .collect()
 }
 
+#[cfg(test)]
 fn premerge_shard_major_candidates_by_peer(
     peer_candidate_groups: Vec<Vec<Vec<ScoredPoint>>>,
     limit: usize,
@@ -181,6 +186,21 @@ async fn do_search_batch_points_shard_major(
     timeout: Option<Duration>,
     hw_measurement_acc: HwMeasurementAcc,
 ) -> Result<Vec<Vec<ScoredPoint>>, StorageError> {
+    if !shard_major_peer_premerge_disabled()
+        && let Some(results) = toc
+            .core_search_batch_shard_major_peer_premerge(
+                collection_name,
+                requests.clone(),
+                read_consistency,
+                auth.clone(),
+                timeout,
+                hw_measurement_acc.clone(),
+            )
+            .await?
+    {
+        return Ok(results);
+    }
+
     let original_requests = requests
         .iter()
         .map(|(request, _selector)| request.clone())
@@ -649,10 +669,7 @@ mod tests {
         );
 
         assert_eq!(
-            merged
-                .into_iter()
-                .map(|point| point.id)
-                .collect::<Vec<_>>(),
+            merged.into_iter().map(|point| point.id).collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(7), ExtendedPointId::NumId(42)]
         );
     }
@@ -670,10 +687,7 @@ mod tests {
         );
 
         assert_eq!(
-            merged
-                .into_iter()
-                .map(|point| point.id)
-                .collect::<Vec<_>>(),
+            merged.into_iter().map(|point| point.id).collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(3), ExtendedPointId::NumId(1)]
         );
     }
@@ -690,22 +704,47 @@ mod tests {
         ];
 
         let baseline = merge_shard_major_candidates(
-            peer_a
-                .clone()
-                .into_iter()
-                .chain(peer_b.clone())
-                .collect(),
+            peer_a.clone().into_iter().chain(peer_b.clone()).collect(),
             3,
             1,
             None,
         );
-        let peer_partials = premerge_shard_major_candidates_by_peer(
-            vec![peer_a, peer_b],
-            3,
-            1,
-            None,
-        );
+        let peer_partials =
+            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 3, 1, None);
         let two_stage = merge_shard_major_candidates(peer_partials, 3, 1, None);
+
+        assert_eq!(
+            two_stage
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            baseline
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn shard_major_peer_local_premerge_preserves_source_id_dedup() {
+        let peer_a = vec![
+            vec![scored(101, 0.96), scored(202, 0.94), scored(303, 0.92)],
+            vec![scored(404, 0.90), scored(505, 0.88), scored(606, 0.86)],
+        ];
+        let peer_b = vec![
+            vec![scored(1, 0.99), scored(2, 0.98), scored(707, 0.84)],
+            vec![scored(808, 0.83), scored(909, 0.82), scored(1000, 0.81)],
+        ];
+
+        let baseline = merge_shard_major_candidates(
+            peer_a.clone().into_iter().chain(peer_b.clone()).collect(),
+            4,
+            1,
+            Some(100),
+        );
+        let peer_partials =
+            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 4, 1, Some(100));
+        let two_stage = merge_shard_major_candidates(peer_partials, 4, 1, Some(100));
 
         assert_eq!(
             two_stage

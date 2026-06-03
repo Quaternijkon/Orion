@@ -1,11 +1,12 @@
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use api::conversions::json::json_path_from_proto;
 use api::grpc::qdrant::{
-    BatchResult, CoreSearchPoints, CountPoints, CountResponse, DiscoverBatchResponse,
-    DiscoverPoints, DiscoverResponse, FacetCounts, FacetResponse, GetPoints, GetResponse,
-    GroupsResult, QueryBatchResponse, QueryGroupsResponse, QueryPointGroups, QueryPoints,
-    QueryResponse, ReadConsistency as ReadConsistencyGrpc, RecommendBatchResponse,
+    BatchResult, CoreSearchByShardEntry, CoreSearchPoints, CountPoints, CountResponse,
+    DiscoverBatchResponse, DiscoverPoints, DiscoverResponse, FacetCounts, FacetResponse, GetPoints,
+    GetResponse, GroupsResult, QueryBatchResponse, QueryGroupsResponse, QueryPointGroups,
+    QueryPoints, QueryResponse, ReadConsistency as ReadConsistencyGrpc, RecommendBatchResponse,
     RecommendGroupsResponse, RecommendPointGroups, RecommendPoints, RecommendResponse,
     ScrollPoints, ScrollResponse, SearchBatchResponse, SearchGroupsResponse, SearchMatrixPoints,
     SearchPointGroups, SearchPoints, SearchResponse,
@@ -20,9 +21,11 @@ use collection::operations::shard_selector_internal::ShardSelectorInternal;
 use collection::operations::types::{CoreSearchRequest, PointRequestInternal};
 use collection::shards::shard::ShardId;
 use common::counter::hardware_accumulator::HwMeasurementAcc;
+use futures::future;
 use segment::data_types::facets::FacetParams;
 use segment::data_types::order_by::{OrderBy, OrderByInterface};
 use segment::data_types::vectors::{DEFAULT_VECTOR_NAME, NamedQuery, VectorInternal};
+use segment::types::ScoredPoint;
 use shard::count::CountRequestInternal;
 use shard::query::query_enum::QueryEnum;
 use shard::scroll::ScrollRequestInternal;
@@ -245,6 +248,167 @@ pub async fn core_search_list(
             .into_iter()
             .map(|points| BatchResult {
                 result: points.into_iter().map(|p| p.into()).collect(),
+            })
+            .collect(),
+        time: timing.elapsed().as_secs_f64(),
+        usage: Usage::from_hardware_usage(request_hw_counter.to_grpc_api()).into_non_empty(),
+    };
+
+    Ok(Response::new(response))
+}
+
+pub(crate) struct CoreSearchByShardRow {
+    pub query_index: usize,
+    pub limit: usize,
+    pub offset: usize,
+    pub source_id_dedup_block_size: Option<u64>,
+    pub points: Vec<ScoredPoint>,
+}
+
+pub(crate) fn premerge_core_search_by_shard_rows(
+    rows: Vec<CoreSearchByShardRow>,
+    query_count: usize,
+) -> Vec<Vec<ScoredPoint>> {
+    let mut candidate_groups_by_query = vec![Vec::new(); query_count];
+    let mut merge_specs = vec![None; query_count];
+
+    for row in rows {
+        if row.query_index >= query_count {
+            continue;
+        }
+
+        let merge_spec = (row.limit, row.offset, row.source_id_dedup_block_size);
+        if let Some(existing_spec) = merge_specs[row.query_index] {
+            debug_assert_eq!(existing_spec, merge_spec);
+        } else {
+            merge_specs[row.query_index] = Some(merge_spec);
+        }
+
+        candidate_groups_by_query[row.query_index].push(row.points);
+    }
+
+    candidate_groups_by_query
+        .into_iter()
+        .enumerate()
+        .map(|(query_index, candidate_groups)| {
+            let Some((limit, offset, source_id_dedup_block_size)) = merge_specs[query_index] else {
+                return Vec::new();
+            };
+
+            crate::common::query::merge_shard_major_candidates(
+                candidate_groups,
+                limit.saturating_add(offset),
+                0,
+                source_id_dedup_block_size,
+            )
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn core_search_batch_by_shard(
+    toc: &TableOfContent,
+    collection_name: String,
+    searches: Vec<CoreSearchByShardEntry>,
+    auth: Auth,
+    timeout: Option<Duration>,
+    request_hw_counter: RequestHwCounter,
+) -> Result<Response<SearchBatchResponse>, Status> {
+    struct SearchByShardWork {
+        query_index: usize,
+        limit: usize,
+        offset: usize,
+        source_id_dedup_block_size: Option<u64>,
+        request: CoreSearchRequest,
+    }
+
+    let mut query_count = 0usize;
+    let mut by_shard: BTreeMap<ShardId, Vec<SearchByShardWork>> = BTreeMap::new();
+
+    for entry in searches {
+        let query_index = usize::try_from(entry.query_index)
+            .map_err(|_| Status::invalid_argument("query_index does not fit into usize"))?;
+        let limit = usize::try_from(entry.final_limit)
+            .map_err(|_| Status::invalid_argument("final_limit does not fit into usize"))?;
+        let offset = usize::try_from(entry.final_offset.unwrap_or_default())
+            .map_err(|_| Status::invalid_argument("final_offset does not fit into usize"))?;
+        let search_points = entry
+            .search_points
+            .ok_or_else(|| Status::invalid_argument("search_points is missing"))?;
+        let request = CoreSearchRequest::try_from(search_points)?;
+
+        query_count = query_count.max(query_index.saturating_add(1));
+        by_shard
+            .entry(entry.shard_id)
+            .or_default()
+            .push(SearchByShardWork {
+                query_index,
+                limit,
+                offset,
+                source_id_dedup_block_size: entry.source_id_dedup_block_size,
+                request,
+            });
+    }
+
+    let timing = Instant::now();
+    let shard_searches = by_shard.into_iter().map(|(shard_id, works)| {
+        let original_rows = works
+            .iter()
+            .map(|work| {
+                (
+                    work.query_index,
+                    work.limit,
+                    work.offset,
+                    work.source_id_dedup_block_size,
+                )
+            })
+            .collect::<Vec<_>>();
+        let request = CoreSearchRequestBatch {
+            searches: works.into_iter().map(|work| work.request).collect(),
+        };
+        let collection_name = collection_name.clone();
+        let auth = auth.clone();
+        let request_hw_counter = request_hw_counter.clone();
+
+        async move {
+            let rows = toc
+                .core_search_batch(
+                    &collection_name,
+                    request,
+                    None,
+                    ShardSelectorInternal::ShardId(shard_id),
+                    auth,
+                    timeout,
+                    request_hw_counter.get_counter(),
+                )
+                .await
+                .map_err(Status::from)?;
+            Ok::<_, Status>((original_rows, rows))
+        }
+    });
+
+    let shard_results = future::try_join_all(shard_searches).await?;
+    let mut shard_rows = Vec::new();
+    for (original_rows, rows) in shard_results {
+        for ((query_index, limit, offset, source_id_dedup_block_size), points) in
+            original_rows.into_iter().zip(rows)
+        {
+            shard_rows.push(CoreSearchByShardRow {
+                query_index,
+                limit,
+                offset,
+                source_id_dedup_block_size,
+                points,
+            });
+        }
+    }
+
+    let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count);
+    let response = SearchBatchResponse {
+        result: premerged_rows
+            .into_iter()
+            .map(|points| BatchResult {
+                result: points.into_iter().map(|point| point.into()).collect(),
             })
             .collect(),
         time: timing.elapsed().as_secs_f64(),
@@ -1078,4 +1242,72 @@ pub async fn search_points_matrix(
         .await?;
 
     Ok(search_matrix_response)
+}
+
+#[cfg(test)]
+mod tests {
+    use segment::types::{ExtendedPointId, ScoredPoint};
+
+    use super::*;
+
+    fn scored(id: u64, score: f32) -> ScoredPoint {
+        ScoredPoint {
+            id: ExtendedPointId::NumId(id),
+            version: 0,
+            score,
+            payload: None,
+            vector: None,
+            shard_key: None,
+            order_value: None,
+        }
+    }
+
+    #[test]
+    fn core_search_by_shard_premerge_keeps_limit_plus_offset_per_peer_query() {
+        let premerged = premerge_core_search_by_shard_rows(
+            vec![
+                CoreSearchByShardRow {
+                    query_index: 0,
+                    limit: 2,
+                    offset: 1,
+                    source_id_dedup_block_size: Some(100),
+                    points: vec![scored(207, 0.99), scored(11, 0.90)],
+                },
+                CoreSearchByShardRow {
+                    query_index: 0,
+                    limit: 2,
+                    offset: 1,
+                    source_id_dedup_block_size: Some(100),
+                    points: vec![scored(7, 0.98), scored(12, 0.89)],
+                },
+                CoreSearchByShardRow {
+                    query_index: 1,
+                    limit: 1,
+                    offset: 0,
+                    source_id_dedup_block_size: None,
+                    points: vec![scored(30, 0.70), scored(31, 0.60)],
+                },
+            ],
+            2,
+        );
+
+        assert_eq!(
+            premerged[0]
+                .iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            vec![
+                ExtendedPointId::NumId(207),
+                ExtendedPointId::NumId(11),
+                ExtendedPointId::NumId(12),
+            ],
+        );
+        assert_eq!(
+            premerged[1]
+                .iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            vec![ExtendedPointId::NumId(30)],
+        );
+    }
 }

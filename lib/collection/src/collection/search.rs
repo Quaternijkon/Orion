@@ -1,8 +1,10 @@
+use std::collections::BTreeMap;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 
 use ahash::{AHashMap, AHashSet};
+use api::grpc::qdrant::{CoreSearchBatchByShardInternal, CoreSearchByShardEntry};
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::{TryFutureExt, future};
 use itertools::{Either, Itertools};
@@ -18,6 +20,8 @@ use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
+use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
+use crate::shards::shard::PeerId;
 
 fn search_batch_requires_shard_specialization(request: &CoreSearchRequestBatch) -> bool {
     request.searches.iter().any(|search| {
@@ -63,6 +67,39 @@ pub(crate) fn specialize_search_batch_for_shard(
         .collect();
 
     CoreSearchRequestBatch { searches }
+}
+
+fn specialize_core_search_for_shard_major(
+    request: &CoreSearchRequest,
+    shard_key: &ShardKey,
+) -> CoreSearchRequest {
+    let mut specialized = request.clone();
+
+    specialized.limit = request.limit.saturating_add(request.offset);
+    specialized.offset = 0;
+
+    if let Some(entry_points) = request
+        .hnsw_entry_points_by_shard
+        .as_ref()
+        .and_then(|entry_points_by_shard| entry_points_by_shard.get(shard_key))
+    {
+        specialized.hnsw_entry_points = Some(entry_points.clone());
+    }
+
+    if let Some(hnsw_ef) = request
+        .hnsw_ef_by_shard
+        .as_ref()
+        .and_then(|ef_by_shard| ef_by_shard.get(shard_key))
+        .copied()
+    {
+        let mut params = specialized.params.unwrap_or_default();
+        params.hnsw_ef = Some(hnsw_ef);
+        specialized.params = Some(params);
+    }
+
+    specialized.hnsw_entry_points_by_shard = None;
+    specialized.hnsw_ef_by_shard = None;
+    specialized
 }
 
 fn search_dedup_point_id(
@@ -203,6 +240,174 @@ impl Collection {
                 .await?;
             Ok(result)
         }
+    }
+
+    pub async fn core_search_batch_shard_major_peer_premerge(
+        &self,
+        requests: Vec<(CoreSearchRequest, ShardSelectorInternal)>,
+        read_consistency: Option<ReadConsistency>,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+        struct PeerShardMajorGroup {
+            remote: RemoteShard,
+            original_indices: Vec<usize>,
+            is_payload_required_by_query: Vec<bool>,
+            entries: Vec<CoreSearchByShardEntry>,
+        }
+
+        impl PeerShardMajorGroup {
+            fn local_query_index(
+                &mut self,
+                original_index: usize,
+                request: &CoreSearchRequest,
+            ) -> usize {
+                if let Some(query_index) = self
+                    .original_indices
+                    .iter()
+                    .position(|known_index| *known_index == original_index)
+                {
+                    return query_index;
+                }
+
+                let query_index = self.original_indices.len();
+                self.original_indices.push(original_index);
+                self.is_payload_required_by_query.push(
+                    request
+                        .with_payload
+                        .as_ref()
+                        .is_some_and(|with_payload| with_payload.is_required()),
+                );
+                query_index
+            }
+        }
+
+        if requests.is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+
+        if read_consistency.is_some() {
+            return Ok(None);
+        }
+
+        let original_requests = requests
+            .iter()
+            .map(|(request, _selector)| request.clone())
+            .collect::<Vec<_>>();
+        let mut peer_groups: BTreeMap<PeerId, PeerShardMajorGroup> = BTreeMap::new();
+
+        {
+            let shard_holder = self.shards_holder.read().await;
+            for (original_index, (request, selector)) in requests.iter().enumerate() {
+                let ShardSelectorInternal::ShardKeys(shard_keys) = selector else {
+                    return Ok(None);
+                };
+
+                if shard_keys.is_empty() {
+                    return Ok(None);
+                }
+
+                for shard_key in shard_keys {
+                    let shard_selector = ShardSelectorInternal::ShardKey(shard_key.clone());
+                    let target_shards = shard_holder.select_shards(&shard_selector)?;
+                    if target_shards.len() != 1 {
+                        return Ok(None);
+                    }
+
+                    let replica_set = target_shards[0].0;
+                    let readable_peers = replica_set.readable_shards();
+                    if readable_peers.len() != 1 {
+                        return Ok(None);
+                    }
+
+                    let peer_id = readable_peers[0];
+                    if peer_id == self.this_peer_id {
+                        return Ok(None);
+                    }
+
+                    let Some(remote) = replica_set.remote_shard_for_peer(peer_id).await else {
+                        return Ok(None);
+                    };
+
+                    let group = peer_groups
+                        .entry(peer_id)
+                        .or_insert_with(|| PeerShardMajorGroup {
+                            remote,
+                            original_indices: Vec::new(),
+                            is_payload_required_by_query: Vec::new(),
+                            entries: Vec::new(),
+                        });
+                    let local_query_index = group.local_query_index(original_index, request);
+                    let specialized = specialize_core_search_for_shard_major(request, shard_key);
+                    let search_points =
+                        CollectionCoreSearchRequest((self.id.clone(), &specialized)).into();
+
+                    group.entries.push(CoreSearchByShardEntry {
+                        query_index: local_query_index as u64,
+                        shard_id: replica_set.shard_id,
+                        search_points: Some(search_points),
+                        final_limit: request.limit as u64,
+                        final_offset: Some(request.offset as u64),
+                        source_id_dedup_block_size: request.source_id_dedup_block_size,
+                    });
+                }
+            }
+        }
+
+        if peer_groups.is_empty() {
+            return Ok(None);
+        }
+
+        let processed_timeout = RemoteShard::process_read_timeout(timeout, "search")?;
+        let peer_searches = peer_groups.into_values().map(|group| {
+            let collection_name = self.id.clone();
+            let hw_measurement_acc = hw_measurement_acc.clone();
+            async move {
+                let original_indices = group.original_indices;
+                let is_payload_required_by_query = group.is_payload_required_by_query;
+                let request = CoreSearchBatchByShardInternal {
+                    collection_name,
+                    searches: group.entries,
+                    timeout: processed_timeout.map(|timeout| timeout.as_secs()),
+                };
+                let rows = group
+                    .remote
+                    .core_search_batch_by_shard(
+                        request,
+                        processed_timeout,
+                        is_payload_required_by_query,
+                        hw_measurement_acc,
+                    )
+                    .await?;
+
+                if rows.len() != original_indices.len() {
+                    return Err(CollectionError::service_error(format!(
+                        "Peer-local shard-major search returned {} rows for {} query slots",
+                        rows.len(),
+                        original_indices.len(),
+                    )));
+                }
+
+                Ok::<_, CollectionError>((original_indices, rows))
+            }
+        });
+
+        let peer_results = future::try_join_all(peer_searches).await?;
+        let mut all_peer_rows = Vec::with_capacity(peer_results.len());
+        for (original_indices, rows) in peer_results {
+            let mut peer_rows = vec![Vec::new(); original_requests.len()];
+            for (original_index, row) in original_indices.into_iter().zip(rows) {
+                peer_rows[original_index] = row;
+            }
+            all_peer_rows.push(peer_rows);
+        }
+
+        let request = Arc::new(CoreSearchRequestBatch {
+            searches: original_requests,
+        });
+        self.merge_from_shards(all_peer_rows, request, true)
+            .await
+            .map(Some)
     }
 
     async fn do_core_search_batch(
