@@ -177,6 +177,38 @@ because it evaluates additional queries. A temporary attempt to use
 that image only reached tuning Recall@10 `0.9038`, so it does not represent the
 patched method4 shard-major baseline.
 
+## Fresh Runtime A/B After Commit
+
+After committing the implementation, the latest `target/perf/qdrant` binary was
+rebuilt into `qdrant/qdrant:method4-peer-premerge` and the controller cluster
+was recreated. The same deployed collection and method4 parameters were used.
+
+Enabled peer pre-merge:
+
+- result dir:
+  `results/qdrant_goal_recall_idea_095_server_peer_premerge_fresh/20260603_092757`
+- Recall@10: `0.9553000000`
+- QPS: `405.3806928`
+
+Disabled peer pre-merge:
+
+- runtime switch:
+  `QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE=1`
+- result dir:
+  `results/qdrant_goal_recall_idea_095_server_peer_premerge_disabled_fresh/20260603_092949`
+- Recall@10: `0.9552333333`
+- QPS: `379.4223034`
+
+Fresh same-image delta:
+
+- QPS: `+6.84%`
+- Recall@10: `+0.0000667`
+
+This A/B is lower than the earlier retained-vs-new delta, but it is the cleaner
+same-binary runtime comparison. It confirms that the peer-local pre-merge path
+still has a positive performance effect after the source-id de-dup semantic
+audit and final formatting/build pass.
+
 ## Decision
 
 Keep the worker-local peer pre-merge implementation.
