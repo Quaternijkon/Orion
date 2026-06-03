@@ -123,6 +123,15 @@ def parse_args() -> argparse.Namespace:
         help="Peer HTTP endpoints for direct_peer mode, as PEER_ID=URL entries.",
     )
     parser.add_argument(
+        "--direct-peer-local-premerge",
+        action="store_true",
+        help=(
+            "With direct_peer dispatch, merge each physical peer's local shard results "
+            "per query before the final client merge. This simulates the result shape "
+            "of a future worker-local pre-merge RPC without changing lower HNSW calls."
+        ),
+    )
+    parser.add_argument(
         "--routed-execution-mode",
         choices=["grouped_by_ef", "compact_query_ef", "per_shard_multi_ep", "compact_multi_ep"],
         default="grouped_by_ef",
@@ -2005,6 +2014,16 @@ def build_compact_routed_search_plans(
 
 
 def merge_topk_candidates(candidate_groups: list[list[tuple[float, int]]], top_k: int) -> list[int]:
+    return [
+        point_id
+        for _score, point_id in merge_topk_scored_candidates(candidate_groups, top_k)
+    ]
+
+
+def merge_topk_scored_candidates(
+    candidate_groups: list[list[tuple[float, int]]],
+    top_k: int,
+) -> list[tuple[float, int]]:
     best_by_id: dict[int, float] = {}
     for group in candidate_groups:
         for score, point_id in group:
@@ -2012,7 +2031,17 @@ def merge_topk_candidates(candidate_groups: list[list[tuple[float, int]]], top_k
             if current is None or score > current:
                 best_by_id[point_id] = score
     ordered = sorted(best_by_id.items(), key=lambda item: item[1], reverse=True)
-    return [point_id for point_id, _score in ordered[:top_k]]
+    return [(score, point_id) for point_id, score in ordered[:top_k]]
+
+
+def peer_local_premerge_candidates(
+    shard_results_by_peer: dict[int, list[list[tuple[float, int]]]],
+    top_k: int,
+) -> list[tuple[int, list[tuple[float, int]]]]:
+    return [
+        (int(peer_id), merge_topk_scored_candidates(candidate_groups, top_k))
+        for peer_id, candidate_groups in sorted(shard_results_by_peer.items())
+    ]
 
 
 def evaluate_config(
@@ -2227,6 +2256,7 @@ def evaluate_config_materialized_routing(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -2283,6 +2313,8 @@ def evaluate_config_materialized_routing(
     total_assigned_ef_count = 0
     search_batch_calls = 0
     search_request_count = 0
+    candidate_group_count = 0
+    returned_candidate_count = 0
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
@@ -2295,6 +2327,7 @@ def evaluate_config_materialized_routing(
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2304,6 +2337,8 @@ def evaluate_config_materialized_routing(
         total_assigned_ef_count += int(result["assigned_ef_count"])
         search_batch_calls += int(result["search_batch_calls"])
         search_request_count += int(result["search_request_count"])
+        candidate_group_count += int(result.get("candidate_group_count", result.get("search_request_count", 0)))
+        returned_candidate_count += int(result.get("returned_candidate_count", 0))
 
     wall = time.perf_counter() - start
     return {
@@ -2317,6 +2352,8 @@ def evaluate_config_materialized_routing(
         ),
         "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
+        "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
+        "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
     }
 
 
@@ -2344,6 +2381,7 @@ def evaluate_config_compact_materialized_routing(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if routed_execution_mode != "compact_multi_ep":
         raise ValueError("compact_materialized planning requires --routed-execution-mode compact_multi_ep")
@@ -2386,6 +2424,8 @@ def evaluate_config_compact_materialized_routing(
     total_assigned_ef_count = 0
     search_batch_calls = 0
     search_request_count = 0
+    candidate_group_count = 0
+    returned_candidate_count = 0
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
@@ -2398,6 +2438,7 @@ def evaluate_config_compact_materialized_routing(
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2407,6 +2448,8 @@ def evaluate_config_compact_materialized_routing(
         total_assigned_ef_count += int(result["assigned_ef_count"])
         search_batch_calls += int(result["search_batch_calls"])
         search_request_count += int(result["search_request_count"])
+        candidate_group_count += int(result.get("candidate_group_count", result.get("search_request_count", 0)))
+        returned_candidate_count += int(result.get("returned_candidate_count", 0))
 
     wall = time.perf_counter() - start
     return {
@@ -2420,6 +2463,8 @@ def evaluate_config_compact_materialized_routing(
         ),
         "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
+        "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
+        "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
     }
 
 
@@ -2744,9 +2789,12 @@ def execute_query_plans_once(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if lower_execution_order not in {"query_major", "shard_major"}:
         raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
+    if direct_peer_local_premerge and direct_peer_urls is None:
+        raise ValueError("direct peer local pre-merge requires direct_peer_urls")
 
     per_query_candidates: list[list[list[tuple[float, int]]]] = [
         [] for _ in range(len(query_plans))
@@ -2792,14 +2840,14 @@ def execute_query_plans_once(
         search_batch_calls = len(peer_batches)
         search_request_count = sum(len(items) for items in peer_batches.values())
 
-        def run_peer_batch(peer_id: int, items: list[tuple[int, dict[str, Any]]]) -> list[tuple[int, list[tuple[float, int]]]]:
+        def run_peer_batch(peer_id: int, items: list[tuple[int, dict[str, Any]]]) -> list[tuple[int, int, list[tuple[float, int]]]]:
             results = search_batch(
                 direct_peer_urls[peer_id],
                 collection,
                 [search for _query_idx, search in items],
             )
             return [
-                (query_idx, result)
+                (peer_id, query_idx, result)
                 for (query_idx, _search), result in zip(items, results)
             ]
 
@@ -2821,8 +2869,21 @@ def execute_query_plans_once(
                     for result in future.result()
                 ]
 
-        for local_idx, result in peer_results:
-            per_query_candidates[local_idx].append(result)
+        if direct_peer_local_premerge:
+            per_query_peer_candidates: list[dict[int, list[list[tuple[float, int]]]]] = [
+                defaultdict(list) for _ in range(len(query_plans))
+            ]
+            for peer_id, local_idx, result in peer_results:
+                per_query_peer_candidates[local_idx][peer_id].append(result)
+            for local_idx, shard_results_by_peer in enumerate(per_query_peer_candidates):
+                for _peer_id, premerged in peer_local_premerge_candidates(
+                    shard_results_by_peer,
+                    top_k,
+                ):
+                    per_query_candidates[local_idx].append(premerged)
+        else:
+            for _peer_id, local_idx, result in peer_results:
+                per_query_candidates[local_idx].append(result)
     else:
         flat_searches: list[dict[str, Any]] = []
         query_positions: list[int] = []
@@ -2844,6 +2905,13 @@ def execute_query_plans_once(
             for local_idx, result in zip(query_positions, results):
                 per_query_candidates[local_idx].append(result)
 
+    candidate_group_count = sum(len(candidate_groups) for candidate_groups in per_query_candidates)
+    returned_candidate_count = sum(
+        len(group)
+        for candidate_groups in per_query_candidates
+        for group in candidate_groups
+    )
+
     hits = 0
     for offset, candidate_groups in enumerate(per_query_candidates):
         top_ids = merge_topk_candidates(candidate_groups, top_k)
@@ -2859,6 +2927,14 @@ def execute_query_plans_once(
         "assigned_ef_count": sum(int(plan["assigned_ef_count"]) for plan in query_plans),
         "search_batch_calls": search_batch_calls,
         "search_request_count": search_request_count,
+        "candidate_group_count": candidate_group_count,
+        "returned_candidate_count": returned_candidate_count,
+        "avg_candidate_groups_per_query": (
+            candidate_group_count / len(query_plans) if query_plans else 0.0
+        ),
+        "avg_returned_candidates_per_query": (
+            returned_candidate_count / len(query_plans) if query_plans else 0.0
+        ),
     }
 
 
@@ -2991,6 +3067,7 @@ def evaluate_routed_config_batch(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
         raise ValueError("either label_to_shard or point_to_shards must be provided")
@@ -3044,6 +3121,7 @@ def evaluate_routed_config_batch(
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
+        direct_peer_local_premerge=direct_peer_local_premerge,
     )
 
 
@@ -3060,6 +3138,7 @@ def evaluate_all_shards_config_batch(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     query_plans = build_all_shard_search_plans(
         queries,
@@ -3078,6 +3157,7 @@ def evaluate_all_shards_config_batch(
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
+        direct_peer_local_premerge=direct_peer_local_premerge,
     )
 
 
@@ -3094,6 +3174,14 @@ def aggregate_timed_batch_results(
     total_assigned_ef_count = sum(int(result["assigned_ef_count"]) for result in batch_results)
     search_batch_calls = sum(int(result["search_batch_calls"]) for result in batch_results)
     search_request_count = sum(int(result["search_request_count"]) for result in batch_results)
+    candidate_group_count = sum(
+        int(result.get("candidate_group_count", result.get("search_request_count", 0)))
+        for result in batch_results
+    )
+    returned_candidate_count = sum(
+        int(result.get("returned_candidate_count", 0))
+        for result in batch_results
+    )
 
     return {
         "recall_at_k": total_hits / (total_queries * top_k),
@@ -3106,6 +3194,8 @@ def aggregate_timed_batch_results(
         ),
         "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_queries,
+        "avg_candidate_groups_per_query": candidate_group_count / total_queries,
+        "avg_returned_candidates_per_query": returned_candidate_count / total_queries,
     }
 
 
@@ -3134,6 +3224,7 @@ def evaluate_config_concurrent(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3171,6 +3262,7 @@ def evaluate_config_concurrent(
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
         )
 
     start = time.perf_counter()
@@ -3203,6 +3295,7 @@ def evaluate_all_shards_config_concurrent(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3230,6 +3323,7 @@ def evaluate_all_shards_config_concurrent(
             direct_peer_urls=direct_peer_urls,
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
         )
 
     start = time.perf_counter()
@@ -3258,7 +3352,8 @@ def evaluate_preplanned_search_batch(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
-) -> tuple[int, int]:
+    direct_peer_local_premerge: bool = False,
+) -> dict[str, Any]:
     result = execute_query_plans_once(
         base_url,
         collection,
@@ -3268,8 +3363,9 @@ def evaluate_preplanned_search_batch(
         direct_peer_urls=direct_peer_urls,
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
+        direct_peer_local_premerge=direct_peer_local_premerge,
     )
-    return int(result["hits"]), int(result["query_count"])
+    return result
 
 
 def evaluate_preplanned_searches_concurrent(
@@ -3283,6 +3379,7 @@ def evaluate_preplanned_searches_concurrent(
     direct_peer_urls: dict[int, str] | None = None,
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3296,12 +3393,11 @@ def evaluate_preplanned_searches_concurrent(
         for start_idx in range(0, len(query_plans), batch_size)
     ]
 
-    total_hits = 0
-    total_queries = 0
     start = time.perf_counter()
     if concurrency == 1:
+        batch_results = []
         for start_idx, end_idx in ranges:
-            hits, count = evaluate_preplanned_search_batch(
+            result = evaluate_preplanned_search_batch(
                 base_url,
                 collection,
                 query_plans,
@@ -3312,9 +3408,9 @@ def evaluate_preplanned_searches_concurrent(
                 direct_peer_urls,
                 shard_key_to_peer,
                 lower_execution_order,
+                direct_peer_local_premerge,
             )
-            total_hits += hits
-            total_queries += count
+            batch_results.append(result)
     else:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = [
@@ -3330,33 +3426,14 @@ def evaluate_preplanned_searches_concurrent(
                     direct_peer_urls,
                     shard_key_to_peer,
                     lower_execution_order,
+                    direct_peer_local_premerge,
                 )
                 for start_idx, end_idx in ranges
             ]
-            for future in futures:
-                hits, count = future.result()
-                total_hits += hits
-                total_queries += count
+            batch_results = [future.result() for future in futures]
 
     wall = time.perf_counter() - start
-    total_visited_shards = sum(int(plan["visited_shards"]) for plan in query_plans)
-    total_upper_hits = sum(int(plan["upper_hits"]) for plan in query_plans)
-    total_assigned_ef = sum(int(plan["assigned_ef_sum"]) for plan in query_plans)
-    total_assigned_ef_count = sum(int(plan["assigned_ef_count"]) for plan in query_plans)
-    return {
-        "recall_at_k": total_hits / (total_queries * top_k),
-        "qps": total_queries / wall,
-        "wall_s": wall,
-        "avg_visited_shards": total_visited_shards / total_queries,
-        "avg_upper_hits": total_upper_hits / total_queries,
-        "avg_assigned_ef_per_visited_shard": (
-            total_assigned_ef / total_assigned_ef_count if total_assigned_ef_count > 0 else 0.0
-        ),
-        "search_batch_calls": len(ranges),
-        "avg_search_requests_per_query": (
-            executed_search_count_for_plans(query_plans, lower_execution_order) / total_queries
-        ),
-    }
+    return aggregate_timed_batch_results(batch_results, wall, top_k)
 
 
 def choose_best_matched_recall(rows: list[dict[str, Any]], target_recall: float) -> dict[str, Any]:
@@ -3389,6 +3466,8 @@ def main() -> int:
             "--recover-routing-from-collection requires --routing-mode faithful_original_rest "
             "and --reuse-existing"
         )
+    if args.direct_peer_local_premerge and args.search_dispatch_mode != "direct_peer":
+        raise ValueError("--direct-peer-local-premerge requires --search-dispatch-mode direct_peer")
     output_dir = Path(args.output_dir) / time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3628,6 +3707,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3671,6 +3751,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3711,6 +3792,8 @@ def main() -> int:
             "avg_assigned_ef_per_visited_shard": result["avg_assigned_ef_per_visited_shard"],
             "search_batch_calls": result["search_batch_calls"],
             "avg_search_requests_per_query": result["avg_search_requests_per_query"],
+            "avg_candidate_groups_per_query": result.get("avg_candidate_groups_per_query"),
+            "avg_returned_candidates_per_query": result.get("avg_returned_candidates_per_query"),
         }
         tuning_rows.append(row)
         print(json.dumps(row, ensure_ascii=False), flush=True)
@@ -3734,6 +3817,7 @@ def main() -> int:
                 direct_peer_urls=direct_peer_urls,
                 shard_key_to_peer=shard_key_to_peer,
                 lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
             )
         else:
             final_result = evaluate_all_shards_config(
@@ -3777,6 +3861,7 @@ def main() -> int:
                 direct_peer_urls=direct_peer_urls,
                 shard_key_to_peer=shard_key_to_peer,
                 lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
             )
         else:
             routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3817,6 +3902,8 @@ def main() -> int:
         "avg_assigned_ef_per_visited_shard": final_result["avg_assigned_ef_per_visited_shard"],
         "search_batch_calls": final_result["search_batch_calls"],
         "avg_search_requests_per_query": final_result["avg_search_requests_per_query"],
+        "avg_candidate_groups_per_query": final_result.get("avg_candidate_groups_per_query"),
+        "avg_returned_candidates_per_query": final_result.get("avg_returned_candidates_per_query"),
     }
 
     stability_rows: list[dict[str, Any]] = []
@@ -3838,6 +3925,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3881,6 +3969,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3922,6 +4011,8 @@ def main() -> int:
             "avg_assigned_ef_per_visited_shard": result["avg_assigned_ef_per_visited_shard"],
             "search_batch_calls": result["search_batch_calls"],
             "avg_search_requests_per_query": result["avg_search_requests_per_query"],
+            "avg_candidate_groups_per_query": result.get("avg_candidate_groups_per_query"),
+            "avg_returned_candidates_per_query": result.get("avg_returned_candidates_per_query"),
         }
         stability_rows.append(row)
 
@@ -3996,6 +4087,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             elif args.routing_mode == "naive_hash_all_shards":
                 result = evaluate_all_shards_config_concurrent(
@@ -4013,6 +4105,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             else:
                 assert upper_index is not None
@@ -4041,6 +4134,7 @@ def main() -> int:
                     direct_peer_urls=direct_peer_urls,
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
                 )
             row = {
                 "concurrency": int(concurrency),
@@ -4060,6 +4154,8 @@ def main() -> int:
                 "avg_assigned_ef_per_visited_shard": result["avg_assigned_ef_per_visited_shard"],
                 "search_batch_calls": result["search_batch_calls"],
                 "avg_search_requests_per_query": result["avg_search_requests_per_query"],
+                "avg_candidate_groups_per_query": result.get("avg_candidate_groups_per_query"),
+                "avg_returned_candidates_per_query": result.get("avg_returned_candidates_per_query"),
                 "routing_plan_wall_s_excluded_from_qps": concurrency_plan_wall_s,
             }
             concurrency_rows.append(row)
@@ -4156,6 +4252,7 @@ def main() -> int:
         "search_dispatch_mode": args.search_dispatch_mode,
         "lower_execution_order": args.lower_execution_order,
         "direct_peer_http_urls": args.direct_peer_http_urls if args.search_dispatch_mode == "direct_peer" else None,
+        "direct_peer_local_premerge": args.direct_peer_local_premerge,
         "routed_execution_mode": args.routed_execution_mode,
         "routed_planning_mode": args.routed_planning_mode,
         "placement_simulation": placement_simulation,

@@ -51,6 +51,43 @@ def test_merge_topk_candidates_keeps_best_score_per_id():
     assert merged == [10, 20, 60, 40]
 
 
+def test_peer_local_premerge_preserves_global_topk_with_cross_peer_duplicates():
+    module = load_module()
+
+    shard_results_by_peer = {
+        101: [
+            [(0.99, 10), (0.80, 20)],
+            [(0.97, 30), (0.96, 40)],
+        ],
+        202: [
+            [(0.98, 10), (0.95, 50)],
+            [(0.94, 60), (0.93, 70)],
+        ],
+    }
+
+    baseline = module.merge_topk_candidates(
+        [
+            group
+            for peer_groups in shard_results_by_peer.values()
+            for group in peer_groups
+        ],
+        top_k=4,
+    )
+    premerged = module.peer_local_premerge_candidates(
+        shard_results_by_peer,
+        top_k=4,
+    )
+
+    assert [group for _peer_id, group in premerged] == [
+        [(0.99, 10), (0.97, 30), (0.96, 40), (0.80, 20)],
+        [(0.98, 10), (0.95, 50), (0.94, 60), (0.93, 70)],
+    ]
+    assert module.merge_topk_candidates(
+        [group for _peer_id, group in premerged],
+        top_k=4,
+    ) == baseline
+
+
 def test_placement_for_shard_key_modes_do_not_change_routing_algorithm_inputs():
     module = load_module()
 
@@ -224,6 +261,7 @@ def test_parse_args_supports_end_to_end_concurrency_mode(monkeypatch):
             "direct_peer",
             "--direct-peer-http-urls",
             "101=http://localhost:6843",
+            "--direct-peer-local-premerge",
         ],
     )
 
@@ -232,6 +270,7 @@ def test_parse_args_supports_end_to_end_concurrency_mode(monkeypatch):
     assert args.concurrency_evaluation_mode == "end_to_end"
     assert args.search_dispatch_mode == "direct_peer"
     assert args.direct_peer_http_urls == ["101=http://localhost:6843"]
+    assert args.direct_peer_local_premerge is True
 
 
 def test_parse_args_supports_materialized_routed_planning(monkeypatch):
@@ -328,9 +367,11 @@ def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monke
         direct_peer_urls=None,
         shard_key_to_peer=None,
         lower_execution_order="query_major",
+        direct_peer_local_premerge=False,
     ):
         calls["execute"].append((query_plans, neighbors.tolist()))
         assert lower_execution_order == "query_major"
+        assert direct_peer_local_premerge is False
         return {
             "hits": len(query_plans) * top_k,
             "query_count": len(query_plans),
@@ -777,9 +818,11 @@ def test_compact_materialized_evaluator_uses_compact_plans(monkeypatch):
         direct_peer_urls=None,
         shard_key_to_peer=None,
         lower_execution_order="query_major",
+        direct_peer_local_premerge=False,
     ):
         calls["execute"].append(query_plans)
         assert lower_execution_order == "query_major"
+        assert direct_peer_local_premerge is False
         assert query_plans[0]["searches"][0]["hnsw_entry_points_by_shard"] == {
             "centroid_00": [2],
             "centroid_01": [1004],
@@ -1036,6 +1079,64 @@ def test_direct_peer_execution_splits_searches_by_shard_owner(monkeypatch):
     assert result["hits"] == 2
     assert result["search_batch_calls"] == 2
     assert result["search_request_count"] == 2
+
+
+def test_direct_peer_local_premerge_reduces_peer_candidate_streams(monkeypatch):
+    module = load_module()
+
+    def fake_search_batch(base_url, _collection, searches):
+        rows = []
+        for search in searches:
+            shard_key = search["shard_key"][0]
+            if base_url.endswith("6843") and shard_key == "centroid_00":
+                rows.append([(0.99, 10), (0.80, 20)])
+            elif base_url.endswith("6843") and shard_key == "centroid_01":
+                rows.append([(0.97, 30), (0.96, 40)])
+            elif base_url.endswith("6853") and shard_key == "centroid_02":
+                rows.append([(0.98, 10), (0.95, 50)])
+            else:
+                rows.append([])
+        return rows
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+
+    result = module.execute_query_plans_once(
+        base_url="http://controller:6333",
+        collection="collection",
+        query_plans=[
+            {
+                "searches": [
+                    {
+                        "vector": [0.1, 0.2],
+                        "limit": 4,
+                        "params": {"hnsw_ef": 32},
+                        "with_payload": False,
+                        "with_vector": False,
+                        "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
+                    }
+                ],
+                "visited_shards": 3,
+                "upper_hits": 3,
+                "assigned_ef_sum": 96,
+                "assigned_ef_count": 3,
+            }
+        ],
+        neighbors=[[10, 30, 40, 50]],
+        top_k=4,
+        direct_peer_urls={101: "http://localhost:6843", 202: "http://localhost:6853"},
+        shard_key_to_peer={
+            "centroid_00": 101,
+            "centroid_01": 101,
+            "centroid_02": 202,
+        },
+        lower_execution_order="shard_major",
+        direct_peer_local_premerge=True,
+    )
+
+    assert result["hits"] == 4
+    assert result["candidate_group_count"] == 2
+    assert result["avg_candidate_groups_per_query"] == 2.0
+    assert result["search_request_count"] == 3
 
 
 def test_extract_shard_costs_from_compact_multi_ep_query_plans():
