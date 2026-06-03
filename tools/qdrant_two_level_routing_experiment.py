@@ -247,6 +247,16 @@ def parse_args() -> argparse.Namespace:
         help="Number of bottom workers to use in the method4-aware placement simulation.",
     )
     parser.add_argument(
+        "--physical-execution-trace",
+        action="store_true",
+        help=(
+            "For faithful routed materialized runs, summarize how logical method4 shard "
+            "plans map onto the actual physical Qdrant peers. This estimates the "
+            "controller fan-in reduction available from worker-local pre-merge and "
+            "does not change search behavior."
+        ),
+    )
+    parser.add_argument(
         "--train-limit",
         type=int,
         default=None,
@@ -1712,6 +1722,70 @@ def placement_simulation_summary(
             "round_robin": round_robin,
             "method4_aware": method4_aware,
         },
+    }
+
+
+def physical_execution_summary(
+    query_plans: list[dict[str, Any]],
+    shard_key_to_peer: dict[str, int],
+    top_k: int,
+) -> dict[str, Any]:
+    traces = query_shard_cost_traces(query_plans)
+    logical_counts: list[float] = []
+    physical_counts: list[float] = []
+    logical_candidate_counts: list[float] = []
+    physical_candidate_counts: list[float] = []
+    assigned_ef_sums: list[float] = []
+    max_peer_ef_sums: list[float] = []
+
+    for trace in traces:
+        peer_loads: dict[int, float] = defaultdict(float)
+        for shard_key, cost in trace.items():
+            if shard_key not in shard_key_to_peer:
+                raise ValueError(f"missing physical peer for shard {shard_key}")
+            peer_loads[int(shard_key_to_peer[shard_key])] += float(cost)
+
+        logical_count = float(len(trace))
+        physical_count = float(len(peer_loads))
+        logical_counts.append(logical_count)
+        physical_counts.append(physical_count)
+        logical_candidate_counts.append(logical_count * int(top_k))
+        physical_candidate_counts.append(physical_count * int(top_k))
+        assigned_ef_sums.append(sum(float(cost) for cost in trace.values()))
+        max_peer_ef_sums.append(max(peer_loads.values()) if peer_loads else 0.0)
+
+    query_count = len(traces)
+    logical_candidates = sum(logical_candidate_counts)
+    physical_candidates = sum(physical_candidate_counts)
+    logical_streams = sum(logical_counts)
+    physical_streams = sum(physical_counts)
+
+    return {
+        "query_count": query_count,
+        "top_k": int(top_k),
+        "peer_count": len(set(int(peer) for peer in shard_key_to_peer.values())),
+        "mapped_shard_count": len(shard_key_to_peer),
+        "avg_logical_shards_per_query": sum(logical_counts) / query_count if query_count else 0.0,
+        "p95_logical_shards_per_query": percentile(logical_counts, 95),
+        "avg_physical_peers_per_query": sum(physical_counts) / query_count if query_count else 0.0,
+        "p95_physical_peers_per_query": percentile(physical_counts, 95),
+        "avg_controller_merge_stream_reduction_pct": (
+            (logical_streams - physical_streams) / logical_streams * 100.0
+            if logical_streams > 0
+            else 0.0
+        ),
+        "avg_controller_candidate_reduction_pct": (
+            (logical_candidates - physical_candidates) / logical_candidates * 100.0
+            if logical_candidates > 0
+            else 0.0
+        ),
+        "avg_assigned_ef_sum_per_query": sum(assigned_ef_sums) / query_count if query_count else 0.0,
+        "p95_assigned_ef_sum_per_query": percentile(assigned_ef_sums, 95),
+        "avg_max_peer_assigned_ef_per_query": (
+            sum(max_peer_ef_sums) / query_count if query_count else 0.0
+        ),
+        "p95_max_peer_assigned_ef_per_query": percentile(max_peer_ef_sums, 95),
+        "placement_peer_loads": evaluate_query_peer_loads(traces, shard_key_to_peer),
     }
 
 
@@ -3991,19 +4065,20 @@ def main() -> int:
             concurrency_rows.append(row)
             print(json.dumps(row, ensure_ascii=False), flush=True)
 
+    needs_architecture_query_plans = args.placement_simulation or args.physical_execution_trace
     placement_simulation: dict[str, Any] | None = None
-    if args.placement_simulation:
+    physical_execution_trace: dict[str, Any] | None = None
+    architecture_query_plans: list[dict[str, Any]] | None = None
+    if needs_architecture_query_plans:
         if args.routing_mode != "faithful_original_rest":
-            raise ValueError("--placement-simulation is only supported for faithful_original_rest")
+            raise ValueError("method4 architecture traces are only supported for faithful_original_rest")
         if args.routed_planning_mode != "materialized":
-            raise ValueError("--placement-simulation requires --routed-planning-mode materialized")
-        if args.placement_simulation_peer_count <= 0:
-            raise ValueError("--placement-simulation-peer-count must be positive")
+            raise ValueError("method4 architecture traces require --routed-planning-mode materialized")
         if point_to_shards is None:
-            raise ValueError("--placement-simulation requires point_to_shards routing metadata")
+            raise ValueError("method4 architecture traces require point_to_shards routing metadata")
         assert upper_index is not None
         upper_labels = compute_upper_labels(upper_index, eval_queries, int(best["upper_k"]))
-        placement_query_plans = build_routed_search_plans(
+        architecture_query_plans = build_routed_search_plans(
             eval_queries,
             upper_labels,
             point_to_shards,
@@ -4019,9 +4094,28 @@ def main() -> int:
             routed_result_limit_multiplier=args.routed_result_limit_multiplier,
             source_id_dedup_block_size=source_id_dedup_block_size,
         )
+
+    if args.placement_simulation:
+        if args.placement_simulation_peer_count <= 0:
+            raise ValueError("--placement-simulation-peer-count must be positive")
+        assert architecture_query_plans is not None
         placement_simulation = placement_simulation_summary(
-            placement_query_plans,
+            architecture_query_plans,
             args.placement_simulation_peer_count,
+        )
+
+    if args.physical_execution_trace:
+        if args.reuse_existing:
+            actual_shard_key_to_peer = collection_shard_key_to_peer(args.base_url, args.collection)
+        else:
+            actual_shard_key_to_peer = {}
+        if not actual_shard_key_to_peer:
+            raise ValueError("--physical-execution-trace requires a deployed clustered collection")
+        assert architecture_query_plans is not None
+        physical_execution_trace = physical_execution_summary(
+            architecture_query_plans,
+            actual_shard_key_to_peer,
+            args.top_k,
         )
 
     write_csv(output_dir / "builds.csv", [build_row])
@@ -4033,6 +4127,11 @@ def main() -> int:
     if placement_simulation is not None:
         (output_dir / "placement_simulation.json").write_text(
             json.dumps(placement_simulation, indent=2),
+            encoding="utf-8",
+        )
+    if physical_execution_trace is not None:
+        (output_dir / "physical_execution_trace.json").write_text(
+            json.dumps(physical_execution_trace, indent=2),
             encoding="utf-8",
         )
 
@@ -4060,6 +4159,7 @@ def main() -> int:
         "routed_execution_mode": args.routed_execution_mode,
         "routed_planning_mode": args.routed_planning_mode,
         "placement_simulation": placement_simulation,
+        "physical_execution_trace": physical_execution_trace,
         "compact_ef_mode": args.compact_ef_mode if args.routed_execution_mode == "compact_query_ef" else None,
         "routed_result_limit_mode": args.routed_result_limit_mode,
         "routed_result_limit_multiplier": (

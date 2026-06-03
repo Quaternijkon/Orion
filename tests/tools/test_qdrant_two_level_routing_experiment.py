@@ -1144,6 +1144,63 @@ def test_placement_simulation_summary_reports_improvement():
     assert summary["improvement_pct"]["avg_query_max_peer_load"] > 0
 
 
+def test_physical_execution_summary_estimates_worker_local_premerge_reduction():
+    module = load_module()
+    plans = [
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
+                    "hnsw_ef_by_shard": {
+                        "centroid_00": 100,
+                        "centroid_01": 80,
+                        "centroid_02": 60,
+                    },
+                }
+            ],
+            "visited_shards": 3,
+            "upper_hits": 6,
+            "assigned_ef_sum": 240,
+            "assigned_ef_count": 3,
+        },
+        {
+            "searches": [
+                {
+                    "shard_key": ["centroid_01", "centroid_03"],
+                    "hnsw_ef_by_shard": {
+                        "centroid_01": 70,
+                        "centroid_03": 50,
+                    },
+                }
+            ],
+            "visited_shards": 2,
+            "upper_hits": 4,
+            "assigned_ef_sum": 120,
+            "assigned_ef_count": 2,
+        },
+    ]
+
+    summary = module.physical_execution_summary(
+        plans,
+        shard_key_to_peer={
+            "centroid_00": 101,
+            "centroid_01": 101,
+            "centroid_02": 202,
+            "centroid_03": 202,
+        },
+        top_k=10,
+    )
+
+    assert summary["query_count"] == 2
+    assert summary["avg_logical_shards_per_query"] == 2.5
+    assert summary["avg_physical_peers_per_query"] == 2.0
+    assert summary["avg_controller_merge_stream_reduction_pct"] == 20.0
+    assert summary["avg_controller_candidate_reduction_pct"] == 20.0
+    assert summary["avg_assigned_ef_sum_per_query"] == 180.0
+    assert summary["avg_max_peer_assigned_ef_per_query"] == 125.0
+    assert summary["p95_max_peer_assigned_ef_per_query"] == 174.5
+
+
 def test_routed_end_to_end_concurrent_evaluator_includes_upper_routing(monkeypatch):
     module = load_module()
     calls = []
