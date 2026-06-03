@@ -151,6 +151,26 @@ fn merge_shard_major_candidates(
         .collect()
 }
 
+fn premerge_shard_major_candidates_by_peer(
+    peer_candidate_groups: Vec<Vec<Vec<ScoredPoint>>>,
+    limit: usize,
+    offset: usize,
+    source_id_dedup_block_size: Option<u64>,
+) -> Vec<Vec<ScoredPoint>> {
+    let peer_limit = limit.saturating_add(offset);
+    peer_candidate_groups
+        .into_iter()
+        .map(|candidate_groups| {
+            merge_shard_major_candidates(
+                candidate_groups,
+                peer_limit,
+                0,
+                source_id_dedup_block_size,
+            )
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn do_search_batch_points_shard_major(
     toc: &TableOfContent,
@@ -655,6 +675,47 @@ mod tests {
                 .map(|point| point.id)
                 .collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(3), ExtendedPointId::NumId(1)]
+        );
+    }
+
+    #[test]
+    fn shard_major_peer_local_premerge_preserves_global_merge_with_offset() {
+        let peer_a = vec![
+            vec![scored(10, 0.99), scored(20, 0.80)],
+            vec![scored(30, 0.97), scored(40, 0.96)],
+        ];
+        let peer_b = vec![
+            vec![scored(10, 0.98), scored(50, 0.95)],
+            vec![scored(60, 0.94), scored(70, 0.93)],
+        ];
+
+        let baseline = merge_shard_major_candidates(
+            peer_a
+                .clone()
+                .into_iter()
+                .chain(peer_b.clone())
+                .collect(),
+            3,
+            1,
+            None,
+        );
+        let peer_partials = premerge_shard_major_candidates_by_peer(
+            vec![peer_a, peer_b],
+            3,
+            1,
+            None,
+        );
+        let two_stage = merge_shard_major_candidates(peer_partials, 3, 1, None);
+
+        assert_eq!(
+            two_stage
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            baseline
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>()
         );
     }
 }
