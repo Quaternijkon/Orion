@@ -48,7 +48,6 @@ impl PySearchRequest {
 
             hnsw_ef_by_shard: None,
 
-
             source_id_dedup_block_size: None,
             with_vector: with_vector.map(WithVector::from),
             with_payload: with_payload.map(WithPayloadInterface::from),
