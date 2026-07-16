@@ -1,0 +1,9 @@
+batch_size	对比	状态	Recall差	QPS变化(%)	P50变化(%)	P95变化(%)	P99变化(%)	search requests降低(%)	candidate groups降低(%)	returned candidates降低(%)
+50	compact_vs_client_expanded_negative_control	ok	0.00000	161.50	-61.13	-60.73	-67.22	95.76	95.76	95.76
+50	compact_vs_grouped_materialized	ok	0.00087	66.18	-38.91	-40.83	-47.32	89.78	89.78	89.78
+100	compact_vs_client_expanded_negative_control	ok	0.00000	159.93	-60.56	-64.21	-65.58	95.76	95.76	95.76
+100	compact_vs_grouped_materialized	ok	0.00087	76.61	-41.84	-48.27	-52.69	89.78	89.78	89.78
+200	compact_vs_client_expanded_negative_control	ok	0.00000	185.02	-64.11	-66.68	-67.61	95.76	95.76	95.76
+200	compact_vs_grouped_materialized	ok	0.00087	95.06	-47.21	-52.63	-55.02	89.78	89.78	89.78
+400	compact_vs_client_expanded_negative_control	comparison_unavailable_due_to_error	NA	NA	NA	NA	NA	NA	NA	NA
+400	compact_vs_grouped_materialized	ok	0.00087	170.27	-62.23	-68.29	-68.96	89.78	89.78	89.78

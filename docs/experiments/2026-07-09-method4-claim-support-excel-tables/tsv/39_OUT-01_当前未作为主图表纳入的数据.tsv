@@ -1,0 +1,2 @@
+Claim	数据组	支撑级别	原始使用建议	本文档处理
+CrossCut	reduced_sift100k_l2_generalization	partial_reduced_l2	Use only as reduced L2 external-validity and key-ablation support.	非 GloVe 当前范围；只可作为历史 external-validity supplement

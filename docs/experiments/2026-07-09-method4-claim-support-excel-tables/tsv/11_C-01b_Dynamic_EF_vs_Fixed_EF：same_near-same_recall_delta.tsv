@@ -1,0 +1,4 @@
+对比	Recall差(Dyn-Fix)	QPS变化(%)	visited变化(%)	EF-sum变化(%)
+fixed_upper_k_120_isolated_095	-0.00083	27.20	0.13	-38.37
+frontier_robust_095	-0.00047	28.90	0.01	-34.92
+frontier_robust_097	0.00170	30.92	26.14	-40.80

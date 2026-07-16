@@ -1,0 +1,7 @@
+worker_count	placement	baseline	avg max peer load改善(%)	P95 max peer load改善(%)	max peer load改善(%)	peer load CV改善(%)	cross-worker pair delta pp
+2	method4_aware	round_robin	6.45	6.21	2.31	98.39	0.77
+2	size_balanced	round_robin	3.52	3.59	0.58	78.36	0.58
+3	method4_aware	round_robin	3.47	4.87	2.97	75.03	0.71
+3	size_balanced	round_robin	-5.23	-4.87	0.37	-8.13	-0.20
+4	method4_aware	round_robin	9.46	8.00	1.65	88.46	0.78
+4	size_balanced	round_robin	3.77	5.00	3.72	71.98	0.41

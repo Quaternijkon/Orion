@@ -4,6 +4,9 @@
 /.devcontainer
 /storage
 /snapshots
+/qdrant_storage
+/qdrant_storage_runs
+**/docker_storage
 /consensus_test_logs
 /tests/consensus_test_logs
 /config/local

@@ -1,5 +1,11 @@
 version: "3.7"
 
+x-qdrant-logging: &qdrant_logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
 services:
   qdrant_node_1:
     image: qdrant/qdrant:latest
@@ -11,6 +17,9 @@ services:
       - "6333:6333"
       - "6334:6334"
     command: ./qdrant --uri 'http://qdrant_node_1:6335'
+    volumes:
+      - ${QDRANT_NODE_1_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/manual-cluster/node_1}:/qdrant/storage
+    logging: *qdrant_logging
     healthcheck:
       test: bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1
       interval: 5s
@@ -29,6 +38,9 @@ services:
       - "6433:6333"
       - "6434:6334"
     command: ./qdrant --bootstrap 'http://qdrant_node_1:6335' --uri 'http://qdrant_node_2:6335'
+    volumes:
+      - ${QDRANT_NODE_2_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/manual-cluster/node_2}:/qdrant/storage
+    logging: *qdrant_logging
 
   qdrant_node_3:
     image: qdrant/qdrant:latest
@@ -42,4 +54,6 @@ services:
       - "6533:6333"
       - "6534:6334"
     command: ./qdrant --bootstrap 'http://qdrant_node_1:6335' --uri 'http://qdrant_node_3:6335'
-
+    volumes:
+      - ${QDRANT_NODE_3_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/manual-cluster/node_3}:/qdrant/storage
+    logging: *qdrant_logging

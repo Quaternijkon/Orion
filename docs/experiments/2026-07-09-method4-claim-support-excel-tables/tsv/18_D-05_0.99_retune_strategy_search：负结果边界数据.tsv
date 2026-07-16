@@ -1,0 +1,17 @@
+来源表	对比	Method4配置	Naive配置	Method4 Recall	Naive Recall	QPS变化(%)	visited变化(%)	EF-sum变化(%)	P95变化(%)	P99变化(%)
+claim_d_099_retune_deltas.csv	m4_480_70_16 vs naive_ef200	m4_480_70_16	naive_ef200	0.98667	0.99017	13.34	-21.33	21.01	-18.53	-22.36
+claim_d_099_retune_deltas.csv	m4_520_60_16 vs naive_ef200	m4_520_60_16	naive_ef200	0.98730	0.99017	10.15	-19.90	25.35	-16.02	-20.73
+claim_d_099_strategy_search_deltas.csv	m4_560_40_16 vs naive_ef200	m4_560_40_16	naive_ef200	0.98747	0.99017	6.18	-18.27	25.53	-11.36	-6.39
+claim_d_099_strategy_search_deltas.csv	m4_560_40_16 vs naive_ef240	m4_560_40_16	naive_ef240	0.98747	0.99363	10.07	-18.27	4.61	-9.32	-5.29
+claim_d_099_strategy_search_deltas.csv	m4_560_60_14 vs naive_ef200	m4_560_60_14	naive_ef200	0.98670	0.99017	9.25	-18.27	20.06	-13.38	-13.84
+claim_d_099_strategy_search_deltas.csv	m4_560_60_14 vs naive_ef240	m4_560_60_14	naive_ef240	0.98670	0.99363	13.26	-18.27	0.05	-11.38	-12.83
+claim_d_099_strategy_search_deltas.csv	m4_480_80_16 vs naive_ef200	m4_480_80_16	naive_ef200	0.98710	0.99017	14.70	-20.94	25.12	-19.08	-19.34
+claim_d_099_strategy_search_deltas.csv	m4_480_80_16 vs naive_ef240	m4_480_80_16	naive_ef240	0.98710	0.99363	21.87	-20.94	4.27	-22.49	-25.55
+claim_d_099_strategy_search_deltas.csv	m4_520_60_16 vs naive_ef200	m4_520_60_16	naive_ef200	0.98740	0.99017	12.59	-19.57	25.47	-17.72	-18.31
+claim_d_099_strategy_search_deltas.csv	m4_520_60_16 vs naive_ef240	m4_520_60_16	naive_ef240	0.98740	0.99363	19.63	-19.57	4.56	-21.19	-24.60
+claim_d_099_broader_strategy_formal_deltas.csv	m4_u720_b60_f12_vs_naive_ef200	m4_u720_b60_f12	naive_ef200	0.98800	0.99017	3.26	-13.85	31.41	-10.48	-11.89
+claim_d_099_broader_strategy_formal_deltas.csv	m4_u720_b60_f12_vs_naive_ef240	m4_u720_b60_f12	naive_ef240	0.98800	0.99363	11.12	-13.85	9.51	-15.27	-16.39
+claim_d_099_broader_strategy_formal_deltas.csv	m4_u720_b40_f14_vs_naive_ef200	m4_u720_b40_f14	naive_ef200	0.98870	0.99017	-0.64	-13.82	40.39	-5.50	-7.35
+claim_d_099_broader_strategy_formal_deltas.csv	m4_u720_b40_f14_vs_naive_ef240	m4_u720_b40_f14	naive_ef240	0.98870	0.99363	8.24	-13.82	17.00	-13.50	-15.15
+claim_d_099_alternate_width_formal_deltas.csv	m4_u960_b20_f10_vs_naive_ef200	m4_u960_b20_f10	naive_ef200	0.98760	0.99017	3.20	-9.66	26.66	-10.16	-11.89
+claim_d_099_alternate_width_formal_deltas.csv	m4_u960_b20_f10_vs_naive_ef240	m4_u960_b20_f10	naive_ef240	0.98760	0.99363	12.28	-9.66	5.55	-16.84	-19.10

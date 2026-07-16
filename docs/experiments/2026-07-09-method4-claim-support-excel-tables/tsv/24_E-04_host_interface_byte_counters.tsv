@@ -1,0 +1,11 @@
+comparison	role	compact bytes/query	baseline bytes/query	bytes变化(%)	compact QPS	baseline QPS	QPS变化(%)	compact search req/query	baseline search req/query
+compact_current_vs_grouped_by_ef_materialized	docker_bridge	8604.09	54831.20	-84.31	438.41	219.82	99.44	1.00	9.77
+compact_current_vs_grouped_by_ef_materialized	docker_veth	57651.56	161046.08	-64.20	438.41	219.82	99.44	1.00	9.77
+compact_current_vs_grouped_by_ef_materialized	loopback	17252.27	109669.39	-84.27	438.41	219.82	99.44	1.00	9.77
+compact_current_vs_grouped_by_ef_materialized	physical_nic	336.07	362.69	-7.34	438.41	219.82	99.44	1.00	9.77
+compact_current_vs_grouped_by_ef_materialized	virtual_other	0.01	0.03	-78.95	438.41	219.82	99.44	1.00	9.77
+compact_current_vs_client_shard_major_expanded	docker_bridge	8604.09	134186.78	-93.59	438.41	154.86	183.09	1.00	23.61
+compact_current_vs_client_shard_major_expanded	docker_veth	57651.56	234646.22	-75.43	438.41	154.86	183.09	1.00	23.61
+compact_current_vs_client_shard_major_expanded	loopback	17252.27	269724.85	-93.60	438.41	154.86	183.09	1.00	23.61
+compact_current_vs_client_shard_major_expanded	physical_nic	336.07	540.87	-37.86	438.41	154.86	183.09	1.00	23.61
+compact_current_vs_client_shard_major_expanded	virtual_other	0.01	0.01	-33.33	438.41	154.86	183.09	1.00	23.61

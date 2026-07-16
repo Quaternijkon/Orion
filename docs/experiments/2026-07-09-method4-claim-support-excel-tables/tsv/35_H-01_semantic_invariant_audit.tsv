@@ -1,0 +1,10 @@
+invariant	status	evidence
+upper routing unchanged	pass	100-query compact_multi_ep semantic audit preserves 160 upper labels/query and emits one compact search/query
+point_to_shards unchanged	pass	100-query audit reconstructs upper point shard membership from qdrant_controller_idea_method4map_full_20260601 and verifies every routed upper label has shard membership
+multi-assignment preserved	pass	100-query audit verifies routed EP copy counts match point_to_shards membership; 99/100 queries include multi-assignment
+per-shard entry points preserved	pass	100-query audit verifies compact hnsw_entry_points_by_shard keys and counts match expected routed logical shards
+dynamic EF formula preserved	pass	100-query audit verifies hnsw_ef_by_shard equals base_ef + factor * routed_ep_count for every routed shard
+lower search remains per logical shard	pass	100-query audit verifies compact shard_key, per-shard entry-point map, and per-shard EF map address identical logical shards
+no adaptive shard pruning	pass	100-query audit verifies routed shard set equals the upper-label membership-derived shard set
+source-id dedup preserved	pass	100-query audit verifies source_id_dedup_block_size=1183515 and encoded per-shard entry point IDs belong to their shard blocks
+final global merge preserved	pass	100-query audit verifies compact search limit remains top_k=10 so final global merge semantics are preserved

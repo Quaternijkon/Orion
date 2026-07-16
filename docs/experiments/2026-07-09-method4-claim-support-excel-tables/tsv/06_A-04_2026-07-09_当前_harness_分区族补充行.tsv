@@ -1,0 +1,4 @@
+分区族	Method4 Recall	Naive Recall	Method4 QPS	Naive QPS	QPS变化(%)	Method4 visited	Naive visited	visited变化(%)	Method4 P95 ms	Naive P95 ms	P95变化(%)	Method4 P99 ms	Naive P99 ms	P99变化(%)	临时索引清理状态
+random_balanced_46	0.95867	0.95290	320.74	230.29	39.27	44.16	46.00	-4.01	645.63	932.65	-30.77	646.57	957.46	-32.47	collection_deleted_after_latency
+kmeans_topology_46	0.95037	0.95290	420.19	213.31	96.98	18.63	46.00	-59.49	520.72	1158.09	-55.04	531.97	1262.95	-57.88	collection_deleted_after_latency
+kmeans_topology_load_recalibrated_46	0.95023	0.95290	444.01	236.77	87.53	18.62	46.00	-59.52	470.23	893.21	-47.35	476.54	916.01	-47.98	collection_deleted_after_latency

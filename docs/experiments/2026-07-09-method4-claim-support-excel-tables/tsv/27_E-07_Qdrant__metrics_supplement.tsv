@@ -1,0 +1,3 @@
+comparison	Recall compact	Recall baseline	QPS compact	QPS baseline	QPS变化(%)	P95变化(%)	P99变化(%)	REST duration变化(%)	minor faults变化(%)
+compact_current_vs_grouped_by_ef_materialized	0.95527	0.95427	386.62	201.00	92.34	-52.15	-52.29	-32.49	-92.13
+compact_current_vs_client_shard_major_expanded	0.95527	0.95527	386.62	138.47	179.21	-66.33	-66.21	-26.18	-93.50

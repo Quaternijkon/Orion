@@ -1,0 +1,4 @@
+策略	配置	latency batch	Recall@10	QPS	visited	EF-sum	P95 ms	P99 ms	index expansion
+single_assignment	single_095	200	0.97317	279.23	30.18	8421.04	736.45	739.58	1.000
+orion_default_top_ties	default_095	200	0.95260	475.27	21.35	3088.52	432.73	435.41	1.186
+orion_w2c2_vote_delta2_cap2	w2c2_095	200	0.94913	557.80	21.24	2127.40	375.01	376.76	1.499

@@ -1,0 +1,19 @@
+分区族	upper_k	平均routed shards	P95 routed shards	oracle GT miss@10	GT shard entropy	topology edge cut	index expansion
+balanced_kmeans_only_46	80	16.30	28.00	0.01457	0.942	0.514	1.184
+balanced_kmeans_only_46	120	20.05	32.00	0.00843	0.942	0.514	1.184
+balanced_kmeans_only_46	160	22.93	34.00	0.00537	0.942	0.514	1.184
+full_method4_fission_31_to_46	80	17.03	29.00	0.01603	0.934	0.437	1.188
+full_method4_fission_31_to_46	120	21.05	33.00	0.00947	0.934	0.437	1.188
+full_method4_fission_31_to_46	160	24.10	36.00	0.00633	0.934	0.437	1.188
+kmeans_topology_46	80	13.95	24.00	0.01227	0.811	0.351	1.147
+kmeans_topology_46	120	17.27	28.00	0.00770	0.811	0.351	1.147
+kmeans_topology_46	160	19.93	31.00	0.00553	0.811	0.351	1.147
+kmeans_topology_load_recalibrated_46	80	13.95	24.00	0.01227	0.811	0.351	1.147
+kmeans_topology_load_recalibrated_46	120	17.27	28.00	0.00770	0.811	0.351	1.147
+kmeans_topology_load_recalibrated_46	160	19.93	31.00	0.00553	0.811	0.351	1.147
+naive_all_shards_46	80	46.00	46.00	0.00000	2.173	NA	1.000
+naive_all_shards_46	120	46.00	46.00	0.00000	2.173	NA	1.000
+naive_all_shards_46	160	46.00	46.00	0.00000	2.173	NA	1.000
+random_balanced_46	80	37.81	42.00	0.06343	2.004	0.881	1.199
+random_balanced_46	120	42.34	45.00	0.02500	2.004	0.881	1.199
+random_balanced_46	160	44.31	46.00	0.00950	2.004	0.881	1.199

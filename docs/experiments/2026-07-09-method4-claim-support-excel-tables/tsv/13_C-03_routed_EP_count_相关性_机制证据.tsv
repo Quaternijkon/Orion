@@ -1,0 +1,4 @@
+配置	upper_k	visited shards	GT hit shards上EP数	非GT-hit shards上EP数	EP hit-nonhit差	Dynamic GT budget share	Fixed GT budget share	visited GT copy coverage
+fixed_width_claim_c_095	120	21.11	20.34	3.22	17.12	0.3493	0.1753	0.9854
+frontier_095_dynamic	80	17.10	14.72	2.55	12.17	0.4324	0.2105	0.9752
+frontier_097_dynamic	200	26.59	30.78	4.54	26.25	0.4264	0.1422	0.9932

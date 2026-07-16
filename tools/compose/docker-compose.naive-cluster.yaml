@@ -1,3 +1,9 @@
+x-qdrant-logging: &qdrant_logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
 services:
   qdrant_naive_1:
     image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
@@ -15,7 +21,8 @@ services:
       - "${QDRANT_NODE_1_GRPC_PORT:-6634}:6334"
     command: ["./qdrant", "--uri", "http://qdrant_naive_1:6335"]
     volumes:
-      - qdrant_naive_1_storage:/qdrant/storage
+      - ${QDRANT_NODE_1_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/naive-cluster/node_1}:/qdrant/storage
+    logging: *qdrant_logging
     healthcheck:
       test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 5s
@@ -46,7 +53,8 @@ services:
         "sleep 5 && ./qdrant --bootstrap 'http://qdrant_naive_1:6335' --uri 'http://qdrant_naive_2:6335'",
       ]
     volumes:
-      - qdrant_naive_2_storage:/qdrant/storage
+      - ${QDRANT_NODE_2_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/naive-cluster/node_2}:/qdrant/storage
+    logging: *qdrant_logging
     healthcheck:
       test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 5s
@@ -77,14 +85,10 @@ services:
         "sleep 8 && ./qdrant --bootstrap 'http://qdrant_naive_1:6335' --uri 'http://qdrant_naive_3:6335'",
       ]
     volumes:
-      - qdrant_naive_3_storage:/qdrant/storage
+      - ${QDRANT_NODE_3_STORAGE_DIR:-/home/taig/dry/qdrant/qdrant_storage/naive-cluster/node_3}:/qdrant/storage
+    logging: *qdrant_logging
     healthcheck:
       test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
-
-volumes:
-  qdrant_naive_1_storage:
-  qdrant_naive_2_storage:
-  qdrant_naive_3_storage:

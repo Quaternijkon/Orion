@@ -1,0 +1,7 @@
+敏感性类型	方法	配置	baseline	comparison	Recall变化	QPS变化(%)	visited变化(%)	EF-sum变化(%)	P95变化(%)	P99变化(%)
+query_order	Method4	m4_400_160_20	original query order	shuffled seed 20260713	-0.00003	-5.09	0.01	0.01	5.16	4.68
+query_order	Naive	naive_ef200	original query order	shuffled seed 20260713	0.00000	-8.29	0.00	0.00	14.88	13.93
+query_order	Method4	m4_400_160_20	original query order	shuffled seed 20260718	0.00017	-4.10	-0.06	-0.02	4.40	2.11
+query_order	Naive	naive_ef200	original query order	shuffled seed 20260718	0.00000	-7.11	0.00	0.00	13.99	16.23
+warmup	Method4	m4_400_160_20	original query order	cold no-warmup matched window	0.00010	-5.95	0.04	0.02	7.08	4.96
+warmup	Naive	naive_ef200	original query order	cold no-warmup matched window	0.00000	-8.69	0.00	0.00	16.59	16.17

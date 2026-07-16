@@ -1,0 +1,13 @@
+variant	batch_size	search requests	search req/query	request payload bytes/query	request payload bytes/batch mean	request payload降低vs client-expanded(%)
+client_shard_major_expanded	50	70832	23.61	104064.30	5203215.25	0.00
+compact_current	50	3000	1.00	7040.93	352046.47	93.23
+grouped_by_ef_materialized	50	29294	9.76	42375.29	2118764.67	59.28
+client_shard_major_expanded	100	70832	23.61	104064.16	10406416.50	0.00
+compact_current	100	3000	1.00	7040.79	704078.93	93.23
+grouped_by_ef_materialized	100	29294	9.76	42375.15	4237515.33	59.28
+client_shard_major_expanded	200	70832	23.61	104064.10	20812819.00	0.00
+compact_current	200	3000	1.00	7040.72	1408143.87	93.23
+grouped_by_ef_materialized	200	29294	9.76	42375.08	8475016.67	59.28
+client_shard_major_expanded	400	70832	23.61	104064.06	39024023.38	0.00
+compact_current	400	3000	1.00	7040.69	2640257.50	93.23
+grouped_by_ef_materialized	400	29294	9.76	42375.05	15890644.00	59.28

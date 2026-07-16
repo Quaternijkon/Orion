@@ -1,0 +1,2 @@
+run label	train_limit	logical points	assigned points	indexed vectors	active shards	eval queries	Recall@10	QPS	wall seconds	max RSS MiB	exit status
+claim_e_build_smoke_20260707_085303	1000	1000	1381	1376	7	20	0.00000	711.97	37.82	64.203	0

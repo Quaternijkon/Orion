@@ -1,0 +1,3 @@
+variant	physical interface	query_count	packet_count	frame bytes	tcp payload bytes	tcpdump dropped	capture scope
+all_claim_e_execution_modes	ens111f0np0	27000	0	0	0	0	physical_nic_packet_capture
+all_claim_e_execution_modes	ens6f0np0	27000	0	0	0	0	physical_nic_packet_capture

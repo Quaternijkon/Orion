@@ -1,0 +1,3 @@
+method	baseline	batch_size	frame bytes/query(method)	frame bytes/query(base)	frame bytes变化(%)	TCP payload/query(method)	TCP payload变化(%)	packets/query变化(%)	QPS变化(%)	P95变化(%)	P99变化(%)
+compact_current	grouped_by_ef_materialized	200	51579.46	129598.55	-60.20	51201.33	-56.68	-96.69	104.06	-57.61	-57.84
+compact_current	client_shard_major_expanded	200	51579.46	208606.95	-75.27	51201.33	-74.83	-92.69	181.43	-66.81	-67.09

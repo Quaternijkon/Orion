@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow-red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#df1010"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8b238c"/>
+    </marker>
+    <style>
+      .text { font-family: "Noto Sans CJK SC"; fill: #d7edf3; }
+      .muted { fill: #77aab7; }
+      .outline { fill: none; stroke: #06384a; stroke-width: 5; }
+      .distance { stroke: #314550; stroke-width: 4; stroke-dasharray: 10 10; }
+      .red { stroke: #df1010; stroke-width: 8; fill: none; marker-end: url(#arrow-red); }
+      .purple { stroke: #8b238c; stroke-width: 6; fill: none; marker-end: url(#arrow-purple); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#000000"/>
+  <rect x="8" y="8" width="1584" height="884" rx="45" class="outline"/>
+  <text x="70" y="95" class="text" font-size="48" font-weight="700">KMeans 多分配：按质心距离带复制</text>
+  <text x="70" y="145" class="text muted" font-size="25">满足 d(point, centroid) ≤ α · d_min 的质心对应 shard 接收副本</text>
+
+  <!-- Centroid regions -->
+  <circle cx="290" cy="345" r="175" class="outline"/>
+  <circle cx="650" cy="335" r="190" class="outline"/>
+  <circle cx="430" cy="675" r="175" class="outline"/>
+  <text x="182" y="205" class="text muted" font-size="24">质心区域 A</text>
+  <text x="674" y="193" class="text muted" font-size="24">质心区域 B</text>
+  <text x="320" y="850" class="text muted" font-size="24">质心区域 C</text>
+
+  <!-- Centroids -->
+  <circle cx="280" cy="340" r="13" fill="#0f7395" stroke="#06384a" stroke-width="5"/>
+  <circle cx="655" cy="330" r="13" fill="#0f7395" stroke="#06384a" stroke-width="5"/>
+  <circle cx="430" cy="682" r="13" fill="#0f7395" stroke="#06384a" stroke-width="5"/>
+  <text x="210" y="380" class="text muted" font-size="21">centroid A</text>
+  <text x="675" y="365" class="text muted" font-size="21">centroid B</text>
+  <text x="448" y="720" class="text muted" font-size="21">centroid C</text>
+
+  <!-- Target point and distances -->
+  <line x1="486" y1="472" x2="280" y2="340" class="distance"/>
+  <line x1="486" y1="472" x2="655" y2="330" class="distance"/>
+  <line x1="486" y1="472" x2="430" y2="682" class="distance"/>
+  <circle cx="486" cy="472" r="184" fill="none" stroke="#8b238c" stroke-width="5" stroke-dasharray="13 10"/>
+  <circle cx="486" cy="472" r="15" fill="#18a765" stroke="#06384a" stroke-width="5"/>
+  <text x="508" y="463" class="text" font-size="25" font-weight="700">数据点 x</text>
+  <text x="522" y="505" class="text" font-size="22">最近距离 d_min</text>
+  <path d="M570 292 Q620 250 675 278" class="purple"/>
+  <text x="548" y="235" class="text" font-size="24" font-weight="700">距离阈值 α · d_min</text>
+
+  <!-- Divider -->
+  <line x1="850" y1="170" x2="850" y2="820" stroke="#06384a" stroke-width="4" stroke-dasharray="12 12"/>
+  <text x="930" y="215" class="text" font-size="30" font-weight="700">分配结果</text>
+  <text x="930" y="255" class="text muted" font-size="22">A、B 在距离带内；C 超出阈值</text>
+
+  <!-- Shard cylinders -->
+  <g>
+    <path d="M940 405 L940 695 Q940 720 1040 720 Q1140 720 1140 695 L1140 405 Z" fill="#cfecc8" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1040" cy="405" rx="100" ry="22" fill="#e6f8df" stroke="#06384a" stroke-width="5"/>
+    <text x="988" y="575" class="text" fill="#06384a" font-size="32" font-weight="700" style="fill:#06384a">Shard A</text>
+    <text x="978" y="620" class="text" fill="#174c3c" font-size="22" style="fill:#174c3c">接收 copy</text>
+  </g>
+  <g>
+    <path d="M1190 405 L1190 695 Q1190 720 1290 720 Q1390 720 1390 695 L1390 405 Z" fill="#b9dfef" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1290" cy="405" rx="100" ry="22" fill="#dceff7" stroke="#06384a" stroke-width="5"/>
+    <text x="1238" y="575" class="text" font-size="32" font-weight="700" style="fill:#06384a">Shard B</text>
+    <text x="1228" y="620" class="text" font-size="22" style="fill:#174c3c">接收 copy</text>
+  </g>
+  <g opacity="0.66">
+    <path d="M1065 270 L1065 355 Q1065 375 1160 375 Q1255 375 1255 355 L1255 270 Z" fill="#b9dfef" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1160" cy="270" rx="95" ry="20" fill="#dceff7" stroke="#06384a" stroke-width="5"/>
+    <text x="1110" y="330" class="text" font-size="27" font-weight="700" style="fill:#06384a">Shard C</text>
+  </g>
+
+  <!-- Assignment arrows -->
+  <path d="M505 480 C690 500 780 430 945 430" class="red"/>
+  <path d="M505 488 C730 600 930 520 1195 430" class="red"/>
+  <text x="716" y="442" class="text" font-size="24" font-weight="700" fill="#df1010" style="fill:#df1010">复制</text>
+  <text x="890" y="585" class="text" font-size="24" font-weight="700" fill="#df1010" style="fill:#df1010">复制</text>
+  <path d="M763 350 L824 350" stroke="#5b6770" stroke-width="5"/>
+  <text x="735" y="326" class="text muted" font-size="21">C 不复制</text>
+</svg>

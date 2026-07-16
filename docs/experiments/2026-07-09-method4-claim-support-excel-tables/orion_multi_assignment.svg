@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow-red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#df1010"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8b238c"/>
+    </marker>
+    <style>
+      .text { font-family: "Noto Sans CJK SC"; fill: #d7edf3; }
+      .muted { fill: #77aab7; }
+      .outline { fill: none; stroke: #06384a; stroke-width: 5; }
+      .link { stroke: #263b45; stroke-width: 4; stroke-dasharray: 9 9; }
+      .red { stroke: #df1010; stroke-width: 8; fill: none; marker-end: url(#arrow-red); }
+      .purple { stroke: #8b238c; stroke-width: 6; fill: none; marker-end: url(#arrow-purple); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#000000"/>
+  <rect x="8" y="8" width="1584" height="884" rx="45" class="outline"/>
+  <text x="70" y="95" class="text" font-size="48" font-weight="700">Orion 多分配：按 L1 邻居的 shard 投票复制</text>
+  <text x="70" y="145" class="text muted" font-size="25">统计拓扑邻居归属，选择票数受支持的 shard，并应用 max_shards 上限</text>
+
+  <!-- Three topology regions -->
+  <circle cx="275" cy="345" r="170" class="outline"/>
+  <circle cx="650" cy="335" r="180" class="outline"/>
+  <circle cx="435" cy="690" r="160" class="outline"/>
+  <text x="176" y="200" class="text muted" font-size="24">Shard A 邻域</text>
+  <text x="675" y="190" class="text muted" font-size="24">Shard B 邻域</text>
+  <text x="338" y="870" class="text muted" font-size="24">Shard C 邻域</text>
+
+  <!-- Target point -->
+  <circle cx="480" cy="485" r="16" fill="#18a765" stroke="#06384a" stroke-width="5"/>
+  <text x="505" y="480" class="text" font-size="25" font-weight="700">数据点 x</text>
+
+  <!-- A: five L1 neighbors -->
+  <g fill="#16a568" stroke="#06384a" stroke-width="4">
+    <circle cx="190" cy="300" r="11"/><circle cx="255" cy="250" r="11"/><circle cx="330" cy="300" r="11"/>
+    <circle cx="215" cy="400" r="11"/><circle cx="325" cy="420" r="11"/>
+  </g>
+  <!-- B: four L1 neighbors -->
+  <g fill="#14789a" stroke="#06384a" stroke-width="4">
+    <circle cx="605" cy="250" r="11"/><circle cx="690" cy="275" r="11"/>
+    <circle cx="590" cy="390" r="11"/><circle cx="705" cy="405" r="11"/>
+  </g>
+  <!-- C: one L1 neighbor -->
+  <circle cx="435" cy="685" r="11" fill="#8b238c" stroke="#06384a" stroke-width="4"/>
+
+  <!-- Links to all ten L1 neighbors -->
+  <g class="link">
+    <line x1="480" y1="485" x2="190" y2="300"/><line x1="480" y1="485" x2="255" y2="250"/>
+    <line x1="480" y1="485" x2="330" y2="300"/><line x1="480" y1="485" x2="215" y2="400"/>
+    <line x1="480" y1="485" x2="325" y2="420"/><line x1="480" y1="485" x2="605" y2="250"/>
+    <line x1="480" y1="485" x2="690" y2="275"/><line x1="480" y1="485" x2="590" y2="390"/>
+    <line x1="480" y1="485" x2="705" y2="405"/><line x1="480" y1="485" x2="435" y2="685"/>
+  </g>
+
+  <!-- Vote labels -->
+  <rect x="145" y="465" width="190" height="62" rx="12" fill="#082c34" stroke="#18a765" stroke-width="4"/>
+  <text x="188" y="507" class="text" font-size="30" font-weight="700">5 票</text>
+  <rect x="627" y="470" width="190" height="62" rx="12" fill="#082c34" stroke="#14789a" stroke-width="4"/>
+  <text x="670" y="512" class="text" font-size="30" font-weight="700">4 票</text>
+  <rect x="510" y="680" width="155" height="58" rx="12" fill="#082c34" stroke="#8b238c" stroke-width="4"/>
+  <text x="548" y="720" class="text" font-size="28" font-weight="700">1 票</text>
+  <path d="M350 545 C430 590 555 590 625 548" class="purple"/>
+  <text x="355" y="630" class="text" font-size="23" font-weight="700">票数支持 A、B；最多选择 2 个 shard</text>
+
+  <!-- Divider -->
+  <line x1="860" y1="170" x2="860" y2="820" stroke="#06384a" stroke-width="4" stroke-dasharray="12 12"/>
+  <text x="935" y="215" class="text" font-size="30" font-weight="700">分配结果</text>
+  <text x="935" y="255" class="text muted" font-size="22">按票数降序选择 A、B；C 不复制</text>
+
+  <!-- Shard cylinders -->
+  <g>
+    <path d="M945 405 L945 705 Q945 730 1045 730 Q1145 730 1145 705 L1145 405 Z" fill="#cfecc8" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1045" cy="405" rx="100" ry="22" fill="#e6f8df" stroke="#06384a" stroke-width="5"/>
+    <text x="993" y="580" class="text" font-size="32" font-weight="700" style="fill:#06384a">Shard A</text>
+    <text x="983" y="625" class="text" font-size="22" style="fill:#174c3c">接收 copy</text>
+  </g>
+  <g>
+    <path d="M1200 405 L1200 705 Q1200 730 1300 730 Q1400 730 1400 705 L1400 405 Z" fill="#b9dfef" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1300" cy="405" rx="100" ry="22" fill="#dceff7" stroke="#06384a" stroke-width="5"/>
+    <text x="1248" y="580" class="text" font-size="32" font-weight="700" style="fill:#06384a">Shard B</text>
+    <text x="1238" y="625" class="text" font-size="22" style="fill:#174c3c">接收 copy</text>
+  </g>
+  <g opacity="0.66">
+    <path d="M1075 270 L1075 355 Q1075 375 1170 375 Q1265 375 1265 355 L1265 270 Z" fill="#b9dfef" stroke="#06384a" stroke-width="5"/>
+    <ellipse cx="1170" cy="270" rx="95" ry="20" fill="#dceff7" stroke="#06384a" stroke-width="5"/>
+    <text x="1120" y="330" class="text" font-size="27" font-weight="700" style="fill:#06384a">Shard C</text>
+  </g>
+
+  <!-- Assignment arrows -->
+  <path d="M500 490 C690 510 790 440 950 430" class="red"/>
+  <path d="M500 498 C735 610 955 525 1205 430" class="red"/>
+  <text x="722" y="452" class="text" font-size="24" font-weight="700" style="fill:#df1010">复制</text>
+  <text x="930" y="590" class="text" font-size="24" font-weight="700" style="fill:#df1010">复制</text>
+  <path d="M772 335 L832 335" stroke="#5b6770" stroke-width="5"/>
+  <text x="735" y="310" class="text muted" font-size="21">1 票，C 不复制</text>
+</svg>

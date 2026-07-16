@@ -1,0 +1,9 @@
+对比	batch_size	Recall差	QPS变化(%)	P50变化(%)	P95变化(%)	P99变化(%)	candidate groups降低(%)	returned candidates降低(%)
+coordinator_current_vs_direct_peer_no_premerge	50	0.00000	112.70	-51.73	-64.16	-64.94	0.00	0.00
+coordinator_current_vs_direct_peer_no_premerge	100	0.00000	149.48	-58.86	-65.09	-65.32	0.00	0.00
+coordinator_current_vs_direct_peer_no_premerge	200	0.00000	164.37	-61.42	-66.08	-66.61	0.00	0.00
+coordinator_current_vs_direct_peer_no_premerge	400	0.00000	171.64	-63.26	-64.33	-64.09	0.00	0.00
+direct_peer_local_premerge_vs_no_premerge	50	0.00000	0.30	-0.18	-18.44	0.60	87.40	87.40
+direct_peer_local_premerge_vs_no_premerge	100	0.00000	-0.93	1.56	-0.76	1.06	87.40	87.40
+direct_peer_local_premerge_vs_no_premerge	200	0.00000	1.05	-1.67	-2.99	-1.47	87.40	87.40
+direct_peer_local_premerge_vs_no_premerge	400	0.00000	-2.00	2.00	2.46	2.83	87.40	87.40

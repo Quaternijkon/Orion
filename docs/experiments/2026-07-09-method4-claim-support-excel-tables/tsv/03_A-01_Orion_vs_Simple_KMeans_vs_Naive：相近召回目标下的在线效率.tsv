@@ -1,0 +1,13 @@
+目标召回	方法	Recall@10	QPS	平均访问shards	平均EF/访问shard	EF-sum/query
+0.80	Orion	0.80397	1009.95	6.37	43.22	275.20
+0.85	Orion	0.85450	887.78	8.30	63.38	526.22
+0.90	Orion	0.90627	702.02	14.54	76.02	1105.13
+0.95	Orion	0.95423	391.25	21.12	154.67	3266.70
+0.80	Simple KMeans nprobe	0.80600	870.09	12.00	48.00	576.00
+0.85	Simple KMeans nprobe	0.85203	617.78	16.00	64.00	1024.00
+0.90	Simple KMeans nprobe	0.90407	352.45	32.00	80.00	2560.00
+0.95	Simple KMeans nprobe	0.95377	206.90	40.00	160.00	6400.00
+0.80	Naive hash all-shards	0.80633	439.19	46.00	16.00	736.00
+0.85	Naive hash all-shards	0.85640	377.08	46.00	24.00	1104.00
+0.90	Naive hash all-shards	0.90683	329.43	46.00	40.00	1840.00
+0.95	Naive hash all-shards	0.95283	261.93	46.00	76.00	3496.00

@@ -1,0 +1,5 @@
+目标	Method4配置	Naive配置	Method4 Recall	Naive Recall	QPS变化(%)	visited变化(%)	EF-sum变化(%)	P95变化(%)	P99变化(%)
+~0.97 strict >=0.97	m4_160_80_20	naive_ef112	0.97180	0.97277	40.58	-46.39	7.19	-31.85	-32.42
+~0.97 closest-neighborhood	m4_160_80_16	naive_ef104	0.96840	0.96953	43.90	-46.39	0.60	-33.29	-32.88
+~0.99 neighborhood	m4_400_160_20	naive_ef200	0.98927	0.99017	-2.63	-25.50	56.76	0.50	0.71
+~0.99 conservative naive higher recall	m4_400_160_20	naive_ef240	0.98927	0.99363	8.41	-25.50	30.64	-11.56	-11.24

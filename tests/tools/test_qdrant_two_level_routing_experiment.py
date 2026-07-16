@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from types import SimpleNamespace
 from pathlib import Path
+
+import pytest
 
 
 def load_module():
@@ -21,6 +24,61 @@ def test_compute_sample_sizes_uses_one_over_32_per_shard_with_floor_and_min_one(
     sizes = module.compute_sample_sizes([10, 31, 32, 33, 96], denominator=32)
 
     assert sizes == [1, 1, 1, 1, 3]
+
+
+def test_cpp_baseline_kmeans_train_initializes_centroids_from_first_sample_rows():
+    module = load_module()
+    data = module.np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [10.0, 10.0],
+        ],
+        dtype=module.np.float32,
+    )
+
+    centroids = module.cpp_baseline_kmeans_train(
+        data,
+        indices=[2, 3, 1],
+        k=2,
+        max_iter=0,
+    )
+
+    assert centroids.tolist() == [[0.0, 1.0], [10.0, 10.0]]
+
+
+def test_sample_cpp_kmeans_upper_points_uses_cpp_floor_without_min_one():
+    module = load_module()
+    train = module.np.arange(16, dtype=module.np.float32).reshape(8, 2)
+    assignments = module.np.array([0, 0, 0, 1, 1, 1, 1, 1], dtype=module.np.int32)
+
+    upper_vectors, upper_ids, label_to_shard, rows = module.sample_cpp_kmeans_upper_points(
+        train,
+        assignments,
+        num_shards=2,
+        denominator=4,
+        seed=100,
+    )
+
+    assert rows == [
+        {
+            "shard_id": 0,
+            "shard_key": "centroid_00",
+            "points_count": 3,
+            "sample_count": 0,
+        },
+        {
+            "shard_id": 1,
+            "shard_key": "centroid_01",
+            "points_count": 5,
+            "sample_count": 1,
+        },
+    ]
+    assert upper_vectors.shape == (1, 2)
+    assert upper_ids.shape == (1,)
+    assert label_to_shard == {int(upper_ids[0]): "centroid_01"}
+    assert 4 <= int(upper_ids[0]) <= 8
 
 
 def test_shard_efs_from_upper_hits_skips_zero_hit_shards():
@@ -49,6 +107,56 @@ def test_merge_topk_candidates_keeps_best_score_per_id():
     )
 
     assert merged == [10, 20, 60, 40]
+
+
+def test_merge_topk_candidates_can_use_lower_scores_for_euclid():
+    module = load_module()
+
+    merged = module.merge_topk_candidates(
+        [
+            [(0.10, 10), (0.30, 20), (0.70, 30)],
+            [(0.20, 20), (0.40, 40), (0.05, 50)],
+            [(0.08, 10), (0.15, 60)],
+        ],
+        top_k=4,
+        score_higher_is_better=False,
+    )
+
+    assert merged == [50, 10, 60, 20]
+
+
+def test_per_query_recall_rows_record_hits_and_recall():
+    module = load_module()
+
+    rows = module.per_query_recall_rows(
+        top_ids_by_query=[
+            [10, 20, 30],
+            [40, 50, 60],
+        ],
+        neighbors=[
+            [20, 70, 80],
+            [90, 91, 92],
+        ],
+        top_k=3,
+        query_index_offset=100,
+    )
+
+    assert rows == [
+        {
+            "query_index": 100,
+            "hits_at_k": 1,
+            "recall_at_k": 1 / 3,
+            "retrieved_ids": "10 20 30",
+            "ground_truth_ids": "20 70 80",
+        },
+        {
+            "query_index": 101,
+            "hits_at_k": 0,
+            "recall_at_k": 0.0,
+            "retrieved_ids": "40 50 60",
+            "ground_truth_ids": "90 91 92",
+        },
+    ]
 
 
 def test_peer_local_premerge_preserves_global_topk_with_cross_peer_duplicates():
@@ -156,6 +264,249 @@ def test_parse_args_supports_shard_placement_map(monkeypatch):
     assert args.shard_placement == "map"
     assert args.shard_placement_map == "placement_simulation.json"
     assert args.shard_placement_map_name == "method4_aware"
+
+
+def test_parse_args_supports_vector_distance(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--vector-distance",
+            "euclid",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.vector_distance == "euclid"
+
+
+def test_vector_distance_config_maps_cosine_and_euclid():
+    module = load_module()
+
+    cosine = module.vector_distance_config("cosine")
+    euclid = module.vector_distance_config("l2")
+
+    assert cosine == {
+        "name": "cosine",
+        "hnsw_space": "cosine",
+        "qdrant_distance": "Cosine",
+        "normalize_vectors": True,
+        "score_higher_is_better": True,
+    }
+    assert euclid == {
+        "name": "euclid",
+        "hnsw_space": "l2",
+        "qdrant_distance": "Euclid",
+        "normalize_vectors": False,
+        "score_higher_is_better": False,
+    }
+
+
+def test_prepare_vectors_for_distance_only_normalizes_cosine():
+    module = load_module()
+    vectors = module.np.array([[3.0, 4.0], [0.0, 0.0]], dtype=module.np.float32)
+
+    cosine_vectors = module.prepare_vectors_for_distance(vectors.copy(), "cosine")
+    euclid_vectors = module.prepare_vectors_for_distance(vectors.copy(), "euclid")
+
+    assert module.np.allclose(
+        cosine_vectors,
+        module.np.array([[0.6, 0.8], [0.0, 0.0]], dtype=module.np.float32),
+    )
+    assert euclid_vectors.tolist() == vectors.tolist()
+
+
+def test_create_collection_uses_configured_qdrant_distance(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        calls.append(
+            {
+                "base_url": base_url,
+                "method": method,
+                "path": path,
+                "body": body,
+                "timeout": timeout,
+            }
+        )
+        return {"result": {}}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+
+    module.create_collection(
+        "http://qdrant",
+        "collection",
+        dim=128,
+        m=32,
+        ef_construct=100,
+        vector_distance="Euclid",
+    )
+
+    assert calls[0]["body"]["vectors"]["distance"] == "Euclid"
+
+
+def test_effective_upper_search_ef_covers_widest_upper_k_candidate():
+    module = load_module()
+
+    args = SimpleNamespace(upper_search_ef=100, upper_k_candidates=[80, 160, 280])
+
+    assert module.effective_upper_search_ef(args) == 280
+
+
+def test_parse_args_supports_multi_assignment_controls(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--orion-multi-assign-min-max-vote",
+            "3",
+            "--orion-multi-assign-vote-delta",
+            "1",
+            "--orion-multi-assign-max-shards",
+            "2",
+            "--simple-kmeans-multi-assign-alpha",
+            "1.12",
+            "--simple-kmeans-multi-assign-chunk-size",
+            "1024",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.orion_multi_assign_min_max_vote == 3
+    assert args.orion_multi_assign_vote_delta == 1
+    assert args.orion_multi_assign_max_shards == 2
+    assert args.simple_kmeans_multi_assign_alpha == 1.12
+    assert args.simple_kmeans_multi_assign_chunk_size == 1024
+
+
+def test_parse_args_supports_claim_a_partition_family(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--claim-a-partition-family",
+            "random_balanced_46",
+            "--claim-a-random-seed",
+            "12345",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.claim_a_partition_family == "random_balanced_46"
+    assert args.claim_a_random_seed == 12345
+
+
+def test_weighted_random_l1_shards_is_reproducible_and_balanced():
+    module = load_module()
+    upper_indices = module.np.array([10, 20, 30, 40, 50], dtype=module.np.int64)
+    weights = module.np.array([9, 1, 6, 4, 5], dtype=module.np.int64)
+
+    first = module.weighted_random_l1_shards(
+        num_points=64,
+        upper_indices=upper_indices,
+        up_tier_weights=weights,
+        num_shards=3,
+        seed=12345,
+    )
+    second = module.weighted_random_l1_shards(
+        num_points=64,
+        upper_indices=upper_indices,
+        up_tier_weights=weights,
+        num_shards=3,
+        seed=12345,
+    )
+
+    assert first == second
+    assigned = [first[int(point_id)] for point_id in upper_indices.tolist()]
+    assert sorted(set(assigned)) == [0, 1, 2]
+    shard_weights = module.np.zeros(3, dtype=module.np.int64)
+    for point_id, weight in zip(upper_indices.tolist(), weights.tolist()):
+        shard_weights[first[int(point_id)]] += int(weight)
+    assert int(shard_weights.sum()) == int(weights.sum())
+    assert int(shard_weights.max()) <= int(weights.sum())
+
+
+def test_claim_a_load_recalibrated_partition_matches_topology_without_fission():
+    module = load_module()
+    train = module.np.array(
+        [
+            [1.0, 0.0],
+            [0.9, 0.1],
+            [0.0, 1.0],
+            [0.1, 0.9],
+            [-1.0, 0.0],
+            [-0.9, -0.1],
+        ],
+        dtype=module.np.float32,
+    )
+    upper_indices = module.np.array([0, 2, 4], dtype=module.np.int64)
+    point_to_l1s = [[0, 2], [0, 2], [2, 0], [2, 4], [4, 2], [4, 0]]
+
+    topology = module.build_claim_a_partition_routing_state(
+        "kmeans_topology_46",
+        train,
+        upper_indices,
+        point_to_l1s,
+        num_shards=3,
+        kmeans_iters=2,
+        kmeans_seed=1,
+        topology_iters=5,
+        use_multi_assign=True,
+        multi_assign_min_max_vote=2,
+        multi_assign_vote_delta=0,
+        multi_assign_max_shards=0,
+        random_seed=12345,
+    )
+    load_recalibrated = module.build_claim_a_partition_routing_state(
+        "kmeans_topology_load_recalibrated_46",
+        train,
+        upper_indices,
+        point_to_l1s,
+        num_shards=3,
+        kmeans_iters=2,
+        kmeans_seed=1,
+        topology_iters=5,
+        use_multi_assign=True,
+        multi_assign_min_max_vote=2,
+        multi_assign_vote_delta=0,
+        multi_assign_max_shards=0,
+        random_seed=12345,
+    )
+
+    assert load_recalibrated.point_to_shards == topology.point_to_shards
+    assert load_recalibrated.l1_to_shard == topology.l1_to_shard
+    assert load_recalibrated.num_shards == topology.num_shards
+    assert load_recalibrated.claim_a_partition_note == (
+        "load_recalibration_matches_kmeans_topology_without_fission"
+    )
+
+
+def test_validate_args_rejects_invalid_multi_assignment_controls():
+    module = load_module()
+
+    with pytest.raises(ValueError, match="simple-kmeans-multi-assign-alpha"):
+        module.validate_args(
+            SimpleNamespace(
+                orion_multi_assign_min_max_vote=2,
+                orion_multi_assign_vote_delta=0,
+                orion_multi_assign_max_shards=0,
+                simple_kmeans_multi_assign_alpha=0.99,
+                simple_kmeans_multi_assign_chunk_size=1024,
+            )
+        )
 
 
 def test_shard_create_body_includes_placement_only_when_requested():
@@ -368,6 +719,7 @@ def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monke
         shard_key_to_peer=None,
         lower_execution_order="query_major",
         direct_peer_local_premerge=False,
+        score_higher_is_better=True,
     ):
         calls["execute"].append((query_plans, neighbors.tolist()))
         assert lower_execution_order == "query_major"
@@ -458,6 +810,79 @@ def test_assign_points_by_l1_vote_matches_original_multi_assign_rules():
     assert point_to_shards == [[0, 1], [2], [3], [3]]
 
 
+def test_assign_points_by_l1_vote_can_include_shards_within_vote_delta():
+    module = load_module()
+
+    point_to_l1s = [[10, 11, 12, 20, 21, 30]]
+    reference_l1_shard = [-1] * 31
+    for label, shard in {
+        10: 0,
+        11: 0,
+        12: 0,
+        20: 1,
+        21: 1,
+        30: 2,
+    }.items():
+        reference_l1_shard[label] = shard
+
+    primary, point_to_shards = module.assign_points_by_l1_vote(
+        point_to_l1s,
+        reference_l1_shard,
+        num_shards=4,
+        use_multi_assign=True,
+        multi_assign_vote_delta=1,
+    )
+
+    assert primary.tolist() == [0]
+    assert point_to_shards == [[0, 1]]
+
+
+def test_assign_points_by_l1_vote_keeps_single_assignment_when_max_vote_is_one():
+    module = load_module()
+
+    point_to_l1s = [[10, 20, 30]]
+    reference_l1_shard = [-1] * 31
+    reference_l1_shard[10] = 0
+    reference_l1_shard[20] = 1
+    reference_l1_shard[30] = 2
+
+    _primary, point_to_shards = module.assign_points_by_l1_vote(
+        point_to_l1s,
+        reference_l1_shard,
+        num_shards=4,
+        use_multi_assign=True,
+        multi_assign_vote_delta=1,
+    )
+
+    assert point_to_shards == [[0]]
+
+
+def test_assign_points_by_l1_vote_can_cap_multi_assign_shards():
+    module = load_module()
+
+    point_to_l1s = [[10, 11, 20, 21, 30, 31]]
+    reference_l1_shard = [-1] * 32
+    for label, shard in {
+        10: 0,
+        11: 0,
+        20: 1,
+        21: 1,
+        30: 2,
+        31: 2,
+    }.items():
+        reference_l1_shard[label] = shard
+
+    _primary, point_to_shards = module.assign_points_by_l1_vote(
+        point_to_l1s,
+        reference_l1_shard,
+        num_shards=4,
+        use_multi_assign=True,
+        multi_assign_max_shards=2,
+    )
+
+    assert point_to_shards == [[0, 1]]
+
+
 def test_point_indices_by_shard_preserves_multi_assignment_expansion():
     module = load_module()
 
@@ -465,6 +890,14 @@ def test_point_indices_by_shard_preserves_multi_assignment_expansion():
 
     assert [indices.tolist() for indices in by_shard] == [[0, 3], [2, 3], [0, 1]]
     assert module.total_assigned_points([[0, 2], [2], [1], [0, 1]]) == 6
+    assert module.expansion_ratio_from_assigned_points(6, 4) == 1.5
+
+
+def test_expansion_ratio_rejects_empty_logical_points():
+    module = load_module()
+
+    with pytest.raises(ValueError, match="logical_points"):
+        module.expansion_ratio_from_assigned_points(6, 0)
 
 
 def test_route_upper_labels_uses_all_shards_of_each_upper_candidate_as_eps():
@@ -527,6 +960,95 @@ def test_all_shard_search_plan_uses_one_request_covering_every_shard():
             "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
         }
     ]
+
+
+def test_kmeans_simple_nprobe_plan_uses_centroid_probes_with_fixed_ef_only():
+    module = load_module()
+    query = module.np.array([1.0, 0.0], dtype=module.np.float32)
+    centroids = module.np.array(
+        [
+            [0.0, 1.0],
+            [0.9, 0.1],
+            [-1.0, 0.0],
+            [0.7, 0.7],
+        ],
+        dtype=module.np.float32,
+    )
+
+    plan = module.kmeans_simple_nprobe_search_plan(
+        query=query,
+        centroids=centroids,
+        nprobe=2,
+        top_k=10,
+        hnsw_ef=64,
+        use_payload_source_id=False,
+    )
+
+    assert plan["visited_shards"] == 2
+    assert plan["upper_hits"] == 0
+    assert plan["assigned_ef_sum"] == 128
+    assert plan["assigned_ef_count"] == 2
+    assert plan["searches"] == [
+        {
+            "vector": [1.0, 0.0],
+            "limit": 10,
+            "params": {"hnsw_ef": 64},
+            "with_payload": False,
+            "with_vector": False,
+            "shard_key": ["centroid_01", "centroid_03"],
+        }
+    ]
+    assert "hnsw_entry_points_by_shard" not in plan["searches"][0]
+    assert "hnsw_ef_by_shard" not in plan["searches"][0]
+    assert "source_id_dedup_block_size" not in plan["searches"][0]
+
+
+def test_simple_kmeans_point_to_shards_by_distance_alpha_controls_expansion():
+    module = load_module()
+    train = module.np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [2.0, 0.0],
+        ],
+        dtype=module.np.float32,
+    )
+    centroids = module.np.array(
+        [
+            [0.0, 0.0],
+            [2.0, 0.0],
+        ],
+        dtype=module.np.float32,
+    )
+
+    point_to_shards = module.simple_kmeans_point_to_shards_by_distance_alpha(
+        train,
+        centroids,
+        alpha=1.1,
+        chunk_size=2,
+    )
+
+    assert point_to_shards == [[0], [0, 1], [1]]
+    assert module.total_assigned_points(point_to_shards) == 4
+
+
+def test_kmeans_simple_nprobe_plan_passes_source_id_dedup_block_size():
+    module = load_module()
+    query = module.np.array([1.0, 0.0], dtype=module.np.float32)
+    centroids = module.np.array([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32)
+
+    plan = module.kmeans_simple_nprobe_search_plan(
+        query=query,
+        centroids=centroids,
+        nprobe=2,
+        top_k=10,
+        hnsw_ef=64,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+    )
+
+    assert plan["searches"][0]["with_payload"] == ["source_id"]
+    assert plan["searches"][0]["source_id_dedup_block_size"] == 1001
 
 
 def test_routed_search_plan_groups_selected_shards_by_dynamic_ef():
@@ -819,6 +1341,7 @@ def test_compact_materialized_evaluator_uses_compact_plans(monkeypatch):
         shard_key_to_peer=None,
         lower_execution_order="query_major",
         direct_peer_local_premerge=False,
+        score_higher_is_better=True,
     ):
         calls["execute"].append(query_plans)
         assert lower_execution_order == "query_major"
@@ -1379,6 +1902,60 @@ def test_all_shards_end_to_end_concurrent_evaluator_builds_all_shard_requests(mo
     assert result["avg_visited_shards"] == 3.0
     assert result["avg_upper_hits"] == 0.0
     assert result["avg_assigned_ef_per_visited_shard"] == 36.0
+    assert result["search_batch_calls"] == 1
+    assert result["avg_search_requests_per_query"] == 1.0
+
+
+def test_kmeans_simple_nprobe_end_to_end_concurrent_evaluator_uses_fixed_ef(monkeypatch):
+    module = load_module()
+    calls = []
+
+    centroids = module.np.array(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.8, 0.2],
+        ],
+        dtype=module.np.float32,
+    )
+
+    def fake_search_batch(_base_url, _collection, searches):
+        calls.append(searches)
+        return [[(0.95, 11)], [(0.90, 22)]]
+
+    def fail_compute_upper_labels(*_args, **_kwargs):
+        raise AssertionError("simple nprobe must not use the upper HNSW index")
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+    monkeypatch.setattr(module, "compute_upper_labels", fail_compute_upper_labels)
+
+    result = module.evaluate_kmeans_simple_nprobe_config_concurrent(
+        base_url="http://example.invalid",
+        collection="collection",
+        queries=module.np.array([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32),
+        neighbors=module.np.array([[11, 99], [22, 99]]),
+        top_k=2,
+        centroids=centroids,
+        nprobe=2,
+        hnsw_ef=48,
+        batch_size=2,
+        concurrency=1,
+        use_payload_source_id=False,
+    )
+
+    assert len(calls) == 1
+    assert [search["shard_key"] for search in calls[0]] == [
+        ["centroid_00", "centroid_02"],
+        ["centroid_01", "centroid_02"],
+    ]
+    assert [search["params"] for search in calls[0]] == [{"hnsw_ef": 48}, {"hnsw_ef": 48}]
+    assert all("hnsw_entry_points_by_shard" not in search for search in calls[0])
+    assert all("hnsw_ef_by_shard" not in search for search in calls[0])
+    assert all("source_id_dedup_block_size" not in search for search in calls[0])
+    assert result["recall_at_k"] == 0.5
+    assert result["avg_visited_shards"] == 2.0
+    assert result["avg_upper_hits"] == 0.0
+    assert result["avg_assigned_ef_per_visited_shard"] == 48.0
     assert result["search_batch_calls"] == 1
     assert result["avg_search_requests_per_query"] == 1.0
 

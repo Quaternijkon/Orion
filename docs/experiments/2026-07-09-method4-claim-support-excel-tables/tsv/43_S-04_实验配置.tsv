@@ -1,0 +1,21 @@
+分类	项目	值	单位/说明
+平台	平台	Qdrant	NA
+运行	运行方式	单机模拟	计算与存储隔离
+硬件	CPU 型号	Intel Xeon Gold 6330 @ 2.00GHz	NA
+硬件	CPU sockets	2	sockets
+硬件	CPU cores/socket	28	cores/socket
+硬件	CPU threads/core	2	threads/core
+数据	数据集	GloVe-200-angular	文本嵌入
+数据	向量维度	200	dimensions
+数据	Base size	1200000	vectors (1.2M)
+数据	距离度量	Angular	NA
+范围	主召回目标	0.80 / 0.85 / 0.90 / 0.95	Recall@10；另有约 0.97 正向补充与 0.99 负结果边界
+主对比	有效逻辑分片数	46	主三方法路由对比为主；具体数据表可有不同分片形态
+worker-count	物理 worker 数	1 / 2 / 3 / 4	1 controller + N workers；46 个有效逻辑分片按 round-robin 放置
+worker-count	controller CPU 配额	4	logical CPUs；cpuset
+worker-count	每个 worker CPU 配额	4	logical CPUs；cpuset
+worker-count	测量	100 / 3 / 3000	batch size / repeats / queries per repeat；仅 Orion/Method4
+shard-count	有效逻辑分片数	31 / 46	固定 3-worker 部署；不能作为 worker-count 结果解释
+方法	Naïve hash all-shards	Qdrant 生产式 hash/random 分片	每个查询搜索全部有效逻辑分片
+方法	Plain K-means	普通、无均衡约束的 k-means	查询以 nprobe 选择簇/分片，按目标召回校准
+方法	Orion（Balanced K-means）	带约束的均衡 k-means 分区与 Method4 路由	目标方法，不是 baseline

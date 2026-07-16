@@ -1,0 +1,5 @@
+batch_size	placement	baseline	Recall差	QPS变化(%)	mean latency变化(%)	P95变化(%)	P99变化(%)	visited变化(%)	EF-sum变化(%)
+100	method4_aware	round_robin	-0.00043	2.05	-2.01	-0.43	-0.56	0.00	0.00
+100	size_balanced	round_robin	0.00000	-1.27	1.42	0.36	1.11	0.00	0.00
+200	method4_aware	round_robin	-0.00043	1.23	-1.22	-0.96	-0.98	0.00	0.00
+200	size_balanced	round_robin	0.00000	-0.35	0.36	0.82	0.88	0.00	0.00

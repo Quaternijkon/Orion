@@ -1,0 +1,4 @@
+variant	query_count	lower order	upper label ms/query	plan build ms/query	total planning ms/query	search requests/query	candidate groups/query	visited shards	assigned EF-sum
+grouped_by_ef_materialized	3000	query_major	0.0147	0.1525	0.1672	9.78	9.78	23.61	3306.75
+compact_current	3000	query_major	0.0147	0.2353	0.2500	1.00	1.00	23.61	3306.75
+client_shard_major_expanded	3000	shard_major	0.0147	0.2775	0.2922	23.61	23.61	23.61	3306.75

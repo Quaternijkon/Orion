@@ -1,0 +1,9 @@
+对比	batch_size	方法	基线	方法Recall	基线Recall	QPS变化(%)	visited变化(%)	P95变化(%)	P99变化(%)
+balanced_kmeans_existing_vs_naive	100	balanced_kmeans_existing	naive_all_shards	0.95233	0.95290	42.49	-53.29	-32.35	-33.54
+balanced_kmeans_existing_vs_naive	200	balanced_kmeans_existing	naive_all_shards	0.95212	0.95290	121.95	-53.32	-71.14	-72.56
+full_fission_existing_vs_naive	100	full_fission_existing	naive_all_shards	0.95293	0.95290	53.53	-50.70	-39.65	-40.61
+full_fission_existing_vs_naive	200	full_fission_existing	naive_all_shards	0.95317	0.95290	87.38	-50.71	-57.23	-59.66
+kmeans_topology_46_vs_naive_current_rebuild	200	kmeans_topology_46	naive_all_shards	0.95037	0.95290	96.98	-59.49	-55.04	-57.88
+kmeans_topology_load_recalibrated_46_vs_naive_current_rebuild	200	kmeans_topology_load_recalibrated_46	naive_all_shards	0.95023	0.95290	87.53	-59.52	-47.35	-47.98
+random_balanced_46_vs_naive_current_rebuild	200	random_balanced_46	naive_all_shards	0.95867	0.95290	39.27	-4.01	-30.77	-32.47
+topology_no_fission_vs_full_fission	200	topology_no_fission	full_fission_existing	0.95217	0.95317	-2.77	-16.46	2.71	2.52

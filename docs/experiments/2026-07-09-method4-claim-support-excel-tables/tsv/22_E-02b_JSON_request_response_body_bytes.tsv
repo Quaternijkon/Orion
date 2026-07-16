@@ -1,0 +1,4 @@
+variant	batch_size	Recall@10	QPS	request body bytes/query	response body bytes/query	total body bytes/query	request降低vs client-expanded(%)	response降低vs client-expanded(%)	total降低vs client-expanded(%)	candidate groups/query	returned candidates/query
+client_shard_major_expanded	200	0.95550	163.33	103915.48	24598.89	128514.37	0.00	0.00	0.00	23.58	235.76
+compact_current	200	0.95550	449.01	7039.09	1042.87	8081.96	93.23	95.76	93.71	1.00	10.00
+grouped_by_ef_materialized	200	0.95460	223.00	42375.90	10194.59	52570.50	59.22	58.56	59.09	9.77	97.65

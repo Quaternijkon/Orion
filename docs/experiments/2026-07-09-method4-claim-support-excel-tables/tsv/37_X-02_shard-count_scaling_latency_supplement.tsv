@@ -1,0 +1,10 @@
+comparison_type	comparison_label	left_case	right_case	left Recall	right Recall	QPS变化(%)	left shards	right shards	visited变化(%)	EF-sum变化(%)	P95变化(%)	P99变化(%)
+scale_s46_vs_s31	orion_s46_vs_orion_s31	orion_s46	orion_s31	0.95073	0.95187	-7.08	69	46	22.89	12.47	6.00	8.33
+scale_s46_vs_s31	kmeans_s46_vs_kmeans_s31	kmeans_s46	kmeans_s31	0.95573	0.95603	4.20	46	31	24.45	12.24	-3.63	-6.62
+scale_s46_vs_s31	naive_s46_vs_naive_s31	naive_s46	naive_s31	0.95290	0.95043	-13.65	46	31	48.39	17.47	21.80	18.92
+orion_vs_simple_kmeans_same_base_shards	orion_vs_kmeans_base31	orion_s31	kmeans_s31	0.95187	0.95603	-5.92	46	31	20.21	21.45	8.36	4.75
+orion_vs_simple_kmeans_same_base_shards	orion_vs_kmeans_base46	orion_s46	kmeans_s46	0.95073	0.95573	-16.10	69	46	18.71	21.70	19.18	21.53
+orion_vs_naive_same_logical_shards	orion_vs_naive_base31	orion_s31	naive_s31	0.95187	0.95043	60.35	46	31	-37.76	4.64	-37.52	-39.80
+orion_vs_naive_same_logical_shards	orion_vs_naive_base46	orion_s46	naive_s46	0.95073	0.95290	72.57	69	46	-48.45	0.18	-45.62	-45.16
+simple_kmeans_vs_naive_same_logical_shards	kmeans_vs_naive_base31	kmeans_s31	naive_s31	0.95603	0.95043	70.44	31	31	-48.22	-13.84	-42.34	-42.53
+simple_kmeans_vs_naive_same_logical_shards	kmeans_vs_naive_base46	kmeans_s46	naive_s46	0.95573	0.95290	105.69	46	46	-56.58	-17.68	-54.37	-54.87

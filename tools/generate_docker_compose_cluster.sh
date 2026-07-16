@@ -13,9 +13,16 @@ set -euo pipefail
 
 declare NODES="${1:-5}"
 declare BASE_PORT="${2:-6330}"
+declare STORAGE_ROOT="${QDRANT_GENERATED_STORAGE_ROOT:-/home/taig/dry/qdrant/qdrant_storage/generated-cluster}"
 
 cat <<-EOF
 version: "3.7"
+
+x-qdrant-logging: &qdrant_logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
 
 services:
 EOF
@@ -48,6 +55,9 @@ do
 	    ports:
 	      - "$HTTP_PORT:6333"
 	      - "$GRPC_PORT:6334"
+	    volumes:
+	      - "$STORAGE_ROOT/$SERVICE_NAME:/qdrant/storage"
+	    logging: *qdrant_logging
 	    deploy:
 	      resources:
 	        limits:

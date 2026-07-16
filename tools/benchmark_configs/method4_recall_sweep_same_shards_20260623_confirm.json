@@ -1,0 +1,337 @@
+{
+  "matrix_name": "method4_recall_sweep_same_shards_20260623_confirm",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "python3",
+  "output_root": "results/method4_benchmark_matrix",
+  "defaults": {
+    "base_url": "http://localhost:6833",
+    "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 100,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "cpp_kmeans_train_size": 10000,
+    "tuning_query_count": 1000,
+    "eval_query_count": 3000,
+    "stability_repeats": 0,
+    "batch_size": 100,
+    "write_per_query_metrics": true,
+    "routed_execution_mode": "compact_multi_ep",
+    "routed_planning_mode": "materialized",
+    "routed_result_limit_mode": "top_k",
+    "search_dispatch_mode": "coordinator",
+    "lower_execution_order": "query_major",
+    "shard_placement": "round_robin",
+    "placement_peer_uri_contains": ["qdrant_shard_"],
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "orion_r085_u20_b48_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.85,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [20],
+        "base_ef_candidates": [48],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r085_u24_b48_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.85,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [24],
+        "base_ef_candidates": [48],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r085_u24_b32_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.85,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [24],
+        "base_ef_candidates": [32],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r085_u24_b48_f8",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.85,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [24],
+        "base_ef_candidates": [48],
+        "factor_candidates": [8],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r085_u20_b64_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.85,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [20],
+        "base_ef_candidates": [64],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u60_b48_f8",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [60],
+        "base_ef_candidates": [48],
+        "factor_candidates": [8],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u60_b40_f8",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [60],
+        "base_ef_candidates": [40],
+        "factor_candidates": [8],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u80_b48_f4",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [80],
+        "base_ef_candidates": [48],
+        "factor_candidates": [4],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u80_b24_f8",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [80],
+        "base_ef_candidates": [24],
+        "factor_candidates": [8],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u80_b32_f6",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [80],
+        "base_ef_candidates": [32],
+        "factor_candidates": [6],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r090_u60_b60_f6",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.9,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [60],
+        "base_ef_candidates": [60],
+        "factor_candidates": [6],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r095_u140_b50_f12",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.95,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [140],
+        "base_ef_candidates": [50],
+        "factor_candidates": [12],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r095_u140_b60_f12",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.95,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [140],
+        "base_ef_candidates": [60],
+        "factor_candidates": [12],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r095_u140_b80_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.95,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [140],
+        "base_ef_candidates": [80],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r095_u160_b60_f10",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.95,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [160],
+        "base_ef_candidates": [60],
+        "factor_candidates": [10],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "orion_r095_u160_b80_f8",
+      "preset": "orion",
+      "args": {
+        "collection": "bench095_rr_orion_s31",
+        "num_shards": 31,
+        "target_recall": 0.95,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [160],
+        "base_ef_candidates": [80],
+        "factor_candidates": [8],
+        "disable_multi_assign": false,
+        "disable_fission": false
+      }
+    },
+    {
+      "name": "naive_r090_ef40",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.9,
+        "base_ef_candidates": [40]
+      }
+    },
+    {
+      "name": "naive_r090_ef44",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.9,
+        "base_ef_candidates": [44]
+      }
+    },
+    {
+      "name": "naive_r090_ef48",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.9,
+        "base_ef_candidates": [48]
+      }
+    },
+    {
+      "name": "naive_r095_ef76",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.95,
+        "base_ef_candidates": [76]
+      }
+    },
+    {
+      "name": "naive_r095_ef80",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.95,
+        "base_ef_candidates": [80]
+      }
+    },
+    {
+      "name": "naive_r095_ef88",
+      "preset": "naive",
+      "args": {
+        "collection": "bench095_rr_naive_s46",
+        "num_shards": 46,
+        "target_recall": 0.95,
+        "base_ef_candidates": [88]
+      }
+    }
+  ]
+}

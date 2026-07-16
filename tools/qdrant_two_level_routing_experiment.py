@@ -33,12 +33,30 @@ def parse_args() -> argparse.Namespace:
         default="/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
     )
     parser.add_argument(
+        "--vector-distance",
+        choices=["cosine", "euclid", "l2"],
+        default="cosine",
+        help=(
+            "Vector distance used for query vectors, the upper hnswlib index, "
+            "and Qdrant collection creation. cosine preserves the existing "
+            "GloVe/angular path and normalizes vectors; euclid/l2 leaves vectors "
+            "un-normalized and uses Euclid/L2 search semantics."
+        ),
+    )
+    parser.add_argument(
         "--routing-mode",
-        choices=["faithful_original_rest", "legacy_centroid", "naive_hash_all_shards"],
+        choices=[
+            "faithful_original_rest",
+            "cpp_kmeans_baseline",
+            "kmeans_simple_nprobe",
+            "legacy_centroid",
+            "naive_hash_all_shards",
+        ],
         default="faithful_original_rest",
     )
     parser.add_argument("--num-shards", type=int, default=31)
     parser.add_argument("--sample-size", type=int, default=50000)
+    parser.add_argument("--cpp-kmeans-train-size", type=int, default=10000)
     parser.add_argument("--kmeans-iters", type=int, default=10)
     parser.add_argument("--upload-batch-size", type=int, default=1024)
     parser.add_argument("--tuning-query-count", type=int, default=1000)
@@ -54,6 +72,17 @@ def parse_args() -> argparse.Namespace:
         type=int,
         nargs="+",
         default=[100],
+    )
+    parser.add_argument(
+        "--nprobe-candidates",
+        type=int,
+        nargs="+",
+        default=None,
+        help=(
+            "Number of KMeans centroid shards to probe for kmeans_simple_nprobe. "
+            "Defaults to --upper-k-candidates when omitted so existing matrix "
+            "summary columns can still store the probe count as upper_k."
+        ),
     )
     parser.add_argument(
         "--base-ef-candidates",
@@ -204,7 +233,74 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--disable-multi-assign", action="store_true")
+    parser.add_argument(
+        "--orion-multi-assign-min-max-vote",
+        type=int,
+        default=2,
+        help=(
+            "For faithful_original_rest, enable multi-assignment only when the "
+            "highest shard vote count is at least this value. The default 2 "
+            "preserves the original max-vote-is-not-one behavior."
+        ),
+    )
+    parser.add_argument(
+        "--orion-multi-assign-vote-delta",
+        type=int,
+        default=0,
+        help=(
+            "For faithful_original_rest multi-assignment, include shards whose "
+            "vote count is at least max_vote - delta. The default 0 assigns "
+            "only top-vote ties; 1 assigns shards within one vote of the winner."
+        ),
+    )
+    parser.add_argument(
+        "--orion-multi-assign-max-shards",
+        type=int,
+        default=0,
+        help=(
+            "Optional cap on the number of Orion multi-assigned shards per point. "
+            "0 means no cap. Shards are ranked by vote count descending, then id."
+        ),
+    )
+    parser.add_argument(
+        "--simple-kmeans-multi-assign-alpha",
+        type=float,
+        default=1.0,
+        help=(
+            "For kmeans_simple_nprobe collection construction, assign each point "
+            "to every centroid whose Euclidean distance is <= alpha times the "
+            "nearest-centroid distance. alpha <= 1.0 preserves the existing "
+            "single-assignment collection path."
+        ),
+    )
+    parser.add_argument(
+        "--simple-kmeans-multi-assign-chunk-size",
+        type=int,
+        default=50000,
+        help="Chunk size for computing simple KMeans alpha multi-assignment.",
+    )
     parser.add_argument("--disable-fission", action="store_true")
+    parser.add_argument(
+        "--claim-a-partition-family",
+        choices=[
+            "none",
+            "random_balanced_46",
+            "kmeans_topology_46",
+            "kmeans_topology_load_recalibrated_46",
+        ],
+        default="none",
+        help=(
+            "Build one of the Claim A offline partition-family route maps as a live "
+            "faithful_original_rest collection. These families intentionally disable "
+            "fission; load-recalibrated currently matches kmeans_topology without fission."
+        ),
+    )
+    parser.add_argument(
+        "--claim-a-random-seed",
+        type=int,
+        default=12345,
+        help="Seed for the Claim A random_balanced_46 L1-to-shard assignment.",
+    )
     parser.add_argument("--search-all-shards", action="store_true")
     parser.add_argument(
         "--shard-placement",
@@ -266,6 +362,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--write-per-query-metrics",
+        action="store_true",
+        help=(
+            "Write final_per_query_metrics.csv for the final eval run. This records "
+            "per-query hits@k, recall@k, retrieved ids, and ground-truth ids for "
+            "recall distribution analysis."
+        ),
+    )
+    parser.add_argument(
         "--train-limit",
         type=int,
         default=None,
@@ -275,6 +380,49 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return parser.parse_args()
+
+
+def effective_upper_search_ef(args: argparse.Namespace) -> int:
+    candidate_ks = [int(value) for value in getattr(args, "upper_k_candidates", []) or []]
+    nprobe_candidates = getattr(args, "nprobe_candidates", None)
+    if nprobe_candidates:
+        candidate_ks.extend(int(value) for value in nprobe_candidates)
+    widest_requested_k = max(candidate_ks, default=0)
+    return max(int(args.upper_search_ef), widest_requested_k)
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if int(args.orion_multi_assign_min_max_vote) <= 0:
+        raise ValueError("--orion-multi-assign-min-max-vote must be positive")
+    if int(args.orion_multi_assign_vote_delta) < 0:
+        raise ValueError("--orion-multi-assign-vote-delta must be non-negative")
+    if int(args.orion_multi_assign_max_shards) < 0:
+        raise ValueError("--orion-multi-assign-max-shards must be non-negative")
+    if float(args.simple_kmeans_multi_assign_alpha) < 1.0:
+        raise ValueError("--simple-kmeans-multi-assign-alpha must be >= 1.0")
+    if int(args.simple_kmeans_multi_assign_chunk_size) <= 0:
+        raise ValueError("--simple-kmeans-multi-assign-chunk-size must be positive")
+
+
+def vector_distance_config(vector_distance: str) -> dict[str, Any]:
+    normalized = str(vector_distance).lower()
+    if normalized == "cosine":
+        return {
+            "name": "cosine",
+            "hnsw_space": "cosine",
+            "qdrant_distance": "Cosine",
+            "normalize_vectors": True,
+            "score_higher_is_better": True,
+        }
+    if normalized in {"euclid", "l2"}:
+        return {
+            "name": "euclid",
+            "hnsw_space": "l2",
+            "qdrant_distance": "Euclid",
+            "normalize_vectors": False,
+            "score_higher_is_better": False,
+        }
+    raise ValueError(f"unsupported vector distance: {vector_distance}")
 
 
 def request_json(
@@ -302,6 +450,13 @@ def normalize_rows(arr: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms < 1e-12] = 1.0
     return arr / norms
+
+
+def prepare_vectors_for_distance(arr: np.ndarray, vector_distance: str) -> np.ndarray:
+    config = vector_distance_config(vector_distance)
+    if config["normalize_vectors"]:
+        return normalize_rows(arr)
+    return arr
 
 
 def slice_train_rows(rows: Any, train_limit: int | None) -> Any:
@@ -426,6 +581,8 @@ class OriginalRoutingState:
         expansion_ratio: float,
         topology_iterations: int,
         fission_events: list[dict[str, Any]],
+        claim_a_partition_family: str | None = None,
+        claim_a_partition_note: str | None = None,
     ) -> None:
         self.initial_num_shards = initial_num_shards
         self.num_shards = num_shards
@@ -439,6 +596,8 @@ class OriginalRoutingState:
         self.expansion_ratio = expansion_ratio
         self.topology_iterations = topology_iterations
         self.fission_events = fission_events
+        self.claim_a_partition_family = claim_a_partition_family
+        self.claim_a_partition_note = claim_a_partition_note
 
 
 def global_upper_indices(num_points: int, denominator: int, seed: int) -> np.ndarray:
@@ -640,13 +799,42 @@ def converge_l1_topology(
     return current_shard, iteration_count
 
 
+def weighted_random_l1_shards(
+    num_points: int,
+    upper_indices: np.ndarray,
+    up_tier_weights: np.ndarray,
+    num_shards: int,
+    seed: int,
+) -> list[int]:
+    rng = np.random.default_rng(seed)
+    l1_to_shard = [-1] * int(num_points)
+    shard_loads = np.zeros(int(num_shards), dtype=np.int64)
+    order = rng.permutation(len(upper_indices))
+    for local_idx in order.tolist():
+        l1_idx = int(upper_indices[int(local_idx)])
+        shard_id = int(np.argmin(shard_loads))
+        l1_to_shard[l1_idx] = shard_id
+        shard_loads[shard_id] += int(up_tier_weights[int(local_idx)])
+    return l1_to_shard
+
+
 def target_shards_from_votes(
     l1s: list[int],
     reference_l1_shard: list[int],
     point_index: int,
     num_shards: int,
     use_multi_assign: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
 ) -> list[int]:
+    if multi_assign_min_max_vote <= 0:
+        raise ValueError("multi_assign_min_max_vote must be positive")
+    if multi_assign_vote_delta < 0:
+        raise ValueError("multi_assign_vote_delta must be non-negative")
+    if multi_assign_max_shards < 0:
+        raise ValueError("multi_assign_max_shards must be non-negative")
+
     votes: Counter[int] = Counter()
     for ep_l1 in l1s:
         shard_id = reference_l1_shard[int(ep_l1)] if int(ep_l1) < len(reference_l1_shard) else -1
@@ -656,8 +844,19 @@ def target_shards_from_votes(
     target_shards: list[int] = []
     if votes:
         max_vote = max(votes.values())
-        if use_multi_assign and max_vote >= 2:
-            target_shards = [shard_id for shard_id in sorted(votes) if votes[shard_id] == max_vote]
+        if use_multi_assign and max_vote >= multi_assign_min_max_vote:
+            min_vote = max(1, max_vote - multi_assign_vote_delta)
+            ranked_shards = [
+                shard_id
+                for shard_id, _vote in sorted(
+                    votes.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+                if votes[shard_id] >= min_vote
+            ]
+            if multi_assign_max_shards > 0:
+                ranked_shards = ranked_shards[:multi_assign_max_shards]
+            target_shards = [int(shard_id) for shard_id in ranked_shards]
 
     if not target_shards:
         for ep_l1 in l1s:
@@ -676,6 +875,9 @@ def recalibrate_l1_weights_by_voting(
     l1_to_shard: list[int],
     num_shards: int,
     use_multi_assign: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
 ) -> np.ndarray:
     l1_global_to_local = {int(point_id): local_idx for local_idx, point_id in enumerate(upper_indices.tolist())}
     weights = np.zeros(len(upper_indices), dtype=np.int64)
@@ -686,6 +888,9 @@ def recalibrate_l1_weights_by_voting(
             point_index,
             num_shards,
             use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
         )
         for target_shard in target_shards:
             for ep_l1 in l1s:
@@ -774,6 +979,9 @@ def assign_points_by_l1_vote(
     reference_l1_shard: list[int],
     num_shards: int,
     use_multi_assign: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
 ) -> tuple[np.ndarray, list[list[int]]]:
     primary_shards = np.full(len(point_to_l1s), -1, dtype=np.int32)
     point_to_shards: list[list[int]] = []
@@ -784,6 +992,9 @@ def assign_points_by_l1_vote(
             point_index,
             num_shards,
             use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
         )
         primary_shards[point_index] = int(target_shards[0])
         point_to_shards.append([int(shard_id) for shard_id in target_shards])
@@ -792,6 +1003,12 @@ def assign_points_by_l1_vote(
 
 def total_assigned_points(point_to_shards: list[list[int]]) -> int:
     return sum(len(shards) for shards in point_to_shards)
+
+
+def expansion_ratio_from_assigned_points(assigned_points: int, logical_points: int) -> float:
+    if logical_points <= 0:
+        raise ValueError("logical_points must be positive")
+    return float(int(assigned_points) / int(logical_points))
 
 
 def point_indices_by_shard(
@@ -841,6 +1058,9 @@ def build_original_routing_state(
     topology_iters: int,
     use_multi_assign: bool,
     enable_fission: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
 ) -> OriginalRoutingState:
     nearest_l1 = np.asarray([l1s[0] for l1s in point_to_l1s], dtype=np.int64)
     l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
@@ -870,6 +1090,9 @@ def build_original_routing_state(
         l1_to_shard,
         initial_num_shards,
         use_multi_assign,
+        multi_assign_min_max_vote,
+        multi_assign_vote_delta,
+        multi_assign_max_shards,
     )
 
     fission_events: list[dict[str, Any]] = []
@@ -890,6 +1113,9 @@ def build_original_routing_state(
         l1_to_shard,
         num_shards,
         use_multi_assign,
+        multi_assign_min_max_vote,
+        multi_assign_vote_delta,
+        multi_assign_max_shards,
     )
     shard_counts = np.zeros(num_shards, dtype=np.int64)
     for shards in point_to_shards:
@@ -910,6 +1136,100 @@ def build_original_routing_state(
         expansion_ratio=float(total_assigned / len(train)),
         topology_iterations=topology_iteration_count,
         fission_events=fission_events,
+    )
+
+
+def build_claim_a_partition_routing_state(
+    family: str,
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    point_to_l1s: list[list[int]],
+    num_shards: int,
+    kmeans_iters: int,
+    kmeans_seed: int,
+    topology_iters: int,
+    use_multi_assign: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
+    random_seed: int = 12345,
+) -> OriginalRoutingState:
+    nearest_l1 = np.asarray([l1s[0] for l1s in point_to_l1s], dtype=np.int64)
+    l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
+    up_tier_weights = l1_weights_map[upper_indices].astype(np.int64, copy=False)
+
+    topology_iteration_count = 0
+    note = "claim_a_partition_family_no_fission"
+    if family == "random_balanced_46":
+        l1_to_shard = weighted_random_l1_shards(
+            len(train),
+            upper_indices,
+            up_tier_weights,
+            num_shards,
+            random_seed,
+        )
+        note = "random_balanced_l1_weight_assignment"
+    elif family in {"kmeans_topology_46", "kmeans_topology_load_recalibrated_46"}:
+        l1_to_shard = initial_l1_shards_by_balanced_kmeans(
+            train,
+            upper_indices,
+            up_tier_weights,
+            num_shards,
+            kmeans_iters,
+            kmeans_seed,
+        )
+        l1_to_shard, topology_iteration_count = converge_l1_topology(
+            point_to_l1s,
+            upper_indices,
+            up_tier_weights,
+            l1_to_shard,
+            len(train),
+            num_shards,
+            topology_iters,
+        )
+        if family == "kmeans_topology_load_recalibrated_46":
+            _recalibrated_weights = recalibrate_l1_weights_by_voting(
+                point_to_l1s,
+                upper_indices,
+                l1_to_shard,
+                num_shards,
+                use_multi_assign,
+                multi_assign_min_max_vote,
+                multi_assign_vote_delta,
+                multi_assign_max_shards,
+            )
+            note = "load_recalibration_matches_kmeans_topology_without_fission"
+        else:
+            note = "balanced_kmeans_plus_topology_without_fission"
+    else:
+        raise ValueError(f"unsupported Claim A partition family: {family}")
+
+    primary_shards, point_to_shards = assign_points_by_l1_vote(
+        point_to_l1s,
+        l1_to_shard,
+        num_shards,
+        use_multi_assign,
+        multi_assign_min_max_vote,
+        multi_assign_vote_delta,
+        multi_assign_max_shards,
+    )
+    shard_counts = shard_counts_from_point_to_shards(point_to_shards, num_shards)
+    total_assigned = int(np.sum(shard_counts))
+    return OriginalRoutingState(
+        initial_num_shards=num_shards,
+        num_shards=num_shards,
+        upper_indices=upper_indices,
+        point_to_l1s=point_to_l1s,
+        l1_to_shard=l1_to_shard,
+        primary_shards=primary_shards,
+        point_to_shards=point_to_shards,
+        shard_counts=shard_counts,
+        total_assigned=total_assigned,
+        expansion_ratio=float(total_assigned / len(train)),
+        topology_iterations=topology_iteration_count,
+        fission_events=[],
+        claim_a_partition_family=family,
+        claim_a_partition_note=note,
     )
 
 
@@ -1017,6 +1337,151 @@ def build_assignments_and_centroids(
     return assignments, normalize_rows(final_centroids)
 
 
+def cpp_baseline_kmeans_train(
+    data: np.ndarray,
+    indices: np.ndarray | list[int],
+    k: int,
+    max_iter: int = 10,
+) -> np.ndarray:
+    indices_arr = np.asarray(indices, dtype=np.int64)
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if len(indices_arr) == 0:
+        raise ValueError("indices must not be empty")
+    if len(indices_arr) < k:
+        raise ValueError("k must not exceed number of indexed points")
+
+    points = data[indices_arr].astype(np.float32, copy=False)
+    centroids = np.empty((k, data.shape[1]), dtype=np.float32)
+    for centroid_id in range(k):
+        centroids[centroid_id] = points[centroid_id % len(points)]
+
+    for _ in range(max_iter):
+        assignments = np.argmin(squared_l2_distances(points, centroids), axis=1)
+        new_centroids = np.zeros_like(centroids)
+        counts = np.bincount(assignments, minlength=k)
+        for centroid_id in range(k):
+            if counts[centroid_id] > 0:
+                new_centroids[centroid_id] = points[assignments == centroid_id].mean(axis=0)
+            else:
+                new_centroids[centroid_id] = centroids[centroid_id]
+        centroids = new_centroids
+    return centroids
+
+
+def build_cpp_kmeans_baseline_assignments(
+    train: np.ndarray,
+    num_shards: int,
+    train_size: int,
+    kmeans_iters: int,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if num_shards <= 0:
+        raise ValueError("num_shards must be positive")
+    if train_size <= 0:
+        raise ValueError("train_size must be positive")
+    if len(train) < num_shards:
+        raise ValueError("num_shards must not exceed number of training points")
+
+    rng = np.random.default_rng(seed)
+    sample_indices = rng.permutation(len(train))
+    kmeans_train = sample_indices[: min(len(train), train_size)]
+    centroids = cpp_baseline_kmeans_train(
+        train,
+        kmeans_train,
+        num_shards,
+        max_iter=kmeans_iters,
+    )
+    assignments = np.argmin(squared_l2_distances(train.astype(np.float32, copy=False), centroids), axis=1)
+    return assignments.astype(np.int32, copy=False), centroids
+
+
+def simple_kmeans_point_to_shards_by_distance_alpha(
+    train: np.ndarray,
+    centroids: np.ndarray,
+    alpha: float,
+    chunk_size: int = 50000,
+) -> list[list[int]]:
+    if alpha < 1.0:
+        raise ValueError("alpha must be >= 1.0")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if centroids.ndim != 2 or len(centroids) == 0:
+        raise ValueError("centroids must be a non-empty 2D array")
+
+    point_to_shards: list[list[int]] = []
+    alpha_squared = float(alpha) * float(alpha)
+    centroids_f32 = centroids.astype(np.float32, copy=False)
+    for start_idx in range(0, len(train), chunk_size):
+        chunk = train[start_idx : start_idx + chunk_size].astype(np.float32, copy=False)
+        distances = squared_l2_distances(chunk, centroids_f32)
+        nearest = np.min(distances, axis=1)
+        thresholds = nearest * alpha_squared
+        for row_distances, threshold in zip(distances, thresholds):
+            shard_ids = np.flatnonzero(row_distances <= threshold).astype(np.int64, copy=False).tolist()
+            if not shard_ids:
+                shard_ids = [int(np.argmin(row_distances))]
+            point_to_shards.append([int(shard_id) for shard_id in shard_ids])
+    return point_to_shards
+
+
+def shard_counts_from_point_to_shards(point_to_shards: list[list[int]], num_shards: int) -> np.ndarray:
+    counts = np.zeros(num_shards, dtype=np.int64)
+    for shard_ids in point_to_shards:
+        for shard_id in shard_ids:
+            if 0 <= int(shard_id) < num_shards:
+                counts[int(shard_id)] += 1
+    return counts
+
+
+def sample_cpp_kmeans_upper_points(
+    train: np.ndarray,
+    assignments: np.ndarray,
+    num_shards: int,
+    denominator: int,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, dict[int, str], list[dict[str, Any]]]:
+    if denominator <= 0:
+        raise ValueError("denominator must be positive")
+    if num_shards <= 0:
+        raise ValueError("num_shards must be positive")
+
+    rng = np.random.default_rng(seed)
+    sampled_vectors: list[np.ndarray] = []
+    sampled_ids: list[int] = []
+    label_to_shard: dict[int, str] = {}
+    rows: list[dict[str, Any]] = []
+
+    for shard_id in range(num_shards):
+        shard_key = shard_key_for_id(shard_id)
+        indices = np.flatnonzero(assignments == shard_id).astype(np.int64, copy=False)
+        if len(indices) > 1:
+            indices = rng.permutation(indices)
+        sample_size = int(len(indices) // denominator)
+        if sample_size > 0:
+            sampled_local = indices[:sample_size]
+            sampled_vectors.append(train[sampled_local])
+            point_ids = (sampled_local + 1).astype(np.int64)
+            sampled_ids.extend(point_ids.tolist())
+            for point_id in point_ids.tolist():
+                label_to_shard[int(point_id)] = shard_key
+        rows.append(
+            {
+                "shard_id": shard_id,
+                "shard_key": shard_key,
+                "points_count": int(len(indices)),
+                "sample_count": int(sample_size),
+            }
+        )
+
+    if sampled_vectors:
+        merged_vectors = np.vstack(sampled_vectors).astype(np.float32, copy=False)
+    else:
+        merged_vectors = np.empty((0, train.shape[1]), dtype=np.float32)
+    merged_ids = np.asarray(sampled_ids, dtype=np.int64)
+    return merged_vectors, merged_ids, label_to_shard, rows
+
+
 def compute_sample_sizes(shard_sizes: list[int], denominator: int) -> list[int]:
     if denominator <= 0:
         raise ValueError("denominator must be positive")
@@ -1084,23 +1549,31 @@ def build_upper_index(
     m: int,
     ef_construction: int,
     ef_search: int,
+    hnsw_space: str = "cosine",
 ) -> Any:
     import hnswlib
 
-    index = hnswlib.Index(space="cosine", dim=dim)
+    index = hnswlib.Index(space=hnsw_space, dim=dim)
     index.init_index(max_elements=len(labels), ef_construction=ef_construction, M=m)
     index.add_items(vectors, labels)
     index.set_ef(ef_search)
     return index
 
 
-def create_collection(base_url: str, name: str, dim: int, m: int, ef_construct: int) -> None:
+def create_collection(
+    base_url: str,
+    name: str,
+    dim: int,
+    m: int,
+    ef_construct: int,
+    vector_distance: str = "Cosine",
+) -> None:
     request_json(
         base_url,
         "PUT",
         f"/collections/{urllib.parse.quote(name, safe='')}",
         body={
-            "vectors": {"size": dim, "distance": "Cosine"},
+            "vectors": {"size": dim, "distance": vector_distance},
             "shard_number": 1,
             "sharding_method": "custom",
             "replication_factor": 1,
@@ -1268,11 +1741,12 @@ def ensure_collection(
     shard_placement: str,
     peer_ids: list[int],
     shard_placement_map: dict[str, int] | None = None,
+    vector_distance: str = "Cosine",
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     if not reuse_existing or not collection_exists(base_url, collection):
         delete_collection_if_exists(base_url, collection)
-        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct)
+        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct, vector_distance)
         for shard_id, shard_key in enumerate(shard_keys):
             placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
@@ -1410,12 +1884,13 @@ def ensure_collection_from_point_shards(
     shard_placement: str,
     peer_ids: list[int],
     shard_placement_map: dict[str, int] | None = None,
+    vector_distance: str = "Cosine",
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     expected_points = total_assigned_points(point_to_shards)
     if not reuse_existing or not collection_exists(base_url, collection):
         delete_collection_if_exists(base_url, collection)
-        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct)
+        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct, vector_distance)
         for shard_id, shard_key in enumerate(shard_keys):
             placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
@@ -2013,33 +2488,78 @@ def build_compact_routed_search_plans(
     ]
 
 
-def merge_topk_candidates(candidate_groups: list[list[tuple[float, int]]], top_k: int) -> list[int]:
+def merge_topk_candidates(
+    candidate_groups: list[list[tuple[float, int]]],
+    top_k: int,
+    score_higher_is_better: bool = True,
+) -> list[int]:
     return [
         point_id
-        for _score, point_id in merge_topk_scored_candidates(candidate_groups, top_k)
+        for _score, point_id in merge_topk_scored_candidates(
+            candidate_groups,
+            top_k,
+            score_higher_is_better,
+        )
     ]
+
+
+def per_query_recall_rows(
+    top_ids_by_query: list[list[int]],
+    neighbors: Any,
+    top_k: int,
+    query_index_offset: int = 0,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for local_idx, top_ids in enumerate(top_ids_by_query):
+        gt_ids = [int(point_id) for point_id in list(neighbors[local_idx])[:top_k]]
+        hits = len(set(map(int, top_ids)) & set(gt_ids))
+        rows.append(
+            {
+                "query_index": int(query_index_offset + local_idx),
+                "hits_at_k": int(hits),
+                "recall_at_k": float(hits / top_k),
+                "retrieved_ids": " ".join(str(int(point_id)) for point_id in top_ids),
+                "ground_truth_ids": " ".join(str(int(point_id)) for point_id in gt_ids),
+            }
+        )
+    return rows
 
 
 def merge_topk_scored_candidates(
     candidate_groups: list[list[tuple[float, int]]],
     top_k: int,
+    score_higher_is_better: bool = True,
 ) -> list[tuple[float, int]]:
     best_by_id: dict[int, float] = {}
     for group in candidate_groups:
         for score, point_id in group:
             current = best_by_id.get(point_id)
-            if current is None or score > current:
+            if current is None or (
+                score > current if score_higher_is_better else score < current
+            ):
                 best_by_id[point_id] = score
-    ordered = sorted(best_by_id.items(), key=lambda item: item[1], reverse=True)
+    ordered = sorted(
+        best_by_id.items(),
+        key=lambda item: item[1],
+        reverse=score_higher_is_better,
+    )
     return [(score, point_id) for point_id, score in ordered[:top_k]]
 
 
 def peer_local_premerge_candidates(
     shard_results_by_peer: dict[int, list[list[tuple[float, int]]]],
     top_k: int,
+    score_higher_is_better: bool = True,
 ) -> list[tuple[int, list[tuple[float, int]]]]:
     return [
-        (int(peer_id), merge_topk_scored_candidates(candidate_groups, top_k))
+        (
+            int(peer_id),
+            merge_topk_scored_candidates(
+                candidate_groups,
+                top_k,
+                score_higher_is_better,
+            ),
+        )
         for peer_id, candidate_groups in sorted(shard_results_by_peer.items())
     ]
 
@@ -2066,6 +2586,7 @@ def evaluate_config(
     routed_result_limit_multiplier: float = 1,
     source_id_dedup_block_size: int | None = None,
     lower_execution_order: str = "query_major",
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
         raise ValueError("either label_to_shard or point_to_shards must be provided")
@@ -2213,7 +2734,7 @@ def evaluate_config(
                 per_query_candidates[local_idx].append(result)
 
         for local_idx, candidate_groups in enumerate(per_query_candidates):
-            top_ids = merge_topk_candidates(candidate_groups, top_k)
+            top_ids = merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
             gt = set(map(int, neighbors[start_idx + local_idx]))
             total_hits += len(set(top_ids) & gt)
 
@@ -2257,6 +2778,8 @@ def evaluate_config_materialized_routing(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    include_per_query_metrics: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -2315,9 +2838,16 @@ def evaluate_config_materialized_routing(
     search_request_count = 0
     candidate_group_count = 0
     returned_candidate_count = 0
+    per_query_rows: list[dict[str, Any]] = []
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
+        per_query_kwargs = {}
+        if include_per_query_metrics:
+            per_query_kwargs = {
+                "include_per_query_metrics": True,
+                "query_index_offset": start_idx,
+            }
         result = execute_query_plans_once(
             base_url,
             collection,
@@ -2328,6 +2858,8 @@ def evaluate_config_materialized_routing(
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
+            **per_query_kwargs,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2339,9 +2871,11 @@ def evaluate_config_materialized_routing(
         search_request_count += int(result["search_request_count"])
         candidate_group_count += int(result.get("candidate_group_count", result.get("search_request_count", 0)))
         returned_candidate_count += int(result.get("returned_candidate_count", 0))
+        if include_per_query_metrics:
+            per_query_rows.extend(result.get("per_query_rows", []))
 
     wall = time.perf_counter() - start
-    return {
+    output = {
         "recall_at_k": total_hits / (total_executed_queries * top_k),
         "qps": total_executed_queries / wall,
         "wall_s": wall,
@@ -2355,6 +2889,9 @@ def evaluate_config_materialized_routing(
         "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
     }
+    if include_per_query_metrics:
+        output["per_query_rows"] = per_query_rows
+    return output
 
 
 def evaluate_config_compact_materialized_routing(
@@ -2382,6 +2919,8 @@ def evaluate_config_compact_materialized_routing(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    include_per_query_metrics: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if routed_execution_mode != "compact_multi_ep":
         raise ValueError("compact_materialized planning requires --routed-execution-mode compact_multi_ep")
@@ -2426,9 +2965,16 @@ def evaluate_config_compact_materialized_routing(
     search_request_count = 0
     candidate_group_count = 0
     returned_candidate_count = 0
+    per_query_rows: list[dict[str, Any]] = []
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
+        per_query_kwargs = {}
+        if include_per_query_metrics:
+            per_query_kwargs = {
+                "include_per_query_metrics": True,
+                "query_index_offset": start_idx,
+            }
         result = execute_query_plans_once(
             base_url,
             collection,
@@ -2439,6 +2985,8 @@ def evaluate_config_compact_materialized_routing(
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
+            **per_query_kwargs,
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2450,9 +2998,11 @@ def evaluate_config_compact_materialized_routing(
         search_request_count += int(result["search_request_count"])
         candidate_group_count += int(result.get("candidate_group_count", result.get("search_request_count", 0)))
         returned_candidate_count += int(result.get("returned_candidate_count", 0))
+        if include_per_query_metrics:
+            per_query_rows.extend(result.get("per_query_rows", []))
 
     wall = time.perf_counter() - start
-    return {
+    output = {
         "recall_at_k": total_hits / (total_executed_queries * top_k),
         "qps": total_executed_queries / wall,
         "wall_s": wall,
@@ -2466,6 +3016,9 @@ def evaluate_config_compact_materialized_routing(
         "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
     }
+    if include_per_query_metrics:
+        output["per_query_rows"] = per_query_rows
+    return output
 
 
 def routed_evaluator_for_planning_mode(mode: str) -> Any:
@@ -2490,6 +3043,8 @@ def evaluate_all_shards_config(
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
     lower_execution_order: str = "query_major",
+    include_per_query_metrics: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if lower_execution_order not in {"query_major", "shard_major"}:
         raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
@@ -2497,6 +3052,7 @@ def evaluate_all_shards_config(
     total_queries = len(queries)
     shard_keys, _ef_values = all_shard_keys_and_ef(num_shards, hnsw_ef)
     search_request_count = 0
+    per_query_rows: list[dict[str, Any]] = []
     start = time.perf_counter()
 
     for start_idx in range(0, total_queries, batch_size):
@@ -2526,12 +3082,24 @@ def evaluate_all_shards_config(
         for local_idx, result in zip(query_positions, results):
             per_query_candidates[local_idx].append(result)
         for local_idx, candidate_groups in enumerate(per_query_candidates):
-            top_ids = merge_topk_candidates(candidate_groups, top_k)
+            top_ids = merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
             gt = set(map(int, neighbors[start_idx + local_idx]))
             total_hits += len(set(top_ids) & gt)
+        if include_per_query_metrics:
+            per_query_rows.extend(
+                per_query_recall_rows(
+                    [
+                        merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
+                        for candidate_groups in per_query_candidates
+                    ],
+                    neighbors[start_idx : start_idx + len(chunk)],
+                    top_k,
+                    start_idx,
+                )
+            )
 
     wall = time.perf_counter() - start
-    return {
+    output = {
         "recall_at_k": total_hits / (total_queries * top_k),
         "qps": total_queries / wall,
         "wall_s": wall,
@@ -2541,6 +3109,213 @@ def evaluate_all_shards_config(
         "search_batch_calls": int(ceil(total_queries / batch_size)),
         "avg_search_requests_per_query": search_request_count / total_queries,
     }
+    if include_per_query_metrics:
+        output["per_query_rows"] = per_query_rows
+    return output
+
+
+def evaluate_kmeans_simple_nprobe_config(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    centroids: np.ndarray,
+    nprobe: int,
+    hnsw_ef: int,
+    batch_size: int,
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
+    include_per_query_metrics: bool = False,
+    score_higher_is_better: bool = True,
+) -> dict[str, Any]:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    total_queries = len(queries)
+    start = time.perf_counter()
+    query_plans = build_kmeans_simple_nprobe_search_plans(
+        queries,
+        centroids,
+        nprobe,
+        top_k,
+        hnsw_ef,
+        use_payload_source_id,
+        source_id_dedup_block_size,
+    )
+
+    total_hits = 0
+    total_executed_queries = 0
+    total_visited_shards = 0
+    total_upper_hits = 0
+    total_assigned_ef = 0
+    total_assigned_ef_count = 0
+    search_batch_calls = 0
+    search_request_count = 0
+    candidate_group_count = 0
+    returned_candidate_count = 0
+    per_query_rows: list[dict[str, Any]] = []
+
+    for start_idx in range(0, total_queries, batch_size):
+        end_idx = min(start_idx + batch_size, total_queries)
+        per_query_kwargs = {}
+        if include_per_query_metrics:
+            per_query_kwargs = {
+                "include_per_query_metrics": True,
+                "query_index_offset": start_idx,
+            }
+        result = execute_query_plans_once(
+            base_url,
+            collection,
+            query_plans[start_idx:end_idx],
+            neighbors[start_idx:end_idx],
+            top_k,
+            direct_peer_urls=direct_peer_urls,
+            shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
+            **per_query_kwargs,
+        )
+        total_hits += int(result["hits"])
+        total_executed_queries += int(result["query_count"])
+        total_visited_shards += int(result["visited_shards"])
+        total_upper_hits += int(result["upper_hits"])
+        total_assigned_ef += int(result["assigned_ef_sum"])
+        total_assigned_ef_count += int(result["assigned_ef_count"])
+        search_batch_calls += int(result["search_batch_calls"])
+        search_request_count += int(result["search_request_count"])
+        candidate_group_count += int(result.get("candidate_group_count", result.get("search_request_count", 0)))
+        returned_candidate_count += int(result.get("returned_candidate_count", 0))
+        if include_per_query_metrics:
+            per_query_rows.extend(result.get("per_query_rows", []))
+
+    wall = time.perf_counter() - start
+    output = {
+        "recall_at_k": total_hits / (total_executed_queries * top_k),
+        "qps": total_executed_queries / wall,
+        "wall_s": wall,
+        "avg_visited_shards": total_visited_shards / total_executed_queries,
+        "avg_upper_hits": total_upper_hits / total_executed_queries,
+        "avg_assigned_ef_per_visited_shard": (
+            total_assigned_ef / total_assigned_ef_count if total_assigned_ef_count > 0 else 0.0
+        ),
+        "search_batch_calls": search_batch_calls,
+        "avg_search_requests_per_query": search_request_count / total_executed_queries,
+        "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
+        "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
+    }
+    if include_per_query_metrics:
+        output["per_query_rows"] = per_query_rows
+    return output
+
+
+def evaluate_kmeans_simple_nprobe_config_batch(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: Any,
+    top_k: int,
+    centroids: np.ndarray,
+    nprobe: int,
+    hnsw_ef: int,
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
+) -> dict[str, Any]:
+    query_plans = build_kmeans_simple_nprobe_search_plans(
+        queries,
+        centroids,
+        nprobe,
+        top_k,
+        hnsw_ef,
+        use_payload_source_id,
+        source_id_dedup_block_size,
+    )
+    return execute_query_plans_once(
+        base_url,
+        collection,
+        query_plans,
+        neighbors,
+        top_k,
+        direct_peer_urls=direct_peer_urls,
+        shard_key_to_peer=shard_key_to_peer,
+        lower_execution_order=lower_execution_order,
+        direct_peer_local_premerge=direct_peer_local_premerge,
+        score_higher_is_better=score_higher_is_better,
+    )
+
+
+def evaluate_kmeans_simple_nprobe_config_concurrent(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    centroids: np.ndarray,
+    nprobe: int,
+    hnsw_ef: int,
+    batch_size: int,
+    concurrency: int,
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
+) -> dict[str, Any]:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if concurrency <= 0:
+        raise ValueError("concurrency must be positive")
+    if len(queries) == 0:
+        raise ValueError("queries must not be empty")
+
+    ranges = [
+        (start_idx, min(start_idx + batch_size, len(queries)))
+        for start_idx in range(0, len(queries), batch_size)
+    ]
+
+    def run_range(start_idx: int, end_idx: int) -> dict[str, Any]:
+        return evaluate_kmeans_simple_nprobe_config_batch(
+            base_url,
+            collection,
+            queries[start_idx:end_idx],
+            neighbors[start_idx:end_idx],
+            top_k,
+            centroids,
+            nprobe,
+            hnsw_ef,
+            use_payload_source_id,
+            source_id_dedup_block_size,
+            direct_peer_urls=direct_peer_urls,
+            shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=lower_execution_order,
+            direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
+        )
+
+    start = time.perf_counter()
+    if concurrency == 1:
+        batch_results = [run_range(start_idx, end_idx) for start_idx, end_idx in ranges]
+    else:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = [
+                pool.submit(run_range, start_idx, end_idx)
+                for start_idx, end_idx in ranges
+            ]
+            batch_results = [future.result() for future in futures]
+
+    wall = time.perf_counter() - start
+    return aggregate_timed_batch_results(batch_results, wall, top_k)
 
 
 def search_request(
@@ -2613,6 +3388,79 @@ def all_shard_search_plan(
         "assigned_ef_sum": int(hnsw_ef) * int(num_shards),
         "assigned_ef_count": int(num_shards),
     }
+
+
+def kmeans_simple_nprobe_shard_ids(
+    query: np.ndarray,
+    centroids: np.ndarray,
+    nprobe: int,
+) -> list[int]:
+    if nprobe <= 0:
+        raise ValueError("nprobe must be positive")
+    if centroids.ndim != 2 or len(centroids) == 0:
+        raise ValueError("centroids must be a non-empty 2D array")
+    distances = squared_l2_distances(
+        np.asarray(query, dtype=np.float32).reshape(1, -1),
+        centroids.astype(np.float32, copy=False),
+    )[0]
+    limit = min(int(nprobe), len(centroids))
+    return [int(shard_id) for shard_id in np.argsort(distances, kind="stable")[:limit].tolist()]
+
+
+def kmeans_simple_nprobe_search_plan(
+    query: np.ndarray | list[float],
+    centroids: np.ndarray,
+    nprobe: int,
+    top_k: int,
+    hnsw_ef: int,
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+) -> dict[str, Any]:
+    shard_ids = kmeans_simple_nprobe_shard_ids(
+        np.asarray(query, dtype=np.float32),
+        centroids,
+        nprobe,
+    )
+    shard_keys = [shard_key_for_id(shard_id) for shard_id in shard_ids]
+    return {
+        "searches": [
+            search_request(
+                np.asarray(query, dtype=np.float32).tolist(),
+                top_k,
+                hnsw_ef,
+                shard_keys,
+                use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+            )
+        ] if shard_keys else [],
+        "visited_shards": len(shard_keys),
+        "upper_hits": 0,
+        "assigned_ef_sum": int(hnsw_ef) * len(shard_keys),
+        "assigned_ef_count": len(shard_keys),
+    }
+
+
+def build_kmeans_simple_nprobe_search_plans(
+    queries: np.ndarray,
+    centroids: np.ndarray,
+    nprobe: int,
+    top_k: int,
+    hnsw_ef: int,
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        kmeans_simple_nprobe_search_plan(
+            query,
+            centroids,
+            nprobe,
+            top_k,
+            hnsw_ef,
+            use_payload_source_id,
+            source_id_dedup_block_size,
+        )
+        for query in queries
+    ]
 
 
 def routed_search_plan(
@@ -2790,6 +3638,9 @@ def execute_query_plans_once(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    include_per_query_metrics: bool = False,
+    query_index_offset: int = 0,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if lower_execution_order not in {"query_major", "shard_major"}:
         raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
@@ -2879,6 +3730,7 @@ def execute_query_plans_once(
                 for _peer_id, premerged in peer_local_premerge_candidates(
                     shard_results_by_peer,
                     top_k,
+                    score_higher_is_better,
                 ):
                     per_query_candidates[local_idx].append(premerged)
         else:
@@ -2913,12 +3765,13 @@ def execute_query_plans_once(
     )
 
     hits = 0
+    top_ids_by_query: list[list[int]] = []
     for offset, candidate_groups in enumerate(per_query_candidates):
-        top_ids = merge_topk_candidates(candidate_groups, top_k)
+        top_ids = merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
+        top_ids_by_query.append(top_ids)
         gt = set(map(int, neighbors[offset]))
         hits += len(set(top_ids) & gt)
-
-    return {
+    result = {
         "hits": hits,
         "query_count": len(query_plans),
         "visited_shards": sum(int(plan["visited_shards"]) for plan in query_plans),
@@ -2936,6 +3789,14 @@ def execute_query_plans_once(
             returned_candidate_count / len(query_plans) if query_plans else 0.0
         ),
     }
+    if include_per_query_metrics:
+        result["per_query_rows"] = per_query_recall_rows(
+            top_ids_by_query,
+            neighbors,
+            top_k,
+            query_index_offset,
+        )
+    return result
 
 
 def legacy_routed_search_plan(
@@ -3068,6 +3929,7 @@ def evaluate_routed_config_batch(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
         raise ValueError("either label_to_shard or point_to_shards must be provided")
@@ -3122,6 +3984,7 @@ def evaluate_routed_config_batch(
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
         direct_peer_local_premerge=direct_peer_local_premerge,
+        score_higher_is_better=score_higher_is_better,
     )
 
 
@@ -3139,6 +4002,7 @@ def evaluate_all_shards_config_batch(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     query_plans = build_all_shard_search_plans(
         queries,
@@ -3158,6 +4022,7 @@ def evaluate_all_shards_config_batch(
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
         direct_peer_local_premerge=direct_peer_local_premerge,
+        score_higher_is_better=score_higher_is_better,
     )
 
 
@@ -3225,6 +4090,7 @@ def evaluate_config_concurrent(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3263,6 +4129,7 @@ def evaluate_config_concurrent(
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
         )
 
     start = time.perf_counter()
@@ -3296,6 +4163,7 @@ def evaluate_all_shards_config_concurrent(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3324,6 +4192,7 @@ def evaluate_all_shards_config_concurrent(
             shard_key_to_peer=shard_key_to_peer,
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
+            score_higher_is_better=score_higher_is_better,
         )
 
     start = time.perf_counter()
@@ -3353,6 +4222,7 @@ def evaluate_preplanned_search_batch(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     result = execute_query_plans_once(
         base_url,
@@ -3364,6 +4234,7 @@ def evaluate_preplanned_search_batch(
         shard_key_to_peer=shard_key_to_peer,
         lower_execution_order=lower_execution_order,
         direct_peer_local_premerge=direct_peer_local_premerge,
+        score_higher_is_better=score_higher_is_better,
     )
     return result
 
@@ -3380,6 +4251,7 @@ def evaluate_preplanned_searches_concurrent(
     shard_key_to_peer: dict[str, int] | None = None,
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
+    score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3409,6 +4281,7 @@ def evaluate_preplanned_searches_concurrent(
                 shard_key_to_peer,
                 lower_execution_order,
                 direct_peer_local_premerge,
+                score_higher_is_better,
             )
             batch_results.append(result)
     else:
@@ -3427,6 +4300,7 @@ def evaluate_preplanned_searches_concurrent(
                     shard_key_to_peer,
                     lower_execution_order,
                     direct_peer_local_premerge,
+                    score_higher_is_better,
                 )
                 for start_idx, end_idx in ranges
             ]
@@ -3459,6 +4333,9 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     args = parse_args()
+    validate_args(args)
+    distance_config = vector_distance_config(args.vector_distance)
+    configured_upper_search_ef = effective_upper_search_ef(args)
     if args.recover_routing_from_collection and (
         args.routing_mode != "faithful_original_rest" or not args.reuse_existing
     ):
@@ -3478,9 +4355,9 @@ def main() -> int:
         eval_queries = handle["test"][: args.eval_query_count].astype(np.float32, copy=True)
         eval_neighbors = handle["neighbors"][: args.eval_query_count, : args.top_k].astype(np.int32, copy=True)
 
-    train = normalize_rows(train)
-    tuning_queries = normalize_rows(tuning_queries)
-    eval_queries = normalize_rows(eval_queries)
+    train = prepare_vectors_for_distance(train, distance_config["name"])
+    tuning_queries = prepare_vectors_for_distance(tuning_queries, distance_config["name"])
+    eval_queries = prepare_vectors_for_distance(eval_queries, distance_config["name"])
 
     peers = cluster_peer_ids(args.base_url, args.placement_peer_uri_contains)
     shard_placement_map: dict[str, int] | None = None
@@ -3497,9 +4374,128 @@ def main() -> int:
     label_to_shard: dict[int, str] | None = None
     point_to_shards: list[list[int]] | None = None
     routing_state: OriginalRoutingState | None = None
+    upper_index: Any | None = None
+    upper_ids = np.asarray([], dtype=np.int64)
+    simple_kmeans_centroids: np.ndarray | None = None
+    simple_kmeans_total_assigned: int | None = None
+    simple_kmeans_expansion_ratio: float | None = None
+    simple_kmeans_shard_counts: np.ndarray | None = None
+    recovered_original_total_assigned: int | None = None
+    recovered_original_expansion_ratio: float | None = None
     use_payload_source_id = False
 
-    if args.routing_mode == "legacy_centroid":
+    if args.routing_mode == "cpp_kmeans_baseline":
+        assignments, _centroids = build_cpp_kmeans_baseline_assignments(
+            train,
+            args.num_shards,
+            args.cpp_kmeans_train_size,
+            args.kmeans_iters,
+            args.upper_sample_seed,
+        )
+        build_row = ensure_collection(
+            args.base_url,
+            args.collection,
+            train,
+            assignments,
+            args.num_shards,
+            args.hnsw_m,
+            args.ef_construct,
+            args.upload_batch_size,
+            args.reuse_existing,
+            args.shard_placement,
+            peers,
+            shard_placement_map,
+            vector_distance=distance_config["qdrant_distance"],
+        )
+
+        upper_vectors, upper_ids, label_to_shard, sample_rows = sample_cpp_kmeans_upper_points(
+            train,
+            assignments,
+            args.num_shards,
+            args.sample_denominator,
+            args.upper_sample_seed,
+        )
+        if len(upper_ids) == 0:
+            raise ValueError(
+                "cpp_kmeans_baseline sampled no upper points; decrease --sample-denominator "
+                "or increase the training set size"
+            )
+        upper_index = build_upper_index(
+            upper_vectors,
+            upper_ids,
+            train.shape[1],
+            args.upper_m,
+            args.upper_ef_construction,
+            configured_upper_search_ef,
+            distance_config["hnsw_space"],
+        )
+        effective_num_shards = args.num_shards
+    elif args.routing_mode == "kmeans_simple_nprobe":
+        assignments, simple_kmeans_centroids = build_cpp_kmeans_baseline_assignments(
+            train,
+            args.num_shards,
+            args.cpp_kmeans_train_size,
+            args.kmeans_iters,
+            args.upper_sample_seed,
+        )
+        simple_kmeans_multi_assign = float(args.simple_kmeans_multi_assign_alpha) > 1.0
+        if simple_kmeans_multi_assign:
+            point_to_shards = simple_kmeans_point_to_shards_by_distance_alpha(
+                train,
+                simple_kmeans_centroids,
+                args.simple_kmeans_multi_assign_alpha,
+                args.simple_kmeans_multi_assign_chunk_size,
+            )
+            empty_upper_indices = np.asarray([], dtype=np.int64)
+            build_row = ensure_collection_from_point_shards(
+                args.base_url,
+                args.collection,
+                train,
+                point_to_shards,
+                empty_upper_indices,
+                args.num_shards,
+                args.hnsw_m,
+                args.ef_construct,
+                args.upload_batch_size,
+                args.reuse_existing,
+                args.shard_placement,
+                peers,
+                shard_placement_map,
+                vector_distance=distance_config["qdrant_distance"],
+            )
+            shard_counts = shard_counts_from_point_to_shards(point_to_shards, args.num_shards)
+            use_payload_source_id = True
+        else:
+            build_row = ensure_collection(
+                args.base_url,
+                args.collection,
+                train,
+                assignments,
+                args.num_shards,
+                args.hnsw_m,
+                args.ef_construct,
+                args.upload_batch_size,
+                args.reuse_existing,
+                args.shard_placement,
+                peers,
+                shard_placement_map,
+                vector_distance=distance_config["qdrant_distance"],
+            )
+            shard_counts = np.bincount(assignments, minlength=args.num_shards)
+        simple_kmeans_shard_counts = shard_counts
+        simple_kmeans_total_assigned = int(np.sum(shard_counts))
+        simple_kmeans_expansion_ratio = float(simple_kmeans_total_assigned / len(train))
+        sample_rows = [
+            {
+                "shard_id": shard_id,
+                "shard_key": shard_key_for_id(shard_id),
+                "points_count": int(shard_counts[shard_id]),
+                "sample_count": 0,
+            }
+            for shard_id in range(args.num_shards)
+        ]
+        effective_num_shards = args.num_shards
+    elif args.routing_mode == "legacy_centroid":
         assignments, _shard_centroids = build_assignments_and_centroids(
             train,
             args.num_shards,
@@ -3520,6 +4516,7 @@ def main() -> int:
             args.shard_placement,
             peers,
             shard_placement_map,
+            vector_distance=distance_config["qdrant_distance"],
         )
 
         upper_vectors, upper_ids, label_to_shard, sample_rows = sample_upper_points(
@@ -3535,7 +4532,8 @@ def main() -> int:
             train.shape[1],
             args.upper_m,
             args.upper_ef_construction,
-            args.upper_search_ef,
+            configured_upper_search_ef,
+            distance_config["hnsw_space"],
         )
         effective_num_shards = args.num_shards
     elif args.routing_mode == "naive_hash_all_shards":
@@ -3556,6 +4554,7 @@ def main() -> int:
             args.shard_placement,
             peers,
             shard_placement_map,
+            vector_distance=distance_config["qdrant_distance"],
         )
         shard_counts = np.bincount(
             np.asarray([shards[0] for shards in point_to_shards], dtype=np.int64),
@@ -3585,7 +4584,8 @@ def main() -> int:
             train.shape[1],
             args.upper_m,
             args.upper_ef_construction,
-            100,
+            configured_upper_search_ef,
+            distance_config["hnsw_space"],
         )
         if args.recover_routing_from_collection:
             collection_cluster = collection_cluster_info(args.base_url, args.collection)
@@ -3599,6 +4599,11 @@ def main() -> int:
                 effective_num_shards,
             )
             info = collection_info(args.base_url, args.collection)
+            recovered_original_total_assigned = int(info.get("points_count") or 0)
+            recovered_original_expansion_ratio = expansion_ratio_from_assigned_points(
+                recovered_original_total_assigned,
+                len(train),
+            )
             l1_counts = np.zeros(effective_num_shards, dtype=np.int64)
             for point_id in upper_indices.tolist():
                 for shard_id in point_to_shards[int(point_id)]:
@@ -3631,17 +4636,37 @@ def main() -> int:
                 args.k_overlap,
                 args.upper_build_batch_size,
             )
-            routing_state = build_original_routing_state(
-                train,
-                upper_indices,
-                point_to_l1s,
-                args.num_shards,
-                args.kmeans_iters,
-                args.kmeans_rand_seed,
-                args.topology_iters,
-                use_multi_assign=not args.disable_multi_assign,
-                enable_fission=not args.disable_fission,
-            )
+            if args.claim_a_partition_family != "none":
+                routing_state = build_claim_a_partition_routing_state(
+                    args.claim_a_partition_family,
+                    train,
+                    upper_indices,
+                    point_to_l1s,
+                    args.num_shards,
+                    args.kmeans_iters,
+                    args.kmeans_rand_seed,
+                    args.topology_iters,
+                    use_multi_assign=not args.disable_multi_assign,
+                    multi_assign_min_max_vote=args.orion_multi_assign_min_max_vote,
+                    multi_assign_vote_delta=args.orion_multi_assign_vote_delta,
+                    multi_assign_max_shards=args.orion_multi_assign_max_shards,
+                    random_seed=args.claim_a_random_seed,
+                )
+            else:
+                routing_state = build_original_routing_state(
+                    train,
+                    upper_indices,
+                    point_to_l1s,
+                    args.num_shards,
+                    args.kmeans_iters,
+                    args.kmeans_rand_seed,
+                    args.topology_iters,
+                    use_multi_assign=not args.disable_multi_assign,
+                    enable_fission=not args.disable_fission,
+                    multi_assign_min_max_vote=args.orion_multi_assign_min_max_vote,
+                    multi_assign_vote_delta=args.orion_multi_assign_vote_delta,
+                    multi_assign_max_shards=args.orion_multi_assign_max_shards,
+                )
             point_to_shards = routing_state.point_to_shards
             effective_num_shards = routing_state.num_shards
             build_row = ensure_collection_from_point_shards(
@@ -3658,6 +4683,7 @@ def main() -> int:
                 args.shard_placement,
                 peers,
                 shard_placement_map,
+                vector_distance=distance_config["qdrant_distance"],
             )
             sample_rows = original_upper_sample_rows(routing_state)
         upper_ids = upper_indices
@@ -3681,6 +4707,13 @@ def main() -> int:
     tuning_rows: list[dict[str, Any]] = []
     if args.routing_mode == "naive_hash_all_shards":
         tuning_parameter_rows = [(0, base_ef, 0) for base_ef in args.base_ef_candidates]
+    elif args.routing_mode == "kmeans_simple_nprobe":
+        nprobe_candidates = args.nprobe_candidates if args.nprobe_candidates is not None else args.upper_k_candidates
+        tuning_parameter_rows = [
+            (nprobe, base_ef, 0)
+            for nprobe in nprobe_candidates
+            for base_ef in args.base_ef_candidates
+        ]
     else:
         tuning_parameter_rows = [
             (upper_k, base_ef, factor)
@@ -3708,6 +4741,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3722,7 +4756,28 @@ def main() -> int:
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     lower_execution_order=args.lower_execution_order,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
+        elif args.routing_mode == "kmeans_simple_nprobe":
+            assert simple_kmeans_centroids is not None
+            result = evaluate_kmeans_simple_nprobe_config(
+                args.base_url,
+                args.collection,
+                tuning_queries,
+                tuning_neighbors,
+                args.top_k,
+                simple_kmeans_centroids,
+                upper_k,
+                base_ef,
+                args.batch_size,
+                use_payload_source_id=use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+                direct_peer_urls=direct_peer_urls,
+                shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+            )
         else:
             assert upper_index is not None
             if args.search_dispatch_mode == "direct_peer":
@@ -3752,6 +4807,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3777,6 +4833,7 @@ def main() -> int:
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     lower_execution_order=args.lower_execution_order,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
         row = {
             "upper_k": upper_k,
@@ -3818,6 +4875,7 @@ def main() -> int:
                 shard_key_to_peer=shard_key_to_peer,
                 lower_execution_order=args.lower_execution_order,
                 direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
             )
         else:
             final_result = evaluate_all_shards_config(
@@ -3832,7 +4890,30 @@ def main() -> int:
                 use_payload_source_id=use_payload_source_id,
                 source_id_dedup_block_size=source_id_dedup_block_size,
                 lower_execution_order=args.lower_execution_order,
+                include_per_query_metrics=args.write_per_query_metrics,
+                score_higher_is_better=distance_config["score_higher_is_better"],
             )
+    elif args.routing_mode == "kmeans_simple_nprobe":
+        assert simple_kmeans_centroids is not None
+        final_result = evaluate_kmeans_simple_nprobe_config(
+            args.base_url,
+            args.collection,
+            eval_queries,
+            eval_neighbors,
+            args.top_k,
+            simple_kmeans_centroids,
+            int(best["upper_k"]),
+            int(best["base_ef"]),
+            args.batch_size,
+            use_payload_source_id=use_payload_source_id,
+            source_id_dedup_block_size=source_id_dedup_block_size,
+            direct_peer_urls=direct_peer_urls,
+            shard_key_to_peer=shard_key_to_peer,
+            lower_execution_order=args.lower_execution_order,
+            direct_peer_local_premerge=args.direct_peer_local_premerge,
+            include_per_query_metrics=args.write_per_query_metrics,
+            score_higher_is_better=distance_config["score_higher_is_better"],
+        )
     else:
         assert upper_index is not None
         if args.search_dispatch_mode == "direct_peer":
@@ -3862,9 +4943,13 @@ def main() -> int:
                 shard_key_to_peer=shard_key_to_peer,
                 lower_execution_order=args.lower_execution_order,
                 direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
             )
         else:
             routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
+            final_extra_kwargs = {}
+            if args.write_per_query_metrics and args.routed_planning_mode in {"materialized", "compact_materialized"}:
+                final_extra_kwargs["include_per_query_metrics"] = True
             final_result = routed_evaluator(
                 args.base_url,
                 args.collection,
@@ -3887,6 +4972,8 @@ def main() -> int:
                 routed_result_limit_mode=args.routed_result_limit_mode,
                 routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                 lower_execution_order=args.lower_execution_order,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+                **final_extra_kwargs,
             )
     final_row = {
         "upper_k": int(best["upper_k"]),
@@ -3926,6 +5013,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -3940,7 +5028,28 @@ def main() -> int:
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     lower_execution_order=args.lower_execution_order,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
+        elif args.routing_mode == "kmeans_simple_nprobe":
+            assert simple_kmeans_centroids is not None
+            result = evaluate_kmeans_simple_nprobe_config(
+                args.base_url,
+                args.collection,
+                eval_queries,
+                eval_neighbors,
+                args.top_k,
+                simple_kmeans_centroids,
+                int(best["upper_k"]),
+                int(best["base_ef"]),
+                args.batch_size,
+                use_payload_source_id=use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+                direct_peer_urls=direct_peer_urls,
+                shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+            )
         else:
             assert upper_index is not None
             if args.search_dispatch_mode == "direct_peer":
@@ -3970,6 +5079,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             else:
                 routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
@@ -3995,6 +5105,7 @@ def main() -> int:
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     lower_execution_order=args.lower_execution_order,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
         row = {
             "run": run_idx,
@@ -4027,6 +5138,17 @@ def main() -> int:
                     eval_queries,
                     args.top_k,
                     effective_num_shards,
+                    int(best["base_ef"]),
+                    use_payload_source_id=use_payload_source_id,
+                    source_id_dedup_block_size=source_id_dedup_block_size,
+                )
+            elif args.routing_mode == "kmeans_simple_nprobe":
+                assert simple_kmeans_centroids is not None
+                query_plans = build_kmeans_simple_nprobe_search_plans(
+                    eval_queries,
+                    simple_kmeans_centroids,
+                    int(best["upper_k"]),
+                    args.top_k,
                     int(best["base_ef"]),
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
@@ -4088,6 +5210,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             elif args.routing_mode == "naive_hash_all_shards":
                 result = evaluate_all_shards_config_concurrent(
@@ -4106,6 +5229,28 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
+                )
+            elif args.routing_mode == "kmeans_simple_nprobe":
+                assert simple_kmeans_centroids is not None
+                result = evaluate_kmeans_simple_nprobe_config_concurrent(
+                    args.base_url,
+                    args.collection,
+                    eval_queries,
+                    eval_neighbors,
+                    args.top_k,
+                    simple_kmeans_centroids,
+                    int(best["upper_k"]),
+                    int(best["base_ef"]),
+                    args.batch_size,
+                    int(concurrency),
+                    use_payload_source_id=use_payload_source_id,
+                    source_id_dedup_block_size=source_id_dedup_block_size,
+                    direct_peer_urls=direct_peer_urls,
+                    shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             else:
                 assert upper_index is not None
@@ -4135,6 +5280,7 @@ def main() -> int:
                     shard_key_to_peer=shard_key_to_peer,
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
                 )
             row = {
                 "concurrency": int(concurrency),
@@ -4218,6 +5364,7 @@ def main() -> int:
     write_csv(output_dir / "upper_sample_stats.csv", sample_rows)
     write_csv(output_dir / "routing_tuning.csv", tuning_rows)
     write_csv(output_dir / "final_metrics.csv", [final_row])
+    write_csv(output_dir / "final_per_query_metrics.csv", final_result.get("per_query_rows", []))
     write_csv(output_dir / "stability_runs.csv", stability_rows)
     write_csv(output_dir / "concurrency_runs.csv", concurrency_rows)
     if placement_simulation is not None:
@@ -4235,6 +5382,11 @@ def main() -> int:
         "base_url": args.base_url,
         "collection": args.collection,
         "hdf5_path": args.hdf5_path,
+        "vector_distance": distance_config["name"],
+        "upper_hnsw_space": distance_config["hnsw_space"],
+        "qdrant_vector_distance": distance_config["qdrant_distance"],
+        "normalize_vectors": distance_config["normalize_vectors"],
+        "score_higher_is_better": distance_config["score_higher_is_better"],
         "train_limit": args.train_limit,
         "routing_mode": args.routing_mode,
         "initial_num_shards": args.num_shards,
@@ -4264,13 +5416,28 @@ def main() -> int:
         ),
         "source_id_dedup_block_size": source_id_dedup_block_size,
         "multi_assign": (not args.disable_multi_assign) if args.routing_mode == "faithful_original_rest" else False,
-        "fission_enabled": (not args.disable_fission) if args.routing_mode == "faithful_original_rest" else False,
+        "orion_multi_assign_min_max_vote": (
+            args.orion_multi_assign_min_max_vote if args.routing_mode == "faithful_original_rest" else None
+        ),
+        "orion_multi_assign_vote_delta": (
+            args.orion_multi_assign_vote_delta if args.routing_mode == "faithful_original_rest" else None
+        ),
+        "orion_multi_assign_max_shards": (
+            args.orion_multi_assign_max_shards if args.routing_mode == "faithful_original_rest" else None
+        ),
+        "fission_enabled": (
+            args.claim_a_partition_family == "none" and not args.disable_fission
+            if args.routing_mode == "faithful_original_rest"
+            else False
+        ),
         "fair_architecture_note": (
-            "faithful_original_rest and naive_hash_all_shards both use Qdrant custom shard keys, "
-            "the same Docker cluster shape, the same batch search endpoint, and the same client "
-            "result merge path. The intended algorithmic difference is shard selection: idea routes "
-            "to upper-selected shards, while naive_hash_all_shards searches every shard."
-            if args.routing_mode in {"faithful_original_rest", "naive_hash_all_shards"}
+            "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant "
+            "custom shard keys, the same Docker cluster shape, the same batch search endpoint, and "
+            "the same client result merge path. The intended algorithmic difference is shard "
+            "selection: Orion routes to upper-selected shards with Method4 routing metadata, "
+            "kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and "
+            "naive_hash_all_shards searches every shard."
+            if args.routing_mode in {"faithful_original_rest", "kmeans_simple_nprobe", "naive_hash_all_shards"}
             else None
         ),
         "qdrant_rest_equivalence_gap": (
@@ -4292,23 +5459,74 @@ def main() -> int:
             if args.routing_mode == "faithful_original_rest"
             else None
         ),
-        "upper_hnsw": {
-            "m": args.upper_m,
-            "ef_construction": args.upper_ef_construction,
-            "search_ef": args.upper_search_ef,
-            "sample_points": int(len(upper_ids)),
-        },
+        "upper_hnsw": (
+            {
+                "m": args.upper_m,
+                "ef_construction": args.upper_ef_construction,
+                "search_ef": configured_upper_search_ef,
+                "sample_points": int(len(upper_ids)),
+            }
+            if upper_index is not None
+            else None
+        ),
+        "kmeans_simple_nprobe": (
+            {
+                "centroid_count": int(len(simple_kmeans_centroids)),
+                "nprobe": int(best["upper_k"]),
+                "hnsw_ef": int(best["base_ef"]),
+                "cpp_kmeans_train_size": args.cpp_kmeans_train_size,
+                "kmeans_iters": args.kmeans_iters,
+                "multi_assign": bool(args.simple_kmeans_multi_assign_alpha > 1.0),
+                "multi_assign_alpha": float(args.simple_kmeans_multi_assign_alpha),
+                "total_assigned": simple_kmeans_total_assigned,
+                "expansion_ratio": simple_kmeans_expansion_ratio,
+                "shard_count_min": int(np.min(simple_kmeans_shard_counts)) if simple_kmeans_shard_counts is not None else None,
+                "shard_count_max": int(np.max(simple_kmeans_shard_counts)) if simple_kmeans_shard_counts is not None else None,
+                "dynamic_ef": False,
+                "upper_hnsw_entry_points": False,
+                "source_id_dedup": bool(use_payload_source_id),
+            }
+            if args.routing_mode == "kmeans_simple_nprobe" and simple_kmeans_centroids is not None
+            else None
+        ),
         "original_routing": (
             {
                 "topology_iterations": routing_state.topology_iterations,
                 "total_assigned": routing_state.total_assigned,
                 "expansion_ratio": routing_state.expansion_ratio,
+                "multi_assign_min_max_vote": args.orion_multi_assign_min_max_vote,
+                "multi_assign_vote_delta": args.orion_multi_assign_vote_delta,
+                "multi_assign_max_shards": args.orion_multi_assign_max_shards,
                 "fission_events": routing_state.fission_events,
                 "shard_count_min": int(np.min(routing_state.shard_counts)),
                 "shard_count_max": int(np.max(routing_state.shard_counts)),
+                "claim_a_partition_family": routing_state.claim_a_partition_family,
+                "claim_a_partition_note": routing_state.claim_a_partition_note,
+                "claim_a_random_seed": (
+                    args.claim_a_random_seed
+                    if routing_state.claim_a_partition_family == "random_balanced_46"
+                    else None
+                ),
             }
             if routing_state is not None
-            else None
+            else (
+                {
+                    "topology_iterations": None,
+                    "total_assigned": recovered_original_total_assigned,
+                    "expansion_ratio": recovered_original_expansion_ratio,
+                    "multi_assign_min_max_vote": args.orion_multi_assign_min_max_vote,
+                    "multi_assign_vote_delta": args.orion_multi_assign_vote_delta,
+                    "multi_assign_max_shards": args.orion_multi_assign_max_shards,
+                    "fission_events": None,
+                    "shard_count_min": None,
+                    "shard_count_max": None,
+                    "recovered_from_collection": True,
+                }
+                if args.routing_mode == "faithful_original_rest"
+                and args.recover_routing_from_collection
+                and recovered_original_total_assigned is not None
+                else None
+            )
         ),
         "best_tuning_row": best,
         "final_row": final_row,

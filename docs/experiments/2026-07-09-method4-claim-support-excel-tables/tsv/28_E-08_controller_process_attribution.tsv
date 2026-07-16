@@ -1,0 +1,7 @@
+comparison	role	metric	compact value	baseline value	变化(%)
+compact_current_vs_grouped_by_ef_materialized	controller	process_cpu_total_delta_s	13.790	54.120	-74.52
+compact_current_vs_grouped_by_ef_materialized	controller	process_cpu_percent_one_core	14.650	46.848	-68.73
+compact_current_vs_grouped_by_ef_materialized	controller	process_cpu_ms_per_measured_query_window	1.532	6.013	-74.52
+compact_current_vs_client_shard_major_expanded	controller	process_cpu_total_delta_s	13.790	44.850	-69.25
+compact_current_vs_client_shard_major_expanded	controller	process_cpu_percent_one_core	14.650	33.972	-56.88
+compact_current_vs_client_shard_major_expanded	controller	process_cpu_ms_per_measured_query_window	1.532	4.983	-69.25

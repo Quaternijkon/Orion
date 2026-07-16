@@ -1,0 +1,7 @@
+对比	方法	Recall@10	QPS	visited	平均EF/visited	EF-sum/query
+fixed_upper_k_120_isolated_095	Dynamic EF	0.94850	476.19	19.33	147.72	2855.37
+frontier_robust_095	Dynamic EF	0.95153	485.08	17.10	182.21	3115.12
+frontier_robust_097	Dynamic EF	0.97347	308.75	26.61	225.29	5994.48
+fixed_upper_k_120_isolated_095	Fixed EF	0.94933	374.36	19.30	240.00	4632.88
+frontier_robust_095	Fixed EF	0.95200	376.32	17.09	280.00	4786.51
+frontier_robust_097	Fixed EF	0.97177	235.83	21.09	480.00	10125.12

@@ -1,0 +1,12 @@
+标签	方法	Recall@10	QPS	visited	EF-sum/query	search req/query	candidate groups/query
+Method4 current 0.955 batch200	Method4	0.95527	387.14	23.21	3274.33	1.00	1.00
+curve target 0.8 orion	Method4	0.80430	1090.33	5.96	268.27	NA	NA
+curve target 0.85 orion	Method4	0.86187	961.29	6.84	654.28	NA	NA
+curve target 0.9 orion	Method4	0.90347	715.66	13.10	1045.39	NA	NA
+curve target 0.95 orion	Method4	0.95117	390.71	22.69	2885.26	NA	NA
+Naive stable closest 0.955 batch100 ef76	Naive	0.95477	272.37	46.00	3496.00	1.00	NA
+Naive stable higher recall batch100 ef80	Naive	0.95733	264.64	46.00	3680.00	1.00	NA
+curve target 0.8 naive	Naive	0.80633	439.19	46.00	736.00	NA	NA
+curve target 0.85 naive	Naive	0.85640	377.08	46.00	1104.00	NA	NA
+curve target 0.9 naive	Naive	0.90683	329.43	46.00	1840.00	NA	NA
+curve target 0.95 naive	Naive	0.95283	261.93	46.00	3496.00	NA	NA

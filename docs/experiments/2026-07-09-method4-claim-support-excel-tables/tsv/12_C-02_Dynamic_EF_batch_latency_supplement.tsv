@@ -1,0 +1,2 @@
+对比	Recall差(Dyn-Fix)	QPS变化(%)	visited变化(%)	EF-sum变化(%)	P95变化(%)	P99变化(%)	fixed repeats	dynamic repeats
+latency_rerun_u80_095_b200	0.00017	26.75	0.00	-32.52	-21.00	-20.97	3	3

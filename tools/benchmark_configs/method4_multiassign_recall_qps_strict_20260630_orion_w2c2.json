@@ -1,0 +1,90 @@
+{
+  "matrix_name": "method4_multiassign_recall_qps_strict_20260630_orion_w2c2",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "python3",
+  "output_root": "results/method4_benchmark_matrix",
+  "defaults": {
+    "base_url": "http://localhost:6833",
+    "hdf5_path": "/home/taig/dry/faiss/datasets/glove-200-angular.hdf5",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 400,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "cpp_kmeans_train_size": 10000,
+    "tuning_query_count": 500,
+    "eval_query_count": 3000,
+    "stability_repeats": 0,
+    "batch_size": 100,
+    "search_dispatch_mode": "coordinator",
+    "lower_execution_order": "query_major",
+    "shard_placement": "round_robin",
+    "placement_peer_uri_contains": [
+      "qdrant_shard_"
+    ],
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "orion_o149_w2c2_r080_strict",
+      "preset": "orion",
+      "args": {
+        "collection": "bench_ma_strict_orion_o149_w2c2_s31",
+        "num_shards": 31,
+        "recover_routing_from_collection": false,
+        "disable_fission": false,
+        "target_recall": 0.815,
+        "upper_k_candidates": [
+          12,
+          16,
+          20,
+          24
+        ],
+        "base_ef_candidates": [
+          8,
+          16,
+          24
+        ],
+        "factor_candidates": [
+          4,
+          8
+        ],
+        "orion_multi_assign_vote_delta": 2,
+        "orion_multi_assign_max_shards": 2
+      }
+    },
+    {
+      "name": "orion_o149_w2c2_r085_strict",
+      "preset": "orion",
+      "args": {
+        "collection": "bench_ma_strict_orion_o149_w2c2_s31",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "disable_fission": false,
+        "target_recall": 0.86,
+        "upper_k_candidates": [
+          16,
+          20,
+          24
+        ],
+        "base_ef_candidates": [
+          24,
+          32,
+          48
+        ],
+        "factor_candidates": [
+          4,
+          8
+        ],
+        "orion_multi_assign_vote_delta": 2,
+        "orion_multi_assign_max_shards": 2
+      }
+    }
+  ]
+}

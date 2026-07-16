@@ -1,0 +1,37 @@
+family	策略	目标召回	最终Recall	QPS	平均访问shards	EF-sum/query	index expansion
+Orion	orion_default	0.80	0.79630	1127.40	6.34	241.00	1.185
+Orion	orion_default	0.85	0.84590	943.10	7.33	526.00	1.185
+Orion	orion_default	0.90	0.89630	755.70	11.40	1034.00	1.185
+Orion	orion_default	0.95	0.94790	409.10	21.14	2802.00	1.185
+Orion	orion_single	0.80	0.81310	926.03	6.72	562.50	1.000
+Orion	orion_single	0.85	0.85637	773.51	10.35	811.09	1.000
+Orion	orion_single	0.90	0.90900	563.19	17.24	1751.62	1.000
+Orion	orion_single	0.95	0.95143	341.89	23.70	4621.98	1.000
+Orion	orion_w2c2	0.80	0.79880	1069.80	8.11	215.00	1.499
+Orion	orion_w2c2	0.85	0.84930	915.10	8.12	430.00	1.499
+Orion	orion_w2c2	0.90	0.91240	632.60	14.39	1004.00	1.499
+Orion	orion_w2c2	0.95	0.95010	458.00	21.30	2142.00	1.499
+Orion	orion_w2c3	0.80	0.80650	1001.90	7.86	206.00	1.852
+Orion	orion_w2c3	0.85	0.85100	865.40	9.43	397.00	1.852
+Orion	orion_w2c3	0.90	0.92820	591.20	16.66	1150.00	1.852
+Orion	orion_w2c3	0.95	0.96180	385.20	24.48	2449.00	1.852
+Simple KMeans	simple_a1.000	0.80	0.81640	845.60	10.00	640.00	1.000
+Simple KMeans	simple_a1.000	0.85	0.85260	617.80	16.00	1024.00	1.000
+Simple KMeans	simple_a1.000	0.90	0.89710	478.60	20.00	1920.00	1.000
+Simple KMeans	simple_a1.000	0.95	0.95320	223.10	24.00	5760.00	1.000
+Simple KMeans	simple_a1.004	0.80	0.81260	700.00	8.00	512.00	1.191
+Simple KMeans	simple_a1.004	0.85	0.86220	618.80	12.00	960.00	1.191
+Simple KMeans	simple_a1.004	0.90	0.89430	429.20	20.00	1600.00	1.191
+Simple KMeans	simple_a1.004	0.95	0.95250	219.50	24.00	4800.00	1.191
+Simple KMeans	simple_a1.010	0.80	0.83080	726.10	8.00	512.00	1.566
+Simple KMeans	simple_a1.010	0.85	0.85970	567.40	12.00	768.00	1.566
+Simple KMeans	simple_a1.010	0.90	0.90470	409.90	20.00	1600.00	1.566
+Simple KMeans	simple_a1.010	0.95	0.95770	199.00	24.00	4800.00	1.566
+Simple KMeans	simple_a1.014	0.80	0.81900	706.70	8.00	384.00	1.887
+Simple KMeans	simple_a1.014	0.85	0.88500	539.10	12.00	960.00	1.887
+Simple KMeans	simple_a1.014	0.90	0.91040	400.80	20.00	1600.00	1.887
+Simple KMeans	simple_a1.014	0.95	0.95330	220.00	24.00	3840.00	1.887
+Naive	naive_hash_all_shards_s46	0.80	0.80633	439.19	46.00	736.00	1.000
+Naive	naive_hash_all_shards_s46	0.85	0.85640	377.08	46.00	1104.00	1.000
+Naive	naive_hash_all_shards_s46	0.90	0.90683	329.43	46.00	1840.00	1.000
+Naive	naive_hash_all_shards_s46	0.95	0.95283	261.93	46.00	3496.00	1.000

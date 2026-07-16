@@ -1,0 +1,2 @@
+comparison	concurrency	Recall差	QPS变化(%)	mean latency变化(%)	P95变化(%)	P99变化(%)	visited变化(%)	EF-sum变化(%)
+method4_aware_vs_round_robin	8	0.00120	2.30	-2.28	-5.27	-7.91	2.59	1.67
