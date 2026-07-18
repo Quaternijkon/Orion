@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
+import os
+import re
+import shlex
+import socket
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -17,6 +24,23 @@ from typing import Any
 
 import h5py
 import numpy as np
+
+
+ORION_COLLECTION_METADATA_KEY = "orion_harness"
+ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION = 1
+RUNTIME_LOG_ERROR_PATTERNS = {
+    "too_many_open_files": re.compile(r"too many open files", re.IGNORECASE),
+    "peer_transport_failure": re.compile(
+        r"failed to (?:send message|connect) to https?://", re.IGNORECASE
+    ),
+    "peer_unhealthy": re.compile(
+        r"(?:unhealthy\s+peer|peer\b.*\bunhealthy)", re.IGNORECASE
+    ),
+    "shard_transfer_failure": re.compile(
+        r"(?:shard transfer.*(?:fail|error)|(?:fail|error).*shard transfer)",
+        re.IGNORECASE,
+    ),
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,6 +127,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topology-iters", type=int, default=50)
     parser.add_argument("--upper-build-batch-size", type=int, default=10000)
     parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument(
+        "--warmup-query-count",
+        type=int,
+        default=0,
+        help="Run this fixed test-query prefix before each timed parameter point; excluded from QPS.",
+    )
     parser.add_argument("--target-recall", type=float, default=0.88)
     parser.add_argument("--stability-repeats", type=int, default=3)
     parser.add_argument(
@@ -143,6 +173,17 @@ def parse_args() -> argparse.Namespace:
             "multi-shard lower searches into single-shard searches and orders each HTTP "
             "batch by shard key, so Qdrant can execute one contiguous shard-local batch "
             "per lower shard."
+        ),
+    )
+    parser.add_argument(
+        "--fixed-ef-shard-chunk-size",
+        type=int,
+        default=0,
+        help=(
+            "Explicit transport-only chunking for fixed-EF Naive/Simple searches. "
+            "0 preserves one search object per query; a positive value partitions "
+            "the selected shard keys into disjoint search objects of at most this "
+            "size. Use 32 as the initial distributed experiment setting."
         ),
     )
     parser.add_argument(
@@ -199,7 +240,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--routed-planning-mode",
-        choices=["per_batch", "materialized", "compact_materialized"],
+        choices=["per_batch", "materialized", "compact_materialized", "pipelined"],
         default="per_batch",
         help=(
             "per_batch preserves the original benchmark implementation and builds route "
@@ -207,7 +248,9 @@ def parse_args() -> argparse.Namespace:
             "route plans once for the evaluation set inside the timed path, then reuses "
             "the same method4 plans for batched lower-tier searches. compact_materialized "
             "uses a compact CSR routing manifest and pre-encoded entry point IDs before "
-            "executing the same compact MultiEP search requests."
+            "executing the same compact MultiEP search requests. pipelined preserves the "
+            "materialized route and search semantics while overlapping planning for batch "
+            "N+1 on the benchmark-client CPU set with distributed lower search for batch N."
         ),
     )
     parser.add_argument(
@@ -337,6 +380,32 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--cluster-topology",
+        default=None,
+        help=(
+            "Optional distributed topology JSON. When supplied, cluster preflight requires exactly "
+            "the controller and three worker advertised URIs in that file, and placement uses only "
+            "the three exact worker URIs."
+        ),
+    )
+    parser.add_argument(
+        "--deployment-manifest",
+        default=None,
+        help="Optional method4_distributed_cluster.py manifest copied into result provenance.",
+    )
+    parser.add_argument(
+        "--require-clean-runtime",
+        action="store_true",
+        help=(
+            "Reject a distributed benchmark result if its own runtime window contains "
+            "file-descriptor, peer-transport, peer-health, or shard-transfer failures, "
+            "or if the ending cluster/collection health checks are not clean."
+        ),
+    )
+    parser.add_argument("--image-tag", default=None)
+    parser.add_argument("--image-digest", default=None)
+    parser.add_argument("--dataset-sha256", default=None)
+    parser.add_argument(
         "--placement-simulation",
         action="store_true",
         help=(
@@ -402,6 +471,10 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--simple-kmeans-multi-assign-alpha must be >= 1.0")
     if int(args.simple_kmeans_multi_assign_chunk_size) <= 0:
         raise ValueError("--simple-kmeans-multi-assign-chunk-size must be positive")
+    if int(getattr(args, "warmup_query_count", 0)) < 0:
+        raise ValueError("--warmup-query-count must be non-negative")
+    if int(getattr(args, "fixed_ef_shard_chunk_size", 0)) < 0:
+        raise ValueError("--fixed-ef-shard-chunk-size must be non-negative")
 
 
 def vector_distance_config(vector_distance: str) -> dict[str, Any]:
@@ -446,6 +519,31 @@ def request_json(
         raise RuntimeError(f"{method} {url} failed: {exc.read().decode()}") from exc
 
 
+def request_json_encoded(
+    base_url: str,
+    method: str,
+    path: str,
+    data: bytes,
+    timeout: float = 300.0,
+) -> dict:
+    url = f"{base_url.rstrip('/')}{path}"
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"{method} {url} failed: {exc.read().decode()}") from exc
+
+
+def encode_search_batch_body(searches: list[dict[str, Any]]) -> bytes:
+    return json.dumps({"searches": searches}).encode()
+
+
 def normalize_rows(arr: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms < 1e-12] = 1.0
@@ -467,21 +565,109 @@ def slice_train_rows(rows: Any, train_limit: int | None) -> Any:
     return rows[:train_limit]
 
 
-def cluster_peer_ids(base_url: str, uri_filters: list[str] | None = None) -> list[int]:
+def normalize_peer_uri(uri: str) -> str:
+    return str(uri).rstrip("/")
+
+
+def cluster_peer_map(base_url: str) -> tuple[int | None, dict[int, str], dict[str, Any]]:
+    result = request_json(base_url, "GET", "/cluster")["result"]
+    peer_id = int(result["peer_id"]) if result.get("peer_id") is not None else None
+    peers = {
+        int(raw_peer_id): normalize_peer_uri(str((peer_info or {}).get("uri") or ""))
+        for raw_peer_id, peer_info in (result.get("peers") or {}).items()
+    }
+    return peer_id, peers, result
+
+
+def cluster_peer_ids(
+    base_url: str,
+    uri_filters: list[str] | None = None,
+    exact_uris: list[str] | None = None,
+) -> list[int]:
     try:
-        result = request_json(base_url, "GET", "/cluster")["result"]
+        current_peer_id, peers, _result = cluster_peer_map(base_url)
     except RuntimeError:
         return []
 
     peer_ids: set[int] = set()
-    if result.get("peer_id") is not None and not uri_filters:
-        peer_ids.add(int(result["peer_id"]))
-    for peer_id, peer_info in (result.get("peers") or {}).items():
-        uri = str((peer_info or {}).get("uri") or "")
+    exact = {normalize_peer_uri(uri) for uri in exact_uris or []}
+    if current_peer_id is not None and not uri_filters and not exact:
+        peer_ids.add(current_peer_id)
+    for peer_id, uri in peers.items():
+        if exact and uri not in exact:
+            continue
         if uri_filters and not any(uri_filter in uri for uri_filter in uri_filters):
             continue
-        peer_ids.add(int(peer_id))
+        peer_ids.add(peer_id)
     return sorted(peer_ids)
+
+
+def load_cluster_topology(path: str | Path) -> dict[str, Any]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    controller = data.get("controller")
+    workers = data.get("workers")
+    ports = data.get("ports") or {"http": 6333, "grpc": 6334, "p2p": 6335}
+    if not isinstance(controller, dict) or not isinstance(workers, list) or len(workers) != 3:
+        raise ValueError("cluster topology requires one controller and exactly three workers")
+    nodes = [controller, *workers]
+    ips = [str(node.get("private_ip") or "") for node in nodes]
+    if len(set(ips)) != 4 or any(not ip for ip in ips):
+        raise ValueError("cluster topology requires four unique private_ip values")
+    p2p_port = int(ports.get("p2p", 6335))
+    return {
+        **data,
+        "ports": ports,
+        "controller_uri": f"http://{controller['private_ip']}:{p2p_port}",
+        "worker_uris": [f"http://{worker['private_ip']}:{p2p_port}" for worker in workers],
+    }
+
+
+def validate_cluster_preflight(
+    base_url: str,
+    topology: dict[str, Any],
+) -> dict[str, Any]:
+    current_peer_id, peers, result = cluster_peer_map(base_url)
+    expected_controller = normalize_peer_uri(topology["controller_uri"])
+    expected_workers = [normalize_peer_uri(uri) for uri in topology["worker_uris"]]
+    expected = {expected_controller, *expected_workers}
+    actual = set(peers.values())
+    errors: list[str] = []
+    if len(peers) != 4:
+        errors.append(f"expected exactly 4 peers, found {len(peers)}")
+    if actual != expected:
+        errors.append(f"expected peer URIs {sorted(expected)}, found {sorted(actual)}")
+    if current_peer_id is None or peers.get(current_peer_id) != expected_controller:
+        errors.append(
+            f"benchmark endpoint must be controller {expected_controller}; current peer is "
+            f"{current_peer_id}:{peers.get(current_peer_id)}"
+        )
+    worker_ids = sorted(peer_id for peer_id, uri in peers.items() if uri in expected_workers)
+    if len(worker_ids) != 3:
+        errors.append(f"expected 3 worker peer IDs, found {worker_ids}")
+    raft_info = result.get("raft_info") or {}
+    pending_operations = int(raft_info.get("pending_operations") or 0)
+    if pending_operations != 0:
+        errors.append(f"expected zero pending consensus operations, found {pending_operations}")
+    consensus = result.get("consensus_thread_status") or {}
+    consensus_status = str(consensus.get("consensus_thread_status") or "")
+    if consensus_status != "working":
+        errors.append(f"expected consensus thread working, found {consensus_status!r}")
+    message_send_failures = result.get("message_send_failures") or {}
+    if message_send_failures:
+        errors.append(f"cluster reports peer message send failures: {message_send_failures}")
+    if errors:
+        raise RuntimeError("distributed cluster preflight failed: " + "; ".join(errors))
+    return {
+        "peer_id": current_peer_id,
+        "peer_count": len(peers),
+        "peers": {str(peer_id): uri for peer_id, uri in sorted(peers.items())},
+        "controller_peer_id": current_peer_id,
+        "worker_peer_ids": worker_ids,
+        "pending_operations": pending_operations,
+        "consensus_thread_status": consensus_status,
+        "message_send_failures": message_send_failures,
+        "raw": result,
+    }
 
 
 def parse_peer_http_urls(items: list[str] | None) -> dict[int, str]:
@@ -1048,6 +1234,29 @@ def all_shard_keys_and_ef(num_shards: int, hnsw_ef: int) -> tuple[list[str], lis
     return [shard_key_for_id(shard_id) for shard_id in range(num_shards)], [hnsw_ef] * num_shards
 
 
+def fixed_ef_shard_key_chunks(
+    shard_keys: list[str],
+    chunk_size: int = 0,
+) -> list[list[str]]:
+    if chunk_size < 0:
+        raise ValueError("fixed EF shard chunk size must be non-negative")
+    normalized = [str(shard_key) for shard_key in shard_keys]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("fixed EF shard chunking requires unique shard keys")
+    if not normalized:
+        return []
+    if chunk_size == 0 or chunk_size >= len(normalized):
+        return [normalized]
+    chunks = [
+        normalized[start_idx : start_idx + chunk_size]
+        for start_idx in range(0, len(normalized), chunk_size)
+    ]
+    flattened = [shard_key for chunk in chunks for shard_key in chunk]
+    if flattened != normalized or sum(map(len, chunks)) != len(set(flattened)):
+        raise RuntimeError("fixed EF shard chunks are not a disjoint full partition")
+    return chunks
+
+
 def build_original_routing_state(
     train: np.ndarray,
     upper_indices: np.ndarray,
@@ -1560,6 +1769,256 @@ def build_upper_index(
     return index
 
 
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def routing_metadata_field_mismatches(
+    actual: Any,
+    expected: Any,
+    prefix: str = "",
+) -> list[str]:
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        mismatches: list[str] = []
+        for key in sorted(set(actual) | set(expected)):
+            field = f"{prefix}.{key}" if prefix else str(key)
+            if key not in actual:
+                mismatches.append(f"{field} is missing; expected={expected[key]!r}")
+            elif key not in expected:
+                mismatches.append(f"{field} is unexpected; actual={actual[key]!r}")
+            else:
+                mismatches.extend(
+                    routing_metadata_field_mismatches(actual[key], expected[key], field)
+                )
+        return mismatches
+    if type(actual) is not type(expected) or actual != expected:
+        return [f"{prefix}={actual!r} expected={expected!r}"]
+    return []
+
+
+def routing_family_for_args(args: argparse.Namespace) -> str:
+    routing_mode = str(args.routing_mode)
+    if routing_mode == "faithful_original_rest":
+        claim_a_family = str(getattr(args, "claim_a_partition_family", "none"))
+        return claim_a_family if claim_a_family != "none" else "orion_method4"
+    return {
+        "cpp_kmeans_baseline": "cpp_kmeans_baseline",
+        "kmeans_simple_nprobe": "simple_kmeans",
+        "legacy_centroid": "legacy_centroid",
+        "naive_hash_all_shards": "naive_hash",
+    }.get(routing_mode, routing_mode)
+
+
+def build_routing_build_metadata(
+    args: argparse.Namespace,
+    *,
+    train_count: int,
+    effective_num_shards: int,
+    vector_distance: str,
+) -> dict[str, Any]:
+    """Return the canonical, collection-build-sensitive routing description.
+
+    This intentionally excludes query-time tuning controls such as upper-k, nprobe,
+    Dynamic EF, concurrency, and batching. Those settings can safely change while
+    reusing the same lower collection. The fields below describe the partition and
+    lower HNSW that are expensive to build and unsafe to infer from Qdrant's schema.
+    """
+
+    routing_mode = str(args.routing_mode)
+    is_orion = routing_mode == "faithful_original_rest"
+    is_simple = routing_mode == "kmeans_simple_nprobe"
+    claim_a_family = str(getattr(args, "claim_a_partition_family", "none"))
+    orion_multi_assign = is_orion and not bool(getattr(args, "disable_multi_assign", False))
+    simple_alpha = float(getattr(args, "simple_kmeans_multi_assign_alpha", 1.0))
+    simple_multi_assign = is_simple and simple_alpha > 1.0
+    upper_k_candidates = [
+        int(value)
+        for value in (getattr(args, "upper_k_candidates", None) or [])
+    ]
+    upper_search_ef_during_build = max(
+        [int(getattr(args, "upper_search_ef", 100)), *upper_k_candidates]
+    )
+    fission_enabled = (
+        is_orion
+        and claim_a_family == "none"
+        and not bool(getattr(args, "disable_fission", False))
+    )
+
+    return {
+        "schema_version": ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION,
+        "routing_mode": routing_mode,
+        "routing_family": routing_family_for_args(args),
+        "num_shards": int(getattr(args, "num_shards", effective_num_shards)),
+        "effective_num_shards": int(effective_num_shards),
+        "train_count": int(train_count),
+        "distance": str(vector_distance),
+        "hnsw_m": int(getattr(args, "hnsw_m", 32)),
+        "hnsw_ef_construct": int(getattr(args, "ef_construct", 100)),
+        "upper_hnsw_m": int(getattr(args, "upper_m", 32)),
+        "upper_hnsw_ef_construction": int(
+            getattr(args, "upper_ef_construction", 100)
+        ),
+        "upper_hnsw_search_ef_during_routing_build": upper_search_ef_during_build,
+        "upper_sample_seed": int(getattr(args, "upper_sample_seed", 100)),
+        "kmeans_rand_seed": int(getattr(args, "kmeans_rand_seed", 1)),
+        "kmeans_iters": int(getattr(args, "kmeans_iters", 10)),
+        "cpp_kmeans_train_size": int(getattr(args, "cpp_kmeans_train_size", 10000)),
+        "sample_denominator": int(getattr(args, "sample_denominator", 32)),
+        "k_overlap": int(getattr(args, "k_overlap", 10)),
+        "topology_iters": int(getattr(args, "topology_iters", 50)),
+        "multi_assign": {
+            "enabled": bool(orion_multi_assign or simple_multi_assign),
+            "orion_enabled": bool(orion_multi_assign),
+            "orion_min_max_vote": int(
+                getattr(args, "orion_multi_assign_min_max_vote", 2)
+            ),
+            "orion_vote_delta": int(getattr(args, "orion_multi_assign_vote_delta", 0)),
+            "orion_max_shards": int(getattr(args, "orion_multi_assign_max_shards", 0)),
+            "simple_kmeans_enabled": bool(simple_multi_assign),
+            "simple_kmeans_alpha": simple_alpha,
+            "simple_kmeans_chunk_size": int(
+                getattr(args, "simple_kmeans_multi_assign_chunk_size", 50000)
+            ),
+        },
+        "fission": {
+            "enabled": bool(fission_enabled),
+            "claim_a_partition_family": claim_a_family,
+            "claim_a_random_seed": int(getattr(args, "claim_a_random_seed", 12345)),
+        },
+        "legacy_centroid": {
+            "sample_size": int(getattr(args, "sample_size", 50000)),
+            "seed": int(getattr(args, "seed", 42)),
+        },
+    }
+
+
+def collection_metadata_for_routing_build(
+    routing_build_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        ORION_COLLECTION_METADATA_KEY: {
+            "schema_version": ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION,
+            "routing_build": routing_build_metadata,
+            "routing_build_sha256": canonical_json_sha256(routing_build_metadata),
+        }
+    }
+
+
+def collection_routing_build_metadata_validation(
+    info: dict[str, Any],
+    expected_routing_build_metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    expected_fingerprint = (
+        canonical_json_sha256(expected_routing_build_metadata)
+        if expected_routing_build_metadata is not None
+        else None
+    )
+    if expected_routing_build_metadata is None:
+        return {
+            "status": "not_requested",
+            "verified": False,
+            "expected_fingerprint": None,
+            "actual_fingerprint": None,
+            "actual_metadata": None,
+            "mismatches": [],
+        }
+
+    config = info.get("config") or {}
+    collection_metadata = config.get("metadata")
+    if collection_metadata is not None and not isinstance(collection_metadata, dict):
+        return {
+            "status": "mismatch",
+            "verified": False,
+            "expected_fingerprint": expected_fingerprint,
+            "actual_fingerprint": None,
+            "actual_metadata": None,
+            "mismatches": ["collection metadata is not an object"],
+        }
+    collection_metadata = collection_metadata or {}
+    if ORION_COLLECTION_METADATA_KEY not in collection_metadata:
+        return {
+            "status": "missing_unverified",
+            "verified": False,
+            "expected_fingerprint": expected_fingerprint,
+            "actual_fingerprint": None,
+            "actual_metadata": None,
+            "mismatches": [],
+        }
+    envelope = collection_metadata[ORION_COLLECTION_METADATA_KEY]
+    if not isinstance(envelope, dict):
+        return {
+            "status": "mismatch",
+            "verified": False,
+            "expected_fingerprint": expected_fingerprint,
+            "actual_fingerprint": None,
+            "actual_metadata": None,
+            "mismatches": [f"{ORION_COLLECTION_METADATA_KEY} metadata is not an object"],
+        }
+
+    actual_metadata = envelope.get("routing_build")
+    stored_fingerprint = envelope.get("routing_build_sha256")
+    mismatches: list[str] = []
+    if envelope.get("schema_version") != ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION:
+        mismatches.append(
+            f"schema_version={envelope.get('schema_version')} "
+            f"expected={ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION}"
+        )
+    if not isinstance(actual_metadata, dict):
+        mismatches.append("routing_build metadata is missing or not an object")
+        computed_actual_fingerprint = None
+    else:
+        computed_actual_fingerprint = canonical_json_sha256(actual_metadata)
+        if actual_metadata != expected_routing_build_metadata:
+            mismatches.extend(
+                routing_metadata_field_mismatches(
+                    actual_metadata,
+                    expected_routing_build_metadata,
+                )[:20]
+            )
+            mismatches.append(
+                f"routing_build_sha256={computed_actual_fingerprint} "
+                f"expected={expected_fingerprint}"
+            )
+    if stored_fingerprint != computed_actual_fingerprint:
+        mismatches.append(
+            f"stored routing_build_sha256={stored_fingerprint} "
+            f"computed={computed_actual_fingerprint}"
+        )
+    if stored_fingerprint != expected_fingerprint:
+        mismatches.append(
+            f"stored routing_build_sha256={stored_fingerprint} "
+            f"expected={expected_fingerprint}"
+        )
+    return {
+        "status": "mismatch" if mismatches else "verified",
+        "verified": not mismatches,
+        "expected_fingerprint": expected_fingerprint,
+        "actual_fingerprint": stored_fingerprint,
+        "actual_metadata": actual_metadata if isinstance(actual_metadata, dict) else None,
+        "mismatches": mismatches,
+    }
+
+
+def routing_build_metadata_validation_fields(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "routing_build_metadata_status": validation["status"],
+        "routing_build_metadata_verified": bool(validation["verified"]),
+        "routing_build_metadata_expected_fingerprint": validation[
+            "expected_fingerprint"
+        ],
+        "routing_build_metadata_actual_fingerprint": validation["actual_fingerprint"],
+    }
+
+
 def create_collection(
     base_url: str,
     name: str,
@@ -1567,25 +2026,29 @@ def create_collection(
     m: int,
     ef_construct: int,
     vector_distance: str = "Cosine",
+    routing_build_metadata: dict[str, Any] | None = None,
 ) -> None:
+    body: dict[str, Any] = {
+        "vectors": {"size": dim, "distance": vector_distance},
+        "shard_number": 1,
+        "sharding_method": "custom",
+        "replication_factor": 1,
+        "write_consistency_factor": 1,
+        "hnsw_config": {
+            "m": m,
+            "ef_construct": ef_construct,
+            "full_scan_threshold": 10,
+            "max_indexing_threads": 0,
+        },
+        "optimizers_config": {"default_segment_number": 1, "indexing_threshold": 10},
+    }
+    if routing_build_metadata is not None:
+        body["metadata"] = collection_metadata_for_routing_build(routing_build_metadata)
     request_json(
         base_url,
         "PUT",
         f"/collections/{urllib.parse.quote(name, safe='')}",
-        body={
-            "vectors": {"size": dim, "distance": vector_distance},
-            "shard_number": 1,
-            "sharding_method": "custom",
-            "replication_factor": 1,
-            "write_consistency_factor": 1,
-            "hnsw_config": {
-                "m": m,
-                "ef_construct": ef_construct,
-                "full_scan_threshold": 10,
-                "max_indexing_threads": 0,
-            },
-            "optimizers_config": {"default_segment_number": 1, "indexing_threshold": 10},
-        },
+        body=body,
     )
 
 
@@ -1671,6 +2134,8 @@ def collection_cluster_summary(cluster_info: dict | None) -> dict[str, Any]:
             "cluster_local_shards": 0,
             "cluster_remote_shards": 0,
             "cluster_active_shards": 0,
+            "cluster_shards_per_peer": {},
+            "cluster_placement_valid": False,
         }
 
     local_shards = cluster_info.get("local_shards") or []
@@ -1683,13 +2148,174 @@ def collection_cluster_summary(cluster_info: dict | None) -> dict[str, Any]:
             peer_ids.add(int(shard["peer_id"]))
 
     active = sum(1 for shard in local_shards + remote_shards if shard.get("state") == "Active")
+    shards_per_peer: Counter[int] = Counter()
+    controller_peer_id = cluster_info.get("peer_id")
+    for shard in local_shards:
+        peer_id = shard.get("peer_id", controller_peer_id)
+        if peer_id is not None:
+            shards_per_peer[int(peer_id)] += 1
+    for shard in remote_shards:
+        if shard.get("peer_id") is not None:
+            shards_per_peer[int(shard["peer_id"])] += 1
     return {
         "cluster_shard_count": int(cluster_info.get("shard_count") or 0),
         "cluster_peer_count": len(peer_ids),
         "cluster_local_shards": len(local_shards),
         "cluster_remote_shards": len(remote_shards),
         "cluster_active_shards": active,
+        "cluster_shards_per_peer": {
+            str(peer_id): count for peer_id, count in sorted(shards_per_peer.items())
+        },
+        "cluster_placement_valid": bool(
+            not local_shards
+            and len(shards_per_peer) == 3
+            and (max(shards_per_peer.values()) - min(shards_per_peer.values()) <= 1)
+        ),
     }
+
+
+def vector_config_from_collection(info: dict[str, Any]) -> dict[str, Any]:
+    config = info.get("config") or {}
+    params = config.get("params") or {}
+    vectors = params.get("vectors") or {}
+    if "size" in vectors:
+        return vectors
+    if isinstance(vectors, dict) and len(vectors) == 1:
+        only = next(iter(vectors.values()))
+        return only if isinstance(only, dict) else {}
+    return {}
+
+
+def collection_reuse_mismatches(
+    info: dict[str, Any],
+    cluster_info: dict[str, Any] | None,
+    *,
+    expected_dimension: int,
+    expected_distance: str,
+    expected_hnsw_m: int,
+    expected_ef_construct: int,
+    expected_points_count: int,
+    expected_shard_count: int,
+    expected_replication_factor: int,
+    allowed_peer_ids: list[int],
+    expected_routing_build_metadata: dict[str, Any] | None = None,
+) -> list[str]:
+    mismatches: list[str] = []
+    config = info.get("config") or {}
+    params = config.get("params") or {}
+    vectors = vector_config_from_collection(info)
+    hnsw = config.get("hnsw_config") or {}
+
+    if int(vectors.get("size") or 0) != int(expected_dimension):
+        mismatches.append(f"dimension={vectors.get('size')} expected={expected_dimension}")
+    if str(vectors.get("distance") or "").lower() != str(expected_distance).lower():
+        mismatches.append(f"distance={vectors.get('distance')} expected={expected_distance}")
+    if int(hnsw.get("m") or 0) != int(expected_hnsw_m):
+        mismatches.append(f"hnsw.m={hnsw.get('m')} expected={expected_hnsw_m}")
+    if int(hnsw.get("ef_construct") or 0) != int(expected_ef_construct):
+        mismatches.append(
+            f"hnsw.ef_construct={hnsw.get('ef_construct')} expected={expected_ef_construct}"
+        )
+    if int(info.get("points_count") or 0) != int(expected_points_count):
+        mismatches.append(
+            f"points_count={info.get('points_count')} expected={expected_points_count}"
+        )
+    if int(params.get("replication_factor") or 0) != int(expected_replication_factor):
+        mismatches.append(
+            f"replication_factor={params.get('replication_factor')} "
+            f"expected={expected_replication_factor}"
+        )
+
+    routing_metadata_validation = collection_routing_build_metadata_validation(
+        info,
+        expected_routing_build_metadata,
+    )
+    if routing_metadata_validation["status"] == "mismatch":
+        mismatches.extend(
+            f"routing build metadata {item}"
+            for item in routing_metadata_validation["mismatches"]
+        )
+
+    if cluster_info is None:
+        mismatches.append("collection cluster placement is unavailable")
+        return mismatches
+
+    local_shards = cluster_info.get("local_shards") or []
+    remote_shards = cluster_info.get("remote_shards") or []
+    all_shards = [*local_shards, *remote_shards]
+    shard_keys = [str(shard.get("shard_key")) for shard in all_shards if shard.get("shard_key") is not None]
+    unique_shard_keys = set(shard_keys)
+    cluster_shard_count = int(cluster_info.get("shard_count") or len(unique_shard_keys))
+    if cluster_shard_count != int(expected_shard_count) or len(unique_shard_keys) != int(expected_shard_count):
+        mismatches.append(
+            f"shard_count={cluster_shard_count}/{len(unique_shard_keys)} expected={expected_shard_count}"
+        )
+    duplicate_keys = sorted(key for key, count in Counter(shard_keys).items() if count != expected_replication_factor)
+    if duplicate_keys:
+        mismatches.append(f"replica count mismatch for shard keys {duplicate_keys[:5]}")
+    inactive = [str(shard.get("shard_key")) for shard in all_shards if shard.get("state") != "Active"]
+    if inactive:
+        mismatches.append(f"inactive shards={inactive[:5]}")
+    if local_shards:
+        mismatches.append(f"controller owns {len(local_shards)} lower shards")
+    allowed = set(map(int, allowed_peer_ids))
+    actual_peers = {
+        int(shard["peer_id"])
+        for shard in remote_shards
+        if shard.get("peer_id") is not None
+    }
+    if allowed and (not actual_peers or not actual_peers.issubset(allowed)):
+        mismatches.append(
+            f"placement peers={sorted(actual_peers)} expected subset of {sorted(allowed)}"
+        )
+    peer_counts = Counter(
+        int(shard["peer_id"])
+        for shard in remote_shards
+        if shard.get("peer_id") is not None
+    )
+    if allowed and set(peer_counts) != allowed:
+        mismatches.append(f"placement does not use all workers: {dict(peer_counts)}")
+    if peer_counts and max(peer_counts.values()) - min(peer_counts.values()) > 1:
+        mismatches.append(f"worker shard counts are imbalanced: {dict(peer_counts)}")
+    return mismatches
+
+
+def validate_existing_collection(
+    base_url: str,
+    collection: str,
+    *,
+    expected_dimension: int,
+    expected_distance: str,
+    expected_hnsw_m: int,
+    expected_ef_construct: int,
+    expected_points_count: int,
+    expected_shard_count: int,
+    allowed_peer_ids: list[int],
+    expected_routing_build_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    info = collection_info(base_url, collection)
+    routing_metadata_validation = collection_routing_build_metadata_validation(
+        info,
+        expected_routing_build_metadata,
+    )
+    mismatches = collection_reuse_mismatches(
+        info,
+        collection_cluster_info(base_url, collection),
+        expected_dimension=expected_dimension,
+        expected_distance=expected_distance,
+        expected_hnsw_m=expected_hnsw_m,
+        expected_ef_construct=expected_ef_construct,
+        expected_points_count=expected_points_count,
+        expected_shard_count=expected_shard_count,
+        expected_replication_factor=1,
+        allowed_peer_ids=allowed_peer_ids,
+        expected_routing_build_metadata=expected_routing_build_metadata,
+    )
+    if mismatches:
+        raise RuntimeError(
+            f"refusing to reuse collection {collection!r}: " + "; ".join(mismatches)
+        )
+    return routing_metadata_validation
 
 
 def collection_exists(base_url: str, collection: str) -> bool:
@@ -1712,17 +2338,46 @@ def wait_collection_indexed(
     start = time.perf_counter()
     last_indexed: int | None = None
     last_change = start
+    stable_since: float | None = None
     while True:
         info = collection_info(base_url, collection)
+        cluster_info = collection_cluster_info(base_url, collection)
         indexed = int(info.get("indexed_vectors_count") or 0)
         points = int(info.get("points_count") or 0)
         if indexed != last_indexed:
             last_indexed = indexed
             last_change = time.perf_counter()
-        if indexed >= expected_points and points == expected_points:
-            return info
-        if points == expected_points and time.perf_counter() - last_change >= 30.0:
-            return info
+        optimizer_status = info.get("optimizer_status")
+        optimizer_ok = optimizer_status is None or optimizer_status == "ok" or (
+            isinstance(optimizer_status, dict) and optimizer_status.get("ok") is True
+        )
+        collection_ok = str(info.get("status") or "green").lower() == "green"
+        cluster_shards = (
+            (cluster_info.get("local_shards") or []) + (cluster_info.get("remote_shards") or [])
+            if cluster_info
+            else []
+        )
+        shards_active = not cluster_shards or all(
+            shard.get("state") == "Active" for shard in cluster_shards
+        )
+        no_transfers = not cluster_info or not (cluster_info.get("shard_transfers") or [])
+        indexing_complete = indexed >= expected_points or (
+            points == expected_points and time.perf_counter() - last_change >= 30.0
+        )
+        stable = (
+            points == expected_points
+            and indexing_complete
+            and optimizer_ok
+            and collection_ok
+            and shards_active
+            and no_transfers
+        )
+        if stable:
+            stable_since = stable_since or time.perf_counter()
+            if time.perf_counter() - stable_since >= 5.0:
+                return info
+        else:
+            stable_since = None
         if time.perf_counter() - start > timeout_sec:
             raise TimeoutError(f"Timed out waiting for {collection} to finish indexing")
         time.sleep(1.0)
@@ -1742,11 +2397,35 @@ def ensure_collection(
     peer_ids: list[int],
     shard_placement_map: dict[str, int] | None = None,
     vector_distance: str = "Cosine",
+    routing_build_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
-    if not reuse_existing or not collection_exists(base_url, collection):
+    exists = collection_exists(base_url, collection)
+    if reuse_existing and exists:
+        validate_existing_collection(
+            base_url,
+            collection,
+            expected_dimension=train.shape[1],
+            expected_distance=vector_distance,
+            expected_hnsw_m=hnsw_m,
+            expected_ef_construct=ef_construct,
+            expected_points_count=len(train),
+            expected_shard_count=num_shards,
+            allowed_peer_ids=peer_ids,
+            expected_routing_build_metadata=routing_build_metadata,
+        )
+    created = not reuse_existing or not exists
+    if created:
         delete_collection_if_exists(base_url, collection)
-        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct, vector_distance)
+        create_collection(
+            base_url,
+            collection,
+            train.shape[1],
+            hnsw_m,
+            ef_construct,
+            vector_distance,
+            routing_build_metadata,
+        )
         for shard_id, shard_key in enumerate(shard_keys):
             placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
@@ -1759,6 +2438,15 @@ def ensure_collection(
                 upsert_points(base_url, collection, shard_key, ids, vectors)
 
     info = wait_collection_indexed(base_url, collection, len(train))
+    routing_metadata_validation = collection_routing_build_metadata_validation(
+        info,
+        routing_build_metadata,
+    )
+    if created and routing_build_metadata is not None and not routing_metadata_validation["verified"]:
+        raise RuntimeError(
+            f"new collection {collection!r} did not preserve Orion routing build metadata: "
+            f"{routing_metadata_validation['status']}"
+        )
     cluster_summary = collection_cluster_summary(collection_cluster_info(base_url, collection))
     return {
         "collection": collection,
@@ -1767,6 +2455,7 @@ def ensure_collection(
         "segments_count": int(info.get("segments_count") or 0),
         "shard_placement": shard_placement,
         "discovered_peer_count": len(peer_ids),
+        **routing_build_metadata_validation_fields(routing_metadata_validation),
         **cluster_summary,
     }
 
@@ -1885,12 +2574,36 @@ def ensure_collection_from_point_shards(
     peer_ids: list[int],
     shard_placement_map: dict[str, int] | None = None,
     vector_distance: str = "Cosine",
+    routing_build_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     expected_points = total_assigned_points(point_to_shards)
-    if not reuse_existing or not collection_exists(base_url, collection):
+    exists = collection_exists(base_url, collection)
+    if reuse_existing and exists:
+        validate_existing_collection(
+            base_url,
+            collection,
+            expected_dimension=train.shape[1],
+            expected_distance=vector_distance,
+            expected_hnsw_m=hnsw_m,
+            expected_ef_construct=ef_construct,
+            expected_points_count=expected_points,
+            expected_shard_count=num_shards,
+            allowed_peer_ids=peer_ids,
+            expected_routing_build_metadata=routing_build_metadata,
+        )
+    created = not reuse_existing or not exists
+    if created:
         delete_collection_if_exists(base_url, collection)
-        create_collection(base_url, collection, train.shape[1], hnsw_m, ef_construct, vector_distance)
+        create_collection(
+            base_url,
+            collection,
+            train.shape[1],
+            hnsw_m,
+            ef_construct,
+            vector_distance,
+            routing_build_metadata,
+        )
         for shard_id, shard_key in enumerate(shard_keys):
             placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
@@ -1906,6 +2619,15 @@ def ensure_collection_from_point_shards(
                 upsert_points(base_url, collection, shard_key, ids, vectors, source_ids=source_ids)
 
     info = wait_collection_indexed(base_url, collection, expected_points)
+    routing_metadata_validation = collection_routing_build_metadata_validation(
+        info,
+        routing_build_metadata,
+    )
+    if created and routing_build_metadata is not None and not routing_metadata_validation["verified"]:
+        raise RuntimeError(
+            f"new collection {collection!r} did not preserve Orion routing build metadata: "
+            f"{routing_metadata_validation['status']}"
+        )
     cluster_summary = collection_cluster_summary(collection_cluster_info(base_url, collection))
     return {
         "collection": collection,
@@ -1916,6 +2638,7 @@ def ensure_collection_from_point_shards(
         "discovered_peer_count": len(peer_ids),
         "logical_points_count": int(len(train)),
         "assigned_points_count": int(expected_points),
+        **routing_build_metadata_validation_fields(routing_metadata_validation),
         **cluster_summary,
     }
 
@@ -1925,13 +2648,25 @@ def search_batch(
     collection: str,
     searches: list[dict[str, Any]],
     timeout: float = 600.0,
+    encoded_body: bytes | None = None,
 ) -> list[list[tuple[float, int]]]:
-    payload = request_json(
-        base_url,
-        "POST",
-        f"/collections/{urllib.parse.quote(collection, safe='')}/points/search/batch",
-        body={"searches": searches},
-        timeout=timeout,
+    path = f"/collections/{urllib.parse.quote(collection, safe='')}/points/search/batch"
+    payload = (
+        request_json_encoded(
+            base_url,
+            "POST",
+            path,
+            encoded_body,
+            timeout=timeout,
+        )
+        if encoded_body is not None
+        else request_json(
+            base_url,
+            "POST",
+            path,
+            body={"searches": searches},
+            timeout=timeout,
+        )
     )
     rows: list[list[tuple[float, int]]] = []
     for per_query in payload["result"]:
@@ -1945,6 +2680,29 @@ def search_batch(
             row.append((float(item["score"]), point_id))
         rows.append(row)
     return rows
+
+
+def restrict_search_to_shard_keys(
+    search: dict[str, Any],
+    shard_keys: list[str],
+) -> dict[str, Any]:
+    restricted = dict(search)
+    normalized_keys = [str(shard_key) for shard_key in shard_keys]
+    restricted["shard_key"] = normalized_keys
+    for field_name in ("hnsw_entry_points_by_shard", "hnsw_ef_by_shard"):
+        values_by_shard = search.get(field_name)
+        if values_by_shard is None:
+            continue
+        restricted_values = {
+            shard_key: values_by_shard[shard_key]
+            for shard_key in normalized_keys
+            if shard_key in values_by_shard
+        }
+        if restricted_values:
+            restricted[field_name] = restricted_values
+        else:
+            restricted.pop(field_name, None)
+    return restricted
 
 
 def shard_major_searches_for_query(search: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -2021,6 +2779,23 @@ def query_shard_cost_traces(query_plans: list[dict[str, Any]]) -> list[dict[str,
     return traces
 
 
+def average_physical_peers_for_plans(
+    query_plans: list[dict[str, Any]],
+    shard_key_to_peer: dict[str, int] | None,
+) -> float | None:
+    if not shard_key_to_peer or not query_plans:
+        return None
+    counts: list[int] = []
+    for plan in query_plans:
+        peers: set[int] = set()
+        for search in plan.get("searches", []):
+            for shard_key in search.get("shard_key") or []:
+                if shard_key in shard_key_to_peer:
+                    peers.add(int(shard_key_to_peer[shard_key]))
+        counts.append(len(peers))
+    return float(sum(counts) / len(counts))
+
+
 def percentile(values: list[float], q: float) -> float:
     if not values:
         return 0.0
@@ -2034,6 +2809,14 @@ def percentile(values: list[float], q: float) -> float:
     upper = min(lower + 1, len(ordered) - 1)
     weight = pos - lower
     return float(ordered[lower] * (1.0 - weight) + ordered[upper] * weight)
+
+
+def latency_percentile_fields(batch_latencies_ms: list[float]) -> dict[str, float]:
+    return {
+        "latency_p50_ms": percentile(batch_latencies_ms, 50),
+        "latency_p95_ms": percentile(batch_latencies_ms, 95),
+        "latency_p99_ms": percentile(batch_latencies_ms, 99),
+    }
 
 
 def evaluate_query_peer_loads(
@@ -2586,6 +3369,7 @@ def evaluate_config(
     routed_result_limit_multiplier: float = 1,
     source_id_dedup_block_size: int | None = None,
     lower_execution_order: str = "query_major",
+    shard_key_to_peer: dict[str, int] | None = None,
     score_higher_is_better: bool = True,
 ) -> dict[str, Any]:
     if label_to_shard is None and point_to_shards is None:
@@ -2603,11 +3387,14 @@ def evaluate_config(
     total_upper_hits = 0
     total_assigned_ef = 0
     total_assigned_ef_count = 0
+    total_physical_peers = 0
     search_batch_calls = 0
     search_request_count = 0
+    batch_latencies_ms: list[float] = []
     start = time.perf_counter()
 
     for start_idx in range(0, total_queries, batch_size):
+        batch_started = time.perf_counter()
         chunk = queries[start_idx : start_idx + batch_size]
         upper_labels = compute_upper_labels(upper_index, chunk, upper_k)
 
@@ -2637,6 +3424,10 @@ def evaluate_config(
                 shard_keys, ef_values = shard_efs_from_upper_hits(dict(shard_hit_counts), base_ef, factor)
                 total_upper_hits += int(sum(shard_hit_counts.values()))
             total_visited_shards += len(shard_keys)
+            if shard_key_to_peer:
+                total_physical_peers += len(
+                    {shard_key_to_peer[key] for key in shard_keys if key in shard_key_to_peer}
+                )
 
             if not shard_keys:
                 continue
@@ -2737,6 +3528,7 @@ def evaluate_config(
             top_ids = merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
             gt = set(map(int, neighbors[start_idx + local_idx]))
             total_hits += len(set(top_ids) & gt)
+        batch_latencies_ms.append((time.perf_counter() - batch_started) * 1000.0)
 
     wall = time.perf_counter() - start
     return {
@@ -2750,6 +3542,10 @@ def evaluate_config(
         ),
         "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_queries,
+        "avg_physical_peers_per_query": (
+            total_physical_peers / total_queries if shard_key_to_peer else None
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
     }
 
 
@@ -2839,9 +3635,11 @@ def evaluate_config_materialized_routing(
     candidate_group_count = 0
     returned_candidate_count = 0
     per_query_rows: list[dict[str, Any]] = []
+    batch_latencies_ms: list[float] = []
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
+        batch_started = time.perf_counter()
         per_query_kwargs = {}
         if include_per_query_metrics:
             per_query_kwargs = {
@@ -2860,6 +3658,9 @@ def evaluate_config_materialized_routing(
             direct_peer_local_premerge=direct_peer_local_premerge,
             score_higher_is_better=score_higher_is_better,
             **per_query_kwargs,
+        )
+        batch_latencies_ms.append(
+            float(result.get("batch_latency_ms", (time.perf_counter() - batch_started) * 1000.0))
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -2888,6 +3689,200 @@ def evaluate_config_materialized_routing(
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
         "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
+        "avg_physical_peers_per_query": average_physical_peers_for_plans(
+            query_plans, shard_key_to_peer
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
+    }
+    if include_per_query_metrics:
+        output["per_query_rows"] = per_query_rows
+    return output
+
+
+def evaluate_config_pipelined_routing(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    upper_index: Any,
+    upper_k: int,
+    base_ef: int,
+    factor: int,
+    batch_size: int,
+    label_to_shard: dict[int, str] | None = None,
+    point_to_shards: list[list[int]] | None = None,
+    num_shards: int | None = None,
+    search_all_shards: bool = False,
+    use_payload_source_id: bool = False,
+    routed_execution_mode: str = "grouped_by_ef",
+    compact_ef_mode: str = "max",
+    routed_result_limit_mode: str = "top_k",
+    routed_result_limit_multiplier: float = 1,
+    source_id_dedup_block_size: int | None = None,
+    direct_peer_urls: dict[int, str] | None = None,
+    shard_key_to_peer: dict[str, int] | None = None,
+    lower_execution_order: str = "query_major",
+    direct_peer_local_premerge: bool = False,
+    include_per_query_metrics: bool = False,
+    score_higher_is_better: bool = True,
+) -> dict[str, Any]:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if label_to_shard is None and point_to_shards is None:
+        raise ValueError("either label_to_shard or point_to_shards must be provided")
+    if point_to_shards is not None and num_shards is None:
+        raise ValueError("num_shards is required with point_to_shards")
+
+    total_queries = len(queries)
+    ranges = [
+        (start_idx, min(start_idx + batch_size, total_queries))
+        for start_idx in range(0, total_queries, batch_size)
+    ]
+
+    def plan_range(
+        start_idx: int,
+        end_idx: int,
+    ) -> tuple[int, int, list[dict[str, Any]], list[bytes] | None]:
+        batch_queries = queries[start_idx:end_idx]
+        upper_labels = compute_upper_labels(upper_index, batch_queries, upper_k)
+        if point_to_shards is not None:
+            plans = build_routed_search_plans(
+                batch_queries,
+                upper_labels,
+                point_to_shards,
+                int(num_shards),
+                top_k,
+                base_ef,
+                factor,
+                search_all_shards,
+                use_payload_source_id,
+                routed_execution_mode,
+                compact_ef_mode,
+                routed_result_limit_mode,
+                routed_result_limit_multiplier,
+                source_id_dedup_block_size,
+            )
+        else:
+            assert label_to_shard is not None
+            plans = [
+                legacy_routed_search_plan(
+                    query.tolist(),
+                    labels_row,
+                    label_to_shard,
+                    top_k,
+                    base_ef,
+                    factor,
+                    use_payload_source_id,
+                    routed_execution_mode,
+                    compact_ef_mode,
+                    routed_result_limit_mode,
+                    routed_result_limit_multiplier,
+                    source_id_dedup_block_size,
+                )
+                for query, labels_row in zip(batch_queries, upper_labels)
+            ]
+        encoded_stage_bodies = None
+        if direct_peer_urls is None:
+            encoded_stage_bodies = []
+            for stage_items in query_plan_search_stages(plans):
+                _query_positions, searches = coordinator_search_stage(
+                    stage_items,
+                    lower_execution_order,
+                )
+                encoded_stage_bodies.append(encode_search_batch_body(searches))
+        return start_idx, end_idx, plans, encoded_stage_bodies
+
+    total_hits = 0
+    total_executed_queries = 0
+    total_visited_shards = 0
+    total_upper_hits = 0
+    total_assigned_ef = 0
+    total_assigned_ef_count = 0
+    total_physical_peers = 0.0
+    search_batch_calls = 0
+    search_request_count = 0
+    candidate_group_count = 0
+    returned_candidate_count = 0
+    per_query_rows: list[dict[str, Any]] = []
+    batch_latencies_ms: list[float] = []
+
+    start = time.perf_counter()
+    if ranges:
+        with ThreadPoolExecutor(max_workers=1) as planner:
+            planned = planner.submit(plan_range, *ranges[0])
+            for range_idx in range(len(ranges)):
+                start_idx, end_idx, query_plans, encoded_stage_bodies = planned.result()
+                if range_idx + 1 < len(ranges):
+                    planned = planner.submit(plan_range, *ranges[range_idx + 1])
+
+                batch_started = time.perf_counter()
+                per_query_kwargs = {}
+                if include_per_query_metrics:
+                    per_query_kwargs = {
+                        "include_per_query_metrics": True,
+                        "query_index_offset": start_idx,
+                    }
+                result = execute_query_plans_once(
+                    base_url,
+                    collection,
+                    query_plans,
+                    neighbors[start_idx:end_idx],
+                    top_k,
+                    direct_peer_urls=direct_peer_urls,
+                    shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=lower_execution_order,
+                    direct_peer_local_premerge=direct_peer_local_premerge,
+                    score_higher_is_better=score_higher_is_better,
+                    preencoded_search_stage_bodies=encoded_stage_bodies,
+                    **per_query_kwargs,
+                )
+                batch_latencies_ms.append(
+                    float(
+                        result.get(
+                            "batch_latency_ms",
+                            (time.perf_counter() - batch_started) * 1000.0,
+                        )
+                    )
+                )
+                total_hits += int(result["hits"])
+                total_executed_queries += int(result["query_count"])
+                total_visited_shards += int(result["visited_shards"])
+                total_upper_hits += int(result["upper_hits"])
+                total_assigned_ef += int(result["assigned_ef_sum"])
+                total_assigned_ef_count += int(result["assigned_ef_count"])
+                search_batch_calls += int(result["search_batch_calls"])
+                search_request_count += int(result["search_request_count"])
+                candidate_group_count += int(
+                    result.get("candidate_group_count", result.get("search_request_count", 0))
+                )
+                returned_candidate_count += int(result.get("returned_candidate_count", 0))
+                if shard_key_to_peer:
+                    total_physical_peers += average_physical_peers_for_plans(
+                        query_plans,
+                        shard_key_to_peer,
+                    ) * len(query_plans)
+                if include_per_query_metrics:
+                    per_query_rows.extend(result.get("per_query_rows", []))
+
+    wall = time.perf_counter() - start
+    output = {
+        "recall_at_k": total_hits / (total_executed_queries * top_k),
+        "qps": total_executed_queries / wall,
+        "wall_s": wall,
+        "avg_visited_shards": total_visited_shards / total_executed_queries,
+        "avg_upper_hits": total_upper_hits / total_executed_queries,
+        "avg_assigned_ef_per_visited_shard": (
+            total_assigned_ef / total_assigned_ef_count if total_assigned_ef_count > 0 else 0.0
+        ),
+        "search_batch_calls": search_batch_calls,
+        "avg_search_requests_per_query": search_request_count / total_executed_queries,
+        "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
+        "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
+        "avg_physical_peers_per_query": (
+            total_physical_peers / total_executed_queries if shard_key_to_peer else None
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
     }
     if include_per_query_metrics:
         output["per_query_rows"] = per_query_rows
@@ -2966,9 +3961,11 @@ def evaluate_config_compact_materialized_routing(
     candidate_group_count = 0
     returned_candidate_count = 0
     per_query_rows: list[dict[str, Any]] = []
+    batch_latencies_ms: list[float] = []
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
+        batch_started = time.perf_counter()
         per_query_kwargs = {}
         if include_per_query_metrics:
             per_query_kwargs = {
@@ -2987,6 +3984,9 @@ def evaluate_config_compact_materialized_routing(
             direct_peer_local_premerge=direct_peer_local_premerge,
             score_higher_is_better=score_higher_is_better,
             **per_query_kwargs,
+        )
+        batch_latencies_ms.append(
+            float(result.get("batch_latency_ms", (time.perf_counter() - batch_started) * 1000.0))
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -3015,6 +4015,10 @@ def evaluate_config_compact_materialized_routing(
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
         "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
+        "avg_physical_peers_per_query": average_physical_peers_for_plans(
+            query_plans, shard_key_to_peer
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
     }
     if include_per_query_metrics:
         output["per_query_rows"] = per_query_rows
@@ -3026,6 +4030,8 @@ def routed_evaluator_for_planning_mode(mode: str) -> Any:
         return evaluate_config_materialized_routing
     if mode == "compact_materialized":
         return evaluate_config_compact_materialized_routing
+    if mode == "pipelined":
+        return evaluate_config_pipelined_routing
     if mode == "per_batch":
         return evaluate_config
     raise ValueError(f"unsupported routed planning mode: {mode}")
@@ -3045,42 +4051,54 @@ def evaluate_all_shards_config(
     lower_execution_order: str = "query_major",
     include_per_query_metrics: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     if lower_execution_order not in {"query_major", "shard_major"}:
         raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
     total_hits = 0
     total_queries = len(queries)
     shard_keys, _ef_values = all_shard_keys_and_ef(num_shards, hnsw_ef)
+    shard_key_chunks = fixed_ef_shard_key_chunks(
+        shard_keys,
+        fixed_ef_shard_chunk_size,
+    )
+    search_batch_calls = 0
     search_request_count = 0
     per_query_rows: list[dict[str, Any]] = []
+    batch_latencies_ms: list[float] = []
     start = time.perf_counter()
 
     for start_idx in range(0, total_queries, batch_size):
+        batch_started = time.perf_counter()
         chunk = queries[start_idx : start_idx + batch_size]
-        searches = []
-        for query in chunk:
-            request = {
-                "vector": query.tolist(),
-                "limit": top_k,
-                "params": {"hnsw_ef": hnsw_ef},
-                "with_payload": ["source_id"] if use_payload_source_id else False,
-                "with_vector": False,
-                "shard_key": shard_keys,
-            }
-            if source_id_dedup_block_size is not None:
-                request["source_id_dedup_block_size"] = int(source_id_dedup_block_size)
-            searches.append(request)
-        query_positions = list(range(len(searches)))
-        if lower_execution_order == "shard_major":
-            query_positions, searches = shard_major_flattened_searches(
-                query_positions,
-                searches,
-            )
-        search_request_count += len(searches)
-        results = search_batch(base_url, collection, searches)
         per_query_candidates: list[list[list[tuple[float, int]]]] = [[] for _ in range(len(chunk))]
-        for local_idx, result in zip(query_positions, results):
-            per_query_candidates[local_idx].append(result)
+        for shard_key_chunk in shard_key_chunks:
+            searches = [
+                fixed_ef_search_requests(
+                    query.tolist(),
+                    top_k,
+                    hnsw_ef,
+                    shard_key_chunk,
+                    use_payload_source_id,
+                    source_id_dedup_block_size,
+                    shard_chunk_size=0,
+                    include_hnsw_ef_by_shard=True,
+                )[0]
+                for query in chunk
+            ]
+            query_positions = list(range(len(searches)))
+            if lower_execution_order == "shard_major":
+                query_positions, searches = shard_major_flattened_searches(
+                    query_positions,
+                    searches,
+                )
+            search_request_count += len(searches)
+            if not searches:
+                continue
+            search_batch_calls += 1
+            results = search_batch(base_url, collection, searches)
+            for local_idx, result in zip(query_positions, results):
+                per_query_candidates[local_idx].append(result)
         for local_idx, candidate_groups in enumerate(per_query_candidates):
             top_ids = merge_topk_candidates(candidate_groups, top_k, score_higher_is_better)
             gt = set(map(int, neighbors[start_idx + local_idx]))
@@ -3097,6 +4115,7 @@ def evaluate_all_shards_config(
                     start_idx,
                 )
             )
+        batch_latencies_ms.append((time.perf_counter() - batch_started) * 1000.0)
 
     wall = time.perf_counter() - start
     output = {
@@ -3106,8 +4125,9 @@ def evaluate_all_shards_config(
         "avg_visited_shards": float(num_shards),
         "avg_upper_hits": 0.0,
         "avg_assigned_ef_per_visited_shard": float(hnsw_ef),
-        "search_batch_calls": int(ceil(total_queries / batch_size)),
+        "search_batch_calls": search_batch_calls,
         "avg_search_requests_per_query": search_request_count / total_queries,
+        **latency_percentile_fields(batch_latencies_ms),
     }
     if include_per_query_metrics:
         output["per_query_rows"] = per_query_rows
@@ -3132,6 +4152,7 @@ def evaluate_kmeans_simple_nprobe_config(
     direct_peer_local_premerge: bool = False,
     include_per_query_metrics: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3145,6 +4166,7 @@ def evaluate_kmeans_simple_nprobe_config(
         hnsw_ef,
         use_payload_source_id,
         source_id_dedup_block_size,
+        fixed_ef_shard_chunk_size,
     )
 
     total_hits = 0
@@ -3158,9 +4180,11 @@ def evaluate_kmeans_simple_nprobe_config(
     candidate_group_count = 0
     returned_candidate_count = 0
     per_query_rows: list[dict[str, Any]] = []
+    batch_latencies_ms: list[float] = []
 
     for start_idx in range(0, total_queries, batch_size):
         end_idx = min(start_idx + batch_size, total_queries)
+        batch_started = time.perf_counter()
         per_query_kwargs = {}
         if include_per_query_metrics:
             per_query_kwargs = {
@@ -3179,6 +4203,9 @@ def evaluate_kmeans_simple_nprobe_config(
             direct_peer_local_premerge=direct_peer_local_premerge,
             score_higher_is_better=score_higher_is_better,
             **per_query_kwargs,
+        )
+        batch_latencies_ms.append(
+            float(result.get("batch_latency_ms", (time.perf_counter() - batch_started) * 1000.0))
         )
         total_hits += int(result["hits"])
         total_executed_queries += int(result["query_count"])
@@ -3207,6 +4234,10 @@ def evaluate_kmeans_simple_nprobe_config(
         "avg_search_requests_per_query": search_request_count / total_executed_queries,
         "avg_candidate_groups_per_query": candidate_group_count / total_executed_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_executed_queries,
+        "avg_physical_peers_per_query": average_physical_peers_for_plans(
+            query_plans, shard_key_to_peer
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
     }
     if include_per_query_metrics:
         output["per_query_rows"] = per_query_rows
@@ -3229,6 +4260,7 @@ def evaluate_kmeans_simple_nprobe_config_batch(
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     query_plans = build_kmeans_simple_nprobe_search_plans(
         queries,
@@ -3238,6 +4270,7 @@ def evaluate_kmeans_simple_nprobe_config_batch(
         hnsw_ef,
         use_payload_source_id,
         source_id_dedup_block_size,
+        fixed_ef_shard_chunk_size,
     )
     return execute_query_plans_once(
         base_url,
@@ -3271,6 +4304,7 @@ def evaluate_kmeans_simple_nprobe_config_concurrent(
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -3301,6 +4335,7 @@ def evaluate_kmeans_simple_nprobe_config_concurrent(
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
             score_higher_is_better=score_higher_is_better,
+            fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
         )
 
     start = time.perf_counter()
@@ -3363,6 +4398,37 @@ def search_request(
     return request
 
 
+def fixed_ef_search_requests(
+    query: list[float],
+    top_k: int,
+    hnsw_ef: int,
+    shard_keys: list[str],
+    use_payload_source_id: bool,
+    source_id_dedup_block_size: int | None = None,
+    shard_chunk_size: int = 0,
+    include_hnsw_ef_by_shard: bool = True,
+) -> list[dict[str, Any]]:
+    requests: list[dict[str, Any]] = []
+    for shard_chunk in fixed_ef_shard_key_chunks(shard_keys, shard_chunk_size):
+        per_shard_ef = (
+            {shard_key: int(hnsw_ef) for shard_key in shard_chunk}
+            if include_hnsw_ef_by_shard
+            else None
+        )
+        requests.append(
+            search_request(
+                query,
+                top_k,
+                hnsw_ef,
+                shard_chunk,
+                use_payload_source_id,
+                hnsw_ef_by_shard=per_shard_ef,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+            )
+        )
+    return requests
+
+
 def all_shard_search_plan(
     query: list[float],
     top_k: int,
@@ -3370,19 +4436,24 @@ def all_shard_search_plan(
     hnsw_ef: int,
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     shard_keys, _ef_values = all_shard_keys_and_ef(num_shards, hnsw_ef)
+    searches = fixed_ef_search_requests(
+        query,
+        top_k,
+        hnsw_ef,
+        shard_keys,
+        use_payload_source_id,
+        source_id_dedup_block_size,
+        fixed_ef_shard_chunk_size,
+    )
+    # The uniform per-shard map is a transport hint for the native shard-major
+    # peer-premerge path. Every shard still receives the same fixed EF, so the
+    # Naive baseline remains an all-shards + fixed-EF algorithm.
     return {
-        "searches": [
-            search_request(
-                query,
-                top_k,
-                hnsw_ef,
-                shard_keys,
-                use_payload_source_id,
-                source_id_dedup_block_size=source_id_dedup_block_size,
-            )
-        ],
+        "searches": searches,
+        "separate_http_search_stages": len(searches) > 1,
         "visited_shards": int(num_shards),
         "upper_hits": 0,
         "assigned_ef_sum": int(hnsw_ef) * int(num_shards),
@@ -3415,6 +4486,7 @@ def kmeans_simple_nprobe_search_plan(
     hnsw_ef: int,
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     shard_ids = kmeans_simple_nprobe_shard_ids(
         np.asarray(query, dtype=np.float32),
@@ -3422,17 +4494,21 @@ def kmeans_simple_nprobe_search_plan(
         nprobe,
     )
     shard_keys = [shard_key_for_id(shard_id) for shard_id in shard_ids]
+    searches = fixed_ef_search_requests(
+        np.asarray(query, dtype=np.float32).tolist(),
+        top_k,
+        hnsw_ef,
+        shard_keys,
+        use_payload_source_id,
+        source_id_dedup_block_size,
+        fixed_ef_shard_chunk_size,
+    )
+    # Keep the baseline's one fixed EF while expressing it per selected shard.
+    # This lets the distributed controller group the request by physical peer
+    # instead of materializing thousands of independent remote shard calls.
     return {
-        "searches": [
-            search_request(
-                np.asarray(query, dtype=np.float32).tolist(),
-                top_k,
-                hnsw_ef,
-                shard_keys,
-                use_payload_source_id,
-                source_id_dedup_block_size=source_id_dedup_block_size,
-            )
-        ] if shard_keys else [],
+        "searches": searches,
+        "separate_http_search_stages": len(searches) > 1,
         "visited_shards": len(shard_keys),
         "upper_hits": 0,
         "assigned_ef_sum": int(hnsw_ef) * len(shard_keys),
@@ -3448,6 +4524,7 @@ def build_kmeans_simple_nprobe_search_plans(
     hnsw_ef: int,
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> list[dict[str, Any]]:
     return [
         kmeans_simple_nprobe_search_plan(
@@ -3458,6 +4535,7 @@ def build_kmeans_simple_nprobe_search_plans(
             hnsw_ef,
             use_payload_source_id,
             source_id_dedup_block_size,
+            fixed_ef_shard_chunk_size,
         )
         for query in queries
     ]
@@ -3577,6 +4655,7 @@ def build_all_shard_search_plans(
     hnsw_ef: int,
     use_payload_source_id: bool,
     source_id_dedup_block_size: int | None = None,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> list[dict[str, Any]]:
     return [
         all_shard_search_plan(
@@ -3586,6 +4665,7 @@ def build_all_shard_search_plans(
             hnsw_ef,
             use_payload_source_id,
             source_id_dedup_block_size,
+            fixed_ef_shard_chunk_size,
         )
         for query in queries
     ]
@@ -3628,6 +4708,52 @@ def build_routed_search_plans(
     ]
 
 
+def query_plan_search_stages(
+    query_plans: list[dict[str, Any]],
+) -> list[list[tuple[int, dict[str, Any]]]]:
+    if not any(bool(plan.get("separate_http_search_stages")) for plan in query_plans):
+        flattened = [
+            (query_idx, search)
+            for query_idx, plan in enumerate(query_plans)
+            for search in plan["searches"]
+        ]
+        return [flattened] if flattened else []
+
+    stage_count = max(
+        (
+            len(plan["searches"])
+            if bool(plan.get("separate_http_search_stages"))
+            else 1
+        )
+        for plan in query_plans
+    )
+    stages: list[list[tuple[int, dict[str, Any]]]] = [
+        [] for _ in range(stage_count)
+    ]
+    for query_idx, plan in enumerate(query_plans):
+        searches = plan["searches"]
+        if bool(plan.get("separate_http_search_stages")):
+            for stage_idx, search in enumerate(searches):
+                stages[stage_idx].append((query_idx, search))
+        else:
+            stages[0].extend((query_idx, search) for search in searches)
+    return [stage for stage in stages if stage]
+
+
+def coordinator_search_stage(
+    stage_items: list[tuple[int, dict[str, Any]]],
+    lower_execution_order: str,
+) -> tuple[list[int], list[dict[str, Any]]]:
+    query_positions = [query_idx for query_idx, _search in stage_items]
+    searches = [search for _query_idx, search in stage_items]
+    if lower_execution_order == "shard_major":
+        query_positions, searches = shard_major_flattened_searches(
+            query_positions,
+            searches,
+        )
+    return query_positions, searches
+
+
 def execute_query_plans_once(
     base_url: str,
     collection: str,
@@ -3641,11 +4767,15 @@ def execute_query_plans_once(
     include_per_query_metrics: bool = False,
     query_index_offset: int = 0,
     score_higher_is_better: bool = True,
+    preencoded_search_stage_bodies: list[bytes] | None = None,
 ) -> dict[str, Any]:
+    batch_started = time.perf_counter()
     if lower_execution_order not in {"query_major", "shard_major"}:
         raise ValueError(f"unsupported lower execution order: {lower_execution_order}")
     if direct_peer_local_premerge and direct_peer_urls is None:
         raise ValueError("direct peer local pre-merge requires direct_peer_urls")
+    if preencoded_search_stage_bodies is not None and direct_peer_urls is not None:
+        raise ValueError("pre-encoded coordinator search bodies cannot be used with direct_peer_urls")
 
     per_query_candidates: list[list[list[tuple[float, int]]]] = [
         [] for _ in range(len(query_plans))
@@ -3653,14 +4783,35 @@ def execute_query_plans_once(
 
     search_batch_calls = 0
     search_request_count = 0
+    search_stages = query_plan_search_stages(query_plans)
+    if (
+        preencoded_search_stage_bodies is not None
+        and len(preencoded_search_stage_bodies) != len(search_stages)
+    ):
+        raise ValueError("pre-encoded search body count must match query-plan search stages")
 
     if direct_peer_urls is not None:
         if shard_key_to_peer is None:
             raise ValueError("shard_key_to_peer is required with direct_peer_urls")
 
-        peer_batches: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
-        for query_idx, plan in enumerate(query_plans):
-            for search in plan["searches"]:
+        def run_peer_batch(
+            peer_id: int,
+            items: list[tuple[int, dict[str, Any]]],
+        ) -> list[tuple[int, int, list[tuple[float, int]]]]:
+            results = search_batch(
+                direct_peer_urls[peer_id],
+                collection,
+                [search for _query_idx, search in items],
+            )
+            return [
+                (peer_id, query_idx, result)
+                for (query_idx, _search), result in zip(items, results)
+            ]
+
+        peer_results: list[tuple[int, int, list[tuple[float, int]]]] = []
+        for stage_items in search_stages:
+            peer_batches: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+            for query_idx, search in stage_items:
                 if lower_execution_order == "shard_major":
                     for shard_key, single_search in shard_major_searches_for_query(search):
                         if not shard_key:
@@ -3680,45 +4831,39 @@ def execute_query_plans_once(
                     for peer_id, shard_keys in keys_by_peer.items():
                         if peer_id not in direct_peer_urls:
                             raise ValueError(f"missing direct HTTP URL for peer {peer_id}")
-                        split_search = dict(search)
-                        split_search["shard_key"] = shard_keys
+                        split_search = restrict_search_to_shard_keys(search, shard_keys)
                         peer_batches[peer_id].append((query_idx, split_search))
 
-        if lower_execution_order == "shard_major":
-            for items in peer_batches.values():
-                items.sort(key=lambda item: ((item[1].get("shard_key") or [""])[0], item[0]))
+            if lower_execution_order == "shard_major":
+                for items in peer_batches.values():
+                    items.sort(
+                        key=lambda item: (
+                            (item[1].get("shard_key") or [""])[0],
+                            item[0],
+                        )
+                    )
 
-        search_batch_calls = len(peer_batches)
-        search_request_count = sum(len(items) for items in peer_batches.values())
+            search_batch_calls += len(peer_batches)
+            search_request_count += sum(len(items) for items in peer_batches.values())
 
-        def run_peer_batch(peer_id: int, items: list[tuple[int, dict[str, Any]]]) -> list[tuple[int, int, list[tuple[float, int]]]]:
-            results = search_batch(
-                direct_peer_urls[peer_id],
-                collection,
-                [search for _query_idx, search in items],
-            )
-            return [
-                (peer_id, query_idx, result)
-                for (query_idx, _search), result in zip(items, results)
-            ]
-
-        if len(peer_batches) == 1:
-            peer_results = [
-                result
-                for peer_id, items in peer_batches.items()
-                for result in run_peer_batch(peer_id, items)
-            ]
-        else:
-            with ThreadPoolExecutor(max_workers=len(peer_batches)) as pool:
-                futures = [
-                    pool.submit(run_peer_batch, peer_id, items)
-                    for peer_id, items in peer_batches.items()
-                ]
-                peer_results = [
+            if len(peer_batches) == 1:
+                stage_results = [
                     result
-                    for future in futures
-                    for result in future.result()
+                    for peer_id, items in peer_batches.items()
+                    for result in run_peer_batch(peer_id, items)
                 ]
+            else:
+                with ThreadPoolExecutor(max_workers=len(peer_batches)) as pool:
+                    futures = [
+                        pool.submit(run_peer_batch, peer_id, items)
+                        for peer_id, items in peer_batches.items()
+                    ]
+                    stage_results = [
+                        result
+                        for future in futures
+                        for result in future.result()
+                    ]
+            peer_results.extend(stage_results)
 
         if direct_peer_local_premerge:
             per_query_peer_candidates: list[dict[int, list[list[tuple[float, int]]]]] = [
@@ -3737,23 +4882,31 @@ def execute_query_plans_once(
             for _peer_id, local_idx, result in peer_results:
                 per_query_candidates[local_idx].append(result)
     else:
-        flat_searches: list[dict[str, Any]] = []
-        query_positions: list[int] = []
-        for query_idx, plan in enumerate(query_plans):
-            for search in plan["searches"]:
-                query_positions.append(query_idx)
-                flat_searches.append(search)
-
-        if lower_execution_order == "shard_major":
-            query_positions, flat_searches = shard_major_flattened_searches(
-                query_positions,
-                flat_searches,
+        for stage_idx, stage_items in enumerate(search_stages):
+            query_positions, flat_searches = coordinator_search_stage(
+                stage_items,
+                lower_execution_order,
             )
 
-        search_request_count = len(flat_searches)
-        if flat_searches:
-            search_batch_calls = 1
-            results = search_batch(base_url, collection, flat_searches)
+            search_request_count += len(flat_searches)
+            if not flat_searches:
+                continue
+            search_batch_calls += 1
+            encoded_body = (
+                preencoded_search_stage_bodies[stage_idx]
+                if preencoded_search_stage_bodies is not None
+                else None
+            )
+            results = (
+                search_batch(
+                    base_url,
+                    collection,
+                    flat_searches,
+                    encoded_body=encoded_body,
+                )
+                if encoded_body is not None
+                else search_batch(base_url, collection, flat_searches)
+            )
             for local_idx, result in zip(query_positions, results):
                 per_query_candidates[local_idx].append(result)
 
@@ -3788,6 +4941,7 @@ def execute_query_plans_once(
         "avg_returned_candidates_per_query": (
             returned_candidate_count / len(query_plans) if query_plans else 0.0
         ),
+        "batch_latency_ms": (time.perf_counter() - batch_started) * 1000.0,
     }
     if include_per_query_metrics:
         result["per_query_rows"] = per_query_recall_rows(
@@ -4003,6 +5157,7 @@ def evaluate_all_shards_config_batch(
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     query_plans = build_all_shard_search_plans(
         queries,
@@ -4011,6 +5166,7 @@ def evaluate_all_shards_config_batch(
         hnsw_ef,
         use_payload_source_id,
         source_id_dedup_block_size,
+        fixed_ef_shard_chunk_size,
     )
     return execute_query_plans_once(
         base_url,
@@ -4047,6 +5203,11 @@ def aggregate_timed_batch_results(
         int(result.get("returned_candidate_count", 0))
         for result in batch_results
     )
+    batch_latencies_ms = [
+        float(result["batch_latency_ms"])
+        for result in batch_results
+        if isinstance(result.get("batch_latency_ms"), (int, float))
+    ]
 
     return {
         "recall_at_k": total_hits / (total_queries * top_k),
@@ -4061,6 +5222,7 @@ def aggregate_timed_batch_results(
         "avg_search_requests_per_query": search_request_count / total_queries,
         "avg_candidate_groups_per_query": candidate_group_count / total_queries,
         "avg_returned_candidates_per_query": returned_candidate_count / total_queries,
+        **latency_percentile_fields(batch_latencies_ms),
     }
 
 
@@ -4164,6 +5326,7 @@ def evaluate_all_shards_config_concurrent(
     lower_execution_order: str = "query_major",
     direct_peer_local_premerge: bool = False,
     score_higher_is_better: bool = True,
+    fixed_ef_shard_chunk_size: int = 0,
 ) -> dict[str, Any]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -4193,6 +5356,7 @@ def evaluate_all_shards_config_concurrent(
             lower_execution_order=lower_execution_order,
             direct_peer_local_premerge=direct_peer_local_premerge,
             score_higher_is_better=score_higher_is_better,
+            fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
         )
 
     start = time.perf_counter()
@@ -4325,13 +5489,327 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=list(rows[0].keys()),
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
 
+def sha256_path(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def repository_provenance(repo: str | Path | None = None) -> dict[str, Any]:
+    root = Path(repo or Path(__file__).resolve().parents[1])
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True, text=True, capture_output=True
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=root, check=True, text=True, capture_output=True
+        ).stdout
+        return {"root": str(root), "commit": commit, "dirty": bool(status.strip())}
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return {"root": str(root), "error": str(exc)}
+
+
+def load_optional_json(path: str | Path | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return data
+
+
+def worker_shard_point_summary(
+    sample_rows: list[dict[str, Any]],
+    shard_key_to_peer: dict[str, int],
+) -> dict[str, Any]:
+    by_peer: dict[int, dict[str, int]] = defaultdict(lambda: {"shard_count": 0, "points_count": 0})
+    for row in sample_rows:
+        shard_key = str(row.get("shard_key") or "")
+        if shard_key not in shard_key_to_peer:
+            continue
+        peer_id = int(shard_key_to_peer[shard_key])
+        by_peer[peer_id]["shard_count"] += 1
+        points_count = row.get("points_count")
+        if isinstance(points_count, (int, float)):
+            by_peer[peer_id]["points_count"] += int(points_count)
+    return {str(peer_id): values for peer_id, values in sorted(by_peer.items())}
+
+
+def capture_controller_transport_resources(
+    deployment_manifest: dict[str, Any] | None,
+    p2p_port: int = 6335,
+) -> dict[str, Any]:
+    nodes = (deployment_manifest or {}).get("nodes") or []
+    controller = next(
+        (node for node in nodes if str(node.get("role") or "") == "controller"),
+        None,
+    )
+    if controller is None:
+        return {
+            "available": False,
+            "error": "deployment manifest has no controller node",
+        }
+    host = str(controller.get("ssh_host") or "localhost")
+    container = str(controller.get("container_name") or "")
+    if not container:
+        return {
+            "available": False,
+            "error": "controller node has no container_name",
+        }
+
+    remote_port_hex = f"{int(p2p_port):04X}"
+    script = (
+        "fd=$(ls /proc/1/fd | wc -l); "
+        "p2p=$(awk 'NR > 1 && $4 == \"01\" && $3 ~ /:"
+        f"{remote_port_hex}"
+        "$/ { count++ } END { print count + 0 }' "
+        "/proc/1/net/tcp /proc/1/net/tcp6 2>/dev/null); "
+        "echo \"$fd $p2p\""
+    )
+    docker_command = [
+        "sudo",
+        "-n",
+        "docker",
+        "exec",
+        container,
+        "sh",
+        "-lc",
+        script,
+    ]
+    if host in {"localhost", "127.0.0.1", socket.gethostname(), socket.getfqdn()}:
+        command = docker_command
+    else:
+        command = ["ssh", "-o", "BatchMode=yes", host, shlex.join(docker_command)]
+    try:
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20.0)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "available": False,
+            "host": host,
+            "container": container,
+            "error": str(exc),
+        }
+    if result.returncode != 0:
+        return {
+            "available": False,
+            "host": host,
+            "container": container,
+            "returncode": result.returncode,
+            "stderr": result.stderr.strip(),
+        }
+    fields = result.stdout.split()
+    if len(fields) != 2:
+        return {
+            "available": False,
+            "host": host,
+            "container": container,
+            "error": f"unexpected transport resource output: {result.stdout!r}",
+        }
+    try:
+        fd_count, p2p_established = map(int, fields)
+    except ValueError:
+        return {
+            "available": False,
+            "host": host,
+            "container": container,
+            "error": f"non-integer transport resource output: {result.stdout!r}",
+        }
+    worker_count = sum(
+        1 for node in nodes if str(node.get("role") or "").startswith("qdrant_shard_")
+    )
+    return {
+        "available": True,
+        "host": host,
+        "container": container,
+        "p2p_port": int(p2p_port),
+        "fd_count": fd_count,
+        "p2p_established": p2p_established,
+        "worker_count": worker_count,
+        "expected_steady_state_p2p_connections": worker_count * 2,
+    }
+
+
+def audit_transport_resources(
+    start: dict[str, Any],
+    end: dict[str, Any],
+) -> dict[str, Any]:
+    if not start.get("available") or not end.get("available"):
+        return {
+            "valid": False,
+            "start": start,
+            "end": end,
+            "error": "controller transport resources could not be captured",
+        }
+    expected = max(
+        int(start.get("expected_steady_state_p2p_connections") or 0),
+        int(end.get("expected_steady_state_p2p_connections") or 0),
+    )
+    tolerance = max(2, expected)
+    clean_limit = expected + tolerance
+    start_p2p = int(start["p2p_established"])
+    end_p2p = int(end["p2p_established"])
+    fd_delta = int(end["fd_count"]) - int(start["fd_count"])
+    p2p_delta = end_p2p - start_p2p
+    checks = {
+        "start_p2p_within_clean_limit": start_p2p <= clean_limit,
+        "end_p2p_within_clean_limit": end_p2p <= clean_limit,
+    }
+    return {
+        "valid": all(checks.values()),
+        "checks": checks,
+        "start": start,
+        "end": end,
+        "delta": {
+            "fd_count": fd_delta,
+            "p2p_established": p2p_delta,
+        },
+        "expected_steady_state_p2p_connections": expected,
+        "tolerance": tolerance,
+        "clean_limit": clean_limit,
+        "note": (
+            "The current Qdrant transport pool maintains two steady-state channels per "
+            "worker URI. The tolerance permits one additional pool-width while rejecting "
+            "the hundreds of transient connections produced by ungrouped shard fan-out."
+        ),
+    }
+
+
+def collect_container_log_tails(
+    deployment_manifest: dict[str, Any] | None,
+    tail_lines: int = 200,
+    since_epoch: int | None = None,
+) -> dict[str, Any]:
+    logs: dict[str, Any] = {}
+    for node in (deployment_manifest or {}).get("nodes") or []:
+        role = str(node.get("role") or node.get("ssh_host") or "unknown")
+        host = str(node.get("ssh_host") or "localhost")
+        container = str(node.get("container_name") or "")
+        if not container:
+            continue
+        docker_command = [
+            "sudo",
+            "-n",
+            "docker",
+            "logs",
+        ]
+        if since_epoch is not None:
+            docker_command.extend(["--since", str(int(since_epoch))])
+        docker_command.extend(["--tail", str(tail_lines), container])
+        if host in {"localhost", "127.0.0.1", socket.gethostname(), socket.getfqdn()}:
+            command = docker_command
+        else:
+            command = ["ssh", "-o", "BatchMode=yes", host, shlex.join(docker_command)]
+        try:
+            result = subprocess.run(command, text=True, capture_output=True, timeout=20.0)
+            logs[role] = {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+        except (OSError, subprocess.SubprocessError) as exc:
+            logs[role] = {"error": str(exc)}
+    return logs
+
+
+def audit_runtime_logs(logs: dict[str, Any]) -> dict[str, Any]:
+    matches: dict[str, list[dict[str, str]]] = {
+        name: [] for name in RUNTIME_LOG_ERROR_PATTERNS
+    }
+    collection_errors: list[dict[str, str]] = []
+    for role, payload in logs.items():
+        if payload.get("error"):
+            collection_errors.append({"role": role, "error": str(payload["error"])})
+            continue
+        if int(payload.get("returncode") or 0) != 0:
+            collection_errors.append(
+                {
+                    "role": role,
+                    "error": f"docker logs returned {payload.get('returncode')}",
+                }
+            )
+        combined = "\n".join(
+            str(payload.get(stream) or "") for stream in ("stdout", "stderr")
+        )
+        for line in combined.splitlines():
+            for name, pattern in RUNTIME_LOG_ERROR_PATTERNS.items():
+                if pattern.search(line) and len(matches[name]) < 20:
+                    matches[name].append({"role": role, "line": line})
+    nonempty_matches = {name: rows for name, rows in matches.items() if rows}
+    return {
+        "valid": not collection_errors and not nonempty_matches,
+        "collection_errors": collection_errors,
+        "error_matches": nonempty_matches,
+    }
+
+
+def audit_runtime_health(
+    logs: dict[str, Any],
+    cluster_result: dict[str, Any] | None,
+    collection: dict[str, Any],
+    collection_cluster: dict[str, Any],
+    transport_resources: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    log_audit = audit_runtime_logs(logs)
+    raft_info = (cluster_result or {}).get("raft_info") or {}
+    consensus = (cluster_result or {}).get("consensus_thread_status") or {}
+    message_send_failures = (cluster_result or {}).get("message_send_failures") or {}
+    optimizer_status = collection.get("optimizer_status")
+    optimizer_ok = optimizer_status is None or optimizer_status == "ok" or (
+        isinstance(optimizer_status, dict) and optimizer_status.get("ok") is True
+    )
+    local_shards = collection_cluster.get("local_shards") or []
+    remote_shards = collection_cluster.get("remote_shards") or []
+    transfers = collection_cluster.get("shard_transfers") or []
+    all_active = bool(remote_shards) and all(
+        shard.get("state") == "Active" for shard in local_shards + remote_shards
+    )
+    checks = {
+        "logs_clean": bool(log_audit["valid"]),
+        "consensus_working": (
+            str(consensus.get("consensus_thread_status") or "") == "working"
+        ),
+        "pending_operations_zero": int(raft_info.get("pending_operations") or 0) == 0,
+        "message_send_failures_empty": not message_send_failures,
+        "collection_green": str(collection.get("status") or "").lower() == "green",
+        "optimizer_ok": bool(optimizer_ok),
+        "update_queue_empty": int((collection.get("update_queue") or {}).get("length") or 0)
+        == 0,
+        "all_shards_active": all_active,
+        "controller_has_no_lower_local_shards": not local_shards,
+        "no_shard_transfers": not transfers,
+    }
+    if transport_resources is not None:
+        checks["transport_resources_clean"] = bool(transport_resources.get("valid"))
+    return {
+        "valid": all(checks.values()),
+        "checks": checks,
+        "log_audit": log_audit,
+        "message_send_failures": message_send_failures,
+        "pending_operations": int(raft_info.get("pending_operations") or 0),
+        "consensus_thread_status": consensus.get("consensus_thread_status"),
+        "optimizer_status": optimizer_status,
+        "update_queue_length": int(
+            (collection.get("update_queue") or {}).get("length") or 0
+        ),
+        "shard_transfers": transfers,
+        "transport_resources": transport_resources,
+    }
+
+
 def main() -> int:
+    runtime_log_since_epoch = int(time.time())
     args = parse_args()
     validate_args(args)
     distance_config = vector_distance_config(args.vector_distance)
@@ -4348,18 +5826,50 @@ def main() -> int:
     output_dir = Path(args.output_dir) / time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    topology: dict[str, Any] | None = None
+    cluster_preflight: dict[str, Any] | None = None
+    if args.cluster_topology:
+        topology = load_cluster_topology(args.cluster_topology)
+        cluster_preflight = validate_cluster_preflight(args.base_url, topology)
+    deployment_manifest = load_optional_json(args.deployment_manifest)
+    transport_resources_start = (
+        capture_controller_transport_resources(deployment_manifest)
+        if deployment_manifest is not None
+        else None
+    )
+    if getattr(args, "require_clean_runtime", False) and transport_resources_start is not None:
+        initial_transport_audit = audit_transport_resources(
+            transport_resources_start,
+            transport_resources_start,
+        )
+        if not initial_transport_audit["valid"]:
+            raise RuntimeError(
+                "distributed controller transport resources are not clean before the run: "
+                f"{initial_transport_audit}"
+            )
+
     with h5py.File(args.hdf5_path, "r") as handle:
         train = slice_train_rows(handle["train"], args.train_limit)[:].astype(np.float32, copy=True)
         tuning_queries = handle["test"][: args.tuning_query_count].astype(np.float32, copy=True)
         tuning_neighbors = handle["neighbors"][: args.tuning_query_count, : args.top_k].astype(np.int32, copy=True)
         eval_queries = handle["test"][: args.eval_query_count].astype(np.float32, copy=True)
         eval_neighbors = handle["neighbors"][: args.eval_query_count, : args.top_k].astype(np.int32, copy=True)
+        warmup_queries = handle["test"][: args.warmup_query_count].astype(np.float32, copy=True)
+        warmup_neighbors = handle["neighbors"][: args.warmup_query_count, : args.top_k].astype(np.int32, copy=True)
 
     train = prepare_vectors_for_distance(train, distance_config["name"])
     tuning_queries = prepare_vectors_for_distance(tuning_queries, distance_config["name"])
     eval_queries = prepare_vectors_for_distance(eval_queries, distance_config["name"])
+    warmup_queries = prepare_vectors_for_distance(warmup_queries, distance_config["name"])
 
-    peers = cluster_peer_ids(args.base_url, args.placement_peer_uri_contains)
+    if topology is not None:
+        peers = cluster_peer_ids(args.base_url, exact_uris=topology["worker_uris"])
+        if cluster_preflight is None or peers != cluster_preflight["worker_peer_ids"]:
+            raise RuntimeError(
+                f"worker placement peer mismatch: preflight={cluster_preflight}, selected={peers}"
+            )
+    else:
+        peers = cluster_peer_ids(args.base_url, args.placement_peer_uri_contains)
     shard_placement_map: dict[str, int] | None = None
     if args.shard_placement == "map":
         if not args.shard_placement_map:
@@ -4383,6 +5893,7 @@ def main() -> int:
     recovered_original_total_assigned: int | None = None
     recovered_original_expansion_ratio: float | None = None
     use_payload_source_id = False
+    routing_build_metadata: dict[str, Any] | None = None
 
     if args.routing_mode == "cpp_kmeans_baseline":
         assignments, _centroids = build_cpp_kmeans_baseline_assignments(
@@ -4390,7 +5901,13 @@ def main() -> int:
             args.num_shards,
             args.cpp_kmeans_train_size,
             args.kmeans_iters,
-            args.upper_sample_seed,
+            args.kmeans_rand_seed,
+        )
+        routing_build_metadata = build_routing_build_metadata(
+            args,
+            train_count=len(train),
+            effective_num_shards=args.num_shards,
+            vector_distance=distance_config["qdrant_distance"],
         )
         build_row = ensure_collection(
             args.base_url,
@@ -4406,6 +5923,7 @@ def main() -> int:
             peers,
             shard_placement_map,
             vector_distance=distance_config["qdrant_distance"],
+            routing_build_metadata=routing_build_metadata,
         )
 
         upper_vectors, upper_ids, label_to_shard, sample_rows = sample_cpp_kmeans_upper_points(
@@ -4436,7 +5954,13 @@ def main() -> int:
             args.num_shards,
             args.cpp_kmeans_train_size,
             args.kmeans_iters,
-            args.upper_sample_seed,
+            args.kmeans_rand_seed,
+        )
+        routing_build_metadata = build_routing_build_metadata(
+            args,
+            train_count=len(train),
+            effective_num_shards=args.num_shards,
+            vector_distance=distance_config["qdrant_distance"],
         )
         simple_kmeans_multi_assign = float(args.simple_kmeans_multi_assign_alpha) > 1.0
         if simple_kmeans_multi_assign:
@@ -4462,6 +5986,7 @@ def main() -> int:
                 peers,
                 shard_placement_map,
                 vector_distance=distance_config["qdrant_distance"],
+                routing_build_metadata=routing_build_metadata,
             )
             shard_counts = shard_counts_from_point_to_shards(point_to_shards, args.num_shards)
             use_payload_source_id = True
@@ -4480,6 +6005,7 @@ def main() -> int:
                 peers,
                 shard_placement_map,
                 vector_distance=distance_config["qdrant_distance"],
+                routing_build_metadata=routing_build_metadata,
             )
             shard_counts = np.bincount(assignments, minlength=args.num_shards)
         simple_kmeans_shard_counts = shard_counts
@@ -4503,6 +6029,12 @@ def main() -> int:
             args.kmeans_iters,
             args.seed,
         )
+        routing_build_metadata = build_routing_build_metadata(
+            args,
+            train_count=len(train),
+            effective_num_shards=args.num_shards,
+            vector_distance=distance_config["qdrant_distance"],
+        )
         build_row = ensure_collection(
             args.base_url,
             args.collection,
@@ -4517,6 +6049,7 @@ def main() -> int:
             peers,
             shard_placement_map,
             vector_distance=distance_config["qdrant_distance"],
+            routing_build_metadata=routing_build_metadata,
         )
 
         upper_vectors, upper_ids, label_to_shard, sample_rows = sample_upper_points(
@@ -4539,6 +6072,12 @@ def main() -> int:
     elif args.routing_mode == "naive_hash_all_shards":
         point_to_shards = hash_point_to_shards(len(train), args.num_shards)
         effective_num_shards = args.num_shards
+        routing_build_metadata = build_routing_build_metadata(
+            args,
+            train_count=len(train),
+            effective_num_shards=effective_num_shards,
+            vector_distance=distance_config["qdrant_distance"],
+        )
         empty_upper_indices = np.asarray([], dtype=np.int64)
         build_row = ensure_collection_from_point_shards(
             args.base_url,
@@ -4555,6 +6094,7 @@ def main() -> int:
             peers,
             shard_placement_map,
             vector_distance=distance_config["qdrant_distance"],
+            routing_build_metadata=routing_build_metadata,
         )
         shard_counts = np.bincount(
             np.asarray([shards[0] for shards in point_to_shards], dtype=np.int64),
@@ -4591,6 +6131,25 @@ def main() -> int:
             collection_cluster = collection_cluster_info(args.base_url, args.collection)
             cluster_summary = collection_cluster_summary(collection_cluster)
             effective_num_shards = int(cluster_summary["cluster_shard_count"] or args.num_shards)
+            routing_build_metadata = build_routing_build_metadata(
+                args,
+                train_count=len(train),
+                effective_num_shards=effective_num_shards,
+                vector_distance=distance_config["qdrant_distance"],
+            )
+            info = collection_info(args.base_url, args.collection)
+            routing_metadata_validation = collection_routing_build_metadata_validation(
+                info,
+                routing_build_metadata,
+            )
+            if routing_metadata_validation["status"] == "mismatch":
+                raise RuntimeError(
+                    f"refusing to reuse collection {args.collection!r}: "
+                    + "; ".join(
+                        f"routing build metadata {item}"
+                        for item in routing_metadata_validation["mismatches"]
+                    )
+                )
             point_to_shards = recover_upper_point_to_shards_from_collection(
                 args.base_url,
                 args.collection,
@@ -4598,7 +6157,6 @@ def main() -> int:
                 len(train),
                 effective_num_shards,
             )
-            info = collection_info(args.base_url, args.collection)
             recovered_original_total_assigned = int(info.get("points_count") or 0)
             recovered_original_expansion_ratio = expansion_ratio_from_assigned_points(
                 recovered_original_total_assigned,
@@ -4618,6 +6176,7 @@ def main() -> int:
                 "discovered_peer_count": len(peers),
                 "logical_points_count": int(len(train)),
                 "assigned_points_count": int(info.get("points_count") or 0),
+                **routing_build_metadata_validation_fields(routing_metadata_validation),
                 **cluster_summary,
             }
             sample_rows = [
@@ -4669,6 +6228,12 @@ def main() -> int:
                 )
             point_to_shards = routing_state.point_to_shards
             effective_num_shards = routing_state.num_shards
+            routing_build_metadata = build_routing_build_metadata(
+                args,
+                train_count=len(train),
+                effective_num_shards=effective_num_shards,
+                vector_distance=distance_config["qdrant_distance"],
+            )
             build_row = ensure_collection_from_point_shards(
                 args.base_url,
                 args.collection,
@@ -4684,25 +6249,165 @@ def main() -> int:
                 peers,
                 shard_placement_map,
                 vector_distance=distance_config["qdrant_distance"],
+                routing_build_metadata=routing_build_metadata,
             )
             sample_rows = original_upper_sample_rows(routing_state)
         upper_ids = upper_indices
         use_payload_source_id = True
 
+    if topology is not None:
+        validate_existing_collection(
+            args.base_url,
+            args.collection,
+            expected_dimension=train.shape[1],
+            expected_distance=distance_config["qdrant_distance"],
+            expected_hnsw_m=args.hnsw_m,
+            expected_ef_construct=args.ef_construct,
+            expected_points_count=int(build_row["points_count"]),
+            expected_shard_count=effective_num_shards,
+            allowed_peer_ids=peers,
+            expected_routing_build_metadata=routing_build_metadata,
+        )
+
     source_id_dedup_block_size = args.source_id_dedup_block_size
     if source_id_dedup_block_size is None and use_payload_source_id:
         source_id_dedup_block_size = len(train) + 1
+    fixed_ef_shard_chunk_size = int(
+        getattr(args, "fixed_ef_shard_chunk_size", 0)
+    )
 
     direct_peer_urls: dict[int, str] | None = None
-    shard_key_to_peer: dict[str, int] | None = None
+    shard_key_to_peer: dict[str, int] | None = collection_shard_key_to_peer(
+        args.base_url, args.collection
+    )
     if args.search_dispatch_mode == "direct_peer":
         direct_peer_urls = parse_peer_http_urls(args.direct_peer_http_urls)
         if not direct_peer_urls:
             raise ValueError("--search-dispatch-mode direct_peer requires --direct-peer-http-urls")
-        shard_key_to_peer = collection_shard_key_to_peer(args.base_url, args.collection)
         missing_peer_urls = set(shard_key_to_peer.values()) - set(direct_peer_urls)
         if missing_peer_urls:
             raise ValueError(f"missing direct HTTP URLs for peers: {sorted(missing_peer_urls)}")
+
+    def run_warmup(upper_k: int, base_ef: int, factor: int) -> None:
+        if args.warmup_query_count <= 0 or len(warmup_queries) == 0:
+            return
+        if args.routing_mode == "naive_hash_all_shards":
+            if args.search_dispatch_mode == "direct_peer":
+                evaluate_all_shards_config_concurrent(
+                    args.base_url,
+                    args.collection,
+                    warmup_queries,
+                    warmup_neighbors,
+                    args.top_k,
+                    effective_num_shards,
+                    base_ef,
+                    args.batch_size,
+                    1,
+                    use_payload_source_id=use_payload_source_id,
+                    source_id_dedup_block_size=source_id_dedup_block_size,
+                    direct_peer_urls=direct_peer_urls,
+                    shard_key_to_peer=shard_key_to_peer,
+                    lower_execution_order=args.lower_execution_order,
+                    direct_peer_local_premerge=args.direct_peer_local_premerge,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
+                )
+            else:
+                evaluate_all_shards_config(
+                    args.base_url,
+                    args.collection,
+                    warmup_queries,
+                    warmup_neighbors,
+                    args.top_k,
+                    effective_num_shards,
+                    base_ef,
+                    args.batch_size,
+                    use_payload_source_id=use_payload_source_id,
+                    source_id_dedup_block_size=source_id_dedup_block_size,
+                    lower_execution_order=args.lower_execution_order,
+                    score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
+                )
+            return
+        if args.routing_mode == "kmeans_simple_nprobe":
+            assert simple_kmeans_centroids is not None
+            evaluate_kmeans_simple_nprobe_config(
+                args.base_url,
+                args.collection,
+                warmup_queries,
+                warmup_neighbors,
+                args.top_k,
+                simple_kmeans_centroids,
+                upper_k,
+                base_ef,
+                args.batch_size,
+                use_payload_source_id=use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+                direct_peer_urls=direct_peer_urls,
+                shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+                fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
+            )
+            return
+        assert upper_index is not None
+        if args.search_dispatch_mode == "direct_peer":
+            evaluate_config_concurrent(
+                args.base_url,
+                args.collection,
+                warmup_queries,
+                warmup_neighbors,
+                args.top_k,
+                upper_index,
+                upper_k,
+                base_ef,
+                factor,
+                args.batch_size,
+                1,
+                label_to_shard=label_to_shard,
+                point_to_shards=point_to_shards,
+                num_shards=effective_num_shards,
+                search_all_shards=args.search_all_shards,
+                use_payload_source_id=use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+                routed_execution_mode=args.routed_execution_mode,
+                compact_ef_mode=args.compact_ef_mode,
+                routed_result_limit_mode=args.routed_result_limit_mode,
+                routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+                direct_peer_urls=direct_peer_urls,
+                shard_key_to_peer=shard_key_to_peer,
+                lower_execution_order=args.lower_execution_order,
+                direct_peer_local_premerge=args.direct_peer_local_premerge,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+            )
+        else:
+            routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
+            routed_evaluator(
+                args.base_url,
+                args.collection,
+                warmup_queries,
+                warmup_neighbors,
+                args.top_k,
+                upper_index,
+                upper_k,
+                base_ef,
+                factor,
+                args.batch_size,
+                label_to_shard=label_to_shard,
+                point_to_shards=point_to_shards,
+                num_shards=effective_num_shards,
+                search_all_shards=args.search_all_shards,
+                use_payload_source_id=use_payload_source_id,
+                source_id_dedup_block_size=source_id_dedup_block_size,
+                routed_execution_mode=args.routed_execution_mode,
+                compact_ef_mode=args.compact_ef_mode,
+                routed_result_limit_mode=args.routed_result_limit_mode,
+                routed_result_limit_multiplier=args.routed_result_limit_multiplier,
+                lower_execution_order=args.lower_execution_order,
+                shard_key_to_peer=shard_key_to_peer,
+                score_higher_is_better=distance_config["score_higher_is_better"],
+            )
 
     tuning_rows: list[dict[str, Any]] = []
     if args.routing_mode == "naive_hash_all_shards":
@@ -4723,6 +6428,7 @@ def main() -> int:
         ]
 
     for upper_k, base_ef, factor in tuning_parameter_rows:
+        run_warmup(int(upper_k), int(base_ef), int(factor))
         if args.routing_mode == "naive_hash_all_shards":
             if args.search_dispatch_mode == "direct_peer":
                 result = evaluate_all_shards_config_concurrent(
@@ -4742,6 +6448,7 @@ def main() -> int:
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -4757,6 +6464,7 @@ def main() -> int:
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     lower_execution_order=args.lower_execution_order,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
         elif args.routing_mode == "kmeans_simple_nprobe":
             assert simple_kmeans_centroids is not None
@@ -4777,6 +6485,7 @@ def main() -> int:
                 lower_execution_order=args.lower_execution_order,
                 direct_peer_local_premerge=args.direct_peer_local_premerge,
                 score_higher_is_better=distance_config["score_higher_is_better"],
+                fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
             )
         else:
             assert upper_index is not None
@@ -4833,10 +6542,12 @@ def main() -> int:
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     lower_execution_order=args.lower_execution_order,
+                    shard_key_to_peer=shard_key_to_peer,
                     score_higher_is_better=distance_config["score_higher_is_better"],
                 )
         row = {
             "upper_k": upper_k,
+            "nprobe": upper_k if args.routing_mode == "kmeans_simple_nprobe" else None,
             "base_ef": base_ef,
             "factor": factor,
             "query_count": args.tuning_query_count,
@@ -4847,6 +6558,21 @@ def main() -> int:
             "avg_visited_shards": result["avg_visited_shards"],
             "avg_upper_hits": result["avg_upper_hits"],
             "avg_assigned_ef_per_visited_shard": result["avg_assigned_ef_per_visited_shard"],
+            "estimated_ef_sum_per_query": (
+                result["avg_assigned_ef_per_visited_shard"] * result["avg_visited_shards"]
+            ),
+            "avg_physical_peers_per_query": (
+                result.get("avg_physical_peers_per_query")
+                if result.get("avg_physical_peers_per_query") is not None
+                else (
+                    float(len(set((shard_key_to_peer or {}).values())))
+                    if args.routing_mode == "naive_hash_all_shards"
+                    else None
+                )
+            ),
+            "latency_p50_ms": result.get("latency_p50_ms"),
+            "latency_p95_ms": result.get("latency_p95_ms"),
+            "latency_p99_ms": result.get("latency_p99_ms"),
             "search_batch_calls": result["search_batch_calls"],
             "avg_search_requests_per_query": result["avg_search_requests_per_query"],
             "avg_candidate_groups_per_query": result.get("avg_candidate_groups_per_query"),
@@ -4856,6 +6582,7 @@ def main() -> int:
         print(json.dumps(row, ensure_ascii=False), flush=True)
 
     best = choose_best_matched_recall(tuning_rows, args.target_recall)
+    run_warmup(int(best["upper_k"]), int(best["base_ef"]), int(best["factor"]))
 
     if args.routing_mode == "naive_hash_all_shards":
         if args.search_dispatch_mode == "direct_peer":
@@ -4876,6 +6603,7 @@ def main() -> int:
                 lower_execution_order=args.lower_execution_order,
                 direct_peer_local_premerge=args.direct_peer_local_premerge,
                 score_higher_is_better=distance_config["score_higher_is_better"],
+                fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
             )
         else:
             final_result = evaluate_all_shards_config(
@@ -4892,6 +6620,7 @@ def main() -> int:
                 lower_execution_order=args.lower_execution_order,
                 include_per_query_metrics=args.write_per_query_metrics,
                 score_higher_is_better=distance_config["score_higher_is_better"],
+                fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
             )
     elif args.routing_mode == "kmeans_simple_nprobe":
         assert simple_kmeans_centroids is not None
@@ -4913,6 +6642,7 @@ def main() -> int:
             direct_peer_local_premerge=args.direct_peer_local_premerge,
             include_per_query_metrics=args.write_per_query_metrics,
             score_higher_is_better=distance_config["score_higher_is_better"],
+            fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
         )
     else:
         assert upper_index is not None
@@ -4948,7 +6678,11 @@ def main() -> int:
         else:
             routed_evaluator = routed_evaluator_for_planning_mode(args.routed_planning_mode)
             final_extra_kwargs = {}
-            if args.write_per_query_metrics and args.routed_planning_mode in {"materialized", "compact_materialized"}:
+            if args.write_per_query_metrics and args.routed_planning_mode in {
+                "materialized",
+                "compact_materialized",
+                "pipelined",
+            }:
                 final_extra_kwargs["include_per_query_metrics"] = True
             final_result = routed_evaluator(
                 args.base_url,
@@ -4972,11 +6706,13 @@ def main() -> int:
                 routed_result_limit_mode=args.routed_result_limit_mode,
                 routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                 lower_execution_order=args.lower_execution_order,
+                shard_key_to_peer=shard_key_to_peer,
                 score_higher_is_better=distance_config["score_higher_is_better"],
                 **final_extra_kwargs,
             )
     final_row = {
         "upper_k": int(best["upper_k"]),
+        "nprobe": int(best["upper_k"]) if args.routing_mode == "kmeans_simple_nprobe" else None,
         "base_ef": int(best["base_ef"]),
         "factor": int(best["factor"]),
         "query_count": args.eval_query_count,
@@ -4987,6 +6723,22 @@ def main() -> int:
         "avg_visited_shards": final_result["avg_visited_shards"],
         "avg_upper_hits": final_result["avg_upper_hits"],
         "avg_assigned_ef_per_visited_shard": final_result["avg_assigned_ef_per_visited_shard"],
+        "estimated_ef_sum_per_query": (
+            final_result["avg_assigned_ef_per_visited_shard"]
+            * final_result["avg_visited_shards"]
+        ),
+        "avg_physical_peers_per_query": (
+            final_result.get("avg_physical_peers_per_query")
+            if final_result.get("avg_physical_peers_per_query") is not None
+            else (
+                float(len(set((shard_key_to_peer or {}).values())))
+                if args.routing_mode == "naive_hash_all_shards"
+                else None
+            )
+        ),
+        "latency_p50_ms": final_result.get("latency_p50_ms"),
+        "latency_p95_ms": final_result.get("latency_p95_ms"),
+        "latency_p99_ms": final_result.get("latency_p99_ms"),
         "search_batch_calls": final_result["search_batch_calls"],
         "avg_search_requests_per_query": final_result["avg_search_requests_per_query"],
         "avg_candidate_groups_per_query": final_result.get("avg_candidate_groups_per_query"),
@@ -5014,6 +6766,7 @@ def main() -> int:
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             else:
                 result = evaluate_all_shards_config(
@@ -5029,6 +6782,7 @@ def main() -> int:
                     source_id_dedup_block_size=source_id_dedup_block_size,
                     lower_execution_order=args.lower_execution_order,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
         elif args.routing_mode == "kmeans_simple_nprobe":
             assert simple_kmeans_centroids is not None
@@ -5049,6 +6803,7 @@ def main() -> int:
                 lower_execution_order=args.lower_execution_order,
                 direct_peer_local_premerge=args.direct_peer_local_premerge,
                 score_higher_is_better=distance_config["score_higher_is_better"],
+                fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
             )
         else:
             assert upper_index is not None
@@ -5105,11 +6860,13 @@ def main() -> int:
                     routed_result_limit_mode=args.routed_result_limit_mode,
                     routed_result_limit_multiplier=args.routed_result_limit_multiplier,
                     lower_execution_order=args.lower_execution_order,
+                    shard_key_to_peer=shard_key_to_peer,
                     score_higher_is_better=distance_config["score_higher_is_better"],
                 )
         row = {
             "run": run_idx,
             "upper_k": int(best["upper_k"]),
+            "nprobe": int(best["upper_k"]) if args.routing_mode == "kmeans_simple_nprobe" else None,
             "base_ef": int(best["base_ef"]),
             "factor": int(best["factor"]),
             "query_count": args.eval_query_count,
@@ -5120,6 +6877,21 @@ def main() -> int:
             "avg_visited_shards": result["avg_visited_shards"],
             "avg_upper_hits": result["avg_upper_hits"],
             "avg_assigned_ef_per_visited_shard": result["avg_assigned_ef_per_visited_shard"],
+            "estimated_ef_sum_per_query": (
+                result["avg_assigned_ef_per_visited_shard"] * result["avg_visited_shards"]
+            ),
+            "avg_physical_peers_per_query": (
+                result.get("avg_physical_peers_per_query")
+                if result.get("avg_physical_peers_per_query") is not None
+                else (
+                    float(len(set((shard_key_to_peer or {}).values())))
+                    if args.routing_mode == "naive_hash_all_shards"
+                    else None
+                )
+            ),
+            "latency_p50_ms": result.get("latency_p50_ms"),
+            "latency_p95_ms": result.get("latency_p95_ms"),
+            "latency_p99_ms": result.get("latency_p99_ms"),
             "search_batch_calls": result["search_batch_calls"],
             "avg_search_requests_per_query": result["avg_search_requests_per_query"],
             "avg_candidate_groups_per_query": result.get("avg_candidate_groups_per_query"),
@@ -5141,6 +6913,7 @@ def main() -> int:
                     int(best["base_ef"]),
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             elif args.routing_mode == "kmeans_simple_nprobe":
                 assert simple_kmeans_centroids is not None
@@ -5152,6 +6925,7 @@ def main() -> int:
                     int(best["base_ef"]),
                     use_payload_source_id=use_payload_source_id,
                     source_id_dedup_block_size=source_id_dedup_block_size,
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             else:
                 assert upper_index is not None
@@ -5230,6 +7004,7 @@ def main() -> int:
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             elif args.routing_mode == "kmeans_simple_nprobe":
                 assert simple_kmeans_centroids is not None
@@ -5251,6 +7026,7 @@ def main() -> int:
                     lower_execution_order=args.lower_execution_order,
                     direct_peer_local_premerge=args.direct_peer_local_premerge,
                     score_higher_is_better=distance_config["score_higher_is_better"],
+                    fixed_ef_shard_chunk_size=fixed_ef_shard_chunk_size,
                 )
             else:
                 assert upper_index is not None
@@ -5314,8 +7090,11 @@ def main() -> int:
     if needs_architecture_query_plans:
         if args.routing_mode != "faithful_original_rest":
             raise ValueError("method4 architecture traces are only supported for faithful_original_rest")
-        if args.routed_planning_mode != "materialized":
-            raise ValueError("method4 architecture traces require --routed-planning-mode materialized")
+        if args.routed_planning_mode not in {"materialized", "pipelined"}:
+            raise ValueError(
+                "method4 architecture traces require --routed-planning-mode "
+                "materialized or pipelined"
+            )
         if point_to_shards is None:
             raise ValueError("method4 architecture traces require point_to_shards routing metadata")
         assert upper_index is not None
@@ -5347,10 +7126,10 @@ def main() -> int:
         )
 
     if args.physical_execution_trace:
-        if args.reuse_existing:
-            actual_shard_key_to_peer = collection_shard_key_to_peer(args.base_url, args.collection)
-        else:
-            actual_shard_key_to_peer = {}
+        # Placement is available for both a collection created in this invocation and
+        # one accepted through --reuse-existing.  Always read the live cluster view;
+        # limiting this to reuse mode incorrectly rejected newly deployed collections.
+        actual_shard_key_to_peer = collection_shard_key_to_peer(args.base_url, args.collection)
         if not actual_shard_key_to_peer:
             raise ValueError("--physical-execution-trace requires a deployed clustered collection")
         assert architecture_query_plans is not None
@@ -5378,10 +7157,89 @@ def main() -> int:
             encoding="utf-8",
         )
 
+    transport_resources_end = (
+        capture_controller_transport_resources(deployment_manifest)
+        if transport_resources_start is not None
+        else None
+    )
+    transport_resource_audit = (
+        audit_transport_resources(transport_resources_start, transport_resources_end)
+        if transport_resources_start is not None and transport_resources_end is not None
+        else None
+    )
+    collection_info_now = collection_info(args.base_url, args.collection)
+    collection_cluster_snapshot = collection_cluster_info(args.base_url, args.collection)
+    cluster_summary_now = collection_cluster_summary(collection_cluster_snapshot)
+    cluster_snapshot_now = None
+    try:
+        cluster_snapshot_now = request_json(args.base_url, "GET", "/cluster").get("result")
+    except RuntimeError:
+        pass
+    runtime_logs = collect_container_log_tails(
+        deployment_manifest,
+        since_epoch=runtime_log_since_epoch,
+    )
+    runtime_health = audit_runtime_health(
+        runtime_logs,
+        cluster_snapshot_now,
+        collection_info_now,
+        collection_cluster_snapshot or {},
+        transport_resource_audit,
+    )
+    actual_dataset_sha256 = args.dataset_sha256 or sha256_path(args.hdf5_path)
+    if args.dataset_sha256 and actual_dataset_sha256 != sha256_path(args.hdf5_path):
+        raise RuntimeError("--dataset-sha256 does not match the HDF5 file")
+    deployment_image = (deployment_manifest or {}).get("image") or {}
+    resolved_image_tag = args.image_tag or deployment_image.get("tag")
+    resolved_image_digest = args.image_digest or deployment_image.get("id") or deployment_image.get("digest")
+    placement_summary = worker_shard_point_summary(sample_rows, shard_key_to_peer or {})
+    routing_build_metadata_status = build_row.get(
+        "routing_build_metadata_status",
+        "not_requested",
+    )
+    routing_build_metadata_note = {
+        "verified": (
+            "The live collection contains Orion harness routing-build metadata whose "
+            "canonical fields and SHA-256 fingerprint exactly match this run."
+        ),
+        "missing_unverified": (
+            "The collection predates the routing-build metadata guard. Schema, point-count, "
+            "and placement checks passed, but seed/partition semantics are unverified."
+        ),
+        "not_requested": "No routing-build metadata expectation was supplied.",
+    }.get(str(routing_build_metadata_status), "Routing-build metadata validation failed.")
+
     summary = {
         "base_url": args.base_url,
         "collection": args.collection,
+        "collection_routing_build_metadata": {
+            "status": routing_build_metadata_status,
+            "verified": bool(build_row.get("routing_build_metadata_verified", False)),
+            "expected_fingerprint": build_row.get(
+                "routing_build_metadata_expected_fingerprint"
+            ),
+            "actual_fingerprint": build_row.get(
+                "routing_build_metadata_actual_fingerprint"
+            ),
+            "expected_fields": routing_build_metadata,
+            "note": routing_build_metadata_note,
+        },
         "hdf5_path": args.hdf5_path,
+        "dataset_sha256": actual_dataset_sha256,
+        "dataset_size_bytes": Path(args.hdf5_path).stat().st_size,
+        "repository": repository_provenance(),
+        "image_tag": resolved_image_tag,
+        "image_digest": resolved_image_digest,
+        "deployment_manifest_path": args.deployment_manifest,
+        "deployment_manifest": deployment_manifest,
+        "runtime_log_since_epoch": runtime_log_since_epoch,
+        "container_log_tails": runtime_logs,
+        "runtime_health_audit": runtime_health,
+        "command": [sys.executable, *sys.argv],
+        "process_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
+        "cluster_topology_path": args.cluster_topology,
+        "cluster_preflight": cluster_preflight,
+        "cluster_snapshot": cluster_snapshot_now,
         "vector_distance": distance_config["name"],
         "upper_hnsw_space": distance_config["hnsw_space"],
         "qdrant_vector_distance": distance_config["qdrant_distance"],
@@ -5396,23 +7254,57 @@ def main() -> int:
         "shard_placement_map_name": args.shard_placement_map_name if args.shard_placement == "map" else None,
         "placement_peer_uri_contains": args.placement_peer_uri_contains,
         "discovered_peer_ids": peers,
-        "collection_cluster": collection_cluster_summary(collection_cluster_info(args.base_url, args.collection)),
+        "collection_cluster": cluster_summary_now,
+        "collection_cluster_snapshot": collection_cluster_snapshot,
+        "worker_shard_points": placement_summary,
+        "placement_valid": cluster_summary_now.get("cluster_placement_valid"),
+        "warmup_query_count": args.warmup_query_count,
         "sample_denominator": args.sample_denominator,
         "k_overlap": args.k_overlap,
         "search_all_shards": args.search_all_shards,
         "concurrency_evaluation_mode": args.concurrency_evaluation_mode,
         "search_dispatch_mode": args.search_dispatch_mode,
         "lower_execution_order": args.lower_execution_order,
+        "fixed_ef_shard_chunk_size": fixed_ef_shard_chunk_size,
         "direct_peer_http_urls": args.direct_peer_http_urls if args.search_dispatch_mode == "direct_peer" else None,
         "direct_peer_local_premerge": args.direct_peer_local_premerge,
         "routed_execution_mode": args.routed_execution_mode,
         "routed_planning_mode": args.routed_planning_mode,
+        "pipelined_execution": (
+            {
+                "enabled": True,
+                "lookahead_batches": 1,
+                "preencoded_search_batch_body": args.search_dispatch_mode == "coordinator",
+                "note": (
+                    "Planning and JSON encoding for batch N+1 run on the benchmark-client "
+                    "CPU set while the controller and workers execute lower search for batch N. "
+                    "Only one lower HTTP batch remains in flight, and routed shards, MultiEP, "
+                    "Dynamic EF, source-ID dedup, and final global top-k are unchanged."
+                ),
+            }
+            if args.routed_planning_mode == "pipelined"
+            else None
+        ),
         "placement_simulation": placement_simulation,
         "physical_execution_trace": physical_execution_trace,
         "compact_ef_mode": args.compact_ef_mode if args.routed_execution_mode == "compact_query_ef" else None,
         "routed_result_limit_mode": args.routed_result_limit_mode,
         "routed_result_limit_multiplier": (
             args.routed_result_limit_multiplier if args.routed_result_limit_mode == "fixed_multiplier" else None
+        ),
+        "distributed_fixed_ef_peer_compaction": (
+            {
+                "enabled": True,
+                "uniform_ef": True,
+                "note": (
+                    "The harness repeats the baseline's one fixed EF in the per-shard "
+                    "request map so Qdrant can group remote work by physical peer. This "
+                    "changes transport fan-out only; nprobe/all-shards selection and the "
+                    "fixed lower HNSW EF are unchanged."
+                ),
+            }
+            if args.routing_mode in {"kmeans_simple_nprobe", "naive_hash_all_shards"}
+            else None
         ),
         "source_id_dedup_block_size": source_id_dedup_block_size,
         "multi_assign": (not args.disable_multi_assign) if args.routing_mode == "faithful_original_rest" else False,
@@ -5433,7 +7325,9 @@ def main() -> int:
         "fair_architecture_note": (
             "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant "
             "custom shard keys, the same Docker cluster shape, the same batch search endpoint, and "
-            "the same client result merge path. The intended algorithmic difference is shard "
+            "the same native physical-peer grouping path, and the same client result merge path. "
+            "Simple and Naive express their one fixed EF as a uniform per-shard transport map; "
+            "this does not make their EF dynamic. The intended algorithmic difference is shard "
             "selection: Orion routes to upper-selected shards with Method4 routing metadata, "
             "kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and "
             "naive_hash_all_shards searches every shard."
@@ -5476,6 +7370,7 @@ def main() -> int:
                 "hnsw_ef": int(best["base_ef"]),
                 "cpp_kmeans_train_size": args.cpp_kmeans_train_size,
                 "kmeans_iters": args.kmeans_iters,
+                "kmeans_rand_seed": args.kmeans_rand_seed,
                 "multi_assign": bool(args.simple_kmeans_multi_assign_alpha > 1.0),
                 "multi_assign_alpha": float(args.simple_kmeans_multi_assign_alpha),
                 "total_assigned": simple_kmeans_total_assigned,
@@ -5555,6 +7450,11 @@ def main() -> int:
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"Wrote results to: {output_dir}", flush=True)
+    if args.require_clean_runtime and not runtime_health["valid"]:
+        raise RuntimeError(
+            "distributed runtime health audit failed; result was retained for diagnosis: "
+            f"{runtime_health}"
+        )
     return 0
 
 

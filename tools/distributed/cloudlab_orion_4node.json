@@ -1,0 +1,48 @@
+{
+  "controller": {
+    "ssh_host": "localhost",
+    "private_ip": "10.10.1.1",
+    "role": "controller",
+    "cpuset": "0-7",
+    "max_search_threads": 8,
+    "optimizer_cpu_budget": 4
+  },
+  "workers": [
+    {
+      "ssh_host": "hp052.utah.cloudlab.us",
+      "private_ip": "10.10.1.2",
+      "role": "qdrant_shard_1",
+      "cpuset": "0-19",
+      "max_search_threads": 16,
+      "optimizer_cpu_budget": 4
+    },
+    {
+      "ssh_host": "hp065.utah.cloudlab.us",
+      "private_ip": "10.10.1.3",
+      "role": "qdrant_shard_2",
+      "cpuset": "0-19",
+      "max_search_threads": 16,
+      "optimizer_cpu_budget": 4
+    },
+    {
+      "ssh_host": "hp076.utah.cloudlab.us",
+      "private_ip": "10.10.1.4",
+      "role": "qdrant_shard_3",
+      "cpuset": "0-19",
+      "max_search_threads": 16,
+      "optimizer_cpu_budget": 4
+    }
+  ],
+  "ports": {
+    "http": 6333,
+    "grpc": 6334,
+    "p2p": 6335
+  },
+  "benchmark_client_cpuset": "8-19",
+  "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+  "local_storage_root": "/users/dry/orion-distributed",
+  "dataset": {
+    "url": "https://ann-benchmarks.com/glove-200-angular.hdf5",
+    "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5"
+  }
+}

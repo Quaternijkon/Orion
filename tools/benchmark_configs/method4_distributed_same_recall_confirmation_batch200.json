@@ -1,0 +1,119 @@
+{
+  "matrix_name": "method4_distributed_same_recall_confirmation_batch200",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_confirmation",
+  "client_cpuset": "8-19",
+  "defaults": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "require_clean_runtime": true,
+    "vector_distance": "cosine",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 400,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "tuning_query_count": 500,
+    "eval_query_count": 3000,
+    "warmup_query_count": 500,
+    "stability_repeats": 3,
+    "batch_size": 200,
+    "write_per_query_metrics": true,
+    "search_dispatch_mode": "coordinator",
+    "shard_placement": "round_robin",
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "orion_090_u32_b48_f16",
+      "preset": "orion",
+      "args": {
+        "target_recall": 0.90,
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [32],
+        "base_ef_candidates": [48],
+        "factor_candidates": [16],
+        "routed_execution_mode": "compact_multi_ep",
+        "routed_planning_mode": "materialized",
+        "routed_result_limit_mode": "top_k"
+      }
+    },
+    {
+      "name": "simple_090_n19_ef100",
+      "preset": "kmeans_simple_nprobe",
+      "args": {
+        "target_recall": 0.90,
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [19],
+        "upper_k_candidates": [19],
+        "base_ef_candidates": [100],
+        "factor_candidates": [0],
+        "simple_kmeans_multi_assign_alpha": 1.0
+      }
+    },
+    {
+      "name": "naive_090_ef36",
+      "preset": "naive",
+      "args": {
+        "target_recall": 0.90,
+        "collection": "dist_dist-20260717-initial_naive_s46",
+        "num_shards": 46,
+        "base_ef_candidates": [36],
+        "factor_candidates": [0]
+      }
+    },
+    {
+      "name": "orion_095_u96_b64_f15",
+      "preset": "orion",
+      "args": {
+        "target_recall": 0.95,
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [96],
+        "base_ef_candidates": [64],
+        "factor_candidates": [15],
+        "routed_execution_mode": "compact_multi_ep",
+        "routed_planning_mode": "materialized",
+        "routed_result_limit_mode": "top_k"
+      }
+    },
+    {
+      "name": "simple_095_n26_ef200",
+      "preset": "kmeans_simple_nprobe",
+      "args": {
+        "target_recall": 0.95,
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [26],
+        "upper_k_candidates": [26],
+        "base_ef_candidates": [200],
+        "factor_candidates": [0],
+        "simple_kmeans_multi_assign_alpha": 1.0
+      }
+    },
+    {
+      "name": "naive_095_ef65",
+      "preset": "naive",
+      "args": {
+        "target_recall": 0.95,
+        "collection": "dist_dist-20260717-initial_naive_s46",
+        "num_shards": 46,
+        "base_ef_candidates": [65],
+        "factor_candidates": [0]
+      }
+    }
+  ]
+}

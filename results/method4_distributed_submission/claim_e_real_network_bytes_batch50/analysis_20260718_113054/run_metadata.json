@@ -1,0 +1,42 @@
+{
+  "analysis_kind": "claim_e_host_interface_byte_counter_supplement",
+  "created_utc": "2026-07-18T11:32:11Z",
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_dist-20260717-initial_orion_s46",
+  "routing_source_collection": "dist_dist-20260717-initial_orion_s46",
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "num_points": 1183514,
+  "num_shards": 46,
+  "upper_k": 104,
+  "base_ef": 64,
+  "factor": 15,
+  "top_k": 10,
+  "eval_query_count": 3000,
+  "warmup_query_count": 200,
+  "batch_size": 50,
+  "repeats": 3,
+  "variants": [
+    {
+      "variant": "compact_current",
+      "routed_execution_mode": "compact_multi_ep",
+      "lower_execution_order": "query_major",
+      "description": "compact MultiEP request on the current server path"
+    },
+    {
+      "variant": "client_shard_major_expanded",
+      "routed_execution_mode": "compact_multi_ep",
+      "lower_execution_order": "shard_major",
+      "description": "client-expanded single-shard negative control"
+    }
+  ],
+  "interfaces": [
+    "ens1f1np1"
+  ],
+  "sys_class_net": "/sys/class/net",
+  "notes": [
+    "host_interface_counters_not_qdrant_internal_or_packet_capture",
+    "Counters are Linux host interface byte counters from /sys/class/net.",
+    "Single-host Docker traffic is expected to appear mainly on docker_bridge and docker_veth roles.",
+    "physical_nic rows represent host external NIC counters, not Qdrant-internal remote-worker traffic attribution."
+  ]
+}

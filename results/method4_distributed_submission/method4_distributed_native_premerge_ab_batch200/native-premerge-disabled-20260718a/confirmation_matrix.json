@@ -1,0 +1,119 @@
+{
+  "matrix_name": "method4_distributed_native_premerge_ab_batch200_confirmation",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/confirmation",
+  "client_cpuset": "8-19",
+  "cases": [
+    {
+      "name": "orion_native_premerge_probe_r0p9",
+      "preset": "orion",
+      "tags": {
+        "partition_family": "orion",
+        "recall_match_status": "nearest",
+        "requested_target_recall": 0.9,
+        "selected_tuning_recall": 0.9536
+      },
+      "args": {
+        "base_url": "http://10.10.1.1:6333",
+        "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+        "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+        "vector_distance": "cosine",
+        "top_k": 10,
+        "hnsw_m": 32,
+        "ef_construct": 100,
+        "upper_m": 32,
+        "upper_ef_construction": 100,
+        "upper_search_ef": 400,
+        "sample_denominator": 32,
+        "k_overlap": 10,
+        "upper_sample_seed": 100,
+        "kmeans_rand_seed": 1,
+        "kmeans_iters": 10,
+        "tuning_query_count": 500,
+        "eval_query_count": 3000,
+        "warmup_query_count": 500,
+        "stability_repeats": 3,
+        "batch_size": 100,
+        "target_recall": 0.9536,
+        "write_per_query_metrics": true,
+        "search_dispatch_mode": "coordinator",
+        "shard_placement": "round_robin",
+        "reuse_existing": true,
+        "routing_mode": "faithful_original_rest",
+        "routed_execution_mode": "compact_multi_ep",
+        "routed_planning_mode": "materialized",
+        "routed_result_limit_mode": "top_k",
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [
+          104
+        ],
+        "base_ef_candidates": [
+          64
+        ],
+        "factor_candidates": [
+          15
+        ],
+        "physical_execution_trace": true
+      }
+    },
+    {
+      "name": "orion_native_premerge_probe_r0p95",
+      "preset": "orion",
+      "tags": {
+        "partition_family": "orion",
+        "recall_match_status": "nearest",
+        "requested_target_recall": 0.95,
+        "selected_tuning_recall": 0.9536
+      },
+      "args": {
+        "base_url": "http://10.10.1.1:6333",
+        "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+        "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+        "vector_distance": "cosine",
+        "top_k": 10,
+        "hnsw_m": 32,
+        "ef_construct": 100,
+        "upper_m": 32,
+        "upper_ef_construction": 100,
+        "upper_search_ef": 400,
+        "sample_denominator": 32,
+        "k_overlap": 10,
+        "upper_sample_seed": 100,
+        "kmeans_rand_seed": 1,
+        "kmeans_iters": 10,
+        "tuning_query_count": 500,
+        "eval_query_count": 3000,
+        "warmup_query_count": 500,
+        "stability_repeats": 3,
+        "batch_size": 100,
+        "target_recall": 0.9536,
+        "write_per_query_metrics": true,
+        "search_dispatch_mode": "coordinator",
+        "shard_placement": "round_robin",
+        "reuse_existing": true,
+        "routing_mode": "faithful_original_rest",
+        "routed_execution_mode": "compact_multi_ep",
+        "routed_planning_mode": "materialized",
+        "routed_result_limit_mode": "top_k",
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [
+          104
+        ],
+        "base_ef_candidates": [
+          64
+        ],
+        "factor_candidates": [
+          15
+        ],
+        "physical_execution_trace": true
+      }
+    }
+  ]
+}

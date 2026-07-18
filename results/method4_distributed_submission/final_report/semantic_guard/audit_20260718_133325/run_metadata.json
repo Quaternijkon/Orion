@@ -1,0 +1,26 @@
+{
+  "created_utc": "2026-07-18T13:33:38Z",
+  "analysis_kind": "method4_claim_h_semantic_invariant_audit",
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_dist-20260717-initial_orion_s46",
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "num_points": 1183514,
+  "num_shards": 46,
+  "upper_k": 104,
+  "base_ef": 64,
+  "factor": 15,
+  "top_k": 10,
+  "query_count": 100,
+  "sample_denominator": 32,
+  "upper_sample_seed": 100,
+  "upper_count": 36984,
+  "upper_search_ef": 400,
+  "source_id_dedup_block_size": 1183515,
+  "summary_csv": "results/method4_distributed_submission/final_report/semantic_guard/audit_20260718_133325/semantic_invariant_summary.csv",
+  "sample_csv": "results/method4_distributed_submission/final_report/semantic_guard/audit_20260718_133325/semantic_query_samples.csv",
+  "collection_shard_upper_counts_csv": "results/method4_distributed_submission/final_report/semantic_guard/audit_20260718_133325/collection_shard_upper_counts.csv",
+  "notes": [
+    "This audit checks compact_multi_ep request semantics without executing lower HNSW search.",
+    "Every invariant row must pass before using this as Claim H support."
+  ]
+}

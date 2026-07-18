@@ -1,0 +1,63 @@
+{
+  "matrix_name": "method4_distributed_baseline_dense_batch200",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_tuning",
+  "client_cpuset": "8-19",
+  "defaults": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "require_clean_runtime": true,
+    "vector_distance": "cosine",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 400,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "tuning_query_count": 500,
+    "eval_query_count": 500,
+    "warmup_query_count": 100,
+    "stability_repeats": 0,
+    "batch_size": 200,
+    "target_recall": 0.0,
+    "write_per_query_metrics": true,
+    "search_dispatch_mode": "coordinator",
+    "shard_placement": "round_robin",
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "simple_dense",
+      "preset": "kmeans_simple_nprobe",
+      "collection_template": "dist_dist-20260717-initial_simple_kmeans_s46",
+      "args": {
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [12, 16, 20, 24, 28, 32, 36, 40, 46],
+        "upper_k_candidates": [12, 16, 20, 24, 28, 32, 36, 40, 46],
+        "base_ef_candidates": [80, 100, 120, 140, 160, 180, 200, 240],
+        "factor_candidates": [0],
+        "simple_kmeans_multi_assign_alpha": 1.0
+      }
+    },
+    {
+      "name": "naive_dense",
+      "preset": "naive",
+      "collection_template": "dist_dist-20260717-initial_naive_s46",
+      "args": {
+        "collection": "dist_dist-20260717-initial_naive_s46",
+        "num_shards": 46,
+        "base_ef_candidates": [32, 40, 48, 56, 64, 72, 76, 80, 88],
+        "factor_candidates": [0]
+      }
+    }
+  ]
+}

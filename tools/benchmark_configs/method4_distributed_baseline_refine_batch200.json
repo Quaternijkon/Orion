@@ -1,0 +1,74 @@
+{
+  "matrix_name": "method4_distributed_baseline_refine_batch200",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_tuning",
+  "client_cpuset": "8-19",
+  "defaults": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "require_clean_runtime": true,
+    "vector_distance": "cosine",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 400,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "tuning_query_count": 500,
+    "eval_query_count": 500,
+    "warmup_query_count": 100,
+    "stability_repeats": 0,
+    "batch_size": 200,
+    "target_recall": 0.0,
+    "write_per_query_metrics": true,
+    "search_dispatch_mode": "coordinator",
+    "shard_placement": "round_robin",
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "simple_refine_090",
+      "preset": "kmeans_simple_nprobe",
+      "args": {
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [14, 15, 16, 17, 18, 19, 20, 22, 24],
+        "upper_k_candidates": [14, 15, 16, 17, 18, 19, 20, 22, 24],
+        "base_ef_candidates": [80, 90, 100, 110, 120, 130, 140, 150, 160],
+        "factor_candidates": [0],
+        "simple_kmeans_multi_assign_alpha": 1.0
+      }
+    },
+    {
+      "name": "simple_refine_095",
+      "preset": "kmeans_simple_nprobe",
+      "args": {
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [20, 22, 24, 26, 28, 30, 32, 34, 36],
+        "upper_k_candidates": [20, 22, 24, 26, 28, 30, 32, 34, 36],
+        "base_ef_candidates": [150, 160, 170, 180, 190, 200, 210, 220, 240, 260, 280],
+        "factor_candidates": [0],
+        "simple_kmeans_multi_assign_alpha": 1.0
+      }
+    },
+    {
+      "name": "naive_refine_090",
+      "preset": "naive",
+      "args": {
+        "collection": "dist_dist-20260717-initial_naive_s46",
+        "num_shards": 46,
+        "base_ef_candidates": [34, 35, 36, 37, 38],
+        "factor_candidates": [0]
+      }
+    }
+  ]
+}

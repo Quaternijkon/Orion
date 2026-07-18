@@ -1,0 +1,63 @@
+{
+  "matrix_name": "method4_distributed_smoke",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_smoke",
+  "client_cpuset": "8-19",
+  "delete_collections_after_run": true,
+  "defaults": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/{matrix_run_id}/manifest.json",
+    "require_clean_runtime": true,
+    "vector_distance": "cosine",
+    "train_limit": 5000,
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_search_ef": 100,
+    "tuning_query_count": 20,
+    "eval_query_count": 50,
+    "warmup_query_count": 10,
+    "stability_repeats": 0,
+    "batch_size": 10,
+    "target_recall": 0.0,
+    "search_dispatch_mode": "coordinator",
+    "shard_placement": "round_robin"
+  },
+  "cases": [
+    {
+      "name": "orion",
+      "preset": "orion",
+      "collection_template": "dist_{matrix_run_id}_smoke_orion",
+      "args": {
+        "num_shards": 4,
+        "upper_k_candidates": [24],
+        "base_ef_candidates": [32],
+        "factor_candidates": [6],
+        "physical_execution_trace": true
+      }
+    },
+    {
+      "name": "simple_kmeans",
+      "preset": "kmeans_simple_nprobe",
+      "collection_template": "dist_{matrix_run_id}_smoke_simple",
+      "args": {
+        "num_shards": 6,
+        "nprobe_candidates": [3],
+        "upper_k_candidates": [3],
+        "base_ef_candidates": [32]
+      }
+    },
+    {
+      "name": "naive",
+      "preset": "naive",
+      "collection_template": "dist_{matrix_run_id}_smoke_naive",
+      "args": {
+        "num_shards": 6,
+        "base_ef_candidates": [32]
+      }
+    }
+  ]
+}

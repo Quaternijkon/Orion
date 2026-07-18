@@ -1,0 +1,91 @@
+{
+  "matrix_name": "method4_distributed_orion_debug",
+  "harness": "tools/qdrant_two_level_routing_experiment.py",
+  "python": "/users/dry/orion-distributed/venv/bin/python",
+  "output_root": "results/method4_distributed_tuning",
+  "client_cpuset": "8-19",
+  "defaults": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "cluster_topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "require_clean_runtime": true,
+    "vector_distance": "cosine",
+    "top_k": 10,
+    "hnsw_m": 32,
+    "ef_construct": 100,
+    "upper_m": 32,
+    "upper_ef_construction": 100,
+    "upper_search_ef": 400,
+    "sample_denominator": 32,
+    "k_overlap": 10,
+    "upper_sample_seed": 100,
+    "kmeans_rand_seed": 1,
+    "kmeans_iters": 10,
+    "tuning_query_count": 500,
+    "eval_query_count": 500,
+    "warmup_query_count": 100,
+    "stability_repeats": 0,
+    "target_recall": 0.0,
+    "search_dispatch_mode": "coordinator",
+    "shard_placement": "round_robin",
+    "reuse_existing": true
+  },
+  "cases": [
+    {
+      "name": "orion_u32_b48_f14_materialized",
+      "preset": "orion",
+      "matrix": {"batch_size": [50, 100, 200, 400]},
+      "args": {
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [32],
+        "base_ef_candidates": [48],
+        "factor_candidates": [14],
+        "routed_planning_mode": "materialized"
+      }
+    },
+    {
+      "name": "orion_u32_b48_f14_compact_materialized",
+      "preset": "orion",
+      "matrix": {"batch_size": [50, 100, 200, 400]},
+      "args": {
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [32],
+        "base_ef_candidates": [48],
+        "factor_candidates": [14],
+        "routed_planning_mode": "compact_materialized"
+      }
+    },
+    {
+      "name": "orion_u36_b40_f14_compact_materialized",
+      "preset": "orion",
+      "matrix": {"batch_size": [50, 100, 200, 400]},
+      "args": {
+        "collection": "dist_dist-20260717-initial_orion_s46",
+        "num_shards": 31,
+        "recover_routing_from_collection": true,
+        "upper_k_candidates": [36],
+        "base_ef_candidates": [40],
+        "factor_candidates": [14],
+        "routed_planning_mode": "compact_materialized"
+      }
+    },
+    {
+      "name": "simple_n16_ef120",
+      "preset": "kmeans_simple_nprobe",
+      "matrix": {"batch_size": [50, 100, 200, 400]},
+      "args": {
+        "collection": "dist_dist-20260717-initial_simple_kmeans_s46",
+        "num_shards": 46,
+        "nprobe_candidates": [16],
+        "upper_k_candidates": [16],
+        "base_ef_candidates": [120],
+        "factor_candidates": [0]
+      }
+    }
+  ]
+}

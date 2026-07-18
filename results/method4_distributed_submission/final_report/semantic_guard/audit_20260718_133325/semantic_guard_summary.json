@@ -1,0 +1,65 @@
+{
+  "created_utc": "2026-07-18T13:34:32Z",
+  "status": "pass",
+  "repository_commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+  "inputs": {
+    "base_url": "http://10.10.1.1:6333",
+    "collection": "dist_dist-20260717-initial_orion_s46",
+    "dataset": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "num_shards": 46,
+    "upper_k": 104,
+    "base_ef": 64,
+    "factor": 15,
+    "top_k": 10,
+    "query_count": 100,
+    "upper_search_ef": 400,
+    "source_id_dedup_block_size": 1183515
+  },
+  "wrapper_invariant_audit": {
+    "invariant_count": 9,
+    "passed": 9,
+    "failed": 0,
+    "query_count": 100,
+    "search_count": 100,
+    "visited_shards": 1972,
+    "upper_labels": 10400,
+    "multi_assignment_queries": 95,
+    "summary_csv": "semantic_invariant_summary.csv",
+    "collection_shard_upper_counts_csv": "collection_shard_upper_counts.csv"
+  },
+  "same_index_materialized_vs_pipelined": {
+    "status": "pass",
+    "test": "tests/tools/test_qdrant_two_level_routing_experiment.py::test_pipelined_and_materialized_build_identical_same_index_query_plans",
+    "command": "/users/dry/orion-distributed/venv/bin/pytest -q -o addopts='' tests/tools/test_qdrant_two_level_routing_experiment.py -k pipelined_and_materialized_build_identical_same_index_query_plans",
+    "result": "1 passed, 95 deselected in 0.17s",
+    "asserted_equal": [
+      "complete per-query request plans",
+      "recall_at_k",
+      "avg_visited_shards",
+      "avg_upper_hits",
+      "avg_assigned_ef_per_visited_shard",
+      "search_batch_calls",
+      "avg_search_requests_per_query",
+      "avg_candidate_groups_per_query",
+      "avg_returned_candidates_per_query",
+      "avg_physical_peers_per_query"
+    ]
+  },
+  "tool_sha256": {
+    "tools/qdrant_two_level_routing_experiment.py": "d1edab22be759d340ad97da70267a2e1b8602a387f26230cfebae5bc5f9f2388",
+    "tools/method4_claim_h_semantic_audit.py": "4cdac448c43f78e92f9e2258da3e49dbfff28cd6d1150f1cb0a63389301144ac",
+    "tests/tools/test_qdrant_two_level_routing_experiment.py": "c4bfaa4ad6db8044a23743144e9f023c44f2884aeb11fc78cc6abbd7220fdb3d"
+  },
+  "git_inclusion": {
+    "include": [
+      "semantic_guard_summary.json",
+      "semantic_invariant_summary.csv",
+      "run_metadata.json",
+      "collection_shard_upper_counts.csv"
+    ],
+    "exclude": [
+      "semantic_query_samples.csv"
+    ],
+    "exclude_reason": "The audit tool emits per-query samples by default; the aggregate invariant summary is sufficient final evidence."
+  }
+}

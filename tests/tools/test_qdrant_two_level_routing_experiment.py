@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pytest
 
 
 def load_module():
-    script_path = Path("/home/taig/dry/qdrant/tools/qdrant_two_level_routing_experiment.py")
+    script_path = Path(__file__).resolve().parents[2] / "tools/qdrant_two_level_routing_experiment.py"
     spec = importlib.util.spec_from_file_location("two_level_exp", script_path)
     module = importlib.util.module_from_spec(spec)
     assert spec is not None
@@ -46,6 +47,174 @@ def test_cpp_baseline_kmeans_train_initializes_centroids_from_first_sample_rows(
     )
 
     assert centroids.tolist() == [[0.0, 1.0], [10.0, 10.0]]
+
+
+@pytest.mark.parametrize("routing_mode", ["cpp_kmeans_baseline", "kmeans_simple_nprobe"])
+def test_main_passes_kmeans_rand_seed_to_cpp_kmeans_assignment_build(
+    monkeypatch,
+    tmp_path,
+    routing_mode,
+):
+    module = load_module()
+    hdf5_path = tmp_path / "seed_roles.hdf5"
+    with module.h5py.File(hdf5_path, "w") as handle:
+        handle.create_dataset(
+            "train",
+            data=module.np.array(
+                [[1.0, 0.0], [0.0, 1.0], [0.7, 0.7], [-1.0, 0.0]],
+                dtype=module.np.float32,
+            ),
+        )
+        handle.create_dataset(
+            "test",
+            data=module.np.array([[1.0, 0.0]], dtype=module.np.float32),
+        )
+        handle.create_dataset(
+            "neighbors",
+            data=module.np.array([[0]], dtype=module.np.int32),
+        )
+
+    args = SimpleNamespace(
+        routing_mode=routing_mode,
+        vector_distance="cosine",
+        recover_routing_from_collection=False,
+        reuse_existing=False,
+        direct_peer_local_premerge=False,
+        search_dispatch_mode="controller",
+        output_dir=str(tmp_path / "results"),
+        cluster_topology=None,
+        deployment_manifest=None,
+        base_url="http://example.invalid",
+        collection="seed-role-test",
+        hdf5_path=str(hdf5_path),
+        train_limit=None,
+        tuning_query_count=1,
+        eval_query_count=1,
+        warmup_query_count=0,
+        top_k=1,
+        placement_peer_uri_contains=None,
+        shard_placement="none",
+        shard_placement_map=None,
+        num_shards=2,
+        cpp_kmeans_train_size=4,
+        kmeans_iters=3,
+        upper_sample_seed=100,
+        kmeans_rand_seed=7,
+    )
+
+    class SeedCaptured(Exception):
+        pass
+
+    captured = {}
+
+    def capture_build(_train, num_shards, train_size, kmeans_iters, seed):
+        captured.update(
+            num_shards=num_shards,
+            train_size=train_size,
+            kmeans_iters=kmeans_iters,
+            seed=seed,
+        )
+        raise SeedCaptured
+
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "validate_args", lambda _args: None)
+    monkeypatch.setattr(module, "effective_upper_search_ef", lambda _args: 100)
+    monkeypatch.setattr(module, "cluster_peer_ids", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "build_cpp_kmeans_baseline_assignments", capture_build)
+
+    with pytest.raises(SeedCaptured):
+        module.main()
+
+    assert captured == {
+        "num_shards": 2,
+        "train_size": 4,
+        "kmeans_iters": 3,
+        "seed": 7,
+    }
+
+
+def test_cpp_kmeans_baseline_keeps_upper_sample_seed_for_upper_point_sampling(
+    monkeypatch,
+    tmp_path,
+):
+    module = load_module()
+    hdf5_path = tmp_path / "upper_seed_role.hdf5"
+    with module.h5py.File(hdf5_path, "w") as handle:
+        handle.create_dataset(
+            "train",
+            data=module.np.array(
+                [[1.0, 0.0], [0.0, 1.0], [0.7, 0.7], [-1.0, 0.0]],
+                dtype=module.np.float32,
+            ),
+        )
+        handle.create_dataset(
+            "test",
+            data=module.np.array([[1.0, 0.0]], dtype=module.np.float32),
+        )
+        handle.create_dataset(
+            "neighbors",
+            data=module.np.array([[0]], dtype=module.np.int32),
+        )
+
+    args = SimpleNamespace(
+        routing_mode="cpp_kmeans_baseline",
+        vector_distance="cosine",
+        recover_routing_from_collection=False,
+        reuse_existing=False,
+        direct_peer_local_premerge=False,
+        search_dispatch_mode="controller",
+        output_dir=str(tmp_path / "results"),
+        cluster_topology=None,
+        deployment_manifest=None,
+        base_url="http://example.invalid",
+        collection="upper-seed-role-test",
+        hdf5_path=str(hdf5_path),
+        train_limit=None,
+        tuning_query_count=1,
+        eval_query_count=1,
+        warmup_query_count=0,
+        top_k=1,
+        placement_peer_uri_contains=None,
+        shard_placement="none",
+        shard_placement_map=None,
+        num_shards=2,
+        cpp_kmeans_train_size=4,
+        kmeans_iters=3,
+        upper_sample_seed=100,
+        kmeans_rand_seed=7,
+        hnsw_m=32,
+        ef_construct=100,
+        upload_batch_size=4,
+        sample_denominator=32,
+    )
+
+    class UpperSeedCaptured(Exception):
+        pass
+
+    captured = {}
+
+    def fake_build(train, _num_shards, _train_size, _kmeans_iters, seed):
+        captured["kmeans_seed"] = seed
+        return module.np.zeros(len(train), dtype=module.np.int32), module.np.zeros(
+            (2, train.shape[1]), dtype=module.np.float32
+        )
+
+    def capture_upper_sample(_train, _assignments, _num_shards, _denominator, seed):
+        captured["upper_sample_seed"] = seed
+        raise UpperSeedCaptured
+
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "validate_args", lambda _args: None)
+    monkeypatch.setattr(module, "effective_upper_search_ef", lambda _args: 100)
+    monkeypatch.setattr(module, "cluster_peer_ids", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(module, "build_cpp_kmeans_baseline_assignments", fake_build)
+    monkeypatch.setattr(module, "ensure_collection", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(module, "sample_cpp_kmeans_upper_points", capture_upper_sample)
+
+    with pytest.raises(UpperSeedCaptured):
+        module.main()
+
+    assert captured == {"kmeans_seed": 7, "upper_sample_seed": 100}
 
 
 def test_sample_cpp_kmeans_upper_points_uses_cpp_floor_without_min_one():
@@ -350,6 +519,40 @@ def test_create_collection_uses_configured_qdrant_distance(monkeypatch):
     assert calls[0]["body"]["vectors"]["distance"] == "Euclid"
 
 
+def test_create_collection_stores_canonical_routing_build_metadata(monkeypatch):
+    module = load_module()
+    calls = []
+    routing_build = {
+        "routing_mode": "kmeans_simple_nprobe",
+        "kmeans_rand_seed": 7,
+        "effective_num_shards": 46,
+    }
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        calls.append({"base_url": base_url, "method": method, "path": path, "body": body})
+        return {"result": {}}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+
+    module.create_collection(
+        "http://qdrant",
+        "collection",
+        dim=200,
+        m=32,
+        ef_construct=100,
+        vector_distance="Cosine",
+        routing_build_metadata=routing_build,
+    )
+
+    envelope = calls[0]["body"]["metadata"][module.ORION_COLLECTION_METADATA_KEY]
+    assert envelope["schema_version"] == module.ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION
+    assert envelope["routing_build"] == routing_build
+    assert envelope["routing_build_sha256"] == module.canonical_json_sha256(routing_build)
+    assert module.canonical_json_sha256({"b": 2, "a": 1}) == module.canonical_json_sha256(
+        {"a": 1, "b": 2}
+    )
+
+
 def test_effective_upper_search_ef_covers_widest_upper_k_candidate():
     module = load_module()
 
@@ -509,6 +712,23 @@ def test_validate_args_rejects_invalid_multi_assignment_controls():
         )
 
 
+def test_validate_args_rejects_negative_fixed_ef_shard_chunk_size():
+    module = load_module()
+
+    with pytest.raises(ValueError, match="fixed-ef-shard-chunk-size"):
+        module.validate_args(
+            SimpleNamespace(
+                orion_multi_assign_min_max_vote=2,
+                orion_multi_assign_vote_delta=0,
+                orion_multi_assign_max_shards=0,
+                simple_kmeans_multi_assign_alpha=1.0,
+                simple_kmeans_multi_assign_chunk_size=1024,
+                warmup_query_count=0,
+                fixed_ef_shard_chunk_size=-1,
+            )
+        )
+
+
 def test_shard_create_body_includes_placement_only_when_requested():
     module = load_module()
 
@@ -543,6 +763,394 @@ def test_cluster_peer_ids_can_filter_controller_out_by_uri_substring(monkeypatch
 
     assert module.cluster_peer_ids("http://controller:6333") == [101, 202, 303]
     assert module.cluster_peer_ids("http://controller:6333", ["qdrant_shard_"]) == [202, 303]
+
+
+def test_cluster_preflight_requires_exact_four_private_uris(monkeypatch):
+    module = load_module()
+    topology = module.load_cluster_topology(
+        Path(__file__).resolve().parents[2] / "tools/distributed/cloudlab_orion_4node.json"
+    )
+
+    monkeypatch.setattr(
+        module,
+        "request_json",
+        lambda *_args, **_kwargs: {
+            "result": {
+                "peer_id": 101,
+                "peers": {
+                    "101": {"uri": "http://10.10.1.1:6335/"},
+                    "202": {"uri": "http://10.10.1.2:6335"},
+                    "303": {"uri": "http://10.10.1.3:6335"},
+                    "404": {"uri": "http://10.10.1.4:6335"},
+                },
+                "raft_info": {"pending_operations": 0},
+                "consensus_thread_status": {
+                    "consensus_thread_status": "working"
+                },
+                "message_send_failures": {},
+            }
+        },
+    )
+
+    result = module.validate_cluster_preflight("http://10.10.1.1:6333", topology)
+
+    assert result["peer_count"] == 4
+    assert result["controller_peer_id"] == 101
+    assert result["worker_peer_ids"] == [202, 303, 404]
+    assert result["pending_operations"] == 0
+    assert result["consensus_thread_status"] == "working"
+    assert result["message_send_failures"] == {}
+    assert module.cluster_peer_ids(
+        "http://10.10.1.1:6333", exact_uris=topology["worker_uris"]
+    ) == [202, 303, 404]
+
+
+def test_cluster_preflight_rejects_pending_or_failed_peer_transport(monkeypatch):
+    module = load_module()
+    topology = module.load_cluster_topology(
+        Path(__file__).resolve().parents[2]
+        / "tools/distributed/cloudlab_orion_4node.json"
+    )
+    monkeypatch.setattr(
+        module,
+        "request_json",
+        lambda *_args, **_kwargs: {
+            "result": {
+                "peer_id": 101,
+                "peers": {
+                    "101": {"uri": "http://10.10.1.1:6335/"},
+                    "202": {"uri": "http://10.10.1.2:6335"},
+                    "303": {"uri": "http://10.10.1.3:6335"},
+                    "404": {"uri": "http://10.10.1.4:6335"},
+                },
+                "raft_info": {"pending_operations": 2},
+                "consensus_thread_status": {
+                    "consensus_thread_status": "working"
+                },
+                "message_send_failures": {
+                    "http://10.10.1.4:6335/": {"count": 1}
+                },
+            }
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="pending consensus operations"):
+        module.validate_cluster_preflight("http://10.10.1.1:6333", topology)
+
+
+def test_runtime_health_audit_rejects_fd_and_peer_transport_failures():
+    module = load_module()
+    logs = {
+        "controller": {
+            "returncode": 0,
+            "stdout": (
+                "Too many open files (os error 24)\n"
+                "Failed to send message to http://10.10.1.2:6335/\n"
+            ),
+            "stderr": "",
+        }
+    }
+    cluster = {
+        "raft_info": {"pending_operations": 0},
+        "consensus_thread_status": {"consensus_thread_status": "working"},
+        "message_send_failures": {},
+    }
+    collection = {
+        "status": "green",
+        "optimizer_status": "ok",
+        "update_queue": {"length": 0},
+    }
+    placement = {
+        "local_shards": [],
+        "remote_shards": [{"state": "Active"}],
+        "shard_transfers": [],
+    }
+
+    audit = module.audit_runtime_health(logs, cluster, collection, placement)
+
+    assert audit["valid"] is False
+    assert set(audit["log_audit"]["error_matches"]) == {
+        "too_many_open_files",
+        "peer_transport_failure",
+    }
+
+
+def test_capture_controller_transport_resources_uses_manifest_container(monkeypatch):
+    module = load_module()
+    calls = []
+    manifest = {
+        "nodes": [
+            {
+                "role": "controller",
+                "ssh_host": "localhost",
+                "container_name": "orion-controller",
+            },
+            {"role": "qdrant_shard_1"},
+            {"role": "qdrant_shard_2"},
+            {"role": "qdrant_shard_3"},
+        ]
+    }
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="64 6\n", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    snapshot = module.capture_controller_transport_resources(manifest)
+
+    assert snapshot["available"] is True
+    assert snapshot["fd_count"] == 64
+    assert snapshot["p2p_established"] == 6
+    assert snapshot["expected_steady_state_p2p_connections"] == 6
+    assert calls[0][0][:6] == [
+        "sudo",
+        "-n",
+        "docker",
+        "exec",
+        "orion-controller",
+        "sh",
+    ]
+    assert ":18BF$" in calls[0][0][-1]
+
+
+def test_transport_resource_audit_rejects_connection_fanout_and_gates_runtime():
+    module = load_module()
+    start = {
+        "available": True,
+        "fd_count": 63,
+        "p2p_established": 6,
+        "expected_steady_state_p2p_connections": 6,
+    }
+    end = {
+        "available": True,
+        "fd_count": 274,
+        "p2p_established": 217,
+        "expected_steady_state_p2p_connections": 6,
+    }
+    transport = module.audit_transport_resources(start, end)
+
+    assert transport["valid"] is False
+    assert transport["clean_limit"] == 12
+    assert transport["delta"] == {"fd_count": 211, "p2p_established": 211}
+
+    runtime = module.audit_runtime_health(
+        logs={"controller": {"returncode": 0, "stdout": "", "stderr": ""}},
+        cluster_result={
+            "raft_info": {"pending_operations": 0},
+            "consensus_thread_status": {"consensus_thread_status": "working"},
+            "message_send_failures": {},
+        },
+        collection={
+            "status": "green",
+            "optimizer_status": "ok",
+            "update_queue": {"length": 0},
+        },
+        collection_cluster={
+            "local_shards": [],
+            "remote_shards": [{"state": "Active"}],
+            "shard_transfers": [],
+        },
+        transport_resources=transport,
+    )
+
+    assert runtime["valid"] is False
+    assert runtime["checks"]["transport_resources_clean"] is False
+
+
+def test_reuse_validation_rejects_schema_counts_and_controller_placement():
+    module = load_module()
+    info = {
+        "points_count": 99,
+        "config": {
+            "params": {
+                "vectors": {"size": 128, "distance": "Euclid"},
+                "replication_factor": 2,
+            },
+            "hnsw_config": {"m": 16, "ef_construct": 64},
+        },
+    }
+    cluster = {
+        "peer_id": 101,
+        "shard_count": 2,
+        "local_shards": [
+            {"shard_key": "centroid_00", "peer_id": 101, "state": "Active"}
+        ],
+        "remote_shards": [
+            {"shard_key": "centroid_01", "peer_id": 202, "state": "Dead"}
+        ],
+    }
+
+    mismatches = module.collection_reuse_mismatches(
+        info,
+        cluster,
+        expected_dimension=200,
+        expected_distance="Cosine",
+        expected_hnsw_m=32,
+        expected_ef_construct=100,
+        expected_points_count=100,
+        expected_shard_count=3,
+        expected_replication_factor=1,
+        allowed_peer_ids=[202, 303, 404],
+    )
+
+    assert any("dimension" in item for item in mismatches)
+    assert any("distance" in item for item in mismatches)
+    assert any("hnsw.m" in item for item in mismatches)
+    assert any("points_count" in item for item in mismatches)
+    assert any("shard_count" in item for item in mismatches)
+    assert any("controller owns" in item for item in mismatches)
+    assert any("inactive" in item for item in mismatches)
+
+
+def test_reuse_validation_accepts_balanced_remote_active_placement():
+    module = load_module()
+    info = {
+        "points_count": 46,
+        "config": {
+            "params": {
+                "vectors": {"size": 200, "distance": "Cosine"},
+                "replication_factor": 1,
+            },
+            "hnsw_config": {"m": 32, "ef_construct": 100},
+        },
+    }
+    remote = [
+        {
+            "shard_key": f"centroid_{index:02d}",
+            "peer_id": [202, 303, 404][index % 3],
+            "state": "Active",
+        }
+        for index in range(46)
+    ]
+    cluster = {"peer_id": 101, "shard_count": 46, "local_shards": [], "remote_shards": remote}
+
+    assert module.collection_reuse_mismatches(
+        info,
+        cluster,
+        expected_dimension=200,
+        expected_distance="Cosine",
+        expected_hnsw_m=32,
+        expected_ef_construct=100,
+        expected_points_count=46,
+        expected_shard_count=46,
+        expected_replication_factor=1,
+        allowed_peer_ids=[202, 303, 404],
+    ) == []
+
+
+def test_reuse_validation_rejects_routing_build_seed_mismatch():
+    module = load_module()
+    args = SimpleNamespace(
+        routing_mode="kmeans_simple_nprobe",
+        num_shards=46,
+        hnsw_m=32,
+        ef_construct=100,
+        upper_sample_seed=100,
+        kmeans_rand_seed=7,
+        kmeans_iters=10,
+        cpp_kmeans_train_size=10000,
+        sample_denominator=32,
+        k_overlap=10,
+        topology_iters=50,
+        disable_multi_assign=False,
+        simple_kmeans_multi_assign_alpha=1.0,
+        disable_fission=False,
+        claim_a_partition_family="none",
+        claim_a_random_seed=12345,
+        seed=42,
+        sample_size=50000,
+    )
+    expected = module.build_routing_build_metadata(
+        args,
+        train_count=100,
+        effective_num_shards=46,
+        vector_distance="Cosine",
+    )
+    actual = module.json.loads(module.json.dumps(expected))
+    actual["kmeans_rand_seed"] = 1
+    info = {
+        "points_count": 100,
+        "config": {
+            "params": {
+                "vectors": {"size": 200, "distance": "Cosine"},
+                "replication_factor": 1,
+            },
+            "hnsw_config": {"m": 32, "ef_construct": 100},
+            "metadata": module.collection_metadata_for_routing_build(actual),
+        },
+    }
+    remote = [
+        {
+            "shard_key": f"centroid_{index:02d}",
+            "peer_id": [202, 303, 404][index % 3],
+            "state": "Active",
+        }
+        for index in range(46)
+    ]
+    cluster = {"peer_id": 101, "shard_count": 46, "local_shards": [], "remote_shards": remote}
+
+    mismatches = module.collection_reuse_mismatches(
+        info,
+        cluster,
+        expected_dimension=200,
+        expected_distance="Cosine",
+        expected_hnsw_m=32,
+        expected_ef_construct=100,
+        expected_points_count=100,
+        expected_shard_count=46,
+        expected_replication_factor=1,
+        allowed_peer_ids=[202, 303, 404],
+        expected_routing_build_metadata=expected,
+    )
+
+    assert any("routing build metadata" in item for item in mismatches)
+    validation = module.collection_routing_build_metadata_validation(info, expected)
+    assert validation["status"] == "mismatch"
+    assert validation["verified"] is False
+
+
+def test_missing_routing_build_metadata_is_backward_compatible_but_unverified():
+    module = load_module()
+    expected = {"routing_mode": "naive_hash_all_shards", "kmeans_rand_seed": 1}
+    info = {
+        "points_count": 3,
+        "config": {
+            "params": {
+                "vectors": {"size": 200, "distance": "Cosine"},
+                "replication_factor": 1,
+            },
+            "hnsw_config": {"m": 32, "ef_construct": 100},
+        },
+    }
+    cluster = {
+        "peer_id": 101,
+        "shard_count": 3,
+        "local_shards": [],
+        "remote_shards": [
+            {"shard_key": "centroid_00", "peer_id": 202, "state": "Active"},
+            {"shard_key": "centroid_01", "peer_id": 303, "state": "Active"},
+            {"shard_key": "centroid_02", "peer_id": 404, "state": "Active"},
+        ],
+    }
+
+    validation = module.collection_routing_build_metadata_validation(info, expected)
+    assert validation["status"] == "missing_unverified"
+    assert validation["verified"] is False
+    assert validation["expected_fingerprint"] == module.canonical_json_sha256(expected)
+    assert module.collection_reuse_mismatches(
+        info,
+        cluster,
+        expected_dimension=200,
+        expected_distance="Cosine",
+        expected_hnsw_m=32,
+        expected_ef_construct=100,
+        expected_points_count=3,
+        expected_shard_count=3,
+        expected_replication_factor=1,
+        allowed_peer_ids=[202, 303, 404],
+        expected_routing_build_metadata=expected,
+    ) == []
 
 
 def test_parse_peer_http_urls_requires_peer_id_url_pairs():
@@ -660,6 +1268,24 @@ def test_parse_args_supports_compact_materialized_routed_planning(monkeypatch):
     assert args.routed_planning_mode == "compact_materialized"
 
 
+def test_parse_args_supports_pipelined_routed_planning(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--routed-planning-mode",
+            "pipelined",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.routed_planning_mode == "pipelined"
+
+
 def test_parse_args_supports_shard_major_lower_execution(monkeypatch):
     module = load_module()
 
@@ -676,6 +1302,24 @@ def test_parse_args_supports_shard_major_lower_execution(monkeypatch):
     args = module.parse_args()
 
     assert args.lower_execution_order == "shard_major"
+
+
+def test_parse_args_fixed_ef_shard_chunking_is_explicit_opt_in(monkeypatch):
+    module = load_module()
+
+    monkeypatch.setattr(sys, "argv", ["qdrant_two_level_routing_experiment.py"])
+    assert module.parse_args().fixed_ef_shard_chunk_size == 0
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qdrant_two_level_routing_experiment.py",
+            "--fixed-ef-shard-chunk-size",
+            "32",
+        ],
+    )
+    assert module.parse_args().fixed_ef_shard_chunk_size == 32
 
 
 def test_parse_args_supports_placement_simulation(monkeypatch):
@@ -720,6 +1364,7 @@ def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monke
         lower_execution_order="query_major",
         direct_peer_local_premerge=False,
         score_higher_is_better=True,
+        preencoded_search_stage_bodies=None,
     ):
         calls["execute"].append((query_plans, neighbors.tolist()))
         assert lower_execution_order == "query_major"
@@ -764,6 +1409,197 @@ def test_materialized_routed_evaluation_builds_all_plans_inside_timed_path(monke
     assert result["avg_upper_hits"] == 8 / 3
     assert result["search_batch_calls"] == 2
     assert result["avg_search_requests_per_query"] == 1.0
+
+
+def test_pipelined_routed_evaluation_overlaps_next_plan_with_lower_search(monkeypatch):
+    module = load_module()
+    second_batch_planning_started = threading.Event()
+    execute_calls = []
+
+    def fake_compute_upper_labels(_upper_index, queries, upper_k):
+        assert upper_k == 1
+        if float(queries[0][0]) == pytest.approx(0.2):
+            second_batch_planning_started.set()
+        return module.np.ones((len(queries), 1), dtype=module.np.int64)
+
+    def fake_execute_query_plans_once(
+        _base_url,
+        _collection,
+        query_plans,
+        neighbors,
+        top_k,
+        direct_peer_urls=None,
+        shard_key_to_peer=None,
+        lower_execution_order="query_major",
+        direct_peer_local_premerge=False,
+        score_higher_is_better=True,
+        preencoded_search_stage_bodies=None,
+    ):
+        if not execute_calls:
+            assert second_batch_planning_started.wait(timeout=1.0)
+        assert preencoded_search_stage_bodies is not None
+        assert len(preencoded_search_stage_bodies) == 1
+        execute_calls.append((query_plans, neighbors.tolist()))
+        return {
+            "hits": len(query_plans) * top_k,
+            "query_count": len(query_plans),
+            "visited_shards": sum(plan["visited_shards"] for plan in query_plans),
+            "upper_hits": sum(plan["upper_hits"] for plan in query_plans),
+            "assigned_ef_sum": sum(plan["assigned_ef_sum"] for plan in query_plans),
+            "assigned_ef_count": sum(plan["assigned_ef_count"] for plan in query_plans),
+            "search_batch_calls": 1,
+            "search_request_count": sum(len(plan["searches"]) for plan in query_plans),
+        }
+
+    monkeypatch.setattr(module, "compute_upper_labels", fake_compute_upper_labels)
+    monkeypatch.setattr(module, "execute_query_plans_once", fake_execute_query_plans_once)
+
+    result = module.evaluate_config_pipelined_routing(
+        "http://qdrant",
+        "collection",
+        module.np.array([[0.1], [0.2]], dtype=module.np.float32),
+        module.np.array([[1], [1]], dtype=module.np.int32),
+        top_k=1,
+        upper_index=object(),
+        upper_k=1,
+        base_ef=20,
+        factor=4,
+        batch_size=1,
+        point_to_shards=[[], [0]],
+        num_shards=1,
+        use_payload_source_id=False,
+        routed_execution_mode="compact_multi_ep",
+    )
+
+    assert len(execute_calls) == 2
+    assert result["recall_at_k"] == 1.0
+    assert result["avg_visited_shards"] == 1.0
+    assert result["avg_search_requests_per_query"] == 1.0
+
+
+def test_pipelined_and_materialized_build_identical_same_index_query_plans(monkeypatch):
+    module = load_module()
+    upper_labels_by_query = module.np.array(
+        [
+            [1, 2, 3, 7],
+            [4, 5, 6, 1],
+            [7, 3, 2, 5],
+            [1, 4, 6, 7],
+            [2, 3, 5, 7],
+        ],
+        dtype=module.np.int64,
+    )
+
+    class DeterministicUpperIndex:
+        def get_current_count(self):
+            return 8
+
+        def knn_query(self, queries, k):
+            query_ids = queries[:, 0].astype(module.np.int64)
+            labels = upper_labels_by_query[query_ids, :k]
+            distances = module.np.zeros(labels.shape, dtype=module.np.float32)
+            return labels, distances
+
+    queries = module.np.array(
+        [[0.0, 0.1], [1.0, 0.2], [2.0, 0.3], [3.0, 0.4], [4.0, 0.5]],
+        dtype=module.np.float32,
+    )
+    neighbors = module.np.ones((len(queries), 2), dtype=module.np.int64)
+    point_to_shards = [
+        [],
+        [0, 2],
+        [1],
+        [2, 3],
+        [0],
+        [1, 3],
+        [3],
+        [0, 1, 2],
+    ]
+    shard_key_to_peer = {
+        "centroid_00": 101,
+        "centroid_01": 101,
+        "centroid_02": 202,
+        "centroid_03": 303,
+    }
+    captured_plans = []
+
+    def fake_execute_query_plans_once(
+        _base_url,
+        _collection,
+        query_plans,
+        _neighbors,
+        top_k,
+        **_kwargs,
+    ):
+        captured_plans.extend(query_plans)
+        query_count = len(query_plans)
+        request_count = sum(len(plan["searches"]) for plan in query_plans)
+        return {
+            "hits": query_count * top_k,
+            "query_count": query_count,
+            "visited_shards": sum(plan["visited_shards"] for plan in query_plans),
+            "upper_hits": sum(plan["upper_hits"] for plan in query_plans),
+            "assigned_ef_sum": sum(plan["assigned_ef_sum"] for plan in query_plans),
+            "assigned_ef_count": sum(plan["assigned_ef_count"] for plan in query_plans),
+            "search_batch_calls": 1,
+            "search_request_count": request_count,
+            "candidate_group_count": request_count,
+            "returned_candidate_count": query_count * top_k,
+            "batch_latency_ms": 0.0,
+        }
+
+    monkeypatch.setattr(module, "execute_query_plans_once", fake_execute_query_plans_once)
+
+    common_kwargs = {
+        "base_url": "http://qdrant",
+        "collection": "collection",
+        "queries": queries,
+        "neighbors": neighbors,
+        "top_k": 2,
+        "upper_index": DeterministicUpperIndex(),
+        "upper_k": 4,
+        "base_ef": 20,
+        "factor": 4,
+        "batch_size": 2,
+        "point_to_shards": point_to_shards,
+        "num_shards": 4,
+        "use_payload_source_id": True,
+        "routed_execution_mode": "compact_multi_ep",
+        "source_id_dedup_block_size": 1001,
+        "shard_key_to_peer": shard_key_to_peer,
+    }
+
+    materialized_result = module.evaluate_config_materialized_routing(**common_kwargs)
+    materialized_plans = list(captured_plans)
+    captured_plans.clear()
+    pipelined_result = module.evaluate_config_pipelined_routing(**common_kwargs)
+    pipelined_plans = list(captured_plans)
+
+    assert len(materialized_plans) == len(pipelined_plans) == len(queries)
+    assert materialized_plans == pipelined_plans
+    assert all(len(plan["searches"]) == 1 for plan in pipelined_plans)
+    assert all(
+        "hnsw_entry_points_by_shard" in plan["searches"][0]
+        and "hnsw_ef_by_shard" in plan["searches"][0]
+        for plan in pipelined_plans
+    )
+
+    exact_metric_keys = {
+        "recall_at_k",
+        "avg_visited_shards",
+        "avg_upper_hits",
+        "avg_assigned_ef_per_visited_shard",
+        "search_batch_calls",
+        "avg_search_requests_per_query",
+        "avg_candidate_groups_per_query",
+        "avg_returned_candidates_per_query",
+        "avg_physical_peers_per_query",
+    }
+    assert {
+        key: materialized_result[key] for key in exact_metric_keys
+    } == {
+        key: pipelined_result[key] for key in exact_metric_keys
+    }
 
 
 def test_global_upper_indices_uses_one_global_sample_before_partitioning():
@@ -950,6 +1786,7 @@ def test_all_shard_search_plan_uses_one_request_covering_every_shard():
     assert plan["upper_hits"] == 0
     assert plan["assigned_ef_sum"] == 108
     assert plan["assigned_ef_count"] == 3
+    assert plan["separate_http_search_stages"] is False
     assert plan["searches"] == [
         {
             "vector": [0.1, 0.2],
@@ -958,8 +1795,211 @@ def test_all_shard_search_plan_uses_one_request_covering_every_shard():
             "with_payload": ["source_id"],
             "with_vector": False,
             "shard_key": ["centroid_00", "centroid_01", "centroid_02"],
+            "hnsw_ef_by_shard": {
+                "centroid_00": 36,
+                "centroid_01": 36,
+                "centroid_02": 36,
+            },
         }
     ]
+
+
+def test_fixed_ef_shard_chunks_partition_all_46_shards_without_overlap():
+    module = load_module()
+    shard_keys = [module.shard_key_for_id(shard_id) for shard_id in range(46)]
+
+    chunks = module.fixed_ef_shard_key_chunks(shard_keys, chunk_size=32)
+
+    assert [len(chunk) for chunk in chunks] == [32, 14]
+    assert [shard_key for chunk in chunks for shard_key in chunk] == shard_keys
+    assert set(chunks[0]).isdisjoint(chunks[1])
+    assert set().union(*(set(chunk) for chunk in chunks)) == set(shard_keys)
+    with pytest.raises(ValueError, match="unique shard keys"):
+        module.fixed_ef_shard_key_chunks(["centroid_00", "centroid_00"], chunk_size=1)
+
+
+def test_preencoded_search_batch_body_matches_normal_json_request(monkeypatch):
+    module = load_module()
+    searches = [
+        {
+            "vector": [0.1, 0.2],
+            "limit": 2,
+            "params": {"hnsw_ef": 36},
+            "with_payload": ["source_id"],
+            "with_vector": False,
+            "shard_key": ["centroid_00", "centroid_01"],
+            "hnsw_ef_by_shard": {"centroid_00": 36, "centroid_01": 36},
+        }
+    ]
+    encoded = module.encode_search_batch_body(searches)
+    captured = {}
+
+    def fake_request_json_encoded(base_url, method, path, data, timeout=300.0):
+        captured.update(
+            base_url=base_url,
+            method=method,
+            path=path,
+            data=data,
+            timeout=timeout,
+        )
+        return {"result": [[{"id": 8, "score": 0.75}]]}
+
+    monkeypatch.setattr(module, "request_json_encoded", fake_request_json_encoded)
+    monkeypatch.setattr(
+        module,
+        "request_json",
+        lambda *_args, **_kwargs: pytest.fail("pre-encoded path re-encoded the request"),
+    )
+
+    result = module.search_batch(
+        "http://controller:6333",
+        "collection",
+        searches,
+        encoded_body=encoded,
+    )
+
+    assert encoded == module.json.dumps({"searches": searches}).encode()
+    assert captured["data"] is encoded
+    assert captured["method"] == "POST"
+    assert captured["path"].endswith("/collections/collection/points/search/batch")
+    assert result == [[(0.75, 7)]]
+
+
+def test_all_shard_search_plan_chunks_transport_but_keeps_all_shards_and_fixed_ef():
+    module = load_module()
+
+    plan = module.all_shard_search_plan(
+        query=[0.1, 0.2],
+        top_k=10,
+        num_shards=46,
+        hnsw_ef=72,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+        fixed_ef_shard_chunk_size=32,
+    )
+
+    searches = plan["searches"]
+    assert [len(search["shard_key"]) for search in searches] == [32, 14]
+    flattened = [shard_key for search in searches for shard_key in search["shard_key"]]
+    assert flattened == [module.shard_key_for_id(shard_id) for shard_id in range(46)]
+    assert len(flattened) == len(set(flattened)) == 46
+    assert all(search["limit"] == 10 for search in searches)
+    assert all(search["params"] == {"hnsw_ef": 72} for search in searches)
+    assert all(
+        set(search["hnsw_ef_by_shard"]) == set(search["shard_key"])
+        and set(search["hnsw_ef_by_shard"].values()) == {72}
+        for search in searches
+    )
+    assert all(search["source_id_dedup_block_size"] == 1001 for search in searches)
+    assert plan["visited_shards"] == 46
+    assert plan["assigned_ef_sum"] == 46 * 72
+    assert plan["assigned_ef_count"] == 46
+    assert plan["separate_http_search_stages"] is True
+
+
+def test_chunked_all_shards_use_separate_http_batches_then_global_topk_dedup(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_search_batch(_base_url, _collection, searches):
+        calls.append([search["shard_key"] for search in searches])
+        if len(calls) == 1:
+            return [[(0.90, 7), (0.80, 3)]]
+        return [[(0.95, 7), (0.85, 9)]]
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+    plan = module.all_shard_search_plan(
+        query=[0.1, 0.2],
+        top_k=2,
+        num_shards=4,
+        hnsw_ef=36,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+        fixed_ef_shard_chunk_size=2,
+    )
+
+    result = module.execute_query_plans_once(
+        base_url="http://controller:6333",
+        collection="collection",
+        query_plans=[plan],
+        neighbors=[[7, 9]],
+        top_k=2,
+        include_per_query_metrics=True,
+    )
+
+    assert calls == [
+        [["centroid_00", "centroid_01"]],
+        [["centroid_02", "centroid_03"]],
+    ]
+    assert result["search_batch_calls"] == 2
+    assert result["search_request_count"] == 2
+    assert result["candidate_group_count"] == 2
+    assert result["hits"] == 2
+    assert result["per_query_rows"][0]["retrieved_ids"] == "7 9"
+
+
+def test_chunked_all_shards_direct_peer_stages_are_sequential_and_maps_are_peer_local(
+    monkeypatch,
+):
+    module = load_module()
+    calls = []
+    completed_stage_one_peers = set()
+
+    def fake_search_batch(base_url, _collection, searches):
+        assert len(searches) == 1
+        search = searches[0]
+        shard_keys = search["shard_key"]
+        stage = 1 if shard_keys[0] in {"centroid_00", "centroid_01"} else 2
+        peer = 101 if base_url.endswith("6843") else 202
+        if stage == 2:
+            assert completed_stage_one_peers == {101, 202}
+        calls.append((stage, peer, search))
+        if stage == 1:
+            completed_stage_one_peers.add(peer)
+        if shard_keys[0] in {"centroid_00", "centroid_02"}:
+            return [[(0.90 if stage == 1 else 0.95, 7)]]
+        return [[(0.80 if stage == 1 else 0.85, 9)]]
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+    plan = module.all_shard_search_plan(
+        query=[0.1, 0.2],
+        top_k=2,
+        num_shards=4,
+        hnsw_ef=36,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+        fixed_ef_shard_chunk_size=2,
+    )
+
+    result = module.execute_query_plans_once(
+        base_url="http://controller:6333",
+        collection="collection",
+        query_plans=[plan],
+        neighbors=[[7, 9]],
+        top_k=2,
+        direct_peer_urls={101: "http://localhost:6843", 202: "http://localhost:6853"},
+        shard_key_to_peer={
+            "centroid_00": 101,
+            "centroid_01": 202,
+            "centroid_02": 101,
+            "centroid_03": 202,
+        },
+        include_per_query_metrics=True,
+    )
+
+    assert sorted((stage, peer) for stage, peer, _search in calls) == [
+        (1, 101),
+        (1, 202),
+        (2, 101),
+        (2, 202),
+    ]
+    for _stage, _peer, search in calls:
+        assert set(search["hnsw_ef_by_shard"]) == set(search["shard_key"])
+        assert set(search["hnsw_ef_by_shard"].values()) == {36}
+    assert result["search_batch_calls"] == 4
+    assert result["search_request_count"] == 4
+    assert result["hits"] == 2
+    assert result["per_query_rows"][0]["retrieved_ids"] == "7 9"
 
 
 def test_kmeans_simple_nprobe_plan_uses_centroid_probes_with_fixed_ef_only():
@@ -996,11 +2036,54 @@ def test_kmeans_simple_nprobe_plan_uses_centroid_probes_with_fixed_ef_only():
             "with_payload": False,
             "with_vector": False,
             "shard_key": ["centroid_01", "centroid_03"],
+            "hnsw_ef_by_shard": {
+                "centroid_01": 64,
+                "centroid_03": 64,
+            },
         }
     ]
     assert "hnsw_entry_points_by_shard" not in plan["searches"][0]
-    assert "hnsw_ef_by_shard" not in plan["searches"][0]
+    assert set(plan["searches"][0]["hnsw_ef_by_shard"].values()) == {64}
     assert "source_id_dedup_block_size" not in plan["searches"][0]
+
+
+def test_kmeans_simple_nprobe_default_is_unchanged_and_explicit_chunking_is_disjoint():
+    module = load_module()
+    query = module.np.array([1.0, 0.0], dtype=module.np.float32)
+    centroids = module.np.array(
+        [[1.0, 0.0], [0.9, 0.1], [0.8, 0.2], [0.0, 1.0]],
+        dtype=module.np.float32,
+    )
+
+    default_plan = module.kmeans_simple_nprobe_search_plan(
+        query,
+        centroids,
+        nprobe=3,
+        top_k=10,
+        hnsw_ef=64,
+        use_payload_source_id=False,
+    )
+    chunked_plan = module.kmeans_simple_nprobe_search_plan(
+        query,
+        centroids,
+        nprobe=3,
+        top_k=10,
+        hnsw_ef=64,
+        use_payload_source_id=False,
+        fixed_ef_shard_chunk_size=2,
+    )
+
+    assert len(default_plan["searches"]) == 1
+    assert [len(search["shard_key"]) for search in chunked_plan["searches"]] == [2, 1]
+    default_keys = default_plan["searches"][0]["shard_key"]
+    chunked_keys = [
+        shard_key
+        for search in chunked_plan["searches"]
+        for shard_key in search["shard_key"]
+    ]
+    assert chunked_keys == default_keys
+    assert len(chunked_keys) == len(set(chunked_keys)) == 3
+    assert all(search["params"] == {"hnsw_ef": 64} for search in chunked_plan["searches"])
 
 
 def test_simple_kmeans_point_to_shards_by_distance_alpha_controls_expansion():
@@ -1906,6 +2989,99 @@ def test_all_shards_end_to_end_concurrent_evaluator_builds_all_shard_requests(mo
     assert result["avg_search_requests_per_query"] == 1.0
 
 
+def test_all_shards_coordinator_default_uses_one_batch_with_full_uniform_ef_map(
+    monkeypatch,
+):
+    module = load_module()
+    calls = []
+
+    def fake_search_batch(_base_url, _collection, searches):
+        calls.append(searches)
+        return [[(0.95, 11)], [(0.90, 22)]]
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+
+    result = module.evaluate_all_shards_config(
+        base_url="http://example.invalid",
+        collection="collection",
+        queries=module.np.array([[0.1, 0.2], [0.3, 0.4]], dtype=module.np.float32),
+        neighbors=module.np.array([[11, 99], [22, 99]]),
+        top_k=2,
+        num_shards=46,
+        hnsw_ef=72,
+        batch_size=2,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+    )
+
+    expected_shard_keys = [
+        module.shard_key_for_id(shard_id) for shard_id in range(46)
+    ]
+    assert len(calls) == 1
+    assert len(calls[0]) == 2
+    for search in calls[0]:
+        assert search["shard_key"] == expected_shard_keys
+        assert search["params"] == {"hnsw_ef": 72}
+        assert search["hnsw_ef_by_shard"] == {
+            shard_key: 72 for shard_key in expected_shard_keys
+        }
+        assert search["source_id_dedup_block_size"] == 1001
+    assert result["recall_at_k"] == 0.5
+    assert result["avg_visited_shards"] == 46.0
+    assert result["avg_assigned_ef_per_visited_shard"] == 72.0
+    assert result["search_batch_calls"] == 1
+    assert result["avg_search_requests_per_query"] == 1.0
+
+
+def test_all_shards_coordinator_chunking_uses_two_http_stages_and_keeps_global_recall(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_search_batch(_base_url, _collection, searches):
+        calls.append(searches)
+        if len(calls) == 1:
+            return [[(0.90, 11), (0.80, 44)], [(0.91, 22), (0.70, 55)]]
+        return [[(0.95, 11), (0.85, 33)], [(0.96, 22), (0.86, 66)]]
+
+    monkeypatch.setattr(module, "search_batch", fake_search_batch)
+
+    result = module.evaluate_all_shards_config(
+        base_url="http://example.invalid",
+        collection="collection",
+        queries=module.np.array([[0.1, 0.2], [0.3, 0.4]], dtype=module.np.float32),
+        neighbors=module.np.array([[11, 33], [22, 66]]),
+        top_k=2,
+        num_shards=46,
+        hnsw_ef=72,
+        batch_size=2,
+        use_payload_source_id=True,
+        source_id_dedup_block_size=1001,
+        fixed_ef_shard_chunk_size=32,
+    )
+
+    assert len(calls) == 2
+    assert [[len(search["shard_key"]) for search in stage] for stage in calls] == [
+        [32, 32],
+        [14, 14],
+    ]
+    expected_chunks = [
+        [module.shard_key_for_id(shard_id) for shard_id in range(32)],
+        [module.shard_key_for_id(shard_id) for shard_id in range(32, 46)],
+    ]
+    for stage_idx, stage in enumerate(calls):
+        for search in stage:
+            assert search["shard_key"] == expected_chunks[stage_idx]
+            assert set(search["hnsw_ef_by_shard"]) == set(search["shard_key"])
+            assert set(search["hnsw_ef_by_shard"].values()) == {72}
+            assert search["params"] == {"hnsw_ef": 72}
+            assert search["source_id_dedup_block_size"] == 1001
+    assert result["recall_at_k"] == 1.0
+    assert result["avg_visited_shards"] == 46.0
+    assert result["avg_assigned_ef_per_visited_shard"] == 72.0
+    assert result["search_batch_calls"] == 2
+    assert result["avg_search_requests_per_query"] == 2.0
+
+
 def test_kmeans_simple_nprobe_end_to_end_concurrent_evaluator_uses_fixed_ef(monkeypatch):
     module = load_module()
     calls = []
@@ -1950,7 +3126,10 @@ def test_kmeans_simple_nprobe_end_to_end_concurrent_evaluator_uses_fixed_ef(monk
     ]
     assert [search["params"] for search in calls[0]] == [{"hnsw_ef": 48}, {"hnsw_ef": 48}]
     assert all("hnsw_entry_points_by_shard" not in search for search in calls[0])
-    assert all("hnsw_ef_by_shard" not in search for search in calls[0])
+    assert all(
+        set(search["hnsw_ef_by_shard"].values()) == {48}
+        for search in calls[0]
+    )
     assert all("source_id_dedup_block_size" not in search for search in calls[0])
     assert result["recall_at_k"] == 0.5
     assert result["avg_visited_shards"] == 2.0
