@@ -635,6 +635,81 @@ def validate_shared_provenance(results: list[dict[str, Any]]) -> dict[str, Any]:
     return expected
 
 
+def validate_routed_profile_families(
+    results: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    families: dict[str, dict[str, Any]] = {}
+    for method in ("orion", "simple_kmeans"):
+        method_results = [
+            result for result in results if result["point"]["method"] == method
+        ]
+        if not method_results:
+            raise RuntimeError(f"native matrix has no {method} profile")
+        fingerprints: list[tuple[str, dict[str, Any]]] = []
+        for result in method_results:
+            artifact = result["manifest"].get("artifact")
+            artifact_bundle = result["manifest"].get("artifact_bundle")
+            if not isinstance(artifact, dict) or artifact.get("status") != "verified":
+                raise RuntimeError(
+                    f"case {result['point']['case_name']} is missing verified artifact proof"
+                )
+            if (
+                not isinstance(artifact_bundle, dict)
+                or artifact_bundle.get("status") != "verified"
+            ):
+                raise RuntimeError(
+                    f"case {result['point']['case_name']} is missing verified "
+                    "artifact-bundle proof"
+                )
+            if artifact_bundle.get("formal_evidence_eligible") is not True:
+                raise RuntimeError(
+                    f"case {result['point']['case_name']} uses a diagnostic "
+                    "artifact bundle that is not eligible for formal evidence"
+                )
+            fingerprint = {
+                "layout_sha256": artifact.get("layout_sha256"),
+                "routing_structure_sha256": artifact.get(
+                    "routing_structure_sha256"
+                ),
+                "offline_layout_fingerprint": artifact_bundle.get(
+                    "offline_layout_fingerprint"
+                ),
+                "vectors_sha256": artifact_bundle.get("vectors_sha256"),
+                "assignments_sha256": artifact_bundle.get("assignments_sha256"),
+                "logical_point_count": artifact.get("logical_point_count"),
+                "physical_point_count": artifact.get("physical_point_count"),
+                "shard_count": artifact.get("shard_count"),
+                "vector_schema": artifact.get("vector_schema"),
+            }
+            missing = [key for key, value in fingerprint.items() if value is None]
+            if missing:
+                raise RuntimeError(
+                    f"case {result['point']['case_name']} artifact proof is missing "
+                    f"profile-family fields: {missing}"
+                )
+            fingerprints.append((result["point"]["case_name"], fingerprint))
+        expected = fingerprints[0][1]
+        mismatches = [
+            {"case": case_name, "actual": fingerprint}
+            for case_name, fingerprint in fingerprints[1:]
+            if fingerprint != expected
+        ]
+        if mismatches:
+            raise RuntimeError(
+                f"{method} runtime profiles do not share one offline routing structure: "
+                + json.dumps(
+                    {"expected": expected, "mismatches": mismatches},
+                    sort_keys=True,
+                )
+            )
+        families[method] = {
+            **expected,
+            "case_count": len(fingerprints),
+            "cases": [case_name for case_name, _fingerprint in fingerprints],
+        }
+    return families
+
+
 def pareto_frontier(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
     frontier: list[dict[str, Any]] = []
     for point in points:
@@ -850,6 +925,7 @@ def collect_results(
 ) -> dict[str, Any]:
     results = [load_case_result(matrix_dir, case) for case in config["cases"]]
     shared_provenance = validate_shared_provenance(results)
+    routed_profile_families = validate_routed_profile_families(results)
     points = [result["point"] for result in results]
     frontiers: list[dict[str, Any]] = []
     selections: list[dict[str, Any]] = []
@@ -889,6 +965,7 @@ def collect_results(
         ).hexdigest(),
         "shared": config["shared"],
         "shared_provenance": shared_provenance,
+        "routed_profile_families": routed_profile_families,
         "same_recall_targets": config["same_recall_targets"],
         "same_recall_window": config["same_recall_window"],
         "same_recall_pairwise_window": config["same_recall_pairwise_window"],

@@ -21,11 +21,26 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools import method4_distributed_cluster as cluster_tool
+from tools import native_auto_shard_prepare as prepare
 from tools import qdrant_two_level_routing_experiment as experiment
 
 
 ROUTED_METHODS = {"orion", "simple_kmeans"}
 ORION_ROUTE_TRACE_SOURCE = "exact_offline_production_router_trace"
+ORION_RUNTIME_BUILD_PARAMETERS = {
+    "generation",
+    "upper_k",
+    "upper_search_ef",
+    "dynamic_ef_base",
+    "dynamic_ef_factor",
+    "cargo_target_dir",
+}
+SIMPLE_RUNTIME_BUILD_PARAMETERS = {
+    "generation",
+    "nprobe",
+    "lower_hnsw_ef",
+    "cargo_target_dir",
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -320,6 +335,37 @@ def validate_artifact(
         )
     if mismatches:
         raise RuntimeError("artifact/live benchmark mismatch: " + "; ".join(mismatches))
+    if method == "orion":
+        routing_structure = {
+            "format_version": payload.get("format_version"),
+            "vector_schema": payload.get("vector_schema"),
+            "shard_count": payload.get("shard_count"),
+            "layout_sha256": payload.get("layout_sha256"),
+            "logical_point_count": payload.get("logical_point_count"),
+            "physical_point_count": payload.get("physical_point_count"),
+            "upper_nodes": payload.get("upper_nodes"),
+            "upper_graph": payload.get("upper_graph"),
+        }
+    else:
+        routing_structure = {
+            "format_version": payload.get("format_version"),
+            "vector_schema": payload.get("vector_schema"),
+            "shard_count": payload.get("shard_count"),
+            "layout_sha256": payload.get("layout_sha256"),
+            "logical_point_count": payload.get("logical_point_count"),
+            "physical_point_count": payload.get("physical_point_count"),
+            "routing_distance": payload.get("routing_distance"),
+            "centroids": payload.get("centroids"),
+        }
+    routing_structure_sha256 = hashlib.sha256(
+        json.dumps(
+            routing_structure,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
     return payload, {
         "status": "verified",
         "path": str(artifact_path),
@@ -330,6 +376,94 @@ def validate_artifact(
         "physical_point_count": metadata["physical_point_count"],
         "shard_count": metadata["shard_count"],
         "vector_schema": metadata["vector_schema"],
+        "routing_structure_sha256": routing_structure_sha256,
+    }
+
+
+def validate_artifact_bundle(
+    method: str,
+    artifact_path: Path | None,
+    artifact_proof: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if method not in ROUTED_METHODS:
+        return None
+    if artifact_path is None or artifact_proof is None:
+        raise RuntimeError(f"{method} benchmark requires a production layout bundle")
+    layout = prepare.load_routed_layout(method, artifact_path.parent)
+    if Path(layout["artifact_path"]).resolve() != artifact_path.resolve():
+        raise RuntimeError("benchmark artifact is not the production artifact of its bundle")
+    build_manifest = json.loads(
+        Path(layout["build_manifest_path"]).read_text(encoding="utf-8")
+    )
+    import_manifest = json.loads(
+        Path(layout["import_manifest_path"]).read_text(encoding="utf-8")
+    )
+    if not isinstance(build_manifest, dict) or not isinstance(import_manifest, dict):
+        raise RuntimeError("routing layout bundle manifests must be JSON objects")
+    parameters = build_manifest.get("parameters") or {}
+    dataset = build_manifest.get("dataset") or {}
+    routing = build_manifest.get("routing") or {}
+    if not all(isinstance(value, dict) for value in (parameters, dataset, routing)):
+        raise RuntimeError("routing layout bundle lacks parameter/dataset/routing proof")
+    runtime_parameters = (
+        ORION_RUNTIME_BUILD_PARAMETERS
+        if method == "orion"
+        else SIMPLE_RUNTIME_BUILD_PARAMETERS
+    )
+    offline_parameters = {
+        key: value for key, value in parameters.items() if key not in runtime_parameters
+    }
+    assignments_sha256 = import_manifest.get("assignments_sha256")
+    vectors_sha256 = import_manifest.get("vectors_sha256")
+    for label, value in (
+        ("assignments_sha256", assignments_sha256),
+        ("vectors_sha256", vectors_sha256),
+    ):
+        cluster_tool.normalize_sha256(str(value or ""))
+    fingerprint_payload = {
+        "method": method,
+        "dataset": dataset,
+        "offline_parameters": offline_parameters,
+        "routing": routing,
+        "layout_sha256": artifact_proof["layout_sha256"],
+        "routing_structure_sha256": artifact_proof["routing_structure_sha256"],
+        "logical_point_count": artifact_proof["logical_point_count"],
+        "physical_point_count": artifact_proof["physical_point_count"],
+        "shard_count": artifact_proof["shard_count"],
+        "vector_schema": artifact_proof["vector_schema"],
+        "vectors_sha256": vectors_sha256,
+        "assignments_sha256": assignments_sha256,
+    }
+    offline_layout_fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    derivation = build_manifest.get("derivation")
+    formal_evidence_eligible = (
+        True
+        if derivation is None
+        else isinstance(derivation, dict)
+        and derivation.get("formal_evidence_eligible") is True
+    )
+    return {
+        "status": "verified",
+        "layout_dir": str(artifact_path.parent),
+        "build_manifest_path": layout["build_manifest_path"],
+        "build_manifest_sha256": layout["build_manifest_sha256"],
+        "import_manifest_path": layout["import_manifest_path"],
+        "import_manifest_sha256": layout["import_manifest_sha256"],
+        "vectors_sha256": vectors_sha256,
+        "assignments_sha256": assignments_sha256,
+        "offline_parameters": offline_parameters,
+        "routing": routing,
+        "dataset": dataset,
+        "offline_layout_fingerprint": offline_layout_fingerprint,
+        "formal_evidence_eligible": formal_evidence_eligible,
     }
 
 
@@ -833,6 +967,11 @@ def run(args: argparse.Namespace) -> Path:
         points_count,
         dataset["train_count"],
     )
+    artifact_bundle_proof = validate_artifact_bundle(
+        args.method,
+        artifact_path,
+        artifact_proof,
+    )
     indexed_vectors_count = int(collection_info.get("indexed_vectors_count") or 0)
     indexing_readiness = {
         "points_count": points_count,
@@ -998,6 +1137,7 @@ def run(args: argparse.Namespace) -> Path:
         "placement_proof": placement_proof,
         "live_policy": policy,
         "artifact": artifact_proof,
+        "artifact_bundle": artifact_bundle_proof,
         "orion_route_trace": route_trace_proof,
         "route_reporting": route,
         "parameters": vars(args),

@@ -29,6 +29,18 @@ ROUTED_METHODS = {"orion", "simple_kmeans"}
 PREPARATION_MANIFEST = "preparation_manifest.json"
 PROVENANCE_METADATA_KEY = "native_auto_shard_prepare"
 PROVENANCE_SCHEMA_VERSION = 2
+ORION_LAYOUT_TOOLS = {
+    "tools/orion_native_layout.py",
+    "tools/orion_native_runtime_profile.py",
+}
+ORION_RUNTIME_PROFILE_TOOL = "tools/orion_native_runtime_profile.py"
+ORION_RUNTIME_PARAMETER_KEYS = (
+    "generation",
+    "upper_k",
+    "upper_search_ef",
+    "dynamic_ef_base",
+    "dynamic_ef_factor",
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -224,6 +236,158 @@ def validate_faithful_orion_build_parameters(
     return attachment_search_ef
 
 
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_orion_runtime_profile_derivation(
+    build_manifest: dict[str, Any],
+    build_parameters: dict[str, Any],
+    artifact_payload: dict[str, Any],
+) -> dict[str, Any]:
+    derivation = build_manifest.get("derivation")
+    if not isinstance(derivation, dict):
+        raise RuntimeError("Orion runtime profile is missing derivation metadata")
+    if derivation.get("format_version") != 1:
+        raise RuntimeError("unsupported Orion runtime-profile derivation format")
+    if derivation.get("kind") != "orion_runtime_profile":
+        raise RuntimeError("Orion runtime-profile derivation kind mismatch")
+    if derivation.get("allowed_parameter_changes") != list(
+        ORION_RUNTIME_PARAMETER_KEYS
+    ):
+        raise RuntimeError("Orion runtime-profile allowed parameter set mismatch")
+    rebuild = derivation.get("rebuild")
+    if not isinstance(rebuild, dict):
+        raise RuntimeError("Orion runtime profile is missing rebuild provenance")
+    rebuild_expected = {
+        "upper_graph_seed": build_parameters.get("upper_graph_seed"),
+        "upper_m": build_parameters.get("upper_m"),
+        "upper_ef_construction": build_parameters.get("upper_ef_construction"),
+    }
+    rebuild_mismatches = {
+        key: {"expected": expected, "actual": rebuild.get(key)}
+        for key, expected in rebuild_expected.items()
+        if rebuild.get(key) != expected
+    }
+    if rebuild_mismatches:
+        raise RuntimeError(
+            f"Orion runtime-profile upper graph rebuild mismatch: {rebuild_mismatches}"
+        )
+
+    source = derivation.get("source")
+    if not isinstance(source, dict):
+        raise RuntimeError("Orion runtime profile is missing its source binding")
+    source_parameters = source.get("parameters")
+    if not isinstance(source_parameters, dict):
+        raise RuntimeError("Orion runtime-profile source parameters are missing")
+    expected_parameters_sha256 = cluster_tool.normalize_sha256(
+        str(source.get("parameters_sha256") or "")
+    )
+    if canonical_json_sha256(source_parameters) != expected_parameters_sha256:
+        raise RuntimeError("Orion runtime-profile source parameters checksum mismatch")
+    for digest_field in (
+        "build_manifest_sha256",
+        "graphless_artifact_sha256",
+        "production_artifact_sha256",
+        "import_manifest_sha256",
+        "dataset_sha256",
+        "routing_sha256",
+        "vectors_sha256",
+        "assignments_sha256",
+    ):
+        cluster_tool.normalize_sha256(str(source.get(digest_field) or ""))
+
+    changed_parameters = {
+        key
+        for key in set(source_parameters) | set(build_parameters)
+        if source_parameters.get(key) != build_parameters.get(key)
+    }
+    forbidden_changes = changed_parameters - set(ORION_RUNTIME_PARAMETER_KEYS)
+    if forbidden_changes:
+        raise RuntimeError(
+            "Orion runtime profile changes offline/main-idea parameters: "
+            f"{sorted(forbidden_changes)}"
+        )
+    parameter_changes = derivation.get("parameter_changes")
+    if not isinstance(parameter_changes, dict) or set(parameter_changes) != set(
+        ORION_RUNTIME_PARAMETER_KEYS
+    ):
+        raise RuntimeError("Orion runtime-profile parameter change proof is incomplete")
+    for key in ORION_RUNTIME_PARAMETER_KEYS:
+        change = parameter_changes.get(key)
+        if not isinstance(change, dict) or change != {
+            "source": source_parameters.get(key),
+            "derived": build_parameters.get(key),
+        }:
+            raise RuntimeError(
+                f"Orion runtime-profile parameter change proof mismatch for {key}"
+            )
+
+    source_generation = source.get("generation")
+    if (
+        isinstance(source_generation, bool)
+        or not isinstance(source_generation, int)
+        or source_generation <= 0
+    ):
+        raise RuntimeError("Orion runtime-profile source generation is invalid")
+    if source_parameters.get("generation") != source_generation:
+        raise RuntimeError("Orion runtime-profile source generation binding mismatch")
+    if build_parameters.get("generation") != artifact_payload.get("generation"):
+        raise RuntimeError("Orion runtime-profile derived generation binding mismatch")
+
+    dataset = build_manifest.get("dataset")
+    routing = build_manifest.get("routing")
+    if not isinstance(dataset, dict) or not isinstance(routing, dict):
+        raise RuntimeError("Orion runtime-profile dataset/routing proof is missing")
+    if canonical_json_sha256(dataset) != source.get("dataset_sha256"):
+        raise RuntimeError("Orion runtime-profile dataset changed from its source")
+    if canonical_json_sha256(routing) != source.get("routing_sha256"):
+        raise RuntimeError("Orion runtime-profile routing summary changed from its source")
+
+    current_expected = {
+        "layout_sha256": artifact_payload.get("layout_sha256"),
+        "logical_point_count": artifact_payload.get("logical_point_count"),
+        "physical_point_count": artifact_payload.get("physical_point_count"),
+        "shard_count": artifact_payload.get("shard_count"),
+    }
+    source_binding_mismatches = {
+        key: {"expected": expected, "actual": source.get(key)}
+        for key, expected in current_expected.items()
+        if source.get(key) != expected
+    }
+    if source_binding_mismatches:
+        raise RuntimeError(
+            "Orion runtime-profile source layout binding mismatch: "
+            f"{source_binding_mismatches}"
+        )
+    if source.get("assignments_sha256") != artifact_payload.get("layout_sha256"):
+        raise RuntimeError(
+            "Orion runtime-profile source assignments do not match layout_sha256"
+        )
+
+    source_artifact_payload = dict(artifact_payload)
+    source_artifact_payload.update(
+        {
+            "generation": source_generation,
+            "upper_k": source_parameters.get("upper_k"),
+            "upper_ef_search": source_parameters.get("upper_search_ef"),
+            "dynamic_ef_base": source_parameters.get("dynamic_ef_base"),
+            "dynamic_ef_factor": source_parameters.get("dynamic_ef_factor"),
+        }
+    )
+    validate_faithful_orion_build_parameters(
+        source_parameters,
+        source_artifact_payload,
+    )
+    return source
+
+
 def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     layout_dir = Path(layout_path).expanduser().resolve()
     if not layout_dir.is_dir():
@@ -235,14 +399,16 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     build_manifest = json.loads(build_manifest_path.read_text(encoding="utf-8"))
     if not isinstance(build_manifest, dict):
         raise ValueError("layout build manifest root must be a JSON object")
-    expected_tool = {
-        "orion": "tools/orion_native_layout.py",
-        "simple_kmeans": "tools/simple_kmeans_native_layout.py",
-    }[method]
-    if build_manifest.get("tool") != expected_tool:
+    expected_tools = (
+        ORION_LAYOUT_TOOLS
+        if method == "orion"
+        else {"tools/simple_kmeans_native_layout.py"}
+    )
+    actual_tool = build_manifest.get("tool")
+    if actual_tool not in expected_tools:
         raise RuntimeError(
-            f"layout tool mismatch: expected={expected_tool!r}, "
-            f"actual={build_manifest.get('tool')!r}"
+            f"layout tool mismatch: expected one of={sorted(expected_tools)!r}, "
+            f"actual={actual_tool!r}"
         )
     if build_manifest.get("mode") != "production_bundle":
         raise RuntimeError("layout must be a completed production_bundle build")
@@ -291,11 +457,18 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     )
     artifact = validator(artifact_path, generation, artifact_sha256)
     attachment_search_ef = None
+    runtime_profile_source: dict[str, Any] | None = None
     if method == "orion":
         attachment_search_ef = validate_faithful_orion_build_parameters(
             build_parameters,
             artifact_payload,
         )
+        if actual_tool == ORION_RUNTIME_PROFILE_TOOL:
+            runtime_profile_source = validate_orion_runtime_profile_derivation(
+                build_manifest,
+                build_parameters,
+                artifact_payload,
+            )
 
     import_manifest = json.loads(import_manifest_path.read_text(encoding="utf-8"))
     if not isinstance(import_manifest, dict):
@@ -335,6 +508,72 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     }
     if mismatches:
         raise RuntimeError(f"import manifest/artifact mismatch: {mismatches}")
+    if runtime_profile_source is not None:
+        source_import_mismatches = {
+            field: {
+                "expected": runtime_profile_source.get(field),
+                "actual": import_manifest.get(field),
+            }
+            for field in ("vectors_sha256", "assignments_sha256")
+            if runtime_profile_source.get(field) != import_manifest.get(field)
+        }
+        if source_import_mismatches:
+            raise RuntimeError(
+                "Orion runtime-profile reused import payload binding mismatch: "
+                f"{source_import_mismatches}"
+            )
+        reused_payloads = (build_manifest.get("derivation") or {}).get(
+            "reused_payloads"
+        )
+        if not isinstance(reused_payloads, dict):
+            raise RuntimeError("Orion runtime profile lacks reused payload proof")
+        for proof_name, manifest_prefix in (
+            ("vectors", "vectors"),
+            ("assignments", "assignments"),
+        ):
+            proof = reused_payloads.get(proof_name)
+            if not isinstance(proof, dict):
+                raise RuntimeError(
+                    f"Orion runtime profile lacks {proof_name} reuse proof"
+                )
+            expected_proof = {
+                "destination_file": import_manifest.get(f"{manifest_prefix}_file"),
+                "sha256": import_manifest.get(f"{manifest_prefix}_sha256"),
+            }
+            proof_mismatches = {
+                key: {"expected": expected, "actual": proof.get(key)}
+                for key, expected in expected_proof.items()
+                if proof.get(key) != expected
+            }
+            if proof.get("materialization") not in {"hardlink", "copy"}:
+                proof_mismatches["materialization"] = {
+                    "expected": "hardlink or copy",
+                    "actual": proof.get("materialization"),
+                }
+            expected_same_inode = proof.get("materialization") == "hardlink"
+            if proof.get("same_inode") is not expected_same_inode:
+                proof_mismatches["same_inode"] = {
+                    "expected": expected_same_inode,
+                    "actual": proof.get("same_inode"),
+                }
+            if proof_mismatches:
+                raise RuntimeError(
+                    f"Orion runtime-profile {proof_name} reuse proof mismatch: "
+                    f"{proof_mismatches}"
+                )
+        formal_evidence_eligible = all(
+            reused_payloads[name].get("materialization") == "copy"
+            for name in ("vectors", "assignments")
+        )
+        if (
+            (build_manifest.get("derivation") or {}).get(
+                "formal_evidence_eligible"
+            )
+            is not formal_evidence_eligible
+        ):
+            raise RuntimeError(
+                "Orion runtime-profile formal evidence eligibility mismatch"
+            )
     bundle_paths: dict[str, Path] = {}
     for field in ("vectors_file", "assignments_file"):
         file_path = safe_child(layout_dir, import_manifest.get(field), field)

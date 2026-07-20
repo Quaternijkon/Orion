@@ -170,6 +170,34 @@ def write_case_result(
     case_dir.mkdir(parents=True)
     manifest = shared_manifest(case["method"], image_id=image_id)
     manifest["collection"] = case["collection"]
+    if case["method"] in {"orion", "simple_kmeans"}:
+        layout_sha256 = (
+            "a" * 64 if case["method"] == "orion" else "b" * 64
+        )
+        structure_sha256 = (
+            "c" * 64 if case["method"] == "orion" else "d" * 64
+        )
+        manifest["artifact"] = {
+            "status": "verified",
+            "layout_sha256": layout_sha256,
+            "routing_structure_sha256": structure_sha256,
+            "logical_point_count": 1000,
+            "physical_point_count": 1200 if case["method"] == "orion" else 1000,
+            "shard_count": 3,
+            "vector_schema": {
+                "vector_name": "",
+                "dimension": 200,
+                "distance": "Cosine",
+                "datatype": "float32",
+            },
+        }
+        manifest["artifact_bundle"] = {
+            "status": "verified",
+            "formal_evidence_eligible": True,
+            "offline_layout_fingerprint": structure_sha256,
+            "vectors_sha256": "e" * 64,
+            "assignments_sha256": layout_sha256,
+        }
     if case.get("orion_route_trace") is True:
         manifest["orion_route_trace"] = {
             "status": "verified",
@@ -552,6 +580,47 @@ def test_provenance_rejects_stable_but_not_fully_indexed_collection():
 
     with pytest.raises(RuntimeError, match="requires fully indexed collections"):
         module.provenance_fingerprint(manifest)
+
+
+def test_routed_profile_family_guard_rejects_offline_structure_drift(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    matrix_dir = module.matrix_directory(tmp_path, "family-guard", must_exist=False)
+    for case in config["cases"]:
+        write_case_result(
+            matrix_dir,
+            case,
+            recall=0.9,
+            qps=100.0,
+            visited=2 if case["method"] == "orion" else 3,
+            ef_sum=80,
+        )
+    results = [module.load_case_result(matrix_dir, case) for case in config["cases"]]
+    families = module.validate_routed_profile_families(results)
+    assert families["orion"]["layout_sha256"] == "a" * 64
+    assert families["simple_kmeans"]["routing_structure_sha256"] == "d" * 64
+
+    diagnostic = json.loads(json.dumps(results[1]))
+    diagnostic["manifest"]["artifact_bundle"]["formal_evidence_eligible"] = False
+    with pytest.raises(RuntimeError, match="not eligible for formal evidence"):
+        module.validate_routed_profile_families(
+            [results[0], diagnostic, results[2]]
+        )
+
+    second_orion = dict(config["cases"][1], name="orion95")
+    write_case_result(
+        matrix_dir,
+        second_orion,
+        recall=0.95,
+        qps=80.0,
+        visited=4,
+        ef_sum=160,
+    )
+    drifted = module.load_case_result(matrix_dir, second_orion)
+    drifted["manifest"]["artifact"]["routing_structure_sha256"] = "e" * 64
+
+    with pytest.raises(RuntimeError, match="do not share one offline routing structure"):
+        module.validate_routed_profile_families([*results, drifted])
 
 
 @pytest.mark.parametrize(

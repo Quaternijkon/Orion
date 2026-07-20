@@ -518,6 +518,7 @@ def test_routed_artifact_validation_binds_policy_schema_shards_and_counts(
     assert loaded == payload
     assert proof["status"] == "verified"
     assert proof["sha256"] == checksum
+    assert len(proof["routing_structure_sha256"]) == 64
 
     with pytest.raises(RuntimeError, match="shard_count"):
         module.validate_artifact(
@@ -534,6 +535,78 @@ def test_routed_artifact_validation_binds_policy_schema_shards_and_counts(
             points_count=points_count,
             train_count=3,
         )
+
+
+def test_artifact_bundle_fingerprint_excludes_runtime_only_parameters(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    artifact_path = tmp_path / "generation-1.json"
+    artifact_path.write_text("{}\n", encoding="utf-8")
+    build_manifest_path = tmp_path / "build-manifest.json"
+    import_manifest_path = tmp_path / "numeric.manifest.json"
+    build_manifest = {
+        "parameters": {
+            "initial_num_shards": 31,
+            "sample_denominator": 32,
+            "upper_k": 36,
+            "upper_search_ef": 36,
+            "dynamic_ef_base": 48,
+            "dynamic_ef_factor": 15,
+            "generation": 1,
+            "cargo_target_dir": "/external/target",
+        },
+        "dataset": {"sha256": "a" * 64, "dimension": 200},
+        "routing": {"effective_num_shards": 46, "shard_counts": [10, 11]},
+    }
+    import_manifest = {
+        "vectors_sha256": "b" * 64,
+        "assignments_sha256": "c" * 64,
+    }
+    build_manifest_path.write_text(json.dumps(build_manifest), encoding="utf-8")
+    import_manifest_path.write_text(json.dumps(import_manifest), encoding="utf-8")
+    monkeypatch.setattr(
+        module.prepare,
+        "load_routed_layout",
+        lambda *_args: {
+            "artifact_path": str(artifact_path),
+            "build_manifest_path": str(build_manifest_path),
+            "build_manifest_sha256": "d" * 64,
+            "import_manifest_path": str(import_manifest_path),
+            "import_manifest_sha256": "e" * 64,
+        },
+    )
+    artifact_proof = {
+        "layout_sha256": "c" * 64,
+        "routing_structure_sha256": "f" * 64,
+        "logical_point_count": 1000,
+        "physical_point_count": 1200,
+        "shard_count": 46,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 200,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+    }
+
+    first = module.validate_artifact_bundle("orion", artifact_path, artifact_proof)
+    build_manifest["parameters"].update(
+        {
+            "upper_k": 96,
+            "upper_search_ef": 96,
+            "dynamic_ef_base": 64,
+            "generation": 2,
+            "cargo_target_dir": "/another/target",
+        }
+    )
+    build_manifest_path.write_text(json.dumps(build_manifest), encoding="utf-8")
+    second = module.validate_artifact_bundle("orion", artifact_path, artifact_proof)
+
+    assert first["offline_layout_fingerprint"] == second["offline_layout_fingerprint"]
+    assert first["formal_evidence_eligible"] is True
+    assert first["vectors_sha256"] == "b" * 64
+    assert first["assignments_sha256"] == "c" * 64
 
 
 def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
