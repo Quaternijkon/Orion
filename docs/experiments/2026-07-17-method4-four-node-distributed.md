@@ -1,5 +1,17 @@
 # Method4/Orion Four-Node Distributed Runbook
 
+> [!WARNING]
+> **Historical architecture boundary.** The 2026-07-18 results in this runbook were
+> produced by the earlier custom-shard/client-hint architecture: the benchmark side
+> planned shard fan-out and transported routing hints rather than issuing a native
+> numeric-auto-shard request whose routing was decided entirely inside the Qdrant
+> collection coordinator. They remain valid evidence for that historical implementation,
+> but **must not be cited, relabeled, or compared as results of the native
+> `sharding_method=auto` Orion architecture**. Native claims require a fresh run through
+> the server-side `AutoShardPolicy::Orion`, numeric `ShardId`, standard Search/Query,
+> ordinary `ShardReplicaSet`, and collection global-merge path documented in
+> `2026-07-20-orion-native-auto-shard-phase1.md`.
+
 This runbook replaces the old single-host, multi-container layout for the initial
 Orion versus Simple KMeans nprobe versus Naive all-shards Recall–QPS comparison.
 The Qdrant binary and search semantics remain those of commit

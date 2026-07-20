@@ -97,6 +97,17 @@ impl Validate for grpc::quantization_config_diff::Quantization {
     }
 }
 
+impl Validate for grpc::auto_shard_policy::Policy {
+    fn validate(&self) -> Result<(), ValidationErrors> {
+        use grpc::auto_shard_policy::Policy;
+        match self {
+            Policy::HashAll(_) => Ok(()),
+            Policy::Orion(orion) => orion.validate(),
+            Policy::SimpleKmeans(simple_kmeans) => simple_kmeans.validate(),
+        }
+    }
+}
+
 impl Validate for grpc::update_collection_cluster_setup_request::Operation {
     fn validate(&self) -> Result<(), ValidationErrors> {
         use grpc::update_collection_cluster_setup_request::Operation;
@@ -526,8 +537,9 @@ mod tests {
     use validator::Validate;
 
     use crate::grpc::qdrant::{
-        CreateCollection, CreateFieldIndexCollection, GeoLineString, GeoPoint, GeoPolygon,
-        SearchPoints, UpdateCollection,
+        AutoShardPolicy, CreateCollection, CreateFieldIndexCollection, GeoLineString, GeoPoint,
+        GeoPolygon, OrionAutoShardPolicy, SearchPoints, SimpleKmeansAutoShardPolicy,
+        UpdateCollection,
     };
 
     #[test]
@@ -604,6 +616,61 @@ mod tests {
             bad_request.validate().is_err(),
             "bad collection request should error on validation"
         );
+    }
+
+    #[test]
+    fn test_auto_shard_policy_validation() {
+        use crate::grpc::qdrant::auto_shard_policy::Policy;
+
+        let valid_request = CreateCollection {
+            collection_name: "test_collection".into(),
+            auto_shard_policy: Some(AutoShardPolicy {
+                policy: Some(Policy::Orion(OrionAutoShardPolicy {
+                    generation: 1,
+                    artifact_sha256:
+                        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(valid_request.validate().is_ok());
+
+        let valid_simple_kmeans = CreateCollection {
+            collection_name: "test_collection".into(),
+            auto_shard_policy: Some(AutoShardPolicy {
+                policy: Some(Policy::SimpleKmeans(SimpleKmeansAutoShardPolicy {
+                    generation: 2,
+                    artifact_sha256:
+                        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(valid_simple_kmeans.validate().is_ok());
+
+        let invalid_request = CreateCollection {
+            collection_name: "test_collection".into(),
+            auto_shard_policy: Some(AutoShardPolicy {
+                policy: Some(Policy::Orion(OrionAutoShardPolicy {
+                    generation: 0,
+                    artifact_sha256: "not-a-sha256".into(),
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(invalid_request.validate().is_err());
+
+        let invalid_simple_kmeans = CreateCollection {
+            collection_name: "test_collection".into(),
+            auto_shard_policy: Some(AutoShardPolicy {
+                policy: Some(Policy::SimpleKmeans(SimpleKmeansAutoShardPolicy {
+                    generation: 0,
+                    artifact_sha256: "not-a-sha256".into(),
+                })),
+            }),
+            ..Default::default()
+        };
+        assert!(invalid_simple_kmeans.validate().is_err());
     }
 
     #[test]

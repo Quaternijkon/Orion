@@ -112,6 +112,69 @@ def matching_controller_inspect(module, value, disable_peer_premerge):
     }
 
 
+def write_orion_artifact(module, tmp_path, generation=7):
+    payload = {
+        "format_version": 1,
+        "generation": generation,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+        "shard_count": 4,
+        "layout_sha256": "b" * 64,
+        "logical_point_count": 1,
+        "physical_point_count": 1,
+        "upper_k": 1,
+        "upper_ef_search": 8,
+        "dynamic_ef_base": 20,
+        "dynamic_ef_factor": 4,
+        "upper_nodes": [
+            {"label": 1, "vector": [1.0, 0.0], "shard_membership": [0]}
+        ],
+        "upper_graph": {
+            "entry_point": 1,
+            "max_level": 0,
+            "nodes": [{"label": 1, "neighbors_by_level": [[]]}],
+        },
+    }
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text(
+        json.dumps(payload, separators=(",", ":")), encoding="utf-8"
+    )
+    return artifact, module.sha256_file(artifact)
+
+
+def write_simple_kmeans_artifact(module, tmp_path, generation=7):
+    payload = {
+        "format_version": 1,
+        "generation": generation,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+        "shard_count": 4,
+        "layout_sha256": "c" * 64,
+        "logical_point_count": 4,
+        "physical_point_count": 4,
+        "routing_distance": "squared_l2",
+        "nprobe": 2,
+        "lower_hnsw_ef": 48,
+        "centroids": [
+            {"shard_id": shard_id, "vector": [float(shard_id), 1.0]}
+            for shard_id in range(4)
+        ],
+    }
+    artifact = tmp_path / "simple-kmeans-artifact.json"
+    artifact.write_text(
+        json.dumps(payload, separators=(",", ":")), encoding="utf-8"
+    )
+    return artifact, module.sha256_file(artifact)
+
+
 def test_cloudlab_topology_has_one_controller_three_unique_workers():
     module = load_module()
     value = topology(module)
@@ -722,3 +785,904 @@ def test_status_summary_exposes_requested_and_current_peer_premerge_mode(monkeyp
     assert summary["requested_mode"] == "disabled"
     assert summary["current_mode"] == "disabled"
     assert summary["matches_requested"] is True
+
+
+def test_install_orion_artifact_cli_accepts_optional_restart_order(monkeypatch):
+    module = load_module()
+    checksum = "a" * 64
+
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "install-orion-artifact",
+            "--collection",
+            "native_orion",
+            "--generation",
+            "7",
+            "--artifact",
+            "/tmp/artifact.json",
+            "--expected-sha256",
+            checksum,
+            "--restart",
+            "controller-first",
+        ],
+    )
+    args = module.parse_args()
+
+    assert args.command == "install-orion-artifact"
+    assert args.collection == "native_orion"
+    assert args.generation == 7
+    assert args.restart == "controller-first"
+
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "install-orion-artifact",
+            "--collection",
+            "native_orion",
+            "--generation",
+            "7",
+            "--artifact",
+            "/tmp/artifact.json",
+            "--expected-sha256",
+            checksum,
+            "--restart",
+        ],
+    )
+    assert module.parse_args().restart == "workers-first"
+
+
+def test_install_simple_kmeans_artifact_cli_and_destination(monkeypatch, tmp_path):
+    module = load_module()
+    checksum = "b" * 64
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "install-simple-kmeans-artifact",
+            "--collection",
+            "native_simple",
+            "--generation",
+            "9",
+            "--artifact",
+            "/tmp/simple.json",
+            "--expected-sha256",
+            checksum,
+            "--restart",
+        ],
+    )
+
+    args = module.parse_args()
+    assert args.command == "install-simple-kmeans-artifact"
+    assert args.collection == "native_simple"
+    assert args.generation == 9
+    assert args.restart == "workers-first"
+
+    value = isolated_topology(module, tmp_path)
+    destination = module.simple_kmeans_artifact_destination(
+        value, "run-1", "qdrant_shard_1", "native_simple", 9
+    )
+    assert destination == (
+        tmp_path
+        / "local/run-1/qdrant_shard_1/storage/collections/native_simple"
+        / "simple_kmeans_router/generation-9.json"
+    ).resolve()
+
+
+def test_orion_artifact_destination_is_run_role_scoped_and_rejects_escape(tmp_path):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+
+    destination = module.orion_artifact_destination(
+        value, "run-1", "qdrant_shard_1", "native_orion", 7
+    )
+
+    assert destination == (
+        tmp_path
+        / "local/run-1/qdrant_shard_1/storage/collections/native_orion"
+        / "orion_router/generation-7.json"
+    ).resolve()
+    for collection in ("../escape", "/tmp/escape", "nested/name", "", "."):
+        with pytest.raises(ValueError, match="collection"):
+            module.orion_artifact_destination(
+                value, "run-1", "qdrant_shard_1", collection, 7
+            )
+
+
+def test_local_orion_artifact_enforces_canonical_file_checksum_and_generation(
+    tmp_path,
+):
+    module = load_module()
+    artifact, checksum = write_orion_artifact(module, tmp_path, generation=7)
+
+    metadata = module.validate_local_orion_artifact(
+        artifact, 7, f"sha256:{checksum.upper()}"
+    )
+
+    assert metadata["canonical_sha256"] == checksum
+    assert metadata["file_sha256"] == checksum
+    assert metadata["generation"] == 7
+    pretty = tmp_path / "pretty-artifact.json"
+    pretty.write_text(
+        json.dumps(json.loads(artifact.read_text(encoding="utf-8")), indent=2),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="canonical"):
+        module.validate_local_orion_artifact(pretty, 7, checksum)
+    with pytest.raises(RuntimeError, match="file SHA-256"):
+        module.validate_local_orion_artifact(artifact, 7, "0" * 64)
+    with pytest.raises(RuntimeError, match="generation mismatch"):
+        module.validate_local_orion_artifact(artifact, 8, checksum)
+
+
+def test_local_orion_artifact_rejects_graphless_production_input(tmp_path):
+    module = load_module()
+    payload = {"format_version": 1, "generation": 7}
+    artifact = tmp_path / "graphless.json"
+    artifact.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="graphless"):
+        module.validate_local_orion_artifact(
+            artifact, 7, module.sha256_file(artifact)
+        )
+
+
+def test_local_simple_kmeans_artifact_enforces_static_baseline_contract(tmp_path):
+    module = load_module()
+    artifact, checksum = write_simple_kmeans_artifact(module, tmp_path)
+
+    metadata = module.validate_local_simple_kmeans_artifact(artifact, 7, checksum)
+    assert metadata["shard_count"] == 4
+    assert metadata["logical_point_count"] == metadata["physical_point_count"] == 4
+    assert metadata["nprobe"] == 2
+    assert metadata["lower_hnsw_ef"] == 48
+    assert metadata["routing_distance"] == "squared_l2"
+
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["upper_graph"] = None
+    artifact.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="must not contain upper_graph"):
+        module.validate_local_simple_kmeans_artifact(
+            artifact, 7, module.sha256_file(artifact)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutate,match",
+    [
+        (
+            lambda payload: payload.update(physical_point_count=5),
+            "must equal logical_point_count",
+        ),
+        (
+            lambda payload: payload["centroids"].__setitem__(
+                3, {"shard_id": 2, "vector": [2.0, 1.0]}
+            ),
+            "repeats centroid",
+        ),
+        (
+            lambda payload: payload.update(nprobe=5),
+            "no larger than shard_count",
+        ),
+    ],
+)
+def test_local_simple_kmeans_artifact_rejects_invalid_layout(
+    tmp_path, mutate, match
+):
+    module = load_module()
+    artifact, _checksum = write_simple_kmeans_artifact(module, tmp_path)
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    mutate(payload)
+    artifact.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        module.validate_local_simple_kmeans_artifact(
+            artifact, 7, module.sha256_file(artifact)
+        )
+
+
+def test_artifact_copy_and_atomic_install_commands_are_node_and_path_scoped(
+    tmp_path,
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    source = tmp_path / "artifact.json"
+    destination = module.orion_artifact_destination(
+        value, "run-1", "qdrant_shard_1", "native_orion", 7
+    )
+    staged = destination.parents[3] / ".orion-artifact-staging/artifact.json"
+    temporary = destination.with_name(".generation-7.json.tmp-deadbeef")
+    storage = destination.parents[3]
+
+    local_copy = module.copy_to_node_command(
+        value["controller"], source, staged
+    )
+    remote_copy = module.copy_to_node_command(
+        value["workers"][0], source, staged, "dry", ["StrictHostKeyChecking=yes"]
+    )
+    finalize = module.artifact_finalize_command(
+        storage, staged, temporary, destination, "a" * 64
+    )
+
+    assert local_copy == ["cp", "--", str(source), str(staged)]
+    assert remote_copy[:6] == [
+        "scp",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+    ]
+    assert remote_copy[-1] == f"dry@hp052.utah.cloudlab.us:{staged}"
+    assert str(destination) in finalize
+    assert str(staged) in finalize
+    assert str(temporary) in finalize
+    assert "mv --no-clobber" in finalize
+    assert "sha256sum" in finalize
+
+
+def test_install_orion_artifact_is_idempotent_and_upserts_one_manifest_entry(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_orion_artifact(module, tmp_path)
+    current_manifest = {"schema_version": 1, "run_id": "run-1", "image": {}}
+    writes = []
+    copies = []
+
+    def fake_read_manifest(*_args):
+        return current_manifest
+
+    def fake_write_manifest(_topology, _run_id, data):
+        current_manifest.clear()
+        current_manifest.update(json.loads(json.dumps(data)))
+        writes.append(json.loads(json.dumps(data)))
+        return tmp_path / "manifest.json"
+
+    def fake_run_on_node(_node, command, _args, **_kwargs):
+        assert "artifact generation already exists" in command
+        return subprocess.CompletedProcess(command, 0, f"match {checksum}\n", "")
+
+    monkeypatch.setattr(module, "read_manifest", fake_read_manifest)
+    monkeypatch.setattr(module, "write_manifest", fake_write_manifest)
+    monkeypatch.setattr(
+        module,
+        "validate_collection_orion_policy",
+        lambda *_args: {"policy": {"type": "orion"}, "status": "green"},
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(
+        module,
+        "run_command",
+        lambda command, **_kwargs: copies.append(command)
+        or subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_orion",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart=None,
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    assert module.command_install_orion_artifact(args, value) == 0
+    assert module.command_install_orion_artifact(args, value) == 0
+
+    assert copies == []
+    assert len(current_manifest["orion_artifacts"]) == 1
+    entry = current_manifest["orion_artifacts"][0]
+    assert entry["canonical_sha256"] == checksum
+    assert [node["action"] for node in entry["nodes"]] == ["reused"] * 4
+    assert len(writes) == 2
+
+
+def test_install_simple_kmeans_artifact_is_idempotent_and_records_policy_kind(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_simple_kmeans_artifact(module, tmp_path)
+    current_manifest = {"schema_version": 1, "run_id": "run-1", "image": {}}
+    copies = []
+
+    def fake_write_manifest(_topology, _run_id, data):
+        current_manifest.clear()
+        current_manifest.update(json.loads(json.dumps(data)))
+        return tmp_path / "manifest.json"
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: current_manifest)
+    monkeypatch.setattr(module, "write_manifest", fake_write_manifest)
+    monkeypatch.setattr(
+        module,
+        "validate_collection_simple_kmeans_policy",
+        lambda *_args: {
+            "policy_kind": "simple_kmeans",
+            "policy": {"type": "simple_kmeans"},
+            "status": "green",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda _node, command, _args, **_kwargs: subprocess.CompletedProcess(
+            command, 0, f"match {checksum}\n", ""
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_command",
+        lambda command, **_kwargs: copies.append(command),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_simple",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart=None,
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    assert module.command_install_simple_kmeans_artifact(args, value) == 0
+    assert module.command_install_simple_kmeans_artifact(args, value) == 0
+    assert copies == []
+    assert "orion_artifacts" not in current_manifest
+    assert len(current_manifest["simple_kmeans_artifacts"]) == 1
+    entry = current_manifest["simple_kmeans_artifacts"][0]
+    assert entry["policy_kind"] == "simple_kmeans"
+    assert entry["nprobe"] == 2
+    assert entry["lower_hnsw_ef"] == 48
+    assert all(
+        "/simple_kmeans_router/generation-7.json" in node["destination_path"]
+        for node in entry["nodes"]
+    )
+
+
+def test_install_orion_artifact_copies_missing_nodes_then_verifies_remote_sha(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_orion_artifact(module, tmp_path)
+    copied_commands = []
+    probe_count = 0
+
+    def fake_run_on_node(_node, command, _args, **_kwargs):
+        nonlocal probe_count
+        if "artifact generation already exists" in command:
+            probe_count += 1
+            if probe_count <= 4:
+                return subprocess.CompletedProcess(command, 0, "missing\n", "")
+            return subprocess.CompletedProcess(command, 0, f"match {checksum}\n", "")
+        if "installed artifact SHA-256 mismatch" in command:
+            return subprocess.CompletedProcess(command, 0, f"installed {checksum}\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        module,
+        "read_manifest",
+        lambda *_args: {"schema_version": 1, "run_id": "run-1", "image": {}},
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: tmp_path / "manifest.json",
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_collection_orion_policy",
+        lambda *_args: {"policy": {"type": "orion"}, "status": "green"},
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(
+        module,
+        "run_command",
+        lambda command, **_kwargs: copied_commands.append(command)
+        or subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_orion",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart=None,
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    assert module.command_install_orion_artifact(args, value) == 0
+
+    assert probe_count == 8
+    assert len(copied_commands) == 4
+    assert copied_commands[0][0] == "cp"
+    assert [command[0] for command in copied_commands[1:]] == ["scp"] * 3
+    assert all("run-1" in command[-1] for command in copied_commands)
+
+
+def test_install_orion_artifact_rejects_existing_checksum_drift_before_copy(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_orion_artifact(module, tmp_path)
+    copies = []
+
+    monkeypatch.setattr(
+        module,
+        "read_manifest",
+        lambda *_args: {"schema_version": 1, "run_id": "run-1", "image": {}},
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_collection_orion_policy",
+        lambda *_args: {"policy": {"type": "orion"}, "status": "green"},
+    )
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda _node, command, _args, **_kwargs: subprocess.CompletedProcess(
+            command, 72, "", "artifact generation already exists with a different SHA-256"
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_command",
+        lambda command, **_kwargs: copies.append(command),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_orion",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart=None,
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    with pytest.raises(RuntimeError, match="different SHA-256"):
+        module.command_install_orion_artifact(args, value)
+    assert copies == []
+
+
+def test_artifact_restart_order_is_explicit_and_run_container_identity_is_checked():
+    module = load_module()
+    value = topology(module)
+
+    assert [
+        node["role"]
+        for node in module.artifact_restart_nodes(value, "workers-first")
+    ] == ["qdrant_shard_1", "qdrant_shard_2", "qdrant_shard_3", "controller"]
+    assert [
+        node["role"]
+        for node in module.artifact_restart_nodes(value, "controller-first")
+    ] == ["controller", "qdrant_shard_1", "qdrant_shard_2", "qdrant_shard_3"]
+
+    inspected = matching_controller_inspect(module, value, False)
+    module.verify_run_container_identity(
+        inspected, value["controller"], "run-1"
+    )
+    inspected["Config"]["Labels"]["orion.distributed.run_id"] = "other-run"
+    with pytest.raises(RuntimeError, match="exact run ownership"):
+        module.verify_run_container_identity(
+            inspected, value["controller"], "run-1"
+        )
+
+
+def test_artifact_activation_requires_matching_collection_policy(monkeypatch):
+    module = load_module()
+    value = topology(module)
+    checksum = "a" * 64
+    payload = {
+        "result": {
+            "config": {
+                "auto_shard_policy": {
+                    "type": "orion",
+                    "generation": 7,
+                    "artifact_sha256": checksum,
+                }
+            }
+        }
+    }
+    monkeypatch.setattr(module, "http_json", lambda _url: payload)
+
+    proof = module.validate_collection_orion_policy(
+        value, "native_orion", 7, checksum
+    )
+    assert proof["policy"]["generation"] == 7
+
+    payload["result"]["config"]["auto_shard_policy"]["generation"] = 8
+    with pytest.raises(RuntimeError, match="policy mismatch"):
+        module.validate_collection_orion_policy(
+            value, "native_orion", 7, checksum
+        )
+
+
+def test_artifact_activation_validates_schema_shards_and_runtime_load_logs(
+    monkeypatch,
+):
+    module = load_module()
+    value = topology(module)
+    checksum = "a" * 64
+    info = {
+        "result": {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": 3,
+            "config": {
+                "params": {
+                    "shard_number": 2,
+                    "sharding_method": "auto",
+                    "vectors": {
+                        "size": 2,
+                        "distance": "Cosine",
+                        "datatype": "float32",
+                    },
+                },
+                "auto_shard_policy": {
+                    "type": "orion",
+                    "generation": 7,
+                    "artifact_sha256": checksum,
+                },
+            },
+        }
+    }
+    cluster = {
+        "result": {
+            "local_shards": [],
+            "remote_shards": [
+                {"shard_id": 0, "peer_id": 101, "state": "Active"},
+                {"shard_id": 1, "peer_id": 102, "state": "Active"},
+            ],
+            "shard_transfers": [],
+        }
+    }
+    monkeypatch.setattr(
+        module,
+        "http_json",
+        lambda url: cluster if url.endswith("/cluster") else info,
+    )
+    artifact = {
+        "shard_count": 2,
+        "physical_point_count": 3,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+    }
+
+    proof = module.validate_collection_orion_policy(
+        value, "native_orion", 7, checksum, artifact
+    )
+    assert proof["shard_count"] == 2
+
+    node = value["workers"][0]
+    marker = "Loaded Orion routing generation 7 for collection native_orion"
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", marker),
+    )
+    log_proof = module.verify_orion_router_loaded_logs(
+        node,
+        "run-1",
+        "native_orion",
+        7,
+        123,
+        SimpleNamespace(),
+    )
+    assert log_proof["role"] == "qdrant_shard_1"
+
+    fallback = "Orion routing is unavailable for collection native_orion"
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", fallback),
+    )
+    with pytest.raises(RuntimeError, match="fallback"):
+        module.verify_orion_router_loaded_logs(
+            node,
+            "run-1",
+            "native_orion",
+            7,
+            123,
+            SimpleNamespace(),
+        )
+
+    info["result"]["config"]["params"]["vectors"]["size"] = 3
+    with pytest.raises(RuntimeError, match="vector schema"):
+        module.validate_collection_orion_policy(
+            value, "native_orion", 7, checksum, artifact
+        )
+
+
+def test_simple_kmeans_activation_validates_policy_collection_and_logs(monkeypatch):
+    module = load_module()
+    value = topology(module)
+    checksum = "d" * 64
+    info = {
+        "result": {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": 4,
+            "config": {
+                "params": {
+                    "shard_number": 4,
+                    "sharding_method": "auto",
+                    "vectors": {
+                        "size": 2,
+                        "distance": "Cosine",
+                        "datatype": "float32",
+                    },
+                },
+                "auto_shard_policy": {
+                    "type": "simple_kmeans",
+                    "generation": 7,
+                    "artifact_sha256": checksum,
+                },
+            },
+        }
+    }
+    cluster = {
+        "result": {
+            "local_shards": [],
+            "remote_shards": [
+                {
+                    "shard_id": shard_id,
+                    "peer_id": 101 + (shard_id % 3),
+                    "state": "Active",
+                }
+                for shard_id in range(4)
+            ],
+            "shard_transfers": [],
+        }
+    }
+    monkeypatch.setattr(
+        module,
+        "http_json",
+        lambda url: cluster if url.endswith("/cluster") else info,
+    )
+    artifact = {
+        "shard_count": 4,
+        "physical_point_count": 4,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+    }
+
+    proof = module.validate_collection_simple_kmeans_policy(
+        value, "native_simple", 7, checksum, artifact
+    )
+    assert proof["policy_kind"] == "simple_kmeans"
+    assert proof["shard_count"] == 4
+
+    node = value["workers"][0]
+    loaded = "Loaded Simple KMeans routing generation 7 for collection native_simple"
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, loaded, ""),
+    )
+    log_proof = module.verify_simple_kmeans_router_loaded_logs(
+        node, "run-1", "native_simple", 7, 123, SimpleNamespace()
+    )
+    assert log_proof["loaded_marker"] == loaded
+
+    fallback = (
+        "Simple KMeans routing generation 7 failed for collection native_simple; "
+        "falling back to all shards"
+    )
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, fallback, ""),
+    )
+    with pytest.raises(RuntimeError, match="Simple KMeans fallback"):
+        module.verify_simple_kmeans_router_loaded_logs(
+            node, "run-1", "native_simple", 7, 123, SimpleNamespace()
+        )
+
+    info["result"]["config"]["auto_shard_policy"]["type"] = "orion"
+    with pytest.raises(RuntimeError, match="Simple KMeans policy mismatch"):
+        module.validate_collection_simple_kmeans_policy(
+            value, "native_simple", 7, checksum, artifact
+        )
+
+
+def test_install_orion_artifact_restart_verifies_all_router_load_markers(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_orion_artifact(module, tmp_path)
+    restart_roles = []
+    written = {}
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        if isinstance(command, str):
+            return subprocess.CompletedProcess(command, 0, f"match {checksum}\n", "")
+        if command[3] == "restart":
+            restart_roles.append(node["role"])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[3] == "logs":
+            marker = "Loaded Orion routing generation 7 for collection native_orion"
+            return subprocess.CompletedProcess(command, 0, "", marker)
+        raise AssertionError(command)
+
+    def fake_inspect(_node, _name, _args):
+        node = _node
+        return {
+            "Config": {
+                "Labels": {
+                    "orion.distributed.run_id": "run-1",
+                    "orion.distributed.role": node["role"],
+                    "orion.distributed.private_ip": node["private_ip"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(
+        module,
+        "read_manifest",
+        lambda *_args: {"schema_version": 1, "run_id": "run-1", "image": {}},
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: written.update(json.loads(json.dumps(data)))
+        or tmp_path / "manifest.json",
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "wait_http_ready", lambda *_args: None)
+    monkeypatch.setattr(
+        module,
+        "wait_cluster_healthy",
+        lambda *_args: healthy_cluster_snapshot(module, value),
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_collection_orion_policy",
+        lambda *_args: {"policy": {"type": "orion"}, "status": "green"},
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_orion",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart="workers-first",
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    assert module.command_install_orion_artifact(args, value) == 0
+
+    assert restart_roles == [
+        "qdrant_shard_1",
+        "qdrant_shard_2",
+        "qdrant_shard_3",
+        "controller",
+    ]
+    activation = written["orion_artifacts"][0]["activation"]
+    assert activation["status"] == "activated_after_restart"
+    assert len(activation["router_log_proof"]) == 4
+
+
+def test_install_simple_kmeans_artifact_restart_verifies_all_router_load_markers(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    artifact, checksum = write_simple_kmeans_artifact(module, tmp_path)
+    restart_roles = []
+    written = {}
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        if isinstance(command, str):
+            return subprocess.CompletedProcess(command, 0, f"match {checksum}\n", "")
+        if command[3] == "restart":
+            restart_roles.append(node["role"])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[3] == "logs":
+            marker = (
+                "Loaded Simple KMeans routing generation 7 for collection native_simple"
+            )
+            return subprocess.CompletedProcess(command, 0, marker, "")
+        raise AssertionError(command)
+
+    def fake_inspect(node, _name, _args):
+        return {
+            "Config": {
+                "Labels": {
+                    "orion.distributed.run_id": "run-1",
+                    "orion.distributed.role": node["role"],
+                    "orion.distributed.private_ip": node["private_ip"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(
+        module,
+        "read_manifest",
+        lambda *_args: {"schema_version": 1, "run_id": "run-1", "image": {}},
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: written.update(json.loads(json.dumps(data)))
+        or tmp_path / "manifest.json",
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "wait_http_ready", lambda *_args: None)
+    monkeypatch.setattr(
+        module,
+        "wait_cluster_healthy",
+        lambda *_args: healthy_cluster_snapshot(module, value),
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_collection_simple_kmeans_policy",
+        lambda *_args: {
+            "policy_kind": "simple_kmeans",
+            "policy": {"type": "simple_kmeans"},
+            "status": "green",
+        },
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        collection="native_simple",
+        generation=7,
+        artifact=str(artifact),
+        expected_sha256=checksum,
+        restart="workers-first",
+        wait_timeout=10.0,
+        ssh_user=None,
+        ssh_option=[],
+        dry_run=False,
+    )
+
+    assert module.command_install_simple_kmeans_artifact(args, value) == 0
+    assert restart_roles == [
+        "qdrant_shard_1",
+        "qdrant_shard_2",
+        "qdrant_shard_3",
+        "controller",
+    ]
+    entry = written["simple_kmeans_artifacts"][0]
+    assert entry["policy_kind"] == "simple_kmeans"
+    assert entry["activation"]["status"] == "activated_after_restart"
+    assert len(entry["activation"]["router_log_proof"]) == 4

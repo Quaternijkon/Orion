@@ -14,6 +14,7 @@ use shard::retrieve::record_internal::RecordInternal;
 use shard::scroll::ScrollRequestInternal;
 
 use super::Collection;
+use crate::config::AutoShardPolicy;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::point_ops::WriteOrdering;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
@@ -149,6 +150,24 @@ impl Collection {
         shard_keys_selection: Option<ShardKey>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<UpdateResult> {
+        if let Some(policy) = self
+            .collection_config
+            .read()
+            .await
+            .auto_shard_policy
+            .as_ref()
+            .filter(|policy| policy.is_static_routing())
+        {
+            let (name, generation) = match policy {
+                AutoShardPolicy::Orion { generation, .. } => ("Orion", generation),
+                AutoShardPolicy::SimpleKmeans { generation, .. } => ("Simple KMeans", generation),
+                AutoShardPolicy::HashAll => unreachable!(),
+            };
+            return Err(CollectionError::bad_request(format!(
+                "{name} routing generation {generation} is currently static/read-only; ordinary client updates are rejected instead of silently using point-ID hash sharding"
+            )));
+        }
+
         let shard_holder = self.shards_holder.clone().read_owned().await;
         let start_time = std::time::Instant::now();
 

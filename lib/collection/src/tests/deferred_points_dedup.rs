@@ -87,6 +87,7 @@ async fn build_shard() -> (LocalShard, TempDir) {
         strict_mode_config: Default::default(),
         uuid: None,
         metadata: None,
+        auto_shard_policy: None,
     };
 
     let payload_index_schema_file = collection_dir.path().join("payload.json");

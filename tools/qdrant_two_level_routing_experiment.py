@@ -1191,6 +1191,585 @@ def total_assigned_points(point_to_shards: list[list[int]]) -> int:
     return sum(len(shards) for shards in point_to_shards)
 
 
+def canonical_orion_assignment_line(point_id: int, shard_ids: list[int]) -> bytes:
+    return (
+        json.dumps(
+            {"id": int(point_id), "shards": [int(shard_id) for shard_id in shard_ids]},
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def validate_orion_point_to_shards(
+    point_to_shards: list[list[int]],
+    num_points: int,
+    num_shards: int,
+) -> tuple[list[list[int]], int]:
+    if len(point_to_shards) != int(num_points):
+        raise ValueError(
+            "point_to_shards length must equal the number of training vectors: "
+            f"{len(point_to_shards)} != {num_points}"
+        )
+    if num_shards <= 0:
+        raise ValueError("num_shards must be positive")
+
+    normalized_assignments: list[list[int]] = []
+    total_copies = 0
+    for point_id, shard_ids in enumerate(point_to_shards):
+        if not shard_ids:
+            raise ValueError(f"point {point_id} has no target numeric shards")
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for raw_shard_id in shard_ids:
+            if isinstance(raw_shard_id, (bool, np.bool_)) or not isinstance(
+                raw_shard_id, (int, np.integer)
+            ):
+                raise TypeError(
+                    f"point {point_id} shard IDs must be integers, got {raw_shard_id!r}"
+                )
+            shard_id = int(raw_shard_id)
+            if not 0 <= shard_id < num_shards:
+                raise ValueError(
+                    f"point {point_id} targets shard {shard_id}, outside [0, {num_shards})"
+                )
+            if shard_id in seen:
+                raise ValueError(f"point {point_id} repeats shard {shard_id}")
+            seen.add(shard_id)
+            normalized.append(shard_id)
+        normalized_assignments.append(normalized)
+        total_copies += len(normalized)
+    return normalized_assignments, total_copies
+
+
+def orion_layout_sha256(point_to_shards: list[list[int]], num_shards: int) -> str:
+    normalized, _total_copies = validate_orion_point_to_shards(
+        point_to_shards,
+        len(point_to_shards),
+        num_shards,
+    )
+    digest = hashlib.sha256()
+    for point_id, shard_ids in enumerate(normalized):
+        digest.update(canonical_orion_assignment_line(point_id, shard_ids))
+    return digest.hexdigest()
+
+
+def write_orion_graphless_artifact(
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    output_path: str | Path,
+    *,
+    generation: int,
+    vector_distance: str,
+    upper_k: int,
+    upper_ef_search: int,
+    dynamic_ef_base: int,
+    dynamic_ef_factor: int,
+    vector_name: str = "",
+) -> Path:
+    vectors = np.asarray(train, dtype=np.float32)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
+    normalized_assignments, total_copies = validate_orion_point_to_shards(
+        point_to_shards,
+        int(vectors.shape[0]),
+        num_shards,
+    )
+    upper_indices = np.asarray(upper_indices, dtype=np.int64)
+    if upper_indices.ndim != 1 or len(upper_indices) == 0:
+        raise ValueError("upper_indices must be a non-empty one-dimensional array")
+    if len(set(map(int, upper_indices.tolist()))) != len(upper_indices):
+        raise ValueError("upper_indices must not contain duplicate point IDs")
+    if np.any(upper_indices < 0) or np.any(upper_indices >= len(vectors)):
+        raise ValueError("upper_indices contains a point outside the training set")
+    if generation <= 0:
+        raise ValueError("generation must be positive")
+    if upper_k <= 0 or upper_k > len(upper_indices):
+        raise ValueError("upper_k must be positive and no larger than the upper tier")
+    if upper_ef_search < upper_k:
+        raise ValueError("upper_ef_search must be at least upper_k")
+    if dynamic_ef_base <= 0 or dynamic_ef_factor < 0:
+        raise ValueError("Dynamic EF base must be positive and factor non-negative")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+
+    distance_name = str(vector_distance).strip().lower()
+    distance = {
+        "cosine": "Cosine",
+        "dot": "Dot",
+        "euclid": "Euclid",
+        "l2": "Euclid",
+        "manhattan": "Manhattan",
+    }.get(distance_name)
+    if distance is None:
+        raise ValueError(f"unsupported Orion artifact distance: {vector_distance!r}")
+
+    layout_digest = hashlib.sha256()
+    for point_id, shard_ids in enumerate(normalized_assignments):
+        layout_digest.update(canonical_orion_assignment_line(point_id, shard_ids))
+
+    artifact = {
+        "format_version": 1,
+        "generation": int(generation),
+        "vector_schema": {
+            "vector_name": vector_name,
+            "dimension": int(vectors.shape[1]),
+            "distance": distance,
+            "datatype": "float32",
+        },
+        "shard_count": int(num_shards),
+        "layout_sha256": layout_digest.hexdigest(),
+        "logical_point_count": int(len(vectors)),
+        "physical_point_count": int(total_copies),
+        "upper_k": int(upper_k),
+        "upper_ef_search": int(upper_ef_search),
+        "dynamic_ef_base": int(dynamic_ef_base),
+        "dynamic_ef_factor": int(dynamic_ef_factor),
+        "upper_nodes": [
+            {
+                "label": int(point_id),
+                "vector": vectors[int(point_id)].tolist(),
+                "shard_membership": normalized_assignments[int(point_id)],
+            }
+            for point_id in upper_indices.tolist()
+        ],
+    }
+    output_path = Path(output_path)
+    if output_path.exists():
+        raise FileExistsError(f"refusing to overwrite Orion artifact: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
+    temporary.unlink(missing_ok=True)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(artifact, handle, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        os.replace(temporary, output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return output_path
+
+
+def write_simple_kmeans_graphless_artifact(
+    train: np.ndarray,
+    centroids: np.ndarray,
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    output_path: str | Path,
+    *,
+    generation: int,
+    vector_distance: str,
+    nprobe: int,
+    lower_hnsw_ef: int,
+    vector_name: str = "",
+) -> Path:
+    """Write the typed input consumed by ``simple_kmeans_build_artifact``.
+
+    Partitioning is intentionally outside this serializer. Callers must pass the
+    single-assignment output of ``build_cpp_kmeans_baseline_assignments``.
+    """
+
+    vectors = np.asarray(train, dtype=np.float32)
+    centroid_vectors = np.asarray(centroids, dtype=np.float32)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
+    if centroid_vectors.shape != (int(num_shards), int(vectors.shape[1])):
+        raise ValueError(
+            "centroids must have shape (num_shards, dimension): "
+            f"expected={(int(num_shards), int(vectors.shape[1]))}, "
+            f"actual={centroid_vectors.shape}"
+        )
+    if not np.isfinite(centroid_vectors).all():
+        raise ValueError("centroids contain a non-finite value")
+    normalized_assignments, total_copies = validate_orion_point_to_shards(
+        point_to_shards,
+        int(vectors.shape[0]),
+        num_shards,
+    )
+    if total_copies != len(vectors) or any(
+        len(shard_ids) != 1 for shard_ids in normalized_assignments
+    ):
+        raise ValueError("Simple KMeans native layout requires exactly one shard per point")
+    if generation <= 0:
+        raise ValueError("generation must be positive")
+    if nprobe <= 0 or nprobe > num_shards:
+        raise ValueError("nprobe must be in [1, num_shards]")
+    if lower_hnsw_ef <= 0:
+        raise ValueError("lower_hnsw_ef must be positive")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+
+    distance_name = str(vector_distance).strip().lower()
+    distance = {
+        "cosine": "Cosine",
+        "dot": "Dot",
+        "euclid": "Euclid",
+        "l2": "Euclid",
+        "manhattan": "Manhattan",
+    }.get(distance_name)
+    if distance is None:
+        raise ValueError(f"unsupported Simple KMeans artifact distance: {vector_distance!r}")
+
+    layout_digest = hashlib.sha256()
+    for point_id, shard_ids in enumerate(normalized_assignments):
+        layout_digest.update(canonical_orion_assignment_line(point_id, shard_ids))
+
+    artifact = {
+        "format_version": 1,
+        "generation": int(generation),
+        "vector_schema": {
+            "vector_name": vector_name,
+            "dimension": int(vectors.shape[1]),
+            "distance": distance,
+            "datatype": "float32",
+        },
+        "shard_count": int(num_shards),
+        "layout_sha256": layout_digest.hexdigest(),
+        "logical_point_count": int(len(vectors)),
+        "physical_point_count": int(total_copies),
+        "routing_distance": "squared_l2",
+        "nprobe": int(nprobe),
+        "lower_hnsw_ef": int(lower_hnsw_ef),
+        "centroids": [
+            {
+                "shard_id": shard_id,
+                "vector": centroid_vectors[shard_id].tolist(),
+            }
+            for shard_id in range(num_shards)
+        ],
+    }
+    output_path = Path(output_path)
+    if output_path.exists():
+        raise FileExistsError(
+            f"refusing to overwrite Simple KMeans artifact: {output_path}"
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
+    temporary.unlink(missing_ok=True)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(artifact, handle, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        os.replace(temporary, output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return output_path
+
+
+def write_orion_numeric_shard_import_bundle(
+    train: np.ndarray,
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    output_dir: str | Path,
+    *,
+    orion_artifact_path: str | Path,
+    vector_name: str = "",
+    prefix: str = "orion_numeric_import",
+    row_chunk_size: int = 16384,
+) -> Path:
+    """Write the bounded-memory input bundle for ``orion_numeric_shard_import``.
+
+    External point IDs are the original zero-based training row IDs. A single JSONL
+    assignment record contains the complete numeric-shard membership for that ID, so
+    multi-assigned points keep one external ID and never need synthetic copy IDs or a
+    ``source_id`` payload.
+    """
+
+    vectors = np.asarray(train)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
+    normalized_assignments, total_copies = validate_orion_point_to_shards(
+        point_to_shards,
+        int(vectors.shape[0]),
+        num_shards,
+    )
+    if row_chunk_size <= 0:
+        raise ValueError("row_chunk_size must be positive")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+    if not prefix or Path(prefix).name != prefix:
+        raise ValueError("prefix must be a non-empty file-name component")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_resolved = output_dir.resolve()
+    orion_artifact_path = Path(orion_artifact_path).resolve()
+    if not orion_artifact_path.is_file():
+        raise FileNotFoundError(f"Orion production artifact not found: {orion_artifact_path}")
+    if orion_artifact_path.parent != output_dir_resolved:
+        raise ValueError("Orion production artifact must be in the import bundle output directory")
+    artifact = json.loads(orion_artifact_path.read_text(encoding="utf-8"))
+    if not isinstance(artifact, dict) or artifact.get("upper_graph") is None:
+        raise ValueError("numeric import bundle requires a production artifact with upper_graph")
+    artifact_sha256 = sha256_path(orion_artifact_path)
+    vectors_path = output_dir / f"{prefix}.f32le"
+    assignments_path = output_dir / f"{prefix}.assignments.jsonl"
+    manifest_path = output_dir / f"{prefix}.manifest.json"
+    final_paths = [vectors_path, assignments_path, manifest_path]
+    existing = [path for path in final_paths if path.exists()]
+    if existing:
+        raise FileExistsError(
+            "refusing to overwrite an existing Orion import bundle: "
+            + ", ".join(str(path) for path in existing)
+        )
+
+    vectors_tmp = vectors_path.with_name(vectors_path.name + ".tmp")
+    assignments_tmp = assignments_path.with_name(assignments_path.name + ".tmp")
+    manifest_tmp = manifest_path.with_name(manifest_path.name + ".tmp")
+    temp_paths = [vectors_tmp, assignments_tmp, manifest_tmp]
+    promoted_paths: list[Path] = []
+    for path in temp_paths:
+        path.unlink(missing_ok=True)
+
+    vectors_digest = hashlib.sha256()
+    assignments_digest = hashlib.sha256()
+    try:
+        little_endian_f32 = np.dtype("<f4")
+        with vectors_tmp.open("wb") as handle:
+            for start in range(0, int(vectors.shape[0]), row_chunk_size):
+                chunk = np.ascontiguousarray(
+                    vectors[start : start + row_chunk_size],
+                    dtype=little_endian_f32,
+                )
+                if not np.isfinite(chunk).all():
+                    raise ValueError(f"train contains a non-finite value near row {start}")
+                raw = memoryview(chunk).cast("B")
+                handle.write(raw)
+                vectors_digest.update(raw)
+
+        with assignments_tmp.open("wb") as handle:
+            for point_id, shard_ids in enumerate(normalized_assignments):
+                encoded = canonical_orion_assignment_line(point_id, shard_ids)
+                handle.write(encoded)
+                assignments_digest.update(encoded)
+
+        if str(artifact.get("layout_sha256") or "").lower() != assignments_digest.hexdigest():
+            raise ValueError("Orion artifact layout_sha256 does not match the import assignments")
+        if int(artifact.get("generation") or 0) <= 0:
+            raise ValueError("Orion artifact generation must be positive")
+        if int(artifact.get("shard_count") or 0) != int(num_shards):
+            raise ValueError("Orion artifact shard_count does not match the import bundle")
+        if int(artifact.get("logical_point_count") or 0) != int(len(vectors)):
+            raise ValueError("Orion artifact logical_point_count does not match the training set")
+        if int(artifact.get("physical_point_count") or 0) != int(total_copies):
+            raise ValueError("Orion artifact physical_point_count does not match assignments")
+        artifact_schema = artifact.get("vector_schema") or {}
+        if int(artifact_schema.get("dimension") or 0) != int(vectors.shape[1]):
+            raise ValueError("Orion artifact vector dimension does not match the import vectors")
+        if str(artifact_schema.get("vector_name") or "") != vector_name:
+            raise ValueError("Orion artifact vector name does not match the import bundle")
+
+        manifest = {
+            "format_version": 1,
+            "dimension": int(vectors.shape[1]),
+            "point_count": int(vectors.shape[0]),
+            "shard_count": int(num_shards),
+            "vector_name": vector_name,
+            "orion_generation": int(artifact["generation"]),
+            "orion_artifact_file": orion_artifact_path.name,
+            "orion_artifact_sha256": artifact_sha256,
+            "vectors_file": vectors_path.name,
+            "vectors_sha256": vectors_digest.hexdigest(),
+            "assignments_file": assignments_path.name,
+            "assignments_sha256": assignments_digest.hexdigest(),
+            "total_point_copies": int(total_copies),
+        }
+        with manifest_tmp.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(manifest, handle, sort_keys=True, indent=2, allow_nan=False)
+            handle.write("\n")
+
+        os.replace(vectors_tmp, vectors_path)
+        promoted_paths.append(vectors_path)
+        os.replace(assignments_tmp, assignments_path)
+        promoted_paths.append(assignments_path)
+        os.replace(manifest_tmp, manifest_path)
+        promoted_paths.append(manifest_path)
+    except BaseException:
+        for path in temp_paths + promoted_paths:
+            path.unlink(missing_ok=True)
+        raise
+
+    return manifest_path
+
+
+def write_numeric_shard_import_bundle_v2(
+    train: np.ndarray,
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    output_dir: str | Path,
+    *,
+    routing_policy: str,
+    routing_generation: int,
+    routing_artifact_path: str | Path,
+    vector_name: str = "",
+    prefix: str = "numeric_shard_import",
+    row_chunk_size: int = 16384,
+) -> Path:
+    """Write the generic version-2 numeric-shard import bundle.
+
+    Version 2 replaces the Orion-specific manifest binding with a routing policy,
+    generation, artifact filename, and artifact checksum. Vector and assignment
+    files retain the existing bounded-memory canonical format.
+    """
+
+    vectors = np.asarray(train)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
+    normalized_assignments, total_copies = validate_orion_point_to_shards(
+        point_to_shards,
+        int(vectors.shape[0]),
+        num_shards,
+    )
+    if routing_policy not in {"orion", "simple_kmeans"}:
+        raise ValueError("routing_policy must be one of: orion, simple_kmeans")
+    if routing_generation <= 0:
+        raise ValueError("routing_generation must be positive")
+    if row_chunk_size <= 0:
+        raise ValueError("row_chunk_size must be positive")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+    if not prefix or Path(prefix).name != prefix or prefix in {".", ".."}:
+        raise ValueError("prefix must be a non-empty file-name component")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_resolved = output_dir.resolve()
+    routing_artifact_path = Path(routing_artifact_path).resolve()
+    if not routing_artifact_path.is_file():
+        raise FileNotFoundError(
+            f"routing production artifact not found: {routing_artifact_path}"
+        )
+    if routing_artifact_path.parent != output_dir_resolved:
+        raise ValueError(
+            "routing production artifact must be in the import bundle output directory"
+        )
+    artifact = json.loads(routing_artifact_path.read_text(encoding="utf-8"))
+    if not isinstance(artifact, dict):
+        raise ValueError("routing production artifact root must be a JSON object")
+    if routing_policy == "orion":
+        if not isinstance(artifact.get("upper_graph"), dict):
+            raise ValueError("Orion routing artifact must contain upper_graph")
+    else:
+        if "upper_graph" in artifact:
+            raise ValueError("Simple KMeans routing artifact must not contain upper_graph")
+        if artifact.get("routing_distance") != "squared_l2":
+            raise ValueError(
+                "Simple KMeans routing artifact must use routing_distance=squared_l2"
+            )
+        if total_copies != len(vectors):
+            raise ValueError(
+                "Simple KMeans numeric import requires exactly one point copy per logical point"
+            )
+    artifact_sha256 = sha256_path(routing_artifact_path)
+
+    vectors_path = output_dir / f"{prefix}.f32le"
+    assignments_path = output_dir / f"{prefix}.assignments.jsonl"
+    manifest_path = output_dir / f"{prefix}.manifest.json"
+    final_paths = [vectors_path, assignments_path, manifest_path]
+    existing = [path for path in final_paths if path.exists()]
+    if existing:
+        raise FileExistsError(
+            "refusing to overwrite an existing numeric import bundle: "
+            + ", ".join(str(path) for path in existing)
+        )
+
+    vectors_tmp = vectors_path.with_name(vectors_path.name + ".tmp")
+    assignments_tmp = assignments_path.with_name(assignments_path.name + ".tmp")
+    manifest_tmp = manifest_path.with_name(manifest_path.name + ".tmp")
+    temp_paths = [vectors_tmp, assignments_tmp, manifest_tmp]
+    promoted_paths: list[Path] = []
+    for path in temp_paths:
+        path.unlink(missing_ok=True)
+
+    vectors_digest = hashlib.sha256()
+    assignments_digest = hashlib.sha256()
+    try:
+        little_endian_f32 = np.dtype("<f4")
+        with vectors_tmp.open("wb") as handle:
+            for start in range(0, int(vectors.shape[0]), row_chunk_size):
+                chunk = np.ascontiguousarray(
+                    vectors[start : start + row_chunk_size],
+                    dtype=little_endian_f32,
+                )
+                if not np.isfinite(chunk).all():
+                    raise ValueError(f"train contains a non-finite value near row {start}")
+                raw = memoryview(chunk).cast("B")
+                handle.write(raw)
+                vectors_digest.update(raw)
+
+        with assignments_tmp.open("wb") as handle:
+            for point_id, shard_ids in enumerate(normalized_assignments):
+                encoded = canonical_orion_assignment_line(point_id, shard_ids)
+                handle.write(encoded)
+                assignments_digest.update(encoded)
+
+        if str(artifact.get("layout_sha256") or "").lower() != assignments_digest.hexdigest():
+            raise ValueError(
+                "routing artifact layout_sha256 does not match the import assignments"
+            )
+        if int(artifact.get("generation") or 0) != int(routing_generation):
+            raise ValueError("routing artifact generation does not match the import bundle")
+        if int(artifact.get("shard_count") or 0) != int(num_shards):
+            raise ValueError("routing artifact shard_count does not match the import bundle")
+        if int(artifact.get("logical_point_count") or 0) != int(len(vectors)):
+            raise ValueError(
+                "routing artifact logical_point_count does not match the training set"
+            )
+        if int(artifact.get("physical_point_count") or 0) != int(total_copies):
+            raise ValueError(
+                "routing artifact physical_point_count does not match assignments"
+            )
+        artifact_schema = artifact.get("vector_schema") or {}
+        if int(artifact_schema.get("dimension") or 0) != int(vectors.shape[1]):
+            raise ValueError(
+                "routing artifact vector dimension does not match the import vectors"
+            )
+        if str(artifact_schema.get("vector_name") or "") != vector_name:
+            raise ValueError(
+                "routing artifact vector name does not match the import bundle"
+            )
+        if str(artifact_schema.get("datatype") or "").lower() != "float32":
+            raise ValueError("numeric import bundle requires a float32 routing artifact")
+
+        manifest = {
+            "format_version": 2,
+            "routing_policy": routing_policy,
+            "routing_generation": int(routing_generation),
+            "routing_artifact_file": routing_artifact_path.name,
+            "routing_artifact_sha256": artifact_sha256,
+            "dimension": int(vectors.shape[1]),
+            "point_count": int(vectors.shape[0]),
+            "shard_count": int(num_shards),
+            "vector_name": vector_name,
+            "vectors_file": vectors_path.name,
+            "vectors_sha256": vectors_digest.hexdigest(),
+            "assignments_file": assignments_path.name,
+            "assignments_sha256": assignments_digest.hexdigest(),
+            "total_point_copies": int(total_copies),
+        }
+        with manifest_tmp.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(manifest, handle, sort_keys=True, indent=2, allow_nan=False)
+            handle.write("\n")
+
+        os.replace(vectors_tmp, vectors_path)
+        promoted_paths.append(vectors_path)
+        os.replace(assignments_tmp, assignments_path)
+        promoted_paths.append(assignments_path)
+        os.replace(manifest_tmp, manifest_path)
+        promoted_paths.append(manifest_path)
+    except BaseException:
+        for path in temp_paths + promoted_paths:
+            path.unlink(missing_ok=True)
+        raise
+
+    return manifest_path
+
+
 def expansion_ratio_from_assigned_points(assigned_points: int, logical_points: int) -> float:
     if logical_points <= 0:
         raise ValueError("logical_points must be positive")
@@ -2052,6 +2631,134 @@ def create_collection(
     )
 
 
+def normalized_orion_auto_shard_policy(
+    auto_shard_policy: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Validate and canonicalize an optional REST Orion auto-shard policy."""
+    if auto_shard_policy is None:
+        return None
+    if not isinstance(auto_shard_policy, dict):
+        raise TypeError("auto_shard_policy must be a dictionary")
+    if str(auto_shard_policy.get("type") or "").lower() != "orion":
+        raise ValueError("auto_shard_policy.type must be 'orion'")
+
+    generation = auto_shard_policy.get("generation")
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+        raise ValueError("Orion auto_shard_policy generation must be a positive integer")
+    artifact_sha256 = str(auto_shard_policy.get("artifact_sha256") or "").lower()
+    if len(artifact_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in artifact_sha256
+    ):
+        raise ValueError("Orion auto_shard_policy artifact_sha256 must be 64 hexadecimal digits")
+    return {
+        "type": "orion",
+        "generation": generation,
+        "artifact_sha256": artifact_sha256,
+    }
+
+
+def normalized_auto_shard_policy(
+    auto_shard_policy: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Validate a REST native auto-shard routing policy."""
+    if auto_shard_policy is None:
+        return None
+    if not isinstance(auto_shard_policy, dict):
+        raise TypeError("auto_shard_policy must be a dictionary")
+    policy_type = str(auto_shard_policy.get("type") or "").lower()
+    if policy_type == "orion":
+        return normalized_orion_auto_shard_policy(auto_shard_policy)
+    if policy_type != "simple_kmeans":
+        raise ValueError("auto_shard_policy.type must be 'orion' or 'simple_kmeans'")
+    generation = auto_shard_policy.get("generation")
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+        raise ValueError(
+            "Simple KMeans auto_shard_policy generation must be a positive integer"
+        )
+    artifact_sha256 = str(auto_shard_policy.get("artifact_sha256") or "").lower()
+    if len(artifact_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in artifact_sha256
+    ):
+        raise ValueError(
+            "Simple KMeans auto_shard_policy artifact_sha256 must be 64 hexadecimal digits"
+        )
+    return {
+        "type": "simple_kmeans",
+        "generation": generation,
+        "artifact_sha256": artifact_sha256,
+    }
+
+
+def create_numeric_auto_shard_collection(
+    base_url: str,
+    name: str,
+    dim: int,
+    num_shards: int,
+    m: int,
+    ef_construct: int,
+    *,
+    vector_distance: str = "Cosine",
+    auto_shard_policy: dict[str, Any] | None = None,
+    replication_factor: int = 1,
+    write_consistency_factor: int = 1,
+    full_scan_threshold: int = 10,
+    indexing_threshold: int = 10,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a numeric, automatically sharded collection for native routing.
+
+    Omitting ``auto_shard_policy`` creates Qdrant's default HashAll collection.
+    Supplying an Orion policy changes only server-side automatic routing; it does
+    not switch the collection to custom shard keys.
+    """
+    positive_fields = {
+        "dim": dim,
+        "num_shards": num_shards,
+        "m": m,
+        "ef_construct": ef_construct,
+        "replication_factor": replication_factor,
+        "write_consistency_factor": write_consistency_factor,
+        "full_scan_threshold": full_scan_threshold,
+        "indexing_threshold": indexing_threshold,
+    }
+    for field_name, value in positive_fields.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"{field_name} must be a positive integer")
+    if write_consistency_factor > replication_factor:
+        raise ValueError("write_consistency_factor cannot exceed replication_factor")
+
+    policy = normalized_auto_shard_policy(auto_shard_policy)
+    if metadata is not None and not isinstance(metadata, dict):
+        raise TypeError("metadata must be a dictionary")
+    body: dict[str, Any] = {
+        "vectors": {"size": dim, "distance": vector_distance},
+        "shard_number": num_shards,
+        "sharding_method": "auto",
+        "replication_factor": replication_factor,
+        "write_consistency_factor": write_consistency_factor,
+        "hnsw_config": {
+            "m": m,
+            "ef_construct": ef_construct,
+            "full_scan_threshold": full_scan_threshold,
+            "max_indexing_threads": 0,
+        },
+        "optimizers_config": {
+            "default_segment_number": 1,
+            "indexing_threshold": indexing_threshold,
+        },
+    }
+    if policy is not None:
+        body["auto_shard_policy"] = policy
+    if metadata is not None:
+        body["metadata"] = metadata
+    return request_json(
+        base_url,
+        "PUT",
+        f"/collections/{urllib.parse.quote(name, safe='')}",
+        body=body,
+    )
+
+
 def create_shard_key(
     base_url: str,
     collection: str,
@@ -2097,6 +2804,58 @@ def upsert_points(
     )
 
 
+def upsert_numeric_auto_points(
+    base_url: str,
+    collection: str,
+    vectors: np.ndarray,
+    *,
+    vector_name: str = "",
+    batch_size: int = 512,
+    timeout: float = 600.0,
+) -> dict[str, Any]:
+    """Publicly upsert IDs ``0..N-1`` without a shard key into an auto collection."""
+    rows = np.asarray(vectors, dtype=np.float32)
+    if rows.ndim != 2 or rows.shape[0] <= 0 or rows.shape[1] <= 0:
+        raise ValueError("vectors must be a non-empty two-dimensional array")
+    if not np.isfinite(rows).all():
+        raise ValueError("vectors contain a non-finite value")
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError("batch_size must be a positive integer")
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+
+    path = f"/collections/{urllib.parse.quote(collection, safe='')}/points?wait=true"
+    batch_count = 0
+    for start in range(0, len(rows), batch_size):
+        points: list[dict[str, Any]] = []
+        for point_id in range(start, min(start + batch_size, len(rows))):
+            vector = rows[point_id].tolist()
+            points.append(
+                {
+                    "id": point_id,
+                    "vector": {vector_name: vector} if vector_name else vector,
+                }
+            )
+        request_json(
+            base_url,
+            "PUT",
+            path,
+            body={"points": points},
+            timeout=timeout,
+        )
+        batch_count += 1
+    return {
+        "point_count": int(len(rows)),
+        "batch_count": batch_count,
+        "first_id": 0,
+        "last_id": int(len(rows) - 1),
+        "vector_name": vector_name,
+        "uses_shard_key": False,
+    }
+
+
 def collection_info(base_url: str, collection: str) -> dict:
     return request_json(base_url, "GET", f"/collections/{urllib.parse.quote(collection, safe='')}")["result"]
 
@@ -2110,6 +2869,397 @@ def collection_cluster_info(base_url: str, collection: str) -> dict | None:
         )["result"]
     except RuntimeError:
         return None
+
+
+def numeric_shard_replicas(cluster_info: dict[str, Any]) -> dict[int, list[dict[str, Any]]]:
+    """Return numeric shard replicas from a collection cluster response.
+
+    Numeric auto-shards must not carry a custom shard key. Local rows sometimes
+    omit ``peer_id``, so the coordinator peer ID is used for those rows only.
+    """
+    if not isinstance(cluster_info, dict):
+        raise TypeError("cluster_info must be a dictionary")
+    controller_peer_id = cluster_info.get("peer_id")
+    if isinstance(controller_peer_id, bool) or not isinstance(controller_peer_id, int):
+        raise ValueError("collection cluster response is missing a numeric peer_id")
+
+    replicas: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    for local, rows in (
+        (True, cluster_info.get("local_shards") or []),
+        (False, cluster_info.get("remote_shards") or []),
+    ):
+        if not isinstance(rows, list):
+            raise ValueError("collection cluster shard rows must be lists")
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError(f"invalid collection cluster shard row: {row!r}")
+            if row.get("shard_key") is not None:
+                raise ValueError(
+                    "expected numeric auto-shards, found custom shard key "
+                    f"{row.get('shard_key')!r}"
+                )
+            shard_id = row.get("shard_id")
+            if isinstance(shard_id, bool) or not isinstance(shard_id, int) or shard_id < 0:
+                raise ValueError(f"invalid numeric shard_id in cluster response: {shard_id!r}")
+            peer_id = row.get("peer_id", controller_peer_id if local else None)
+            if isinstance(peer_id, bool) or not isinstance(peer_id, int):
+                raise ValueError(
+                    f"numeric shard {shard_id} is missing a numeric replica peer_id"
+                )
+            replicas[shard_id].append(
+                {
+                    "peer_id": peer_id,
+                    "state": str(row.get("state") or ""),
+                    "local": local,
+                }
+            )
+    return {shard_id: replicas[shard_id] for shard_id in sorted(replicas)}
+
+
+def numeric_shard_placement_from_cluster(
+    cluster_info: dict[str, Any],
+    *,
+    expected_shard_count: int | None = None,
+    require_active: bool = True,
+) -> dict[int, int]:
+    """Extract a strict RF=1 numeric shard-to-peer mapping."""
+    if cluster_info.get("shard_transfers"):
+        raise RuntimeError("numeric shard placement is not stable while transfers are active")
+    replicas = numeric_shard_replicas(cluster_info)
+    if expected_shard_count is not None:
+        if expected_shard_count <= 0:
+            raise ValueError("expected_shard_count must be positive")
+        advertised_count = cluster_info.get("shard_count")
+        if advertised_count != expected_shard_count:
+            raise RuntimeError(
+                f"collection reports {advertised_count!r} shards, expected {expected_shard_count}"
+            )
+        expected_ids = set(range(expected_shard_count))
+        if set(replicas) != expected_ids:
+            raise RuntimeError(
+                "numeric shard IDs do not match the expected contiguous range: "
+                f"expected={sorted(expected_ids)}, actual={sorted(replicas)}"
+            )
+
+    placement: dict[int, int] = {}
+    for shard_id, shard_replicas in replicas.items():
+        if len(shard_replicas) != 1:
+            raise RuntimeError(
+                f"numeric shard {shard_id} has {len(shard_replicas)} replicas; RF=1 is required"
+            )
+        replica = shard_replicas[0]
+        if require_active and replica["state"] != "Active":
+            raise RuntimeError(
+                f"numeric shard {shard_id} replica is {replica['state']!r}, expected 'Active'"
+            )
+        placement[shard_id] = int(replica["peer_id"])
+    return placement
+
+
+def discover_numeric_shard_placement(
+    base_url: str,
+    collection: str,
+    *,
+    expected_shard_count: int | None = None,
+) -> dict[int, int]:
+    cluster_info = collection_cluster_info(base_url, collection)
+    if cluster_info is None:
+        raise RuntimeError(f"could not read cluster placement for collection {collection!r}")
+    return numeric_shard_placement_from_cluster(
+        cluster_info,
+        expected_shard_count=expected_shard_count,
+    )
+
+
+def round_robin_numeric_shard_targets(
+    shard_ids: list[int] | set[int] | tuple[int, ...],
+    worker_peer_ids: list[int] | tuple[int, ...],
+) -> dict[int, int]:
+    normalized_workers: list[int] = []
+    for peer_id in worker_peer_ids:
+        if isinstance(peer_id, bool) or not isinstance(peer_id, int) or peer_id < 0:
+            raise ValueError(f"worker peer IDs must be non-negative integers, got {peer_id!r}")
+        normalized_workers.append(peer_id)
+    if not normalized_workers:
+        raise ValueError("at least one worker peer ID is required")
+    if len(set(normalized_workers)) != len(normalized_workers):
+        raise ValueError("worker peer IDs must be unique")
+
+    normalized_shards = sorted(shard_ids)
+    if any(
+        isinstance(shard_id, bool) or not isinstance(shard_id, int) or shard_id < 0
+        for shard_id in normalized_shards
+    ):
+        raise ValueError("numeric shard IDs must be non-negative integers")
+    if len(set(normalized_shards)) != len(normalized_shards):
+        raise ValueError("numeric shard IDs must be unique")
+    return {
+        shard_id: normalized_workers[index % len(normalized_workers)]
+        for index, shard_id in enumerate(normalized_shards)
+    }
+
+
+def _validate_numeric_auto_rf1_config(
+    info: dict[str, Any],
+    expected_shard_count: int,
+) -> None:
+    config = info.get("config") or {}
+    params = config.get("params") or {}
+    errors: list[str] = []
+    if str(params.get("sharding_method") or "auto").lower() != "auto":
+        errors.append("collection is not using sharding_method=auto")
+    if params.get("shard_number") != expected_shard_count:
+        errors.append(
+            f"collection shard_number={params.get('shard_number')!r}, "
+            f"expected {expected_shard_count}"
+        )
+    if params.get("replication_factor") != 1:
+        errors.append(
+            f"collection replication_factor={params.get('replication_factor')!r}, expected 1"
+        )
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def validate_numeric_shard_round_robin_placement(
+    info: dict[str, Any],
+    cluster_info: dict[str, Any],
+    worker_peer_ids: list[int] | tuple[int, ...],
+    expected_shard_count: int,
+) -> dict[str, Any]:
+    """Strictly validate the final native RF=1 worker-only placement."""
+    _validate_numeric_auto_rf1_config(info, expected_shard_count)
+    controller_peer_id = cluster_info.get("peer_id")
+    workers = list(worker_peer_ids)
+    if controller_peer_id in workers:
+        raise RuntimeError("worker peer IDs must not include the coordinator/controller peer")
+    placement = numeric_shard_placement_from_cluster(
+        cluster_info,
+        expected_shard_count=expected_shard_count,
+    )
+    expected = round_robin_numeric_shard_targets(list(placement), workers)
+    mismatches = {
+        shard_id: {"actual": placement[shard_id], "expected": expected[shard_id]}
+        for shard_id in sorted(placement)
+        if placement[shard_id] != expected[shard_id]
+    }
+    if mismatches:
+        raise RuntimeError(f"numeric shard round-robin placement mismatch: {mismatches}")
+
+    counts = Counter(placement.values())
+    unexpected_peers = sorted(set(counts) - set(workers))
+    if unexpected_peers:
+        raise RuntimeError(f"numeric shards are placed on unexpected peers: {unexpected_peers}")
+    counts_by_worker = {peer_id: int(counts.get(peer_id, 0)) for peer_id in workers}
+    if max(counts_by_worker.values()) - min(counts_by_worker.values()) > 1:
+        raise RuntimeError(f"numeric shard placement is imbalanced: {counts_by_worker}")
+    if controller_peer_id in counts:
+        raise RuntimeError("controller still owns one or more lower numeric shards")
+    return {
+        "valid": True,
+        "controller_peer_id": controller_peer_id,
+        "shard_count": expected_shard_count,
+        "replication_factor": 1,
+        "placement": placement,
+        "expected_placement": expected,
+        "shards_per_worker": counts_by_worker,
+        "shard_transfers": [],
+    }
+
+
+def wait_for_numeric_shard_cluster_idle(
+    base_url: str,
+    collection: str,
+    *,
+    expected_shard_count: int,
+    timeout_sec: float = 3600.0,
+    poll_interval_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Wait until an RF=1 numeric collection has no transfers and all replicas are Active."""
+    if timeout_sec <= 0:
+        raise ValueError("timeout_sec must be positive")
+    if poll_interval_sec < 0:
+        raise ValueError("poll_interval_sec must be non-negative")
+    deadline = time.perf_counter() + timeout_sec
+    last_cluster: dict[str, Any] | None = None
+    while time.perf_counter() < deadline:
+        last_cluster = collection_cluster_info(base_url, collection)
+        if last_cluster is None:
+            raise RuntimeError(f"could not read cluster placement for collection {collection!r}")
+        if not (last_cluster.get("shard_transfers") or []):
+            placement = numeric_shard_placement_from_cluster(
+                last_cluster,
+                expected_shard_count=expected_shard_count,
+                require_active=False,
+            )
+            replicas = numeric_shard_replicas(last_cluster)
+            if len(placement) == expected_shard_count and all(
+                shard_replicas[0]["state"] == "Active"
+                for shard_replicas in replicas.values()
+            ):
+                return last_cluster
+        if poll_interval_sec:
+            time.sleep(poll_interval_sec)
+    raise TimeoutError(
+        f"timed out waiting for numeric shard transfers to finish for {collection!r}; "
+        f"last_cluster={last_cluster}"
+    )
+
+
+def _wait_for_numeric_shard_owner(
+    base_url: str,
+    collection: str,
+    shard_id: int,
+    from_peer_id: int,
+    to_peer_id: int,
+    *,
+    expected_shard_count: int,
+    timeout_sec: float,
+    poll_interval_sec: float,
+) -> dict[str, Any]:
+    deadline = time.perf_counter() + timeout_sec
+    last_cluster: dict[str, Any] | None = None
+    while time.perf_counter() < deadline:
+        last_cluster = collection_cluster_info(base_url, collection)
+        if last_cluster is None:
+            raise RuntimeError(f"could not read cluster placement for collection {collection!r}")
+        transfers = last_cluster.get("shard_transfers") or []
+        if not transfers:
+            placement = numeric_shard_placement_from_cluster(
+                last_cluster,
+                expected_shard_count=expected_shard_count,
+                require_active=False,
+            )
+            replicas = numeric_shard_replicas(last_cluster)
+            current_peer = placement.get(shard_id)
+            current_state = replicas[shard_id][0]["state"]
+            if current_peer == to_peer_id:
+                if current_state == "Active":
+                    return last_cluster
+            elif current_peer not in {None, from_peer_id}:
+                raise RuntimeError(
+                    f"numeric shard {shard_id} moved to unexpected peer {current_peer}; "
+                    f"expected {to_peer_id}"
+                )
+        if poll_interval_sec:
+            time.sleep(poll_interval_sec)
+    raise TimeoutError(
+        f"timed out moving numeric shard {shard_id} from peer {from_peer_id} "
+        f"to peer {to_peer_id}; last_cluster={last_cluster}"
+    )
+
+
+def move_numeric_shards_round_robin(
+    base_url: str,
+    collection: str,
+    worker_peer_ids: list[int] | tuple[int, ...],
+    *,
+    expected_shard_count: int,
+    transfer_method: str = "stream_records",
+    timeout_sec: float = 3600.0,
+    poll_interval_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Idempotently move native numeric shards to an exact worker round-robin layout."""
+    if expected_shard_count <= 0:
+        raise ValueError("expected_shard_count must be positive")
+    if timeout_sec <= 0:
+        raise ValueError("timeout_sec must be positive")
+    if poll_interval_sec < 0:
+        raise ValueError("poll_interval_sec must be non-negative")
+    if not isinstance(transfer_method, str) or not transfer_method:
+        raise ValueError("transfer_method must be a non-empty string")
+
+    info = collection_info(base_url, collection)
+    _validate_numeric_auto_rf1_config(info, expected_shard_count)
+    current_peer_id, peer_uris, _cluster = cluster_peer_map(base_url)
+    if current_peer_id is None:
+        raise RuntimeError("controller endpoint did not report its peer ID")
+    workers = list(worker_peer_ids)
+    round_robin_numeric_shard_targets([], workers)
+    if current_peer_id in workers:
+        raise RuntimeError("worker peer IDs must not include the coordinator/controller peer")
+    known_peer_ids = set(peer_uris)
+    known_peer_ids.add(current_peer_id)
+    unknown_workers = sorted(set(workers) - known_peer_ids)
+    if unknown_workers:
+        raise RuntimeError(f"worker peer IDs are not cluster members: {unknown_workers}")
+
+    deadline = time.perf_counter() + timeout_sec
+
+    def remaining_timeout() -> float:
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"timed out placing numeric shards for collection {collection!r}"
+            )
+        return remaining
+
+    idle_cluster = wait_for_numeric_shard_cluster_idle(
+        base_url,
+        collection,
+        expected_shard_count=expected_shard_count,
+        timeout_sec=remaining_timeout(),
+        poll_interval_sec=poll_interval_sec,
+    )
+    placement = numeric_shard_placement_from_cluster(
+        idle_cluster,
+        expected_shard_count=expected_shard_count,
+    )
+    targets = round_robin_numeric_shard_targets(list(placement), workers)
+    moves: list[dict[str, Any]] = []
+    cluster_path = f"/collections/{urllib.parse.quote(collection, safe='')}/cluster"
+    for shard_id in sorted(targets):
+        idle_cluster = wait_for_numeric_shard_cluster_idle(
+            base_url,
+            collection,
+            expected_shard_count=expected_shard_count,
+            timeout_sec=remaining_timeout(),
+            poll_interval_sec=poll_interval_sec,
+        )
+        placement = numeric_shard_placement_from_cluster(
+            idle_cluster,
+            expected_shard_count=expected_shard_count,
+        )
+        from_peer_id = placement[shard_id]
+        to_peer_id = targets[shard_id]
+        if from_peer_id == to_peer_id:
+            continue
+        body = {
+            "move_shard": {
+                "shard_id": shard_id,
+                "from_peer_id": from_peer_id,
+                "to_peer_id": to_peer_id,
+                "method": transfer_method,
+            }
+        }
+        request_json(base_url, "POST", cluster_path, body=body, timeout=remaining_timeout())
+        _wait_for_numeric_shard_owner(
+            base_url,
+            collection,
+            shard_id,
+            from_peer_id,
+            to_peer_id,
+            expected_shard_count=expected_shard_count,
+            timeout_sec=remaining_timeout(),
+            poll_interval_sec=poll_interval_sec,
+        )
+        moves.append(body["move_shard"])
+
+    final_info = collection_info(base_url, collection)
+    final_cluster = wait_for_numeric_shard_cluster_idle(
+        base_url,
+        collection,
+        expected_shard_count=expected_shard_count,
+        timeout_sec=remaining_timeout(),
+        poll_interval_sec=poll_interval_sec,
+    )
+    audit = validate_numeric_shard_round_robin_placement(
+        final_info,
+        final_cluster,
+        workers,
+        expected_shard_count,
+    )
+    return {**audit, "moves": moves, "transfer_method": transfer_method}
 
 
 def collection_shard_key_to_peer(base_url: str, collection: str) -> dict[str, int]:
@@ -2680,6 +3830,191 @@ def search_batch(
             row.append((float(item["score"]), point_id))
         rows.append(row)
     return rows
+
+
+def standard_dense_vector_request(
+    query: list[float],
+    top_k: int,
+    *,
+    api: str,
+    vector_name: str = "",
+    hnsw_ef: int | None = None,
+) -> dict[str, Any]:
+    """Build a normal client request with no Orion/custom-shard routing hints."""
+    if api not in {"search", "query"}:
+        raise ValueError("api must be 'search' or 'query'")
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive integer")
+    if hnsw_ef is not None and (
+        isinstance(hnsw_ef, bool) or not isinstance(hnsw_ef, int) or hnsw_ef <= 0
+    ):
+        raise ValueError("hnsw_ef must be a positive integer when provided")
+    vector = [float(value) for value in query]
+    if not vector or not all(np.isfinite(value) for value in vector):
+        raise ValueError("query must be a non-empty finite dense vector")
+    request: dict[str, Any] = {
+        "limit": top_k,
+        "with_payload": False,
+        "with_vector": False,
+    }
+    if hnsw_ef is not None:
+        # A single standard query-level EF is part of Qdrant's public API and is
+        # useful for the HashAll baseline. Native Orion callers leave it unset so
+        # the server-side artifact remains the sole source of per-shard Dynamic EF.
+        request["params"] = {"hnsw_ef": hnsw_ef}
+    if api == "search":
+        request["vector"] = (
+            {"name": vector_name, "vector": vector} if vector_name else vector
+        )
+    else:
+        request["query"] = vector
+        if vector_name:
+            request["using"] = vector_name
+    return request
+
+
+def standard_dense_vector_batch(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray | list[list[float]],
+    top_k: int,
+    *,
+    api: str = "search",
+    vector_name: str = "",
+    hnsw_ef: int | None = None,
+    timeout: float = 600.0,
+) -> list[list[tuple[float, int]]]:
+    """Execute a standard Search or Query batch against the coordinator.
+
+    The request deliberately omits shard selectors, custom entry points,
+    per-shard EF maps, source-ID payloads, and source-ID dedup hints. Thus an
+    Orion collection exercises only its native server-side routing path.
+    """
+    if api not in {"search", "query"}:
+        raise ValueError("api must be 'search' or 'query'")
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    query_rows = np.asarray(queries)
+    if query_rows.ndim != 2:
+        raise ValueError("queries must be a two-dimensional dense array")
+    searches = [
+        standard_dense_vector_request(
+            row.tolist(),
+            top_k,
+            api=api,
+            vector_name=vector_name,
+            hnsw_ef=hnsw_ef,
+        )
+        for row in query_rows
+    ]
+    endpoint = "search" if api == "search" else "query"
+    payload = request_json(
+        base_url,
+        "POST",
+        f"/collections/{urllib.parse.quote(collection, safe='')}/points/{endpoint}/batch",
+        body={"searches": searches},
+        timeout=timeout,
+    )
+    raw_results = payload.get("result")
+    if not isinstance(raw_results, list) or len(raw_results) != len(searches):
+        raise RuntimeError(
+            f"standard {api} batch returned {len(raw_results) if isinstance(raw_results, list) else 'invalid'} "
+            f"rows for {len(searches)} requests"
+        )
+
+    rows: list[list[tuple[float, int]]] = []
+    for raw_row in raw_results:
+        points = raw_row if api == "search" else (raw_row or {}).get("points")
+        if not isinstance(points, list):
+            raise RuntimeError(f"standard {api} batch returned an invalid result row: {raw_row!r}")
+        row: list[tuple[float, int]] = []
+        for point in points:
+            point_id = point.get("id") if isinstance(point, dict) else None
+            if isinstance(point_id, bool) or not isinstance(point_id, int):
+                raise RuntimeError(
+                    "native numeric-shard evaluation requires integer external point IDs; "
+                    f"got {point_id!r}"
+                )
+            row.append((float(point["score"]), point_id))
+        rows.append(row)
+    return rows
+
+
+def evaluate_standard_dense_vector_batches(
+    base_url: str,
+    collection: str,
+    queries: np.ndarray,
+    neighbors: np.ndarray,
+    top_k: int,
+    batch_size: int,
+    *,
+    api: str = "search",
+    vector_name: str = "",
+    hnsw_ef: int | None = None,
+    timeout: float = 600.0,
+    include_per_query_metrics: bool = False,
+) -> dict[str, Any]:
+    """Measure recall/QPS using only standard coordinator Search/Query batches."""
+    if api not in {"search", "query"}:
+        raise ValueError("api must be 'search' or 'query'")
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    query_rows = np.asarray(queries)
+    neighbor_rows = np.asarray(neighbors)
+    if query_rows.ndim != 2:
+        raise ValueError("queries must be a two-dimensional dense array")
+    if neighbor_rows.ndim != 2 or len(neighbor_rows) != len(query_rows):
+        raise ValueError("neighbors must be a two-dimensional array aligned with queries")
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError("batch_size must be a positive integer")
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive integer")
+    if neighbor_rows.shape[1] < top_k:
+        raise ValueError("top_k must be positive and covered by every ground-truth row")
+
+    all_top_ids: list[list[int]] = []
+    batch_latencies_ms: list[float] = []
+    started = time.perf_counter()
+    for start_idx in range(0, len(query_rows), batch_size):
+        end_idx = min(start_idx + batch_size, len(query_rows))
+        batch_started = time.perf_counter()
+        result_rows = standard_dense_vector_batch(
+            base_url,
+            collection,
+            query_rows[start_idx:end_idx],
+            top_k,
+            api=api,
+            vector_name=vector_name,
+            hnsw_ef=hnsw_ef,
+            timeout=timeout,
+        )
+        batch_latencies_ms.append((time.perf_counter() - batch_started) * 1000.0)
+        all_top_ids.extend(
+            [point_id for _score, point_id in result_row[:top_k]]
+            for result_row in result_rows
+        )
+    wall_s = time.perf_counter() - started
+    recall_rows = per_query_recall_rows(all_top_ids, neighbor_rows, top_k)
+    hits = sum(int(row["hits_at_k"]) for row in recall_rows)
+    query_count = len(query_rows)
+    result: dict[str, Any] = {
+        "api": api,
+        "hits": hits,
+        "query_count": query_count,
+        "recall_at_k": float(hits / (query_count * top_k)) if query_count else 0.0,
+        "qps": float(query_count / wall_s) if wall_s > 0 else 0.0,
+        "wall_s": wall_s,
+        "search_batch_calls": len(batch_latencies_ms),
+        "search_request_count": query_count,
+        "avg_search_requests_per_query": 1.0 if query_count else 0.0,
+        "avg_returned_candidates_per_query": (
+            float(sum(len(row) for row in all_top_ids) / query_count) if query_count else 0.0
+        ),
+        **latency_percentile_fields(batch_latencies_ms),
+    }
+    if include_per_query_metrics:
+        result["per_query_rows"] = recall_rows
+    return result
 
 
 def restrict_search_to_shard_keys(

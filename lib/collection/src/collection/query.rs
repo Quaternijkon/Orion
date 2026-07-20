@@ -8,7 +8,7 @@ use itertools::{Either, Itertools};
 use rand::RngExt;
 use segment::common::reciprocal_rank_fusion::rrf_scoring;
 use segment::common::score_fusion::{ScoreFusion, score_fusion};
-use segment::data_types::vectors::VectorStructInternal;
+use segment::data_types::vectors::{Named, VectorInternal, VectorStructInternal};
 use segment::types::{Order, ScoredPoint, WithPayloadInterface, WithVector};
 use segment::utils::scored_point_ties::ScoredPointTies;
 use tokio::time::Instant;
@@ -22,6 +22,7 @@ use crate::common::fetch_vectors::{
 };
 use crate::common::retrieve_request_trait::RetrieveRequest;
 use crate::common::transpose_iterator::transposed_iter;
+use crate::config::AutoShardPolicy;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::{CollectionError, CollectionResult};
@@ -29,6 +30,8 @@ use crate::operations::universal_query::collection_query::CollectionQueryRequest
 use crate::operations::universal_query::shard_query::{
     self, FusionInternal, MmrInternal, ScoringQuery, ShardQueryRequest, ShardQueryResponse,
 };
+use shard::query::query_enum::QueryEnum;
+use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
 
 /// A factor which determines if we need to use the 2-step search or not.
 /// Should be adjusted based on usage statistics.
@@ -38,6 +41,81 @@ struct IntermediateQueryInfo<'a> {
     scoring_query: Option<&'a ScoringQuery>,
     /// Limit + offset
     take: usize,
+}
+
+fn orion_core_search_batch_from_query_requests(
+    requests: &[ShardQueryRequest],
+    routing_vector_name: &str,
+) -> Option<CoreSearchRequestBatch> {
+    let searches = requests
+        .iter()
+        .map(|request| {
+            if !request.prefetches.is_empty()
+                || request.filter.is_some()
+                || request.params.as_ref().is_some_and(|params| params.exact)
+            {
+                return None;
+            }
+
+            let Some(ScoringQuery::Vector(QueryEnum::Nearest(named_query))) = &request.query else {
+                return None;
+            };
+            if named_query.get_name() != routing_vector_name
+                || !matches!(&named_query.query, VectorInternal::Dense(_))
+            {
+                return None;
+            }
+
+            Some(CoreSearchRequest {
+                query: QueryEnum::Nearest(named_query.clone()),
+                filter: None,
+                params: request.params,
+                hnsw_entry_points: None,
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+                source_id_dedup_block_size: None,
+                limit: request.limit,
+                offset: request.offset,
+                with_payload: Some(request.with_payload.clone()),
+                with_vector: Some(request.with_vector.clone()),
+                score_threshold: request.score_threshold.map(|score| score.into_inner()),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(CoreSearchRequestBatch { searches })
+}
+
+fn auto_shard_policy_allows_query_undersampling(
+    auto_shard_policy: Option<&AutoShardPolicy>,
+) -> bool {
+    AutoShardPolicy::canonical_ref(auto_shard_policy).is_none()
+}
+
+fn merge_ordered_shard_results(
+    shards_results: Vec<Vec<ScoredPoint>>,
+    order: Order,
+    take: usize,
+    deduplicate_by_external_id: bool,
+) -> Vec<ScoredPoint> {
+    let merged = match order {
+        Order::LargeBetter => Either::Left(
+            shards_results
+                .into_iter()
+                .kmerge_by(|a, b| ScoredPointTies(a) > ScoredPointTies(b)),
+        ),
+        Order::SmallBetter => Either::Right(
+            shards_results
+                .into_iter()
+                .kmerge_by(|a, b| ScoredPointTies(a) < ScoredPointTies(b)),
+        ),
+    };
+
+    if deduplicate_by_external_id {
+        merged.unique_by(|point| point.id).take(take).collect()
+    } else {
+        merged.dedup().take(take).collect()
+    }
 }
 
 impl Collection {
@@ -164,11 +242,21 @@ impl Collection {
         // It either might be when we are querying a specific shard key
         // OR when we are querying all shards with no shard keys specified.
         let is_auto_sharding = num_unique_shard_keys == 1;
+        // Collection-level undersampling assumes point-ID hash sharding produces independent,
+        // random shard samples. Orion's vector-local placement does not satisfy that assumption,
+        // including when an ineligible Orion query safely falls back to all shards.
+        let is_hash_all_policy = auto_shard_policy_allows_query_undersampling(
+            self.collection_config
+                .read()
+                .await
+                .auto_shard_policy
+                .as_ref(),
+        );
 
         let batch_request = Self::modify_shard_query_for_undersampling_limits(
             batch_request,
             target_shards.len(),
-            is_auto_sharding,
+            is_auto_sharding && is_hash_all_policy,
         );
 
         let all_searches = target_shards.iter().map(|(shard, shard_key)| {
@@ -300,6 +388,31 @@ impl Collection {
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let instant = Instant::now();
+        self.ensure_static_router_available(shard_selection).await?;
+
+        if matches!(shard_selection, ShardSelectorInternal::All)
+            && let Some(routing_vector_name) = self
+                .orion_router
+                .as_ref()
+                .map(|router| router.vector_name())
+                .or_else(|| {
+                    self.simple_kmeans_router
+                        .as_ref()
+                        .map(|router| router.vector_name())
+                })
+            && let Some(core_batch) =
+                orion_core_search_batch_from_query_requests(&requests_batch, routing_vector_name)
+        {
+            return self
+                .core_search_batch(
+                    core_batch,
+                    read_consistency,
+                    shard_selection.clone(),
+                    timeout,
+                    hw_measurement_acc,
+                )
+                .await;
+        }
 
         let requests_batch = Arc::new(requests_batch);
 
@@ -627,7 +740,13 @@ impl Collection {
                 .all(|shard_results| shard_results.len() == results_len)
         );
 
-        let collection_params = self.collection_config.read().await.params.clone();
+        let (collection_params, deduplicate_by_external_id) = {
+            let config = self.collection_config.read().await;
+            (
+                config.params.clone(),
+                AutoShardPolicy::canonical_ref(config.auto_shard_policy.as_ref()).is_some(),
+            )
+        };
 
         // Shape: [num_internal_queries, num_shards, num_scored_points]
         let all_shards_result_by_transposed = transposed_iter(all_shards_results);
@@ -655,21 +774,12 @@ impl Collection {
             let intermediate_result = if let Some(order) = order {
                 let best_last_result = Self::get_best_last_shard_result(&shards_results, order);
 
-                let merged: Vec<_> = match order {
-                    Order::LargeBetter => Either::Left(
-                        shards_results
-                            .into_iter()
-                            .kmerge_by(|a, b| ScoredPointTies(a) > ScoredPointTies(b)),
-                    ),
-                    Order::SmallBetter => Either::Right(
-                        shards_results
-                            .into_iter()
-                            .kmerge_by(|a, b| ScoredPointTies(a) < ScoredPointTies(b)),
-                    ),
-                }
-                .dedup()
-                .take(query_info.take)
-                .collect();
+                let merged = merge_ordered_shard_results(
+                    shards_results,
+                    order,
+                    query_info.take,
+                    deduplicate_by_external_id,
+                );
 
                 // Prevents undersampling warning in case there are not enough data to merge.
                 let is_enough = merged.len() == query_info.take;
@@ -744,5 +854,100 @@ fn intermediate_query_infos(request: &ShardQueryRequest) -> Vec<IntermediateQuer
                 take: request.offset + request.limit,
             }]
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scored_point(id: u64, score: f32) -> ScoredPoint {
+        ScoredPoint {
+            id: id.into(),
+            version: 0,
+            score,
+            payload: None,
+            vector: None,
+            shard_key: None,
+            order_value: None,
+        }
+    }
+
+    fn high_limit_query() -> ShardQueryRequest {
+        ShardQueryRequest {
+            prefetches: vec![],
+            query: None,
+            filter: None,
+            score_threshold: None,
+            limit: Collection::SHARD_QUERY_SUBSAMPLING_LIMIT,
+            offset: 32,
+            params: None,
+            with_vector: WithVector::Bool(false),
+            with_payload: WithPayloadInterface::Bool(false),
+        }
+    }
+
+    fn apply_policy_gated_undersampling(
+        policy: Option<&AutoShardPolicy>,
+    ) -> Arc<Vec<ShardQueryRequest>> {
+        Collection::modify_shard_query_for_undersampling_limits(
+            Arc::new(vec![high_limit_query()]),
+            4,
+            auto_shard_policy_allows_query_undersampling(policy),
+        )
+    }
+
+    #[test]
+    fn hash_all_policy_keeps_collection_level_query_undersampling() {
+        for policy in [None, Some(&AutoShardPolicy::HashAll)] {
+            let request = apply_policy_gated_undersampling(policy);
+            assert_eq!(request[0].offset, 0);
+            assert!(
+                request[0].limit < high_limit_query().limit + high_limit_query().offset,
+                "HashAll must retain Qdrant's collection-level shard undersampling",
+            );
+        }
+    }
+
+    #[test]
+    fn orion_policy_disables_collection_level_query_undersampling_on_fallback() {
+        let policy = AutoShardPolicy::Orion {
+            generation: 7,
+            artifact_sha256: "0".repeat(64),
+        };
+        let request = apply_policy_gated_undersampling(Some(&policy));
+
+        assert_eq!(request[0].limit, high_limit_query().limit);
+        assert_eq!(request[0].offset, high_limit_query().offset);
+
+        let policy = AutoShardPolicy::SimpleKmeans {
+            generation: 8,
+            artifact_sha256: "0".repeat(64),
+        };
+        let request = apply_policy_gated_undersampling(Some(&policy));
+        assert_eq!(request[0].limit, high_limit_query().limit);
+        assert_eq!(request[0].offset, high_limit_query().offset);
+    }
+
+    #[test]
+    fn orion_fallback_deduplicates_external_ids_even_when_copy_scores_differ() {
+        let shards_results = vec![
+            vec![scored_point(1, 0.9), scored_point(2, 0.7)],
+            vec![scored_point(1, 0.8), scored_point(3, 0.6)],
+        ];
+
+        let legacy =
+            merge_ordered_shard_results(shards_results.clone(), Order::LargeBetter, 2, false);
+        assert_eq!(
+            legacy.iter().map(|point| point.id).collect::<Vec<_>>(),
+            vec![1_u64.into(), 1_u64.into()],
+        );
+
+        let orion = merge_ordered_shard_results(shards_results, Order::LargeBetter, 2, true);
+        assert_eq!(
+            orion.iter().map(|point| point.id).collect::<Vec<_>>(),
+            vec![1_u64.into(), 2_u64.into()],
+        );
+        assert_eq!(orion[0].score, 0.9);
     }
 }

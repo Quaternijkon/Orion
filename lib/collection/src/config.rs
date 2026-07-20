@@ -18,7 +18,7 @@ use segment::types::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError, ValidationErrors};
 use wal::WalOptions;
 
 use crate::operations::config_diff::{DiffConfig, QuantizationConfigDiff};
@@ -82,6 +82,100 @@ pub enum ShardingMethod {
     #[default]
     Auto,
     Custom,
+}
+
+/// Automatic point partitioning and vector-query routing policy.
+///
+/// This policy is intentionally separate from [`ShardingMethod`]. `Auto` and
+/// `Custom` define whether Qdrant or the client owns logical shard management;
+/// Orion remains an automatically managed, numeric-shard layout.
+#[derive(
+    Debug, Deserialize, Serialize, JsonSchema, Anonymize, PartialEq, Eq, Hash, Clone, Default,
+)]
+#[anonymize(false)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AutoShardPolicy {
+    /// Existing Qdrant behavior: point-ID hash-ring writes and all-shard vector reads.
+    #[default]
+    HashAll,
+    /// Server-side Orion routing backed by a versioned collection artifact.
+    Orion {
+        /// Active routing generation. Generation zero is reserved for an uninitialized router.
+        generation: u64,
+        /// SHA-256 digest of the serialized routing artifact.
+        artifact_sha256: String,
+    },
+    /// Server-side static Simple KMeans nprobe routing backed by a versioned artifact.
+    SimpleKmeans {
+        /// Active routing generation. Generation zero is reserved for an uninitialized router.
+        generation: u64,
+        /// SHA-256 digest of the serialized routing artifact.
+        artifact_sha256: String,
+    },
+}
+
+impl Validate for AutoShardPolicy {
+    fn validate(&self) -> Result<(), ValidationErrors> {
+        let (generation, artifact_sha256) = match self {
+            Self::HashAll => return Ok(()),
+            Self::Orion {
+                generation,
+                artifact_sha256,
+            }
+            | Self::SimpleKmeans {
+                generation,
+                artifact_sha256,
+            } => (generation, artifact_sha256),
+        };
+
+        let mut errors = ValidationErrors::new();
+        if *generation == 0 {
+            errors.add("generation", ValidationError::new("range"));
+        }
+        if artifact_sha256.len() != 64
+            || !artifact_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            errors.add("artifact_sha256", ValidationError::new("sha256"));
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+impl AutoShardPolicy {
+    /// Convert the optional API representation into the canonical persisted representation.
+    /// Missing and explicit `HashAll` policies both mean legacy Qdrant behavior.
+    pub fn canonicalize(policy: Option<Self>) -> Option<Self> {
+        policy.filter(|policy| !matches!(policy, Self::HashAll))
+    }
+
+    /// Borrow the effective non-default policy for compatibility comparisons.
+    pub fn canonical_ref(policy: Option<&Self>) -> Option<&Self> {
+        policy.filter(|policy| !matches!(policy, Self::HashAll))
+    }
+
+    pub fn is_orion(&self) -> bool {
+        matches!(self, Self::Orion { .. })
+    }
+
+    pub fn is_static_routing(&self) -> bool {
+        matches!(self, Self::Orion { .. } | Self::SimpleKmeans { .. })
+    }
+
+    pub fn orion_artifact(&self) -> Option<(u64, &str)> {
+        match self {
+            Self::HashAll => None,
+            Self::Orion {
+                generation,
+                artifact_sha256,
+            } => Some((*generation, artifact_sha256)),
+            Self::SimpleKmeans { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, Validate, Anonymize, Clone, PartialEq, Eq)]
@@ -245,6 +339,110 @@ impl CollectionParams {
     }
 }
 
+#[cfg(test)]
+mod auto_shard_policy_tests {
+    use serde_json::json;
+    use validator::Validate;
+
+    use super::{AutoShardPolicy, CollectionConfigInternal};
+    use crate::tests::fixtures::create_collection_config;
+
+    const VALID_SHA256: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn old_collection_config_without_auto_shard_policy_defaults_to_hash_all() {
+        let config = create_collection_config();
+        let mut json = serde_json::to_value(config).unwrap();
+        let object = json.as_object_mut().unwrap();
+        assert!(object.remove("auto_shard_policy").is_none());
+
+        let decoded: CollectionConfigInternal = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.auto_shard_policy, None);
+        assert_eq!(
+            AutoShardPolicy::canonical_ref(decoded.auto_shard_policy.as_ref()),
+            AutoShardPolicy::canonical_ref(Some(&AutoShardPolicy::HashAll)),
+        );
+    }
+
+    #[test]
+    fn auto_shard_policy_json_and_collection_config_roundtrip() {
+        let policies = [
+            AutoShardPolicy::HashAll,
+            AutoShardPolicy::Orion {
+                generation: 7,
+                artifact_sha256: VALID_SHA256.to_string(),
+            },
+            AutoShardPolicy::SimpleKmeans {
+                generation: 9,
+                artifact_sha256: VALID_SHA256.to_string(),
+            },
+        ];
+
+        for policy in policies {
+            assert!(policy.validate().is_ok());
+
+            let encoded_policy = serde_json::to_value(&policy).unwrap();
+            let decoded_policy: AutoShardPolicy =
+                serde_json::from_value(encoded_policy.clone()).unwrap();
+            assert_eq!(decoded_policy, policy);
+
+            let mut config = create_collection_config();
+            config.auto_shard_policy = Some(policy.clone());
+            let encoded_config = serde_json::to_vec(&config).unwrap();
+            let decoded_config: CollectionConfigInternal =
+                serde_json::from_slice(&encoded_config).unwrap();
+            assert_eq!(decoded_config, config);
+
+            match policy {
+                AutoShardPolicy::HashAll => {
+                    assert_eq!(encoded_policy, json!({ "type": "hash_all" }));
+                    assert_eq!(
+                        AutoShardPolicy::canonicalize(Some(AutoShardPolicy::HashAll)),
+                        None,
+                    );
+                }
+                AutoShardPolicy::Orion { .. } => {
+                    assert_eq!(encoded_policy["type"], "orion");
+                    assert_eq!(encoded_policy["generation"], 7);
+                    assert_eq!(encoded_policy["artifact_sha256"], VALID_SHA256);
+                }
+                AutoShardPolicy::SimpleKmeans { .. } => {
+                    assert_eq!(encoded_policy["type"], "simple_kmeans");
+                    assert_eq!(encoded_policy["generation"], 9);
+                    assert_eq!(encoded_policy["artifact_sha256"], VALID_SHA256);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn auto_shard_policy_rejects_invalid_orion_generation_and_digest() {
+        let generation_zero = AutoShardPolicy::Orion {
+            generation: 0,
+            artifact_sha256: VALID_SHA256.to_string(),
+        };
+        assert!(generation_zero.validate().is_err());
+
+        let short_digest = AutoShardPolicy::Orion {
+            generation: 1,
+            artifact_sha256: "abc".to_string(),
+        };
+        assert!(short_digest.validate().is_err());
+
+        let non_hex_digest = AutoShardPolicy::Orion {
+            generation: 1,
+            artifact_sha256: "g".repeat(64),
+        };
+        assert!(non_hex_digest.validate().is_err());
+
+        let invalid_simple_kmeans = AutoShardPolicy::SimpleKmeans {
+            generation: 0,
+            artifact_sha256: "abc".to_string(),
+        };
+        assert!(invalid_simple_kmeans.validate().is_err());
+    }
+}
+
 pub fn default_shard_number() -> NonZeroU32 {
     NonZeroU32::new(1).unwrap()
 }
@@ -284,6 +482,10 @@ pub struct CollectionConfigInternal {
     /// such as creation time, migration data, inference model info, etc.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Payload>,
+    /// Optional automatic shard policy. Missing means the legacy HashAll behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[validate(nested)]
+    pub auto_shard_policy: Option<AutoShardPolicy>,
 }
 
 impl CollectionConfigInternal {

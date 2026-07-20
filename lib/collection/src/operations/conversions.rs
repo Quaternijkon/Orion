@@ -26,6 +26,7 @@ use segment::types::{
 };
 use shard::retrieve::record_internal::RecordInternal;
 use tonic::Status;
+use validator::Validate as _;
 
 use super::cluster_ops::{ReplicatePoints, ReplicatePointsOperation, ReshardingDirection};
 use super::consistency_params::ReadConsistency;
@@ -36,7 +37,7 @@ use super::types::{
     VectorsConfigDiff,
 };
 use crate::config::{
-    CollectionParams, ShardingMethod, WalConfig, default_replication_factor,
+    AutoShardPolicy, CollectionParams, ShardingMethod, WalConfig, default_replication_factor,
     default_write_consistency_factor,
 };
 use crate::lookup::WithLookup;
@@ -82,6 +83,63 @@ pub fn sharding_method_from_proto(sharding_method: i32) -> Result<ShardingMethod
             "Cannot convert ShardingMethod: {sharding_method}, error: {err}"
         ))),
     }
+}
+
+pub fn auto_shard_policy_to_proto(policy: AutoShardPolicy) -> grpc::AutoShardPolicy {
+    use grpc::auto_shard_policy::Policy;
+
+    let policy = match policy {
+        AutoShardPolicy::HashAll => Policy::HashAll(grpc::HashAllAutoShardPolicy {}),
+        AutoShardPolicy::Orion {
+            generation,
+            artifact_sha256,
+        } => Policy::Orion(grpc::OrionAutoShardPolicy {
+            generation,
+            artifact_sha256,
+        }),
+        AutoShardPolicy::SimpleKmeans {
+            generation,
+            artifact_sha256,
+        } => Policy::SimpleKmeans(grpc::SimpleKmeansAutoShardPolicy {
+            generation,
+            artifact_sha256,
+        }),
+    };
+
+    grpc::AutoShardPolicy {
+        policy: Some(policy),
+    }
+}
+
+pub fn auto_shard_policy_from_proto(
+    policy: Option<grpc::AutoShardPolicy>,
+) -> Result<Option<AutoShardPolicy>, Status> {
+    use grpc::auto_shard_policy::Policy;
+
+    let Some(policy) = policy else {
+        return Ok(None);
+    };
+    let policy = match policy.policy {
+        Some(Policy::HashAll(_)) => AutoShardPolicy::HashAll,
+        Some(Policy::Orion(orion)) => AutoShardPolicy::Orion {
+            generation: orion.generation,
+            artifact_sha256: orion.artifact_sha256,
+        },
+        Some(Policy::SimpleKmeans(simple_kmeans)) => AutoShardPolicy::SimpleKmeans {
+            generation: simple_kmeans.generation,
+            artifact_sha256: simple_kmeans.artifact_sha256,
+        },
+        None => {
+            return Err(Status::invalid_argument(
+                "Auto shard policy variant is not specified",
+            ));
+        }
+    };
+    policy.validate().map_err(|err| {
+        Status::invalid_argument(format!("Invalid auto shard policy configuration: {err}"))
+    })?;
+
+    Ok(AutoShardPolicy::canonicalize(Some(policy)))
 }
 
 pub fn write_ordering_to_proto(ordering: WriteOrdering) -> api::grpc::qdrant::WriteOrdering {
@@ -407,6 +465,7 @@ impl From<CollectionInfo> for api::grpc::qdrant::CollectionInfo {
             quantization_config,
             strict_mode_config,
             metadata,
+            auto_shard_policy,
         } = config;
 
         let OptimizersConfig {
@@ -546,6 +605,8 @@ impl From<CollectionInfo> for api::grpc::qdrant::CollectionInfo {
                 metadata: metadata
                     .map(api::conversions::json::payload_to_proto)
                     .unwrap_or_default(),
+                auto_shard_policy: AutoShardPolicy::canonicalize(auto_shard_policy)
+                    .map(auto_shard_policy_to_proto),
             }),
             payload_schema: payload_schema
                 .into_iter()
@@ -1873,6 +1934,7 @@ impl TryFrom<api::grpc::qdrant::CollectionConfig> for CollectionConfig {
             quantization_config,
             strict_mode_config,
             metadata,
+            auto_shard_policy,
         } = config;
         Ok(Self {
             params: match params {
@@ -1973,6 +2035,7 @@ impl TryFrom<api::grpc::qdrant::CollectionConfig> for CollectionConfig {
             } else {
                 Some(api::conversions::json::proto_to_payloads(metadata)?)
             },
+            auto_shard_policy: auto_shard_policy_from_proto(auto_shard_policy)?,
         })
     }
 }
@@ -2004,5 +2067,89 @@ impl TryFrom<grpc::FeedbackStrategy> for FeedbackStrategy {
         };
 
         Ok(strategy)
+    }
+}
+
+#[cfg(test)]
+mod auto_shard_policy_conversion_tests {
+    use super::*;
+    use crate::tests::fixtures::create_collection_config;
+
+    const VALID_SHA256: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn missing_and_hash_all_proto_policies_use_legacy_default() {
+        assert_eq!(auto_shard_policy_from_proto(None).unwrap(), None);
+
+        let hash_all = auto_shard_policy_to_proto(AutoShardPolicy::HashAll);
+        assert_eq!(auto_shard_policy_from_proto(Some(hash_all)).unwrap(), None);
+    }
+
+    #[test]
+    fn orion_proto_policy_roundtrip_preserves_generation_and_digest() {
+        let policy = AutoShardPolicy::Orion {
+            generation: 42,
+            artifact_sha256: VALID_SHA256.to_string(),
+        };
+
+        let proto = auto_shard_policy_to_proto(policy.clone());
+        assert_eq!(
+            auto_shard_policy_from_proto(Some(proto)).unwrap(),
+            Some(policy)
+        );
+    }
+
+    #[test]
+    fn simple_kmeans_proto_policy_roundtrip_preserves_generation_and_digest() {
+        let policy = AutoShardPolicy::SimpleKmeans {
+            generation: 43,
+            artifact_sha256: VALID_SHA256.to_string(),
+        };
+
+        let proto = auto_shard_policy_to_proto(policy.clone());
+        assert_eq!(
+            auto_shard_policy_from_proto(Some(proto)).unwrap(),
+            Some(policy)
+        );
+    }
+
+    #[test]
+    fn malformed_proto_policy_is_rejected() {
+        assert!(
+            auto_shard_policy_from_proto(Some(grpc::AutoShardPolicy { policy: None })).is_err()
+        );
+
+        let invalid_orion = grpc::AutoShardPolicy {
+            policy: Some(grpc::auto_shard_policy::Policy::Orion(
+                grpc::OrionAutoShardPolicy {
+                    generation: 0,
+                    artifact_sha256: "g".repeat(64),
+                },
+            )),
+        };
+        assert!(auto_shard_policy_from_proto(Some(invalid_orion)).is_err());
+    }
+
+    #[test]
+    fn collection_config_grpc_roundtrip_preserves_orion_and_omits_hash_all() {
+        let orion = AutoShardPolicy::Orion {
+            generation: 11,
+            artifact_sha256: VALID_SHA256.to_string(),
+        };
+        let mut config = create_collection_config();
+        config.auto_shard_policy = Some(orion.clone());
+
+        let proto_info: grpc::CollectionInfo =
+            CollectionInfo::empty(config, Default::default()).into();
+        let proto_config = proto_info.config.unwrap();
+        assert!(proto_config.auto_shard_policy.is_some());
+        let decoded = CollectionConfig::try_from(proto_config).unwrap();
+        assert_eq!(decoded.auto_shard_policy, Some(orion));
+
+        let mut hash_all_config = create_collection_config();
+        hash_all_config.auto_shard_policy = Some(AutoShardPolicy::HashAll);
+        let proto_info: grpc::CollectionInfo =
+            CollectionInfo::empty(hash_all_config, Default::default()).into();
+        assert!(proto_info.config.unwrap().auto_shard_policy.is_none());
     }
 }

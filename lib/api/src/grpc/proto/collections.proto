@@ -387,6 +387,30 @@ enum ShardingMethod {
   Custom = 1;
 }
 
+message AutoShardPolicy {
+  oneof policy {
+    HashAllAutoShardPolicy hash_all = 1;
+    OrionAutoShardPolicy orion = 2;
+    SimpleKmeansAutoShardPolicy simple_kmeans = 3;
+  }
+}
+
+message HashAllAutoShardPolicy {}
+
+message OrionAutoShardPolicy {
+  // Active routing generation. Generation zero is invalid.
+  uint64 generation = 1;
+  // SHA-256 digest of the serialized routing artifact.
+  string artifact_sha256 = 2;
+}
+
+message SimpleKmeansAutoShardPolicy {
+  // Active routing generation. Generation zero is invalid.
+  uint64 generation = 1;
+  // SHA-256 digest of the serialized routing artifact.
+  string artifact_sha256 = 2;
+}
+
 message StrictModeConfig {
   // Whether strict mode is enabled for a collection or not.
   optional bool enabled = 1;
@@ -487,6 +511,9 @@ message CreateCollection {
   optional StrictModeConfig strict_mode_config = 17;
   // Arbitrary JSON metadata for the collection
   map<string, Value> metadata = 18;
+  // Automatic point partitioning and vector-query routing policy.
+  // Missing preserves point-ID hash writes and all-shard reads.
+  optional AutoShardPolicy auto_shard_policy = 19;
 }
 
 message UpdateCollection {
@@ -584,6 +611,9 @@ message CollectionConfig {
   optional StrictModeConfig strict_mode_config = 6;
   // Arbitrary JSON metadata for the collection
   map<string, Value> metadata = 7;
+  // Automatic point partitioning and vector-query routing policy.
+  // Missing means point-ID hash writes and all-shard reads.
+  optional AutoShardPolicy auto_shard_policy = 8;
 }
 
 enum TokenizerType {

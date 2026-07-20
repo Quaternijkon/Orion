@@ -18,7 +18,7 @@ use super::HnswM;
 use super::graph_layers::GraphLayerData;
 use super::graph_links::{GraphLinks, GraphLinksFormatParam};
 use super::links_container::{ItemsBuffer, LinksContainer};
-use crate::common::operation_error::OperationResult;
+use crate::common::operation_error::{OperationError, OperationResult};
 use crate::index::hnsw_index::entry_points::EntryPoints;
 #[cfg(test)]
 use crate::index::hnsw_index::graph_layers::SearchAlgorithm;
@@ -29,6 +29,19 @@ use crate::index::visited_pool::{VisitedListHandle, VisitedPool};
 
 pub type LockedLinkContainer = RwLock<LinksContainer>;
 pub type LockedLayersContainer = Vec<LockedLinkContainer>;
+
+/// Process-independent snapshot of a completely built HNSW graph.
+///
+/// Point and neighbor identifiers are the builder's stable point offsets. Callers that own an
+/// external-ID mapping can translate the offsets while constructing their portable artifact. The
+/// export contains every level for every point and does not retain locks, mmap state, scorers, or
+/// any other process-local construction state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortableGraphLayers {
+    pub entry_point: PointOffsetType,
+    pub max_level: usize,
+    pub neighbors_by_point_and_level: Vec<Vec<Vec<PointOffsetType>>>,
+}
 
 /// Same as `GraphLayers`,  but allows to build in parallel
 /// Convertible to `GraphLayers`
@@ -96,6 +109,79 @@ const SUBGRAPH_CONNECTIVITY_SEARCH_BUDGET: usize = 64;
 impl GraphLayersBuilder {
     pub fn get_entry_points(&self) -> MutexGuard<'_, EntryPoints> {
         self.entry_points.lock()
+    }
+
+    /// Export a complete, read-only graph snapshot without serializing Qdrant's internal link
+    /// representation.
+    ///
+    /// This deliberately refuses partially built graphs. A portable serving artifact must never
+    /// omit a point merely because construction was interrupted, and it must never contain a link
+    /// to a point that was not marked ready.
+    pub fn export_portable(&self) -> OperationResult<PortableGraphLayers> {
+        if self.links_layers.is_empty() {
+            return Err(OperationError::service_error_light(
+                "cannot export an empty HNSW graph",
+            ));
+        }
+
+        for point_index in 0..self.links_layers.len() {
+            if !self.ready_list[point_index] {
+                return Err(OperationError::service_error_light(format!(
+                    "cannot export incomplete HNSW graph: point {point_index} is not ready"
+                )));
+            }
+        }
+
+        let entry_point = self
+            .entry_points
+            .lock()
+            .get_entry_point(|point_id| self.ready_list[point_id as usize])
+            .ok_or_else(|| {
+                OperationError::service_error_light(
+                    "cannot export HNSW graph without an entry point",
+                )
+            })?;
+
+        let mut actual_max_level = 0;
+        let mut neighbors_by_point_and_level = Vec::with_capacity(self.links_layers.len());
+        for (point_index, levels) in self.links_layers.iter().enumerate() {
+            if levels.is_empty() {
+                return Err(OperationError::service_error_light(format!(
+                    "cannot export HNSW graph: point {point_index} has no level zero"
+                )));
+            }
+            actual_max_level = actual_max_level.max(levels.len() - 1);
+            let mut exported_levels = Vec::with_capacity(levels.len());
+            for (level, links) in levels.iter().enumerate() {
+                let links = links.read();
+                let mut exported_links = Vec::with_capacity(links.links().len());
+                for neighbor in links.iter() {
+                    let neighbor_index = neighbor as usize;
+                    if neighbor_index >= self.links_layers.len() || !self.ready_list[neighbor_index]
+                    {
+                        return Err(OperationError::service_error_light(format!(
+                            "cannot export HNSW graph: point {point_index} level {level} references non-ready point {neighbor}"
+                        )));
+                    }
+                    exported_links.push(neighbor);
+                }
+                exported_levels.push(exported_links);
+            }
+            neighbors_by_point_and_level.push(exported_levels);
+        }
+
+        if entry_point.level != actual_max_level {
+            return Err(OperationError::service_error_light(format!(
+                "cannot export HNSW graph: entry-point level {} differs from max level {actual_max_level}",
+                entry_point.level
+            )));
+        }
+
+        Ok(PortableGraphLayers {
+            entry_point: entry_point.point_id,
+            max_level: actual_max_level,
+            neighbors_by_point_and_level,
+        })
     }
 
     /// For a given sub-graph defined by points, returns connectivity estimation.
@@ -941,5 +1027,28 @@ mod tests {
             .sum();
         let avg_connectivity = total_edges as f64 / NUM_VECTORS as f64;
         eprintln!("avg_connectivity = {avg_connectivity:#?}");
+    }
+
+    #[test]
+    fn portable_export_contains_every_ready_point_and_level() {
+        const NUM_VECTORS: usize = 64;
+        const DIM: usize = 4;
+
+        let mut rng = StdRng::seed_from_u64(100);
+        let (_vectors, graph) =
+            create_graph_layer(NUM_VECTORS, DIM, true, false, Distance::Euclid, &mut rng);
+
+        let portable = graph.export_portable().unwrap();
+        assert_eq!(portable.neighbors_by_point_and_level.len(), NUM_VECTORS);
+        assert_eq!(
+            portable.neighbors_by_point_and_level[portable.entry_point as usize].len() - 1,
+            portable.max_level,
+        );
+        assert!(portable.neighbors_by_point_and_level.iter().all(|levels| {
+            !levels.is_empty()
+                && levels.iter().flatten().all(|neighbor| {
+                    (*neighbor as usize) < portable.neighbors_by_point_and_level.len()
+                })
+        }));
     }
 }

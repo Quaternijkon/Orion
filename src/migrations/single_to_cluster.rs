@@ -57,6 +57,7 @@ pub async fn handle_existing_collections(
             strict_mode_config,
             uuid,
             metadata,
+            auto_shard_policy,
         } = config;
 
         let shards_number = params.shard_number.get();
@@ -69,6 +70,7 @@ pub async fn handle_existing_collections(
                 sparse_vectors: params.sparse_vectors,
                 shard_number: Some(shards_number),
                 sharding_method,
+                auto_shard_policy,
                 replication_factor: Some(params.replication_factor.get()),
                 write_consistency_factor: Some(params.write_consistency_factor.get()),
                 on_disk_payload: Some(params.on_disk_payload),

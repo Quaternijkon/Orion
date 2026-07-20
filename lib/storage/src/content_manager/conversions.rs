@@ -7,7 +7,9 @@ use chrono::{DateTime, Utc};
 use collection::operations::config_diff::{
     CollectionParamsDiff, HnswConfigDiff, OptimizersConfigDiff, QuantizationConfigDiff,
 };
-use collection::operations::conversions::sharding_method_from_proto;
+use collection::operations::conversions::{
+    auto_shard_policy_from_proto, sharding_method_from_proto,
+};
 use collection::operations::types::{SparseVectorsConfig, VectorsConfigDiff};
 use segment::types::{StrictModeConfig, StrictModeMultivectorConfig, StrictModeSparseConfig};
 use tonic::Status;
@@ -85,6 +87,7 @@ impl TryFrom<grpc::CreateCollection> for CollectionMetaOperations {
             sparse_vectors_config,
             strict_mode_config,
             metadata,
+            auto_shard_policy,
         } = value;
         let op = CreateCollectionOperation::new(
             collection_name,
@@ -108,6 +111,7 @@ impl TryFrom<grpc::CreateCollection> for CollectionMetaOperations {
                 sharding_method: sharding_method
                     .map(sharding_method_from_proto)
                     .transpose()?,
+                auto_shard_policy: auto_shard_policy_from_proto(auto_shard_policy)?,
                 strict_mode_config: strict_mode_config.map(strict_mode_from_api),
                 uuid: None,
                 metadata: if metadata.is_empty() {

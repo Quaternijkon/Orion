@@ -4,18 +4,30 @@ use std::sync::Arc;
 
 use ahash::AHashMap;
 use common::budget::ResourceBudget;
+use fs_err::File;
 use segment::types::Distance;
 use shard::snapshots::snapshot_data::SnapshotData;
 use tempfile::Builder;
 
 use crate::collection::{Collection, RequestShardTransfer};
-use crate::config::{CollectionConfigInternal, CollectionParams, WalConfig};
+use crate::config::{AutoShardPolicy, CollectionConfigInternal, CollectionParams, WalConfig};
 use crate::operations::shared_storage_config::SharedStorageConfig;
 use crate::operations::types::{NodeType, VectorsConfig};
 use crate::operations::vector_params_builder::VectorParamsBuilder;
+use crate::orion::{
+    ORION_ROUTING_ARTIFACT_FORMAT_VERSION, OrionRoutingArtifact, OrionUpperGraphNode,
+    OrionUpperHnswGraph, OrionUpperNode, OrionVectorDatatype, OrionVectorSchemaFingerprint,
+    routing_artifact_path, routing_artifact_relative_path,
+};
 use crate::shards::channel_service::ChannelService;
 use crate::shards::collection_shard_distribution::CollectionShardDistribution;
 use crate::shards::replica_set::{AbortShardTransfer, ChangePeerFromState};
+use crate::simple_kmeans::{
+    SIMPLE_KMEANS_ROUTING_ARTIFACT_FORMAT_VERSION, SimpleKmeansCentroid,
+    SimpleKmeansRoutingArtifact, SimpleKmeansRoutingDistance, SimpleKmeansVectorDatatype,
+    SimpleKmeansVectorSchemaFingerprint, routing_artifact_path as simple_kmeans_artifact_path,
+    routing_artifact_relative_path as simple_kmeans_artifact_relative_path,
+};
 use crate::tests::fixtures::TEST_OPTIMIZERS_CONFIG;
 
 pub fn dummy_on_replica_failure() -> ChangePeerFromState {
@@ -32,6 +44,246 @@ pub fn dummy_abort_shard_transfer() -> AbortShardTransfer {
 
 fn init_logger() {
     let _ = env_logger::builder().is_test(true).try_init();
+}
+
+const ORION_SNAPSHOT_GENERATION: u64 = 7;
+const SIMPLE_KMEANS_SNAPSHOT_GENERATION: u64 = 8;
+
+#[derive(Clone, Copy)]
+enum OrionArtifactFixture {
+    Valid,
+    Missing,
+    ChecksumMismatch,
+}
+
+fn orion_snapshot_artifact() -> OrionRoutingArtifact {
+    OrionRoutingArtifact {
+        format_version: ORION_ROUTING_ARTIFACT_FORMAT_VERSION,
+        generation: ORION_SNAPSHOT_GENERATION,
+        vector_schema: OrionVectorSchemaFingerprint {
+            vector_name: String::new(),
+            dimension: 4,
+            distance: Distance::Dot,
+            datatype: OrionVectorDatatype::Float32,
+        },
+        shard_count: 1,
+        layout_sha256: "a".repeat(64),
+        logical_point_count: 2,
+        physical_point_count: 2,
+        upper_k: 1,
+        upper_ef_search: 2,
+        dynamic_ef_base: 20,
+        dynamic_ef_factor: 4,
+        upper_nodes: vec![
+            OrionUpperNode {
+                label: 10_u64.into(),
+                vector: vec![1.0, 0.0, 0.0, 0.0],
+                shard_membership: vec![0],
+            },
+            OrionUpperNode {
+                label: 20_u64.into(),
+                vector: vec![0.0, 1.0, 0.0, 0.0],
+                shard_membership: vec![0],
+            },
+        ],
+        upper_graph: Some(OrionUpperHnswGraph {
+            entry_point: 10_u64.into(),
+            max_level: 0,
+            nodes: vec![
+                OrionUpperGraphNode {
+                    label: 10_u64.into(),
+                    neighbors_by_level: vec![vec![20_u64.into()]],
+                },
+                OrionUpperGraphNode {
+                    label: 20_u64.into(),
+                    neighbors_by_level: vec![vec![10_u64.into()]],
+                },
+            ],
+        }),
+    }
+}
+
+async fn orion_snapshot_fixture(
+    artifact_fixture: OrionArtifactFixture,
+) -> (Collection, tempfile::TempDir, tempfile::TempDir) {
+    let collection_dir = Builder::new()
+        .prefix("orion_snapshot_collection")
+        .tempdir()
+        .unwrap();
+    let snapshots_path = Builder::new()
+        .prefix("orion_snapshot_storage")
+        .tempdir()
+        .unwrap();
+    let artifact = orion_snapshot_artifact();
+    let artifact_sha256 = artifact.canonical_sha256().unwrap();
+
+    if !matches!(artifact_fixture, OrionArtifactFixture::Missing) {
+        let artifact_path = routing_artifact_path(collection_dir.path(), ORION_SNAPSHOT_GENERATION);
+        fs_err::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        fs_err::write(
+            &artifact_path,
+            serde_json::to_vec_pretty(&artifact).unwrap(),
+        )
+        .unwrap();
+    }
+
+    let collection_params = CollectionParams {
+        vectors: VectorsConfig::Single(VectorParamsBuilder::new(4, Distance::Dot).build()),
+        shard_number: NonZeroU32::new(1).unwrap(),
+        replication_factor: NonZeroU32::new(1).unwrap(),
+        write_consistency_factor: NonZeroU32::new(1).unwrap(),
+        ..CollectionParams::empty()
+    };
+    let config = CollectionConfigInternal {
+        params: collection_params,
+        optimizer_config: TEST_OPTIMIZERS_CONFIG.clone(),
+        wal_config: WalConfig {
+            wal_capacity_mb: 1,
+            wal_segments_ahead: 0,
+            wal_retain_closed: 1,
+        },
+        hnsw_config: Default::default(),
+        quantization_config: Default::default(),
+        strict_mode_config: Default::default(),
+        uuid: None,
+        metadata: None,
+        auto_shard_policy: Some(AutoShardPolicy::Orion {
+            generation: ORION_SNAPSHOT_GENERATION,
+            artifact_sha256: if matches!(artifact_fixture, OrionArtifactFixture::ChecksumMismatch) {
+                "0".repeat(64)
+            } else {
+                artifact_sha256
+            },
+        }),
+    };
+    let collection = Collection::new(
+        "orion-snapshot-test".to_string(),
+        1,
+        collection_dir.path(),
+        snapshots_path.path(),
+        &config,
+        Arc::new(SharedStorageConfig::default()),
+        CollectionShardDistribution {
+            shards: AHashMap::from([(0, HashSet::from([1]))]),
+        },
+        None,
+        ChannelService::default(),
+        dummy_on_replica_failure(),
+        dummy_request_shard_transfer(),
+        dummy_abort_shard_transfer(),
+        None,
+        None,
+        ResourceBudget::default(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    (collection, collection_dir, snapshots_path)
+}
+
+fn simple_kmeans_snapshot_artifact() -> SimpleKmeansRoutingArtifact {
+    SimpleKmeansRoutingArtifact {
+        format_version: SIMPLE_KMEANS_ROUTING_ARTIFACT_FORMAT_VERSION,
+        generation: SIMPLE_KMEANS_SNAPSHOT_GENERATION,
+        vector_schema: SimpleKmeansVectorSchemaFingerprint {
+            vector_name: String::new(),
+            dimension: 4,
+            distance: Distance::Dot,
+            datatype: SimpleKmeansVectorDatatype::Float32,
+        },
+        shard_count: 1,
+        layout_sha256: "b".repeat(64),
+        logical_point_count: 2,
+        physical_point_count: 2,
+        routing_distance: SimpleKmeansRoutingDistance::SquaredL2,
+        nprobe: 1,
+        lower_hnsw_ef: 64,
+        centroids: vec![SimpleKmeansCentroid {
+            shard_id: 0,
+            vector: vec![1.0, 0.0, 0.0, 0.0],
+        }],
+    }
+}
+
+async fn simple_kmeans_snapshot_fixture(
+    artifact_fixture: OrionArtifactFixture,
+) -> (Collection, tempfile::TempDir, tempfile::TempDir) {
+    let collection_dir = Builder::new()
+        .prefix("simple_kmeans_snapshot_collection")
+        .tempdir()
+        .unwrap();
+    let snapshots_path = Builder::new()
+        .prefix("simple_kmeans_snapshot_storage")
+        .tempdir()
+        .unwrap();
+    let artifact = simple_kmeans_snapshot_artifact();
+    let artifact_sha256 = artifact.canonical_sha256().unwrap();
+
+    if !matches!(artifact_fixture, OrionArtifactFixture::Missing) {
+        let artifact_path =
+            simple_kmeans_artifact_path(collection_dir.path(), SIMPLE_KMEANS_SNAPSHOT_GENERATION);
+        fs_err::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        fs_err::write(
+            &artifact_path,
+            serde_json::to_vec_pretty(&artifact).unwrap(),
+        )
+        .unwrap();
+    }
+
+    let collection_params = CollectionParams {
+        vectors: VectorsConfig::Single(VectorParamsBuilder::new(4, Distance::Dot).build()),
+        shard_number: NonZeroU32::new(1).unwrap(),
+        replication_factor: NonZeroU32::new(1).unwrap(),
+        write_consistency_factor: NonZeroU32::new(1).unwrap(),
+        ..CollectionParams::empty()
+    };
+    let config = CollectionConfigInternal {
+        params: collection_params,
+        optimizer_config: TEST_OPTIMIZERS_CONFIG.clone(),
+        wal_config: WalConfig {
+            wal_capacity_mb: 1,
+            wal_segments_ahead: 0,
+            wal_retain_closed: 1,
+        },
+        hnsw_config: Default::default(),
+        quantization_config: Default::default(),
+        strict_mode_config: Default::default(),
+        uuid: None,
+        metadata: None,
+        auto_shard_policy: Some(AutoShardPolicy::SimpleKmeans {
+            generation: SIMPLE_KMEANS_SNAPSHOT_GENERATION,
+            artifact_sha256: if matches!(artifact_fixture, OrionArtifactFixture::ChecksumMismatch) {
+                "0".repeat(64)
+            } else {
+                artifact_sha256
+            },
+        }),
+    };
+    let collection = Collection::new(
+        "simple-kmeans-snapshot-test".to_string(),
+        1,
+        collection_dir.path(),
+        snapshots_path.path(),
+        &config,
+        Arc::new(SharedStorageConfig::default()),
+        CollectionShardDistribution {
+            shards: AHashMap::from([(0, HashSet::from([1]))]),
+        },
+        None,
+        ChannelService::default(),
+        dummy_on_replica_failure(),
+        dummy_request_shard_transfer(),
+        dummy_abort_shard_transfer(),
+        None,
+        None,
+        ResourceBudget::default(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    (collection, collection_dir, snapshots_path)
 }
 
 async fn _test_snapshot_collection(node_type: NodeType) {
@@ -58,6 +310,7 @@ async fn _test_snapshot_collection(node_type: NodeType) {
         strict_mode_config: Default::default(),
         uuid: None,
         metadata: None,
+        auto_shard_policy: None,
     };
 
     let snapshots_path = Builder::new().prefix("test_snapshots").tempdir().unwrap();
@@ -175,4 +428,132 @@ async fn test_snapshot_collection_normal() {
 async fn test_snapshot_collection_listener() {
     init_logger();
     _test_snapshot_collection(NodeType::Listener).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn orion_snapshot_contains_versioned_routing_artifact() {
+    let (collection, _collection_dir, snapshots_path) =
+        orion_snapshot_fixture(OrionArtifactFixture::Valid).await;
+    let snapshot_temp_dir = Builder::new()
+        .prefix("orion_snapshot_temp")
+        .tempdir()
+        .unwrap();
+    let snapshot = collection
+        .create_snapshot(snapshot_temp_dir.path(), 1)
+        .await
+        .unwrap();
+
+    let mut archive =
+        tar::Archive::new(File::open(snapshots_path.path().join(snapshot.name)).unwrap());
+    let archived_paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| entry.unwrap().path().unwrap().into_owned())
+        .collect::<Vec<_>>();
+    let expected_path = routing_artifact_relative_path(ORION_SNAPSHOT_GENERATION);
+
+    assert!(
+        archived_paths.contains(&expected_path),
+        "snapshot entries {archived_paths:?} did not contain {expected_path:?}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn orion_snapshot_rejects_missing_routing_artifact() {
+    let (collection, _collection_dir, _snapshots_path) =
+        orion_snapshot_fixture(OrionArtifactFixture::Missing).await;
+    let snapshot_temp_dir = Builder::new()
+        .prefix("orion_snapshot_temp")
+        .tempdir()
+        .unwrap();
+    let error = collection
+        .create_snapshot(snapshot_temp_dir.path(), 1)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains("cannot create a self-contained Orion snapshot")
+            && error.contains("failed to read Orion routing artifact"),
+        "unexpected snapshot error: {error}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn orion_snapshot_rejects_routing_artifact_checksum_mismatch() {
+    let (collection, _collection_dir, _snapshots_path) =
+        orion_snapshot_fixture(OrionArtifactFixture::ChecksumMismatch).await;
+    let snapshot_temp_dir = Builder::new()
+        .prefix("orion_snapshot_temp")
+        .tempdir()
+        .unwrap();
+    let error = collection
+        .create_snapshot(snapshot_temp_dir.path(), 1)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains("cannot create a self-contained Orion snapshot")
+            && error.contains("artifact checksum mismatch"),
+        "unexpected snapshot error: {error}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn simple_kmeans_snapshot_contains_versioned_routing_artifact() {
+    let (collection, _collection_dir, snapshots_path) =
+        simple_kmeans_snapshot_fixture(OrionArtifactFixture::Valid).await;
+    let snapshot_temp_dir = Builder::new()
+        .prefix("simple_kmeans_snapshot_temp")
+        .tempdir()
+        .unwrap();
+    let snapshot = collection
+        .create_snapshot(snapshot_temp_dir.path(), 1)
+        .await
+        .unwrap();
+
+    let mut archive =
+        tar::Archive::new(File::open(snapshots_path.path().join(snapshot.name)).unwrap());
+    let archived_paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| entry.unwrap().path().unwrap().into_owned())
+        .collect::<Vec<_>>();
+    let expected_path = simple_kmeans_artifact_relative_path(SIMPLE_KMEANS_SNAPSHOT_GENERATION);
+    assert!(
+        archived_paths.contains(&expected_path),
+        "snapshot entries {archived_paths:?} did not contain {expected_path:?}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn simple_kmeans_snapshot_rejects_missing_or_mismatched_artifact() {
+    for (fixture, expected) in [
+        (
+            OrionArtifactFixture::Missing,
+            "failed to read Simple KMeans routing artifact",
+        ),
+        (
+            OrionArtifactFixture::ChecksumMismatch,
+            "artifact checksum mismatch",
+        ),
+    ] {
+        let (collection, _collection_dir, _snapshots_path) =
+            simple_kmeans_snapshot_fixture(fixture).await;
+        let snapshot_temp_dir = Builder::new()
+            .prefix("simple_kmeans_snapshot_temp")
+            .tempdir()
+            .unwrap();
+        let error = collection
+            .create_snapshot(snapshot_temp_dir.path(), 1)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("cannot create a self-contained Simple KMeans snapshot")
+                && error.contains(expected),
+            "unexpected snapshot error: {error}",
+        );
+    }
 }

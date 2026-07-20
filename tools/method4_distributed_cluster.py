@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -22,6 +23,8 @@ from typing import Any
 
 DEFAULT_TOPOLOGY = Path(__file__).with_name("distributed") / "cloudlab_orion_4node.json"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
+COLLECTION_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 RESOURCE_PREFIX = "orion-dist-"
 EXPECTED_COMMIT = "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352"
 PEER_PREMERGE_DISABLE_ENV = "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE"
@@ -30,6 +33,31 @@ CONTROLLER_FINGERPRINT_LABEL = "orion.distributed.controller_fingerprint"
 NOFILE_LABEL = "orion.distributed.nofile"
 CONTAINER_NOFILE_SOFT = 65536
 CONTAINER_NOFILE_HARD = 65536
+ORION_ARTIFACT_FORMAT_VERSION = 1
+SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
+
+
+def add_install_artifact_parser(
+    subparsers: argparse._SubParsersAction,
+    command: str,
+    description: str,
+) -> None:
+    install_artifact = subparsers.add_parser(command, help=description)
+    install_artifact.add_argument("--collection", required=True)
+    install_artifact.add_argument("--generation", required=True, type=int)
+    install_artifact.add_argument("--artifact", required=True)
+    install_artifact.add_argument("--expected-sha256", required=True)
+    install_artifact.add_argument(
+        "--restart",
+        nargs="?",
+        const="workers-first",
+        choices=("workers-first", "controller-first"),
+        help=(
+            "Activate and verify the already-configured policy by safely restarting "
+            "only this run's containers. With no value, workers-first is used."
+        ),
+    )
+    install_artifact.add_argument("--wait-timeout", type=float, default=180.0)
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,6 +115,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Record/validate a controller with peer pre-merge disabled.",
     )
+    add_install_artifact_parser(
+        subparsers,
+        "install-orion-artifact",
+        (
+            "Atomically install one canonical native Orion routing artifact on all "
+            "four run-scoped storage volumes."
+        ),
+    )
+    add_install_artifact_parser(
+        subparsers,
+        "install-simple-kmeans-artifact",
+        (
+            "Atomically install one canonical native Simple KMeans routing artifact "
+            "on all four run-scoped storage volumes."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -126,6 +170,35 @@ def validate_run_id(run_id: str) -> str:
             "letters, digits, dot, underscore, or dash"
         )
     return run_id
+
+
+def validate_collection_name(collection: str) -> str:
+    if not COLLECTION_NAME_RE.fullmatch(collection):
+        raise ValueError(
+            "collection must be one safe storage path component starting with an "
+            "alphanumeric character and containing only letters, digits, dot, "
+            "underscore, or dash"
+        )
+    return collection
+
+
+def normalize_sha256(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized.lower().startswith("sha256:"):
+        normalized = normalized.split(":", 1)[1]
+    if not SHA256_RE.fullmatch(normalized):
+        raise ValueError("expected SHA-256 must be exactly 64 hexadecimal characters")
+    return normalized.lower()
+
+
+def validate_generation(generation: int) -> int:
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation <= 0
+    ):
+        raise ValueError("routing artifact generation must be a positive integer")
+    return generation
 
 
 def safe_run_token(run_id: str) -> str:
@@ -267,6 +340,71 @@ def local_role_root(topology: dict[str, Any], run_id: str, role: str) -> Path:
     return candidate
 
 
+def routing_artifact_destination(
+    topology: dict[str, Any],
+    run_id: str,
+    role: str,
+    collection: str,
+    generation: int,
+    *,
+    router_directory: str,
+    policy_label: str,
+) -> Path:
+    collection = validate_collection_name(collection)
+    generation = validate_generation(generation)
+    if router_directory not in {"orion_router", "simple_kmeans_router"}:
+        raise ValueError(f"unsupported routing artifact directory: {router_directory!r}")
+    storage = (local_role_root(topology, run_id, role) / "storage").resolve()
+    destination = (
+        storage
+        / "collections"
+        / collection
+        / router_directory
+        / f"generation-{generation}.json"
+    ).resolve()
+    if storage not in destination.parents:
+        raise ValueError(
+            f"unsafe {policy_label} artifact path outside {storage}: {destination}"
+        )
+    return destination
+
+
+def orion_artifact_destination(
+    topology: dict[str, Any],
+    run_id: str,
+    role: str,
+    collection: str,
+    generation: int,
+) -> Path:
+    return routing_artifact_destination(
+        topology,
+        run_id,
+        role,
+        collection,
+        generation,
+        router_directory="orion_router",
+        policy_label="Orion",
+    )
+
+
+def simple_kmeans_artifact_destination(
+    topology: dict[str, Any],
+    run_id: str,
+    role: str,
+    collection: str,
+    generation: int,
+) -> Path:
+    return routing_artifact_destination(
+        topology,
+        run_id,
+        role,
+        collection,
+        generation,
+        router_directory="simple_kmeans_router",
+        policy_label="Simple KMeans",
+    )
+
+
 def manifest_path(topology: dict[str, Any], run_id: str) -> Path:
     return shared_run_dir(topology, run_id) / "manifest.json"
 
@@ -297,6 +435,144 @@ def wrap_node_command(
         wrapped.extend(["-o", option])
     wrapped.extend([target, "bash", "-lc", shlex.quote(command_text)])
     return wrapped
+
+
+def copy_to_node_command(
+    node: dict[str, Any],
+    source: str | Path,
+    destination: str | Path,
+    ssh_user: str | None = None,
+    ssh_options: list[str] | None = None,
+) -> list[str]:
+    source_path = str(Path(source))
+    destination_path = str(Path(destination))
+    target = ssh_target(node, ssh_user)
+    if target == "localhost":
+        return ["cp", "--", source_path, destination_path]
+    command = ["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+    for option in ssh_options or []:
+        command.extend(["-o", option])
+    command.extend(["--", source_path, f"{target}:{destination_path}"])
+    return command
+
+
+def _artifact_path_guard_script(storage_root: Path, destination: Path) -> str:
+    storage_text = shlex.quote(str(storage_root))
+    destination_text = shlex.quote(str(destination))
+    return f"""
+storage_root={storage_text}
+destination={destination_text}
+storage_real=$(realpath -m -- "$storage_root")
+destination_real=$(realpath -m -- "$destination")
+case "$destination_real" in
+  "$storage_real"/*) ;;
+  *) echo "unsafe artifact destination outside run storage: $destination_real" >&2; exit 70 ;;
+esac
+""".strip()
+
+
+def artifact_probe_command(
+    storage_root: Path,
+    destination: Path,
+    expected_sha256: str,
+) -> str:
+    expected_sha256 = normalize_sha256(expected_sha256)
+    return f"""
+set -euo pipefail
+{_artifact_path_guard_script(storage_root, destination)}
+if [ ! -e "$destination" ]; then
+  printf 'missing\\n'
+  exit 0
+fi
+if [ ! -f "$destination" ]; then
+  echo "artifact destination exists but is not a regular file: $destination" >&2
+  exit 71
+fi
+actual=$(sha256sum -- "$destination" | awk '{{print $1}}')
+if [ "$actual" != {shlex.quote(expected_sha256)} ]; then
+  echo "artifact generation already exists with a different SHA-256: $actual" >&2
+  exit 72
+fi
+printf 'match %s\\n' "$actual"
+""".strip()
+
+
+def artifact_prepare_command(storage_root: Path, temporary: Path) -> str:
+    return f"""
+set -euo pipefail
+{_artifact_path_guard_script(storage_root, temporary)}
+mkdir -p -- "$(dirname -- "$destination")"
+if [ -e "$destination" ] && [ ! -f "$destination" ]; then
+  echo "artifact temporary path exists but is not a regular file: $destination" >&2
+  exit 73
+fi
+""".strip()
+
+
+def artifact_finalize_command(
+    storage_root: Path,
+    staged: Path,
+    temporary: Path,
+    destination: Path,
+    expected_sha256: str,
+) -> str:
+    expected_sha256 = normalize_sha256(expected_sha256)
+    staged_text = shlex.quote(str(staged))
+    temporary_text = shlex.quote(str(temporary))
+    destination_text = shlex.quote(str(destination))
+    return f"""
+set -euo pipefail
+{_artifact_path_guard_script(storage_root, destination)}
+staged={staged_text}
+temporary={temporary_text}
+final_destination={destination_text}
+staged_real=$(realpath -m -- "$staged")
+temporary_real=$(realpath -m -- "$temporary")
+case "$staged_real" in
+  "$storage_real"/*) ;;
+  *) echo "unsafe staged artifact path outside run storage: $staged_real" >&2; exit 74 ;;
+esac
+case "$temporary_real" in
+  "$storage_real"/*) ;;
+  *) echo "unsafe artifact temporary path outside run storage: $temporary_real" >&2; exit 75 ;;
+esac
+if [ ! -f "$staged" ]; then
+  echo "staged artifact file is missing: $staged" >&2
+  exit 76
+fi
+actual=$(sha256sum -- "$staged" | awk '{{print $1}}')
+if [ "$actual" != {shlex.quote(expected_sha256)} ]; then
+  rm -f -- "$staged"
+  echo "copied artifact SHA-256 mismatch: $actual" >&2
+  exit 77
+fi
+sudo -n mkdir -p -- "$(dirname -- "$final_destination")"
+sudo -n cp -- "$staged" "$temporary"
+temporary_sha=$(sudo -n sha256sum -- "$temporary" | awk '{{print $1}}')
+if [ "$temporary_sha" != {shlex.quote(expected_sha256)} ]; then
+  sudo -n rm -f -- "$temporary"
+  echo "same-directory temporary artifact SHA-256 mismatch: $temporary_sha" >&2
+  exit 78
+fi
+sudo -n chmod 0644 -- "$temporary"
+sudo -n mv --no-clobber -- "$temporary" "$final_destination"
+if sudo -n test -e "$temporary"; then
+  existing=$(sudo -n sha256sum -- "$final_destination" | awk '{{print $1}}')
+  if [ "$existing" != {shlex.quote(expected_sha256)} ]; then
+    sudo -n rm -f -- "$temporary"
+    echo "artifact appeared concurrently with a different SHA-256: $existing" >&2
+    exit 79
+  fi
+  sudo -n rm -f -- "$temporary"
+fi
+rm -f -- "$staged"
+final_sha=$(sudo -n sha256sum -- "$final_destination" | awk '{{print $1}}')
+if [ "$final_sha" != {shlex.quote(expected_sha256)} ]; then
+  echo "installed artifact SHA-256 mismatch: $final_sha" >&2
+  exit 80
+fi
+printf 'installed %s\\n' "$final_sha"
+""".strip()
 
 
 def run_command(
@@ -463,6 +739,277 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def read_local_routing_artifact(
+    artifact_path: str | Path,
+    expected_sha256: str,
+    *,
+    policy_label: str,
+    builder_name: str,
+) -> tuple[Path, str, dict[str, Any]]:
+    """Read the exact canonical artifact bytes that will be copied to every node."""
+    expected_sha256 = normalize_sha256(expected_sha256)
+    path = Path(artifact_path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"{policy_label} artifact not found: {path}")
+    actual_file_sha256 = sha256_file(path)
+    if actual_file_sha256 != expected_sha256:
+        raise RuntimeError(
+            f"{policy_label} artifact file SHA-256 does not match the expected canonical "
+            f"SHA-256: expected={expected_sha256}, file={actual_file_sha256}. "
+            f"Install the exact canonical JSON emitted by {builder_name}."
+        )
+    try:
+        payload = json.loads(
+            path.read_bytes(),
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON number {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"invalid {policy_label} artifact JSON {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{policy_label} artifact root must be a JSON object")
+    return path, actual_file_sha256, payload
+
+
+def validate_local_orion_artifact(
+    artifact_path: str | Path,
+    generation: int,
+    expected_sha256: str,
+) -> dict[str, Any]:
+    """Validate the canonical-builder-output/file-checksum contract before copying."""
+    generation = validate_generation(generation)
+    expected_sha256 = normalize_sha256(expected_sha256)
+    path, actual_file_sha256, payload = read_local_routing_artifact(
+        artifact_path,
+        expected_sha256,
+        policy_label="Orion",
+        builder_name="orion_build_artifact",
+    )
+    format_version = payload.get("format_version")
+    if (
+        isinstance(format_version, bool)
+        or not isinstance(format_version, int)
+        or format_version != ORION_ARTIFACT_FORMAT_VERSION
+    ):
+        raise RuntimeError(
+            "unsupported Orion artifact format version: "
+            f"expected={ORION_ARTIFACT_FORMAT_VERSION}, actual={format_version!r}"
+        )
+    actual_generation = payload.get("generation")
+    if (
+        isinstance(actual_generation, bool)
+        or not isinstance(actual_generation, int)
+        or actual_generation != generation
+    ):
+        raise RuntimeError(
+            "Orion artifact generation mismatch: "
+            f"requested={generation}, artifact={actual_generation!r}"
+        )
+    if not isinstance(payload.get("upper_graph"), dict):
+        raise RuntimeError(
+            "Orion artifact is graphless; production installation requires upper_graph"
+        )
+    shard_count = payload.get("shard_count")
+    if isinstance(shard_count, bool) or not isinstance(shard_count, int) or shard_count <= 0:
+        raise ValueError("Orion artifact shard_count must be a positive integer")
+    layout_sha256 = normalize_sha256(str(payload.get("layout_sha256") or ""))
+    logical_point_count = payload.get("logical_point_count")
+    physical_point_count = payload.get("physical_point_count")
+    if (
+        isinstance(logical_point_count, bool)
+        or not isinstance(logical_point_count, int)
+        or logical_point_count <= 0
+    ):
+        raise ValueError("Orion artifact logical_point_count must be a positive integer")
+    if (
+        isinstance(physical_point_count, bool)
+        or not isinstance(physical_point_count, int)
+        or physical_point_count < logical_point_count
+    ):
+        raise ValueError(
+            "Orion artifact physical_point_count must be at least logical_point_count"
+        )
+    vector_schema = payload.get("vector_schema")
+    if not isinstance(vector_schema, dict):
+        raise ValueError("Orion artifact vector_schema must be a JSON object")
+    return {
+        "path": str(path),
+        "generation": generation,
+        "canonical_sha256": expected_sha256,
+        "file_sha256": actual_file_sha256,
+        "size_bytes": path.stat().st_size,
+        "format_version": format_version,
+        "shard_count": shard_count,
+        "layout_sha256": layout_sha256,
+        "logical_point_count": logical_point_count,
+        "physical_point_count": physical_point_count,
+        "vector_schema": vector_schema,
+    }
+
+
+def validate_local_simple_kmeans_artifact(
+    artifact_path: str | Path,
+    generation: int,
+    expected_sha256: str,
+) -> dict[str, Any]:
+    """Validate a production static Simple KMeans routing artifact before copying."""
+    generation = validate_generation(generation)
+    expected_sha256 = normalize_sha256(expected_sha256)
+    path, actual_file_sha256, payload = read_local_routing_artifact(
+        artifact_path,
+        expected_sha256,
+        policy_label="Simple KMeans",
+        builder_name="the Simple KMeans artifact builder",
+    )
+    format_version = payload.get("format_version")
+    if (
+        isinstance(format_version, bool)
+        or not isinstance(format_version, int)
+        or format_version != SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION
+    ):
+        raise RuntimeError(
+            "unsupported Simple KMeans artifact format version: "
+            f"expected={SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION}, actual={format_version!r}"
+        )
+    actual_generation = payload.get("generation")
+    if (
+        isinstance(actual_generation, bool)
+        or not isinstance(actual_generation, int)
+        or actual_generation != generation
+    ):
+        raise RuntimeError(
+            "Simple KMeans artifact generation mismatch: "
+            f"requested={generation}, artifact={actual_generation!r}"
+        )
+    if "upper_graph" in payload:
+        raise RuntimeError("Simple KMeans artifact must not contain upper_graph")
+
+    shard_count = payload.get("shard_count")
+    if isinstance(shard_count, bool) or not isinstance(shard_count, int) or shard_count <= 0:
+        raise ValueError("Simple KMeans artifact shard_count must be a positive integer")
+    layout_sha256 = normalize_sha256(str(payload.get("layout_sha256") or ""))
+    logical_point_count = payload.get("logical_point_count")
+    physical_point_count = payload.get("physical_point_count")
+    if (
+        isinstance(logical_point_count, bool)
+        or not isinstance(logical_point_count, int)
+        or logical_point_count <= 0
+    ):
+        raise ValueError(
+            "Simple KMeans artifact logical_point_count must be a positive integer"
+        )
+    if (
+        isinstance(physical_point_count, bool)
+        or not isinstance(physical_point_count, int)
+        or physical_point_count != logical_point_count
+    ):
+        raise ValueError(
+            "Simple KMeans artifact physical_point_count must equal logical_point_count"
+        )
+
+    vector_schema = payload.get("vector_schema")
+    if not isinstance(vector_schema, dict):
+        raise ValueError("Simple KMeans artifact vector_schema must be a JSON object")
+    expected_schema_fields = {"vector_name", "dimension", "distance", "datatype"}
+    if set(vector_schema) != expected_schema_fields:
+        raise ValueError(
+            "Simple KMeans artifact vector_schema fields must be exactly "
+            f"{sorted(expected_schema_fields)}"
+        )
+    if not isinstance(vector_schema.get("vector_name"), str):
+        raise ValueError("Simple KMeans artifact vector_name must be a string")
+    dimension = vector_schema.get("dimension")
+    if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
+        raise ValueError("Simple KMeans artifact vector dimension must be positive")
+    if vector_schema.get("distance") not in {"Cosine", "Dot", "Euclid", "Manhattan"}:
+        raise ValueError("Simple KMeans artifact vector distance is unsupported")
+    if vector_schema.get("datatype") not in {"float32", "float16", "uint8"}:
+        raise ValueError("Simple KMeans artifact vector datatype is unsupported")
+    if payload.get("routing_distance") != "squared_l2":
+        raise ValueError(
+            "Simple KMeans artifact routing_distance must be 'squared_l2'"
+        )
+
+    nprobe = payload.get("nprobe")
+    if (
+        isinstance(nprobe, bool)
+        or not isinstance(nprobe, int)
+        or nprobe <= 0
+        or nprobe > shard_count
+    ):
+        raise ValueError(
+            "Simple KMeans artifact nprobe must be positive and no larger than shard_count"
+        )
+    lower_hnsw_ef = payload.get("lower_hnsw_ef")
+    if (
+        isinstance(lower_hnsw_ef, bool)
+        or not isinstance(lower_hnsw_ef, int)
+        or lower_hnsw_ef <= 0
+    ):
+        raise ValueError("Simple KMeans artifact lower_hnsw_ef must be positive")
+
+    centroids = payload.get("centroids")
+    if not isinstance(centroids, list) or len(centroids) != shard_count:
+        raise ValueError(
+            "Simple KMeans artifact must contain exactly one centroid per shard"
+        )
+    seen_shards: set[int] = set()
+    for centroid in centroids:
+        if not isinstance(centroid, dict) or set(centroid) != {"shard_id", "vector"}:
+            raise ValueError(
+                "Simple KMeans artifact centroid entries require shard_id and vector"
+            )
+        shard_id = centroid.get("shard_id")
+        if (
+            isinstance(shard_id, bool)
+            or not isinstance(shard_id, int)
+            or not 0 <= shard_id < shard_count
+        ):
+            raise ValueError(
+                f"Simple KMeans artifact centroid shard_id is out of range: {shard_id!r}"
+            )
+        if shard_id in seen_shards:
+            raise ValueError(
+                f"Simple KMeans artifact repeats centroid for shard {shard_id}"
+            )
+        seen_shards.add(shard_id)
+        vector = centroid.get("vector")
+        if not isinstance(vector, list) or len(vector) != dimension:
+            raise ValueError(
+                f"Simple KMeans centroid for shard {shard_id} must have dimension {dimension}"
+            )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            for value in vector
+        ):
+            raise ValueError(
+                f"Simple KMeans centroid for shard {shard_id} contains a non-finite value"
+            )
+    if seen_shards != set(range(shard_count)):
+        raise ValueError(
+            "Simple KMeans artifact must contain exactly one centroid for every shard ID"
+        )
+    return {
+        "path": str(path),
+        "generation": generation,
+        "canonical_sha256": expected_sha256,
+        "file_sha256": actual_file_sha256,
+        "size_bytes": path.stat().st_size,
+        "format_version": format_version,
+        "shard_count": shard_count,
+        "layout_sha256": layout_sha256,
+        "logical_point_count": logical_point_count,
+        "physical_point_count": physical_point_count,
+        "vector_schema": vector_schema,
+        "nprobe": nprobe,
+        "lower_hnsw_ef": lower_hnsw_ef,
+        "routing_distance": "squared_l2",
+    }
+
+
 def validate_manifest_image_archive(
     tar_path: Path,
     image_tag: str,
@@ -559,6 +1106,101 @@ def write_manifest(topology: dict[str, Any], run_id: str, data: dict[str, Any]) 
     temp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     temp.replace(path)
     return path
+
+
+def preserve_run_manifest_metadata(
+    data: dict[str, Any], stored: dict[str, Any]
+) -> dict[str, Any]:
+    for key in ("orion_artifacts", "simple_kmeans_artifacts"):
+        if key in stored:
+            data[key] = stored[key]
+    return data
+
+
+def upsert_routing_artifact_manifest(
+    manifest: dict[str, Any],
+    entry: dict[str, Any],
+    *,
+    policy_kind: str,
+    policy_label: str,
+    manifest_key: str,
+) -> dict[str, Any]:
+    collection = validate_collection_name(str(entry["collection"]))
+    generation = validate_generation(entry["generation"])
+    checksum = normalize_sha256(str(entry["canonical_sha256"]))
+    artifacts = list(manifest.get(manifest_key) or [])
+    replacement_index: int | None = None
+    for index, existing in enumerate(artifacts):
+        if not isinstance(existing, dict):
+            raise RuntimeError(
+                f"run manifest contains a malformed {policy_label} artifact entry"
+            )
+        existing_policy_kind = str(existing.get("policy_kind") or policy_kind)
+        if existing_policy_kind != policy_kind:
+            raise RuntimeError(
+                f"run manifest {manifest_key} contains policy kind "
+                f"{existing_policy_kind!r}, expected {policy_kind!r}"
+            )
+        existing_generation = existing.get("generation")
+        if isinstance(existing_generation, bool) or not isinstance(
+            existing_generation, int
+        ):
+            raise RuntimeError(
+                f"run manifest contains an invalid {policy_label} generation"
+            )
+        if (
+            str(existing.get("collection")) == collection
+            and existing_generation == generation
+        ):
+            existing_checksum = normalize_sha256(
+                str(existing.get("canonical_sha256") or "")
+            )
+            if existing_checksum != checksum:
+                raise RuntimeError(
+                    f"run manifest already records this {policy_label} collection/generation "
+                    f"with a different checksum: {existing_checksum}"
+                )
+            replacement_index = index
+            if existing.get("installed_at"):
+                entry["installed_at"] = existing["installed_at"]
+            break
+    entry = {
+        **entry,
+        "policy_kind": policy_kind,
+        "collection": collection,
+        "generation": generation,
+    }
+    if replacement_index is None:
+        artifacts.append(entry)
+    else:
+        artifacts[replacement_index] = entry
+    artifacts.sort(key=lambda item: (str(item["collection"]), int(item["generation"])))
+    manifest[manifest_key] = artifacts
+    return manifest
+
+
+def upsert_orion_artifact_manifest(
+    manifest: dict[str, Any], entry: dict[str, Any]
+) -> dict[str, Any]:
+    return upsert_routing_artifact_manifest(
+        manifest,
+        entry,
+        policy_kind="orion",
+        policy_label="Orion",
+        manifest_key="orion_artifacts",
+    )
+
+
+def upsert_simple_kmeans_artifact_manifest(
+    manifest: dict[str, Any], entry: dict[str, Any]
+) -> dict[str, Any]:
+    return upsert_routing_artifact_manifest(
+        manifest,
+        entry,
+        policy_kind="simple_kmeans",
+        policy_label="Simple KMeans",
+        manifest_key="simple_kmeans_artifacts",
+    )
 
 
 def node_facts(node: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
@@ -786,6 +1428,7 @@ def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         )
     image_id = image_id_local(image_tag, args.dry_run)
     data = build_manifest_data(topology, args.run_id, repo, image_tag, image_id)
+    preserve_run_manifest_metadata(data, stored)
     data["image"]["tar_path"] = str(tar_path)
     if tar_path.exists():
         data["image"]["tar_size_bytes"] = tar_path.stat().st_size
@@ -872,6 +1515,145 @@ def verify_container_reusable(
     return bool((inspected.get("State") or {}).get("Running"))
 
 
+def verify_run_container_identity(
+    inspected: dict[str, Any] | None,
+    node: dict[str, Any],
+    run_id: str,
+) -> None:
+    name = container_name(run_id, str(node["role"]))
+    if inspected is None:
+        raise RuntimeError(f"run-scoped container does not exist: {name}")
+    labels = (inspected.get("Config") or {}).get("Labels") or {}
+    expected = {
+        "orion.distributed.run_id": validate_run_id(run_id),
+        "orion.distributed.role": str(node["role"]),
+        "orion.distributed.private_ip": str(node["private_ip"]),
+    }
+    mismatches = {
+        key: (labels.get(key), value)
+        for key, value in expected.items()
+        if labels.get(key) != value
+    }
+    if mismatches:
+        raise RuntimeError(
+            f"refusing to restart container {name} without exact run ownership: "
+            f"{mismatches}"
+        )
+
+
+def router_log_command(
+    run_id: str,
+    node: dict[str, Any],
+    since_epoch: int,
+) -> list[str]:
+    return [
+        "sudo",
+        "-n",
+        "docker",
+        "logs",
+        "--since",
+        str(since_epoch),
+        container_name(run_id, str(node["role"])),
+    ]
+
+
+def orion_router_log_command(
+    run_id: str,
+    node: dict[str, Any],
+    since_epoch: int,
+) -> list[str]:
+    return router_log_command(run_id, node, since_epoch)
+
+
+def verify_routing_artifact_loaded_logs(
+    node: dict[str, Any],
+    run_id: str,
+    collection: str,
+    generation: int,
+    since_epoch: int,
+    args: argparse.Namespace,
+    *,
+    policy_label: str,
+) -> dict[str, Any]:
+    result = run_on_node(
+        node,
+        router_log_command(run_id, node, since_epoch),
+        args,
+        capture=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"could not read {node['role']} logs after {policy_label} restart: "
+            f"{(result.stderr or result.stdout).strip()}"
+        )
+    logs = f"{result.stdout}\n{result.stderr}"
+    loaded_marker = (
+        f"Loaded {policy_label} routing generation {generation} for collection {collection}"
+    )
+    fallback_lines = [
+        line
+        for line in logs.splitlines()
+        if policy_label.lower() in line.lower()
+        and collection in line
+        and re.search(r"\b(?:unavailable|fallback|falling back)\b", line, re.IGNORECASE)
+    ]
+    if fallback_lines:
+        raise RuntimeError(
+            f"{node['role']} reported {policy_label} fallback after restart; "
+            f"markers={fallback_lines[:5]}"
+        )
+    if loaded_marker not in logs:
+        raise RuntimeError(
+            f"{node['role']} did not report loaded {policy_label} generation {generation} "
+            f"for collection {collection} after restart"
+        )
+    return {
+        "role": str(node["role"]),
+        "container_name": container_name(run_id, str(node["role"])),
+        "since_epoch": since_epoch,
+        "loaded_marker": loaded_marker,
+    }
+
+
+def verify_orion_router_loaded_logs(
+    node: dict[str, Any],
+    run_id: str,
+    collection: str,
+    generation: int,
+    since_epoch: int,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return verify_routing_artifact_loaded_logs(
+        node,
+        run_id,
+        collection,
+        generation,
+        since_epoch,
+        args,
+        policy_label="Orion",
+    )
+
+
+def verify_simple_kmeans_router_loaded_logs(
+    node: dict[str, Any],
+    run_id: str,
+    collection: str,
+    generation: int,
+    since_epoch: int,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return verify_routing_artifact_loaded_logs(
+        node,
+        run_id,
+        collection,
+        generation,
+        since_epoch,
+        args,
+        policy_label="Simple KMeans",
+    )
+
+
 def wait_http_ready(url: str, timeout: float) -> None:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
@@ -886,6 +1668,26 @@ def wait_http_ready(url: str, timeout: float) -> None:
     raise TimeoutError(f"timed out waiting for {url}/readyz: {last_error}")
 
 
+def wait_cluster_healthy(
+    topology: dict[str, Any], timeout: float
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    last_errors: list[str] = ["cluster endpoint has not responded"]
+    while time.monotonic() < deadline:
+        try:
+            snapshot = cluster_snapshot(topology)
+            last_errors = cluster_validation_errors(topology, snapshot)
+            if not last_errors:
+                return snapshot
+        except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
+            last_errors = [str(exc)]
+        time.sleep(1.0)
+    raise TimeoutError(
+        "timed out waiting for the four-peer cluster after artifact activation: "
+        + "; ".join(last_errors)
+    )
+
+
 def cluster_snapshot(topology: dict[str, Any]) -> dict[str, Any]:
     url = f"{http_url(topology['controller'], topology)}/cluster"
     with urllib.request.urlopen(url, timeout=10.0) as response:
@@ -895,6 +1697,211 @@ def cluster_snapshot(topology: dict[str, Any]) -> dict[str, Any]:
 def http_json(url: str) -> dict[str, Any]:
     with urllib.request.urlopen(url, timeout=10.0) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def validate_collection_routing_policy(
+    topology: dict[str, Any],
+    collection: str,
+    generation: int,
+    expected_sha256: str,
+    artifact: dict[str, Any] | None = None,
+    *,
+    policy_kind: str,
+    policy_label: str,
+) -> dict[str, Any]:
+    collection = validate_collection_name(collection)
+    generation = validate_generation(generation)
+    expected_sha256 = normalize_sha256(expected_sha256)
+    encoded_collection = urllib.parse.quote(collection, safe="")
+    payload = http_json(
+        f"{http_url(topology['controller'], topology).rstrip('/')}"
+        f"/collections/{encoded_collection}"
+    )
+    result = payload.get("result") or {}
+    config = result.get("config") or {}
+    policy = config.get("auto_shard_policy")
+    expected_policy = {
+        "type": policy_kind,
+        "generation": generation,
+        "artifact_sha256": expected_sha256,
+    }
+    if not isinstance(policy, dict):
+        raise RuntimeError(
+            f"collection {collection} does not have an active {policy_label} "
+            "auto-shard policy"
+        )
+    actual_type = str(policy.get("type") or "").lower()
+    actual_generation = policy.get("generation")
+    if isinstance(actual_generation, bool) or not isinstance(actual_generation, int):
+        raise RuntimeError(
+            f"collection {collection} has invalid {policy_label} policy generation: "
+            f"{actual_generation!r}"
+        )
+    try:
+        actual_sha256 = normalize_sha256(str(policy.get("artifact_sha256") or ""))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"collection {collection} has malformed {policy_label} policy metadata: "
+            f"{policy}"
+        ) from exc
+    actual_policy = {
+        "type": actual_type,
+        "generation": actual_generation,
+        "artifact_sha256": actual_sha256,
+    }
+    if actual_policy != expected_policy:
+        raise RuntimeError(
+            f"collection {collection} {policy_label} policy mismatch: "
+            f"expected={expected_policy}, actual={actual_policy}"
+        )
+    if artifact is None:
+        return {"policy": policy}
+
+    status = str(result.get("status") or "").lower()
+    if status != "green":
+        raise RuntimeError(
+            f"collection {collection} status is {status or '<missing>'}, expected green"
+        )
+    optimizer_status = result.get("optimizer_status")
+    if str(optimizer_status or "").lower() != "ok":
+        raise RuntimeError(
+            f"collection {collection} optimizer status is {optimizer_status!r}, expected 'ok'"
+        )
+    params = config.get("params") or {}
+    if str(params.get("sharding_method") or "auto").lower() != "auto":
+        raise RuntimeError(
+            f"collection {collection} is not using automatic numeric sharding"
+        )
+    actual_shard_count = params.get("shard_number")
+    expected_shard_count = artifact.get("shard_count")
+    if (
+        isinstance(actual_shard_count, bool)
+        or not isinstance(actual_shard_count, int)
+        or actual_shard_count != expected_shard_count
+    ):
+        raise RuntimeError(
+            f"collection {collection} shard count does not match the {policy_label} artifact: "
+            f"collection={actual_shard_count!r}, artifact={expected_shard_count!r}"
+        )
+
+    artifact_schema = artifact.get("vector_schema") or {}
+    vector_name = str(artifact_schema.get("vector_name") or "")
+    vectors = params.get("vectors") or {}
+    if vector_name:
+        vector_params = vectors.get(vector_name) if isinstance(vectors, dict) else None
+    else:
+        vector_params = vectors if isinstance(vectors, dict) and "size" in vectors else None
+    if not isinstance(vector_params, dict):
+        raise RuntimeError(
+            f"collection {collection} does not contain {policy_label} routing vector "
+            f"{vector_name!r}"
+        )
+    collection_schema = {
+        "vector_name": vector_name,
+        "dimension": vector_params.get("size"),
+        "distance": str(vector_params.get("distance") or "").lower(),
+        "datatype": str(vector_params.get("datatype") or "float32").lower(),
+    }
+    expected_schema = {
+        "vector_name": vector_name,
+        "dimension": artifact_schema.get("dimension"),
+        "distance": str(artifact_schema.get("distance") or "").lower(),
+        "datatype": str(artifact_schema.get("datatype") or "float32").lower(),
+    }
+    if collection_schema != expected_schema:
+        raise RuntimeError(
+            f"collection {collection} vector schema does not match the {policy_label} "
+            "artifact: "
+            f"collection={collection_schema}, artifact={expected_schema}"
+        )
+    if vector_params.get("multivector_config") is not None:
+        raise RuntimeError(
+            f"collection {collection} {policy_label} routing vector must not be multivector"
+        )
+    actual_points_count = result.get("points_count")
+    if actual_points_count != artifact.get("physical_point_count"):
+        raise RuntimeError(
+            f"collection {collection} physical point count does not match the "
+            f"{policy_label} artifact: "
+            f"collection={actual_points_count!r}, artifact={artifact.get('physical_point_count')!r}"
+        )
+
+    cluster_payload = http_json(
+        f"{http_url(topology['controller'], topology).rstrip('/')}"
+        f"/collections/{encoded_collection}/cluster"
+    )
+    cluster = cluster_payload.get("result") or {}
+    transfers = cluster.get("shard_transfers") or []
+    if transfers:
+        raise RuntimeError(
+            f"collection {collection} has {len(transfers)} shard transfer(s) in progress"
+        )
+    shards = [
+        *(cluster.get("local_shards") or []),
+        *(cluster.get("remote_shards") or []),
+    ]
+    logical_shards = {
+        shard.get("shard_id") for shard in shards if isinstance(shard, dict)
+    }
+    if len(logical_shards) != expected_shard_count:
+        raise RuntimeError(
+            f"collection {collection} placement exposes {len(logical_shards)} logical "
+            f"shards, expected {expected_shard_count}"
+        )
+    inactive = [
+        shard
+        for shard in shards
+        if str((shard or {}).get("state") or "") != "Active"
+    ]
+    if inactive:
+        raise RuntimeError(
+            f"collection {collection} has non-Active shard replicas: {inactive}"
+        )
+    return {
+        "policy_kind": policy_kind,
+        "policy": policy,
+        "status": status,
+        "optimizer_status": optimizer_status,
+        "shard_count": actual_shard_count,
+        "vector_schema": collection_schema,
+        "cluster": cluster,
+    }
+
+
+def validate_collection_orion_policy(
+    topology: dict[str, Any],
+    collection: str,
+    generation: int,
+    expected_sha256: str,
+    artifact: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return validate_collection_routing_policy(
+        topology,
+        collection,
+        generation,
+        expected_sha256,
+        artifact,
+        policy_kind="orion",
+        policy_label="Orion",
+    )
+
+
+def validate_collection_simple_kmeans_policy(
+    topology: dict[str, Any],
+    collection: str,
+    generation: int,
+    expected_sha256: str,
+    artifact: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return validate_collection_routing_policy(
+        topology,
+        collection,
+        generation,
+        expected_sha256,
+        artifact,
+        policy_kind="simple_kmeans",
+        policy_label="Simple KMeans",
+    )
 
 
 def run_collection_placements(topology: dict[str, Any], run_id: str) -> dict[str, Any]:
@@ -1176,6 +2183,7 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                 topology["controller"], args.disable_peer_premerge
             ),
         )
+        preserve_run_manifest_metadata(data, stored)
         data["image"].update(stored.get("image") or {})
         data["cluster_snapshot"] = snapshot
         path = write_manifest(topology, args.run_id, data)
@@ -1278,6 +2286,333 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     return 0 if status["validation"]["ok"] else 1
 
 
+def artifact_restart_nodes(
+    topology: dict[str, Any], restart_order: str
+) -> list[dict[str, Any]]:
+    if restart_order == "controller-first":
+        return [topology["controller"], *topology["workers"]]
+    if restart_order == "workers-first":
+        return [*topology["workers"], topology["controller"]]
+    raise ValueError(f"unsupported artifact restart order: {restart_order}")
+
+
+def command_install_routing_artifact(
+    args: argparse.Namespace,
+    topology: dict[str, Any],
+    *,
+    policy_kind: str,
+    policy_label: str,
+    manifest_key: str,
+    staging_directory: str,
+    validate_local_artifact: Any,
+    validate_collection_policy: Any,
+    artifact_destination: Any,
+    upsert_artifact_manifest: Any,
+    verify_router_loaded_logs: Any,
+) -> int:
+    run_id = validate_run_id(args.run_id)
+    collection = validate_collection_name(args.collection)
+    generation = validate_generation(args.generation)
+    expected_sha256 = normalize_sha256(args.expected_sha256)
+    if args.wait_timeout <= 0:
+        raise ValueError("wait-timeout must be greater than zero")
+    artifact = validate_local_artifact(args.artifact, generation, expected_sha256)
+    source = Path(artifact["path"])
+    stored = read_manifest(topology, run_id)
+    if not stored:
+        raise RuntimeError(
+            f"run manifest does not exist for {run_id}; deploy the run before installing artifacts"
+        )
+    if str(stored.get("run_id") or "") != run_id:
+        raise RuntimeError(
+            "run manifest identity mismatch: "
+            f"expected={run_id}, actual={stored.get('run_id')!r}"
+        )
+    preinstall_collection_proof = None
+    if not args.dry_run:
+        preinstall_collection_proof = validate_collection_policy(
+            topology, collection, generation, expected_sha256, artifact
+        )
+
+    installed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    base_entry: dict[str, Any] = {
+        "policy_kind": policy_kind,
+        "collection": collection,
+        "generation": generation,
+        "canonical_sha256": expected_sha256,
+        "file_sha256": artifact["file_sha256"],
+        "source_path": str(source),
+        "size_bytes": artifact["size_bytes"],
+        "format_version": artifact["format_version"],
+        "shard_count": artifact["shard_count"],
+        "layout_sha256": artifact["layout_sha256"],
+        "logical_point_count": artifact["logical_point_count"],
+        "physical_point_count": artifact["physical_point_count"],
+        "vector_schema": artifact["vector_schema"],
+        "installed_at": installed_at,
+        "last_verified_at": installed_at,
+        "preinstall_collection_proof": preinstall_collection_proof,
+        "activation": {
+            "status": "restart_in_progress" if args.restart else "not_requested",
+            "restart_order": args.restart,
+        },
+        "nodes": [],
+    }
+    for optional_field in ("routing_distance", "nprobe", "lower_hnsw_ef"):
+        if optional_field in artifact:
+            base_entry[optional_field] = artifact[optional_field]
+    prospective_manifest = {
+        **stored,
+        manifest_key: list(stored.get(manifest_key) or []),
+    }
+    upsert_artifact_manifest(prospective_manifest, dict(base_entry))
+
+    plans: list[dict[str, Any]] = []
+    for node in all_nodes(topology):
+        role = str(node["role"])
+        storage_root = (local_role_root(topology, run_id, role) / "storage").resolve()
+        destination = artifact_destination(
+            topology, run_id, role, collection, generation
+        )
+        staged = (
+            storage_root
+            / staging_directory
+            / f"{collection}-generation-{generation}-{expected_sha256[:16]}.json"
+        ).resolve()
+        temporary = destination.with_name(
+            f".{destination.name}.tmp-{expected_sha256[:16]}"
+        )
+        probe = run_on_node(
+            node,
+            artifact_probe_command(storage_root, destination, expected_sha256),
+            args,
+            capture=True,
+            check=False,
+        )
+        if probe.returncode != 0:
+            detail = (probe.stderr or probe.stdout or "probe failed").strip()
+            raise RuntimeError(
+                f"{node['ssh_host']} refused {policy_label} artifact installation: {detail}"
+            )
+        state = "reused" if probe.stdout.strip().startswith("match ") else "missing"
+        plans.append(
+            {
+                "node": node,
+                "role": role,
+                "storage_root": storage_root,
+                "destination": destination,
+                "staged": staged,
+                "temporary": temporary,
+                "action": state,
+            }
+        )
+
+    for plan in plans:
+        if plan["action"] == "reused":
+            continue
+        node = plan["node"]
+        run_on_node(
+            node,
+            artifact_prepare_command(plan["storage_root"], plan["staged"]),
+            args,
+        )
+        run_command(
+            copy_to_node_command(
+                node,
+                source,
+                plan["staged"],
+                args.ssh_user,
+                args.ssh_option,
+            ),
+            dry_run=args.dry_run,
+        )
+        finalized = run_on_node(
+            node,
+            artifact_finalize_command(
+                plan["storage_root"],
+                plan["staged"],
+                plan["temporary"],
+                plan["destination"],
+                expected_sha256,
+            ),
+            args,
+            capture=True,
+        )
+        if not args.dry_run and expected_sha256 not in finalized.stdout:
+            raise RuntimeError(
+                f"{node['ssh_host']} did not confirm the installed artifact checksum"
+            )
+        plan["action"] = "installed"
+
+    node_records: list[dict[str, Any]] = []
+    for plan in plans:
+        verified = run_on_node(
+            plan["node"],
+            artifact_probe_command(
+                plan["storage_root"], plan["destination"], expected_sha256
+            ),
+            args,
+            capture=True,
+            check=False,
+        )
+        if not args.dry_run and (
+            verified.returncode != 0
+            or verified.stdout.strip() != f"match {expected_sha256}"
+        ):
+            detail = (verified.stderr or verified.stdout or "verification failed").strip()
+            raise RuntimeError(
+                f"{plan['node']['ssh_host']} failed final artifact verification: {detail}"
+            )
+        node_records.append(
+            {
+                "role": plan["role"],
+                "ssh_host": plan["node"]["ssh_host"],
+                "destination_path": str(plan["destination"]),
+                "sha256": expected_sha256,
+                "action": plan["action"],
+            }
+        )
+
+    base_entry["nodes"] = node_records
+    manifest_data = {
+        **stored,
+        manifest_key: list(stored.get(manifest_key) or []),
+    }
+    upsert_artifact_manifest(manifest_data, base_entry)
+    if not args.dry_run:
+        write_manifest(topology, run_id, manifest_data)
+
+    if args.restart:
+        ordered_nodes = artifact_restart_nodes(topology, args.restart)
+        try:
+            restart_started_at = int(time.time()) - 1
+            if not args.dry_run:
+                validate_collection_policy(
+                    topology, collection, generation, expected_sha256, artifact
+                )
+                for node in ordered_nodes:
+                    inspected = inspect_container(
+                        node, container_name(run_id, str(node["role"])), args
+                    )
+                    verify_run_container_identity(inspected, node, run_id)
+            for node in ordered_nodes:
+                run_on_node(
+                    node,
+                    [
+                        "sudo",
+                        "-n",
+                        "docker",
+                        "restart",
+                        "--time",
+                        "30",
+                        container_name(run_id, str(node["role"])),
+                    ],
+                    args,
+                )
+                if not args.dry_run:
+                    wait_http_ready(http_url(node, topology), args.wait_timeout)
+            cluster = None if args.dry_run else wait_cluster_healthy(
+                topology, args.wait_timeout
+            )
+            if not args.dry_run:
+                collection_proof = validate_collection_policy(
+                    topology, collection, generation, expected_sha256, artifact
+                )
+                router_log_proof = [
+                    verify_router_loaded_logs(
+                        node,
+                        run_id,
+                        collection,
+                        generation,
+                        restart_started_at,
+                        args,
+                    )
+                    for node in all_nodes(topology)
+                ]
+            else:
+                collection_proof = None
+                router_log_proof = []
+            base_entry["activation"] = {
+                "status": (
+                    "dry_run_restart_planned"
+                    if args.dry_run
+                    else "activated_after_restart"
+                ),
+                "restart_order": args.restart,
+            }
+            if not args.dry_run:
+                base_entry["activation"]["activated_at"] = time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                )
+            if cluster is not None:
+                base_entry["activation"]["cluster_snapshot"] = cluster
+            if collection_proof is not None:
+                base_entry["activation"]["collection_proof"] = collection_proof
+                base_entry["activation"]["router_log_proof"] = router_log_proof
+        except Exception as exc:
+            base_entry["activation"] = {
+                "status": "restart_failed",
+                "restart_order": args.restart,
+                "error": str(exc),
+            }
+            if not args.dry_run:
+                upsert_artifact_manifest(manifest_data, base_entry)
+                write_manifest(topology, run_id, manifest_data)
+            raise
+        if not args.dry_run:
+            upsert_artifact_manifest(manifest_data, base_entry)
+            write_manifest(topology, run_id, manifest_data)
+
+    summary = {
+        "run_id": run_id,
+        "policy_kind": policy_kind,
+        "collection": collection,
+        "generation": generation,
+        "sha256": expected_sha256,
+        "nodes": node_records,
+        "activation": base_entry["activation"],
+        "manifest": str(manifest_path(topology, run_id)),
+    }
+    print(json.dumps(summary, indent=2), flush=True)
+    return 0
+
+
+def command_install_orion_artifact(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    return command_install_routing_artifact(
+        args,
+        topology,
+        policy_kind="orion",
+        policy_label="Orion",
+        manifest_key="orion_artifacts",
+        staging_directory=".orion-artifact-staging",
+        validate_local_artifact=validate_local_orion_artifact,
+        validate_collection_policy=validate_collection_orion_policy,
+        artifact_destination=orion_artifact_destination,
+        upsert_artifact_manifest=upsert_orion_artifact_manifest,
+        verify_router_loaded_logs=verify_orion_router_loaded_logs,
+    )
+
+
+def command_install_simple_kmeans_artifact(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    return command_install_routing_artifact(
+        args,
+        topology,
+        policy_kind="simple_kmeans",
+        policy_label="Simple KMeans",
+        manifest_key="simple_kmeans_artifacts",
+        staging_directory=".simple-kmeans-artifact-staging",
+        validate_local_artifact=validate_local_simple_kmeans_artifact,
+        validate_collection_policy=validate_collection_simple_kmeans_policy,
+        artifact_destination=simple_kmeans_artifact_destination,
+        upsert_artifact_manifest=upsert_simple_kmeans_artifact_manifest,
+        verify_router_loaded_logs=verify_simple_kmeans_router_loaded_logs,
+    )
+
+
 def command_down(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     for node in all_nodes(topology):
         name = container_name(args.run_id, str(node["role"]))
@@ -1346,6 +2681,7 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         args.disable_peer_premerge,
         controller_mode,
     )
+    preserve_run_manifest_metadata(data, stored)
     data["image"].update(stored.get("image") or {})
     if not args.dry_run:
         try:
@@ -1367,6 +2703,8 @@ def main() -> int:
         "build": command_build,
         "deploy": command_deploy,
         "status": command_status,
+        "install-orion-artifact": command_install_orion_artifact,
+        "install-simple-kmeans-artifact": command_install_simple_kmeans_artifact,
         "down": command_down,
         "clean": command_clean,
         "manifest": command_manifest,

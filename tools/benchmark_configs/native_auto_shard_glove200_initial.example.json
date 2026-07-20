@@ -1,0 +1,64 @@
+{
+  "shared": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/REPLACE/WITH/glove-200-angular.hdf5",
+    "topology": "tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/REPLACE/WITH/distributed-run-manifest.json",
+    "warmup_query_count": 100,
+    "eval_query_count": 10000,
+    "top_k": 10,
+    "batch_size": 100,
+    "stability_repeats": 3,
+    "api": "search",
+    "vector_distance": "cosine",
+    "vector_name": "",
+    "cargo_runner": "tools/cargo_in_docker.sh",
+    "cargo_target_dir": "/proj/intelisys-PG0/exp/orion-distributed/cargo-target-native",
+    "write_per_query_metrics": false
+  },
+  "same_recall_targets": [
+    0.9,
+    0.95
+  ],
+  "same_recall_window": 0.003,
+  "cases": [
+    {
+      "name": "hash_all_ef40",
+      "method": "hash_all",
+      "collection": "REPLACE_native_hash_all",
+      "hnsw_ef": 40
+    },
+    {
+      "name": "hash_all_ef76",
+      "method": "hash_all",
+      "collection": "REPLACE_native_hash_all",
+      "hnsw_ef": 76
+    },
+    {
+      "name": "orion_recall090",
+      "method": "orion",
+      "collection": "REPLACE_native_orion_090",
+      "artifact": "/REPLACE/WITH/orion-recall090-generation.json",
+      "orion_route_trace": true
+    },
+    {
+      "name": "orion_recall095",
+      "method": "orion",
+      "collection": "REPLACE_native_orion_095",
+      "artifact": "/REPLACE/WITH/orion-recall095-generation.json",
+      "orion_route_trace": true
+    },
+    {
+      "name": "simple_kmeans_recall090",
+      "method": "simple_kmeans",
+      "collection": "REPLACE_native_simple_kmeans_090",
+      "artifact": "/REPLACE/WITH/simple-kmeans-recall090-generation.json"
+    },
+    {
+      "name": "simple_kmeans_recall095",
+      "method": "simple_kmeans",
+      "collection": "REPLACE_native_simple_kmeans_095",
+      "artifact": "/REPLACE/WITH/simple-kmeans-recall095-generation.json"
+    }
+  ]
+}

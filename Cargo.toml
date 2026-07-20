@@ -70,10 +70,12 @@ futures-util = { workspace = true }
 clap = { workspace = true }
 serde_cbor = { workspace = true }
 uuid = { workspace = true }
+sha2 = { workspace = true }
 sys-info = "0.9.1"
 ordered-float = { workspace = true }
 ahash = { workspace = true }
 urlencoding = { workspace = true }
+url = { workspace = true }
 
 config = { version = "0.15.22", default-features = false, features = ["yaml"] }
 

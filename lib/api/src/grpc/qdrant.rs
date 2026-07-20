@@ -1025,6 +1025,61 @@ pub mod quantization_config_diff {
 #[derive(serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AutoShardPolicy {
+    #[prost(oneof = "auto_shard_policy::Policy", tags = "1, 2, 3")]
+    #[validate(nested)]
+    pub policy: ::core::option::Option<auto_shard_policy::Policy>,
+}
+/// Nested message and enum types in `AutoShardPolicy`.
+pub mod auto_shard_policy {
+    #[derive(serde::Serialize)]
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Policy {
+        #[prost(message, tag = "1")]
+        HashAll(super::HashAllAutoShardPolicy),
+        #[prost(message, tag = "2")]
+        Orion(super::OrionAutoShardPolicy),
+        #[prost(message, tag = "3")]
+        SimpleKmeans(super::SimpleKmeansAutoShardPolicy),
+    }
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HashAllAutoShardPolicy {}
+#[derive(validator::Validate)]
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionAutoShardPolicy {
+    /// Active routing generation. Generation zero is invalid.
+    #[prost(uint64, tag = "1")]
+    #[validate(range(min = 1))]
+    pub generation: u64,
+    /// SHA-256 digest of the serialized routing artifact.
+    #[prost(string, tag = "2")]
+    #[validate(custom(function = "common::validation::validate_sha256_hash"))]
+    pub artifact_sha256: ::prost::alloc::string::String,
+}
+#[derive(validator::Validate)]
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SimpleKmeansAutoShardPolicy {
+    /// Active routing generation. Generation zero is invalid.
+    #[prost(uint64, tag = "1")]
+    #[validate(range(min = 1))]
+    pub generation: u64,
+    /// SHA-256 digest of the serialized routing artifact.
+    #[prost(string, tag = "2")]
+    #[validate(custom(function = "common::validation::validate_sha256_hash"))]
+    pub artifact_sha256: ::prost::alloc::string::String,
+}
+#[derive(validator::Validate)]
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StrictModeConfig {
     /// Whether strict mode is enabled for a collection or not.
     #[prost(bool, optional, tag = "1")]
@@ -1203,6 +1258,11 @@ pub struct CreateCollection {
     /// Arbitrary JSON metadata for the collection
     #[prost(map = "string, message", tag = "18")]
     pub metadata: ::std::collections::HashMap<::prost::alloc::string::String, Value>,
+    /// Automatic point partitioning and vector-query routing policy.
+    /// Missing preserves point-ID hash writes and all-shard reads.
+    #[prost(message, optional, tag = "19")]
+    #[validate(nested)]
+    pub auto_shard_policy: ::core::option::Option<AutoShardPolicy>,
 }
 #[derive(validator::Validate)]
 #[derive(serde::Serialize)]
@@ -1366,6 +1426,10 @@ pub struct CollectionConfig {
     /// Arbitrary JSON metadata for the collection
     #[prost(map = "string, message", tag = "7")]
     pub metadata: ::std::collections::HashMap<::prost::alloc::string::String, Value>,
+    /// Automatic point partitioning and vector-query routing policy.
+    /// Missing means point-ID hash writes and all-shard reads.
+    #[prost(message, optional, tag = "8")]
+    pub auto_shard_policy: ::core::option::Option<AutoShardPolicy>,
 }
 #[derive(serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]

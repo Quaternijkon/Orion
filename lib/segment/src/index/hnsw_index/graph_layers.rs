@@ -598,28 +598,29 @@ impl GraphLayers {
                 })
                 .collect_vec();
 
-            if level_entries.is_empty() {
-                return Ok(Vec::default());
+            if !level_entries.is_empty() {
+                let ef = max(ef, top);
+                let nearest = match algorithm {
+                    SearchAlgorithm::Hnsw => self.search_on_level_multi_ep(
+                        &level_entries,
+                        0,
+                        ef,
+                        &mut points_scorer,
+                        is_stopped,
+                    ),
+                    SearchAlgorithm::Acorn => self.search_on_level_multi_ep(
+                        &level_entries,
+                        0,
+                        ef,
+                        &mut points_scorer,
+                        is_stopped,
+                    ),
+                }?;
+                return Ok(nearest.into_iter_sorted().take(top).collect_vec());
             }
 
-            let ef = max(ef, top);
-            let nearest = match algorithm {
-                SearchAlgorithm::Hnsw => self.search_on_level_multi_ep(
-                    &level_entries,
-                    0,
-                    ef,
-                    &mut points_scorer,
-                    is_stopped,
-                ),
-                SearchAlgorithm::Acorn => self.search_on_level_multi_ep(
-                    &level_entries,
-                    0,
-                    ef,
-                    &mut points_scorer,
-                    is_stopped,
-                ),
-            }?;
-            return Ok(nearest.into_iter_sorted().take(top).collect_vec());
+            // Routed entry points are search hints. A segment which does not contain any of
+            // them must still be searched from its regular HNSW entry point.
         }
 
         let Some(entry_point) = self.get_entry_point(points_scorer.filters(), custom_entry_points)
@@ -903,6 +904,69 @@ mod tests {
             .unwrap();
 
         assert_eq!(result[0].idx, 3);
+    }
+
+    #[test]
+    fn empty_custom_entry_points_fall_back_to_default_entry_point() {
+        let dim = 2;
+        let hnsw_m = HnswM::new2(8);
+        let num_vectors = 2;
+
+        let mut vector_storage = new_volatile_dense_vector_storage(dim, Distance::Dot);
+        let hw_counter = HardwareCounterCell::new();
+        let vectors = [vec![0.1, 0.0], vec![1.0, 0.0]];
+        for (idx, vector) in vectors.iter().enumerate() {
+            vector_storage
+                .insert_vector(
+                    idx as PointOffsetType,
+                    vector.as_slice().into(),
+                    &hw_counter,
+                )
+                .unwrap();
+        }
+
+        let graph_links = vec![vec![vec![1]], vec![vec![0]]];
+        let mut entry_points = EntryPoints::new(1);
+        entry_points.new_point(0, 0, |_| true);
+        let graph_layers = GraphLayers {
+            hnsw_m,
+            links: GraphLinks::new_from_edges(graph_links, GraphLinksFormatParam::Plain, hnsw_m)
+                .unwrap(),
+            entry_points,
+            visited_pool: VisitedPool::new(),
+        };
+
+        let deleted_points = BitVec::repeat(false, num_vectors);
+        let query = vec![1.0, 0.0];
+        let search = |custom_entry_points| {
+            let scorer = FilteredScorer::new(
+                query.as_slice().into(),
+                &vector_storage,
+                None,
+                None,
+                &deleted_points,
+                HardwareCounterCell::new(),
+            )
+            .unwrap();
+
+            graph_layers
+                .search(
+                    1,
+                    1,
+                    SearchAlgorithm::Hnsw,
+                    scorer,
+                    custom_entry_points,
+                    &DEFAULT_STOPPED,
+                )
+                .unwrap()
+        };
+
+        let default_result = search(None);
+        let fallback_result = search(Some(&[]));
+
+        assert!(!fallback_result.is_empty());
+        assert_eq!(fallback_result, default_result);
+        assert_eq!(fallback_result[0].idx, 1);
     }
 
     #[rstest]

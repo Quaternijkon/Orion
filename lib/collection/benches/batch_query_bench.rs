@@ -71,6 +71,7 @@ fn setup() -> (TempDir, LocalShard, Runtime) {
         strict_mode_config: Default::default(),
         uuid: None,
         metadata: None,
+        auto_shard_policy: None,
     };
 
     let optimizers_config = collection_config.optimizer_config.clone();

@@ -3,13 +3,22 @@ use std::num::NonZeroU32;
 use futures::Future;
 
 use super::Collection;
-use crate::config::ShardingMethod;
+use crate::config::{AutoShardPolicy, ShardingMethod};
 use crate::hash_ring::HashRingRouter;
 use crate::operations::cluster_ops::ReshardingDirection;
 use crate::operations::types::CollectionResult;
 use crate::shards::replica_set::replica_set_state::ReplicaState;
 use crate::shards::resharding::{ReshardKey, ReshardState};
 use crate::shards::transfer::ShardTransferConsensus;
+
+fn check_resharding_policy(policy: Option<&AutoShardPolicy>) -> CollectionResult<()> {
+    if policy.is_some_and(AutoShardPolicy::is_static_routing) {
+        return Err(crate::operations::types::CollectionError::bad_request(
+            "resharding a static routed collection is not supported until a new routing artifact generation can be activated atomically",
+        ));
+    }
+    Ok(())
+}
 
 impl Collection {
     pub async fn resharding_state(&self) -> Option<ReshardState> {
@@ -37,6 +46,14 @@ impl Collection {
         T: Future<Output = ()> + Send + 'static,
         F: Future<Output = ()> + Send + 'static,
     {
+        check_resharding_policy(
+            self.collection_config
+                .read()
+                .await
+                .auto_shard_policy
+                .as_ref(),
+        )?;
+
         {
             let mut shard_holder = self.shards_holder.write().await;
 
@@ -261,5 +278,34 @@ impl Collection {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_orion_policy_rejects_resharding() {
+        assert!(check_resharding_policy(None).is_ok());
+        assert!(check_resharding_policy(Some(&AutoShardPolicy::HashAll)).is_ok());
+        assert!(
+            check_resharding_policy(Some(&AutoShardPolicy::Orion {
+                generation: 1,
+                artifact_sha256: "0".repeat(64),
+            }))
+            .unwrap_err()
+            .to_string()
+            .contains("not supported")
+        );
+        assert!(
+            check_resharding_policy(Some(&AutoShardPolicy::SimpleKmeans {
+                generation: 2,
+                artifact_sha256: "1".repeat(64),
+            }))
+            .unwrap_err()
+            .to_string()
+            .contains("not supported")
+        );
     }
 }

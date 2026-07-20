@@ -49,7 +49,7 @@ use uuid::Uuid;
 use validator::{Validate, ValidationError, ValidationErrors};
 
 use super::ClockTag;
-use crate::config::{CollectionConfigInternal, CollectionParams, WalConfig};
+use crate::config::{AutoShardPolicy, CollectionConfigInternal, CollectionParams, WalConfig};
 use crate::operations::cluster_ops::ReshardingDirection;
 use crate::operations::config_diff::{HnswConfigDiff, QuantizationConfigDiff};
 use crate::optimizers_builder::OptimizersConfig;
@@ -178,6 +178,9 @@ pub struct CollectionConfig {
     /// such as creation time, migration data, inference model info, etc.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Payload>,
+    /// Automatic shard partitioning/query-routing policy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_shard_policy: Option<AutoShardPolicy>,
 }
 
 impl From<CollectionConfigInternal> for CollectionConfig {
@@ -192,6 +195,7 @@ impl From<CollectionConfigInternal> for CollectionConfig {
             // Internal UUID to identify unique collections in consensus snapshots
             uuid: _,
             metadata,
+            auto_shard_policy,
         } = config;
 
         CollectionConfig {
@@ -202,6 +206,7 @@ impl From<CollectionConfigInternal> for CollectionConfig {
             quantization_config,
             strict_mode_config: strict_mode_config.map(StrictModeConfigOutput::from),
             metadata,
+            auto_shard_policy,
         }
     }
 }

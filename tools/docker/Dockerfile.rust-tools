@@ -1,0 +1,21 @@
+FROM rust:1.94.0-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        clang \
+        cmake \
+        g++ \
+        gcc \
+        jq \
+        libc6-dev \
+        libprotobuf-dev \
+        libunwind-dev \
+        lld \
+        pkg-config \
+        protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/* \
+    && rustup component add clippy rustfmt
+
+ENV PROTOC_INCLUDE=/usr/include
+
+WORKDIR /workspace

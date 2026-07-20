@@ -9,7 +9,7 @@ use segment::types::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::config::{CollectionConfigInternal, CollectionParams, WalConfig};
+use crate::config::{AutoShardPolicy, CollectionConfigInternal, CollectionParams, WalConfig};
 use crate::operations::types::{OptimizersStatus, ReshardingInfo, ShardStatus, ShardTransferInfo};
 use crate::optimizers_builder::OptimizersConfig;
 use crate::shards::replica_set::replica_set_state::ReplicaState;
@@ -158,6 +158,8 @@ pub struct CollectionConfigTelemetry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[anonymize(value = None)]
     pub metadata: Option<Payload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_shard_policy: Option<AutoShardPolicy>,
 }
 
 impl From<CollectionConfigInternal> for CollectionConfigTelemetry {
@@ -171,6 +173,7 @@ impl From<CollectionConfigInternal> for CollectionConfigTelemetry {
             strict_mode_config,
             uuid,
             metadata,
+            auto_shard_policy,
         } = config;
         CollectionConfigTelemetry {
             params,
@@ -181,6 +184,7 @@ impl From<CollectionConfigInternal> for CollectionConfigTelemetry {
             strict_mode_config: strict_mode_config.map(StrictModeConfigOutput::from),
             uuid,
             metadata,
+            auto_shard_policy,
         }
     }
 }

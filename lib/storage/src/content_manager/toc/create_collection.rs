@@ -32,6 +32,7 @@ impl TableOfContent {
             mut vectors,
             shard_number,
             sharding_method,
+            auto_shard_policy,
             on_disk_payload,
             hnsw_config: hnsw_config_diff,
             wal_config: wal_config_diff,
@@ -44,6 +45,19 @@ impl TableOfContent {
             uuid,
             metadata,
         } = operation;
+
+        let auto_shard_policy =
+            collection::config::AutoShardPolicy::canonicalize(auto_shard_policy);
+
+        if auto_shard_policy
+            .as_ref()
+            .is_some_and(collection::config::AutoShardPolicy::is_static_routing)
+            && sharding_method.unwrap_or_default() != ShardingMethod::Auto
+        {
+            return Err(StorageError::bad_input(
+                "Static auto shard routing policies require `sharding_method=auto`",
+            ));
+        }
 
         {
             let collections = self.collections.read().await;
@@ -202,6 +216,7 @@ impl TableOfContent {
             strict_mode_config,
             uuid,
             metadata,
+            auto_shard_policy,
         };
 
         // No shard key mapping on creation, shard keys are set up after creating the collection

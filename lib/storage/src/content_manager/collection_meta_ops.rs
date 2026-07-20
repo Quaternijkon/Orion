@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use collection::config::{CollectionConfigInternal, CollectionParams, ShardingMethod};
+use collection::config::{
+    AutoShardPolicy, CollectionConfigInternal, CollectionParams, ShardingMethod,
+};
 use collection::operations::config_diff::{
     CollectionParamsDiff, HnswConfigDiff, OptimizersConfigDiff, QuantizationConfigDiff,
     WalConfigDiff,
@@ -128,6 +130,11 @@ pub struct CreateCollection {
     /// Custom - points are distributed across shards according to shard key
     #[serde(default)]
     pub sharding_method: Option<ShardingMethod>,
+    /// Automatic point partitioning and vector-query routing policy.
+    /// Missing preserves Qdrant's point-ID hash writes and all-shard reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[validate(nested)]
+    pub auto_shard_policy: Option<AutoShardPolicy>,
     /// Number of shards replicas.
     /// Default is 1
     /// Minimum is 1
@@ -434,6 +441,7 @@ impl From<CollectionConfigInternal> for CreateCollection {
             strict_mode_config,
             uuid,
             metadata,
+            auto_shard_policy,
         } = value;
 
         let CollectionParams {
@@ -452,6 +460,7 @@ impl From<CollectionConfigInternal> for CreateCollection {
             vectors,
             shard_number: Some(shard_number.get()),
             sharding_method,
+            auto_shard_policy,
             replication_factor: Some(replication_factor.get()),
             write_consistency_factor: Some(write_consistency_factor.get()),
             on_disk_payload: Some(on_disk_payload),

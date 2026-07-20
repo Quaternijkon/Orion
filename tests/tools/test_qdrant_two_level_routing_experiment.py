@@ -553,6 +553,153 @@ def test_create_collection_stores_canonical_routing_build_metadata(monkeypatch):
     )
 
 
+def test_create_numeric_auto_shard_collection_supports_all_native_policies(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        calls.append({"base_url": base_url, "method": method, "path": path, "body": body})
+        return {"result": True}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    module.create_numeric_auto_shard_collection(
+        "http://controller:6333",
+        "hash all",
+        dim=200,
+        num_shards=46,
+        m=32,
+        ef_construct=100,
+    )
+    module.create_numeric_auto_shard_collection(
+        "http://controller:6333",
+        "orion",
+        dim=200,
+        num_shards=46,
+        m=32,
+        ef_construct=100,
+        auto_shard_policy={
+            "type": "ORION",
+            "generation": 7,
+            "artifact_sha256": "A" * 64,
+        },
+    )
+    module.create_numeric_auto_shard_collection(
+        "http://controller:6333",
+        "simple",
+        dim=200,
+        num_shards=46,
+        m=32,
+        ef_construct=100,
+        auto_shard_policy={
+            "type": "SIMPLE_KMEANS",
+            "generation": 8,
+            "artifact_sha256": "B" * 64,
+        },
+        metadata={"native_auto_shard_prepare": {"schema_version": 1}},
+    )
+
+    default_body = calls[0]["body"]
+    assert calls[0]["path"] == "/collections/hash%20all"
+    assert default_body["sharding_method"] == "auto"
+    assert default_body["shard_number"] == 46
+    assert default_body["replication_factor"] == 1
+    assert "auto_shard_policy" not in default_body
+    assert calls[1]["body"]["auto_shard_policy"] == {
+        "type": "orion",
+        "generation": 7,
+        "artifact_sha256": "a" * 64,
+    }
+    assert calls[2]["body"]["auto_shard_policy"] == {
+        "type": "simple_kmeans",
+        "generation": 8,
+        "artifact_sha256": "b" * 64,
+    }
+    assert calls[2]["body"]["metadata"] == {
+        "native_auto_shard_prepare": {"schema_version": 1}
+    }
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"type": "hash_all"},
+        {"type": "orion", "generation": 0, "artifact_sha256": "a" * 64},
+        {"type": "orion", "generation": 1, "artifact_sha256": "short"},
+        {"type": "simple_kmeans", "generation": 0, "artifact_sha256": "a" * 64},
+        {"type": "simple_kmeans", "generation": 1, "artifact_sha256": "short"},
+    ],
+)
+def test_create_numeric_auto_shard_collection_rejects_invalid_orion_policy(policy):
+    module = load_module()
+
+    with pytest.raises(ValueError):
+        module.create_numeric_auto_shard_collection(
+            "http://controller:6333",
+            "orion",
+            dim=200,
+            num_shards=46,
+            m=32,
+            ef_construct=100,
+            auto_shard_policy=policy,
+        )
+
+
+def test_upsert_numeric_auto_points_uses_public_ids_without_shard_key(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        calls.append(
+            {
+                "base_url": base_url,
+                "method": method,
+                "path": path,
+                "body": body,
+                "timeout": timeout,
+            }
+        )
+        return {"result": {"status": "completed"}}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    vectors = module.np.asarray(
+        [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]],
+        dtype=module.np.float32,
+    )
+
+    summary = module.upsert_numeric_auto_points(
+        "http://controller:6333",
+        "hash all",
+        vectors,
+        vector_name="embedding",
+        batch_size=2,
+        timeout=45.0,
+    )
+
+    assert summary == {
+        "point_count": 3,
+        "batch_count": 2,
+        "first_id": 0,
+        "last_id": 2,
+        "vector_name": "embedding",
+        "uses_shard_key": False,
+    }
+    assert [call["method"] for call in calls] == ["PUT", "PUT"]
+    assert all(
+        call["path"] == "/collections/hash%20all/points?wait=true" for call in calls
+    )
+    assert all("shard_key" not in call["body"] for call in calls)
+    assert calls[0]["body"] == {
+        "points": [
+            {"id": 0, "vector": {"embedding": [1.0, 0.0]}},
+            {"id": 1, "vector": {"embedding": [0.0, 1.0]}},
+        ]
+    }
+    assert calls[1]["body"] == {
+        "points": [{"id": 2, "vector": {"embedding": [0.5, 0.5]}}]
+    }
+    assert all(call["timeout"] == 45.0 for call in calls)
+
+
 def test_effective_upper_search_ef_covers_widest_upper_k_candidate():
     module = load_module()
 
@@ -836,6 +983,170 @@ def test_cluster_preflight_rejects_pending_or_failed_peer_transport(monkeypatch)
 
     with pytest.raises(RuntimeError, match="pending consensus operations"):
         module.validate_cluster_preflight("http://10.10.1.1:6333", topology)
+
+
+def test_numeric_shard_placement_discovers_local_and_remote_rf1_replicas():
+    module = load_module()
+    cluster = {
+        "peer_id": 101,
+        "shard_count": 3,
+        "local_shards": [{"shard_id": 0, "state": "Active"}],
+        "remote_shards": [
+            {"shard_id": 1, "peer_id": 202, "state": "Active"},
+            {"shard_id": 2, "peer_id": 303, "state": "Active"},
+        ],
+        "shard_transfers": [],
+    }
+
+    assert module.numeric_shard_placement_from_cluster(
+        cluster, expected_shard_count=3
+    ) == {0: 101, 1: 202, 2: 303}
+    assert module.round_robin_numeric_shard_targets(
+        [0, 1, 2, 3], [202, 303, 404]
+    ) == {0: 202, 1: 303, 2: 404, 3: 202}
+
+
+def test_numeric_shard_placement_rejects_custom_keys_duplicate_replicas_and_transfers():
+    module = load_module()
+    base = {
+        "peer_id": 101,
+        "shard_count": 1,
+        "local_shards": [{"shard_id": 0, "state": "Active"}],
+        "remote_shards": [],
+        "shard_transfers": [],
+    }
+
+    custom = module.json.loads(module.json.dumps(base))
+    custom["local_shards"][0]["shard_key"] = "centroid_00"
+    with pytest.raises(ValueError, match="custom shard key"):
+        module.numeric_shard_placement_from_cluster(custom, expected_shard_count=1)
+
+    duplicate = module.json.loads(module.json.dumps(base))
+    duplicate["remote_shards"].append(
+        {"shard_id": 0, "peer_id": 202, "state": "Active"}
+    )
+    with pytest.raises(RuntimeError, match="2 replicas"):
+        module.numeric_shard_placement_from_cluster(duplicate, expected_shard_count=1)
+
+    transferring = module.json.loads(module.json.dumps(base))
+    transferring["shard_transfers"] = [{"shard_id": 0, "from": 101, "to": 202}]
+    with pytest.raises(RuntimeError, match="transfers are active"):
+        module.numeric_shard_placement_from_cluster(transferring, expected_shard_count=1)
+
+
+def test_move_numeric_shards_round_robin_is_sequential_strict_and_idempotent(monkeypatch):
+    module = load_module()
+    owners = {0: 101, 1: 202, 2: 202, 3: 404}
+    move_calls = []
+
+    def collection_result():
+        return {
+            "config": {
+                "params": {
+                    "sharding_method": "auto",
+                    "shard_number": 4,
+                    "replication_factor": 1,
+                }
+            }
+        }
+
+    def collection_cluster_result():
+        return {
+            "peer_id": 101,
+            "shard_count": 4,
+            "local_shards": [
+                {"shard_id": shard_id, "state": "Active"}
+                for shard_id, peer_id in owners.items()
+                if peer_id == 101
+            ],
+            "remote_shards": [
+                {"shard_id": shard_id, "peer_id": peer_id, "state": "Active"}
+                for shard_id, peer_id in owners.items()
+                if peer_id != 101
+            ],
+            "shard_transfers": [],
+        }
+
+    def fake_request_json(_base_url, method, path, body=None, timeout=300.0):
+        if method == "GET" and path == "/cluster":
+            return {
+                "result": {
+                    "peer_id": 101,
+                    "peers": {
+                        "101": {"uri": "http://10.10.1.1:6335"},
+                        "202": {"uri": "http://10.10.1.2:6335"},
+                        "303": {"uri": "http://10.10.1.3:6335"},
+                        "404": {"uri": "http://10.10.1.4:6335"},
+                    },
+                }
+            }
+        if method == "GET" and path == "/collections/native":
+            return {"result": collection_result()}
+        if method == "GET" and path == "/collections/native/cluster":
+            return {"result": collection_cluster_result()}
+        if method == "POST" and path == "/collections/native/cluster":
+            operation = dict(body["move_shard"])
+            assert owners[operation["shard_id"]] == operation["from_peer_id"]
+            owners[operation["shard_id"]] = operation["to_peer_id"]
+            move_calls.append(operation)
+            return {"result": True}
+        raise AssertionError((method, path, body, timeout))
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    result = module.move_numeric_shards_round_robin(
+        "http://10.10.1.1:6333",
+        "native",
+        [202, 303, 404],
+        expected_shard_count=4,
+        timeout_sec=5.0,
+        poll_interval_sec=0.0,
+    )
+
+    assert owners == {0: 202, 1: 303, 2: 404, 3: 202}
+    assert result["valid"] is True
+    assert result["shards_per_worker"] == {202: 2, 303: 1, 404: 1}
+    assert [move["shard_id"] for move in move_calls] == [0, 1, 2, 3]
+    assert all(move["method"] == "stream_records" for move in move_calls)
+
+    move_calls.clear()
+    repeated = module.move_numeric_shards_round_robin(
+        "http://10.10.1.1:6333",
+        "native",
+        [202, 303, 404],
+        expected_shard_count=4,
+        timeout_sec=5.0,
+        poll_interval_sec=0.0,
+    )
+    assert repeated["moves"] == []
+    assert move_calls == []
+
+
+def test_validate_numeric_shard_round_robin_rejects_controller_or_wrong_peer():
+    module = load_module()
+    info = {
+        "config": {
+            "params": {
+                "sharding_method": "auto",
+                "shard_number": 3,
+                "replication_factor": 1,
+            }
+        }
+    }
+    cluster = {
+        "peer_id": 101,
+        "shard_count": 3,
+        "local_shards": [{"shard_id": 0, "state": "Active"}],
+        "remote_shards": [
+            {"shard_id": 1, "peer_id": 303, "state": "Active"},
+            {"shard_id": 2, "peer_id": 404, "state": "Active"},
+        ],
+        "shard_transfers": [],
+    }
+
+    with pytest.raises(RuntimeError, match="round-robin placement mismatch"):
+        module.validate_numeric_shard_round_robin_placement(
+            info, cluster, [202, 303, 404], 3
+        )
 
 
 def test_runtime_health_audit_rejects_fd_and_peer_transport_failures():
@@ -1762,6 +2073,287 @@ def test_hash_point_to_shards_assigns_each_point_to_one_modulo_shard():
     assert point_to_shards == [[0], [1], [2], [0], [1], [2], [0], [1]]
 
 
+def test_write_orion_numeric_shard_import_bundle_preserves_external_ids_and_membership(
+    tmp_path,
+):
+    module = load_module()
+    train = module.np.array(
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+        dtype=module.np.float64,
+    )
+    point_to_shards = [[0, 2], [1], [2]]
+    graphless_path = module.write_orion_graphless_artifact(
+        train,
+        module.np.array([0, 2], dtype=module.np.int64),
+        point_to_shards,
+        num_shards=3,
+        output_path=tmp_path / "graphless.json",
+        generation=7,
+        vector_distance="cosine",
+        upper_k=2,
+        upper_ef_search=4,
+        dynamic_ef_base=20,
+        dynamic_ef_factor=4,
+        vector_name="embedding",
+    )
+    artifact = module.json.loads(graphless_path.read_text(encoding="utf-8"))
+    assert artifact["layout_sha256"] == module.orion_layout_sha256(point_to_shards, 3)
+    assert artifact["logical_point_count"] == 3
+    assert artifact["physical_point_count"] == 4
+    assert artifact["upper_nodes"] == [
+        {
+            "label": 0,
+            "vector": [1.0, 2.0],
+            "shard_membership": [0, 2],
+        },
+        {
+            "label": 2,
+            "vector": [5.0, 6.0],
+            "shard_membership": [2],
+        },
+    ]
+    artifact["upper_graph"] = {"entry_point": 0, "max_level": 0, "nodes": []}
+    production_artifact = tmp_path / "generation-7.json"
+    production_artifact.write_text(
+        module.json.dumps(artifact, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+    manifest_path = module.write_orion_numeric_shard_import_bundle(
+        train,
+        point_to_shards,
+        num_shards=3,
+        output_dir=tmp_path,
+        orion_artifact_path=production_artifact,
+        vector_name="embedding",
+        row_chunk_size=2,
+    )
+
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    vectors_path = tmp_path / manifest["vectors_file"]
+    assignments_path = tmp_path / manifest["assignments_file"]
+    assert manifest == {
+        "format_version": 1,
+        "dimension": 2,
+        "point_count": 3,
+        "shard_count": 3,
+        "total_point_copies": 4,
+        "vector_name": "embedding",
+        "orion_generation": 7,
+        "orion_artifact_file": "generation-7.json",
+        "orion_artifact_sha256": module.sha256_path(production_artifact),
+        "vectors_file": "orion_numeric_import.f32le",
+        "vectors_sha256": module.sha256_path(vectors_path),
+        "assignments_file": "orion_numeric_import.assignments.jsonl",
+        "assignments_sha256": module.sha256_path(assignments_path),
+    }
+    loaded_vectors = module.np.fromfile(vectors_path, dtype="<f4").reshape(3, 2)
+    module.np.testing.assert_array_equal(loaded_vectors, train.astype(module.np.float32))
+
+    records = [
+        module.json.loads(line)
+        for line in assignments_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert records == [
+        {"id": 0, "shards": [0, 2]},
+        {"id": 1, "shards": [1]},
+        {"id": 2, "shards": [2]},
+    ]
+    assert records[0]["id"] == 0
+    assert records[0]["shards"] == [0, 2]
+    assert all("source_id" not in record and "payload" not in record for record in records)
+
+
+def test_write_simple_kmeans_graphless_artifact_and_generic_v2_bundle(tmp_path):
+    module = load_module()
+    train = module.np.array(
+        [[1.0, 0.0], [0.0, 1.0], [0.8, 0.2]],
+        dtype=module.np.float32,
+    )
+    centroids = module.np.array(
+        [[0.9, 0.1], [0.0, 1.0]],
+        dtype=module.np.float32,
+    )
+    point_to_shards = [[0], [1], [0]]
+    production_artifact = module.write_simple_kmeans_graphless_artifact(
+        train,
+        centroids,
+        point_to_shards,
+        num_shards=2,
+        output_path=tmp_path / "generation-5.json",
+        generation=5,
+        vector_distance="cosine",
+        nprobe=1,
+        lower_hnsw_ef=48,
+        vector_name="embedding",
+    )
+
+    artifact = module.json.loads(production_artifact.read_text(encoding="utf-8"))
+    assert artifact == {
+        "format_version": 1,
+        "generation": 5,
+        "vector_schema": {
+            "vector_name": "embedding",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+        "shard_count": 2,
+        "layout_sha256": module.orion_layout_sha256(point_to_shards, 2),
+        "logical_point_count": 3,
+        "physical_point_count": 3,
+        "routing_distance": "squared_l2",
+        "nprobe": 1,
+        "lower_hnsw_ef": 48,
+        "centroids": [
+            {"shard_id": 0, "vector": pytest.approx([0.9, 0.1])},
+            {"shard_id": 1, "vector": pytest.approx([0.0, 1.0])},
+        ],
+    }
+
+    manifest_path = module.write_numeric_shard_import_bundle_v2(
+        train,
+        point_to_shards,
+        num_shards=2,
+        output_dir=tmp_path,
+        routing_policy="simple_kmeans",
+        routing_generation=5,
+        routing_artifact_path=production_artifact,
+        vector_name="embedding",
+        prefix="simple_kmeans_numeric_import",
+        row_chunk_size=2,
+    )
+
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    vectors_path = tmp_path / manifest["vectors_file"]
+    assignments_path = tmp_path / manifest["assignments_file"]
+    assert manifest == {
+        "format_version": 2,
+        "routing_policy": "simple_kmeans",
+        "routing_generation": 5,
+        "routing_artifact_file": "generation-5.json",
+        "routing_artifact_sha256": module.sha256_path(production_artifact),
+        "dimension": 2,
+        "point_count": 3,
+        "shard_count": 2,
+        "total_point_copies": 3,
+        "vector_name": "embedding",
+        "vectors_file": "simple_kmeans_numeric_import.f32le",
+        "vectors_sha256": module.sha256_path(vectors_path),
+        "assignments_file": "simple_kmeans_numeric_import.assignments.jsonl",
+        "assignments_sha256": module.sha256_path(assignments_path),
+    }
+    assert [
+        module.json.loads(line)
+        for line in assignments_path.read_text(encoding="utf-8").splitlines()
+    ] == [
+        {"id": 0, "shards": [0]},
+        {"id": 1, "shards": [1]},
+        {"id": 2, "shards": [0]},
+    ]
+    module.np.testing.assert_array_equal(
+        module.np.fromfile(vectors_path, dtype="<f4").reshape(3, 2),
+        train,
+    )
+
+
+def test_simple_kmeans_graphless_artifact_rejects_multi_assignment(tmp_path):
+    module = load_module()
+    train = module.np.array([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32)
+    centroids = train.copy()
+
+    with pytest.raises(ValueError, match="exactly one shard per point"):
+        module.write_simple_kmeans_graphless_artifact(
+            train,
+            centroids,
+            [[0, 1], [1]],
+            num_shards=2,
+            output_path=tmp_path / "graphless.json",
+            generation=1,
+            vector_distance="cosine",
+            nprobe=1,
+            lower_hnsw_ef=32,
+        )
+
+
+def test_generic_v2_bundle_rejects_policy_artifact_mismatch(tmp_path):
+    module = load_module()
+    train = module.np.array([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32)
+    artifact_path = module.write_simple_kmeans_graphless_artifact(
+        train,
+        train.copy(),
+        [[0], [1]],
+        num_shards=2,
+        output_path=tmp_path / "generation-1.json",
+        generation=1,
+        vector_distance="cosine",
+        nprobe=1,
+        lower_hnsw_ef=32,
+    )
+
+    with pytest.raises(ValueError, match="Orion routing artifact must contain upper_graph"):
+        module.write_numeric_shard_import_bundle_v2(
+            train,
+            [[0], [1]],
+            num_shards=2,
+            output_dir=tmp_path,
+            routing_policy="orion",
+            routing_generation=1,
+            routing_artifact_path=artifact_path,
+        )
+
+    with pytest.raises(ValueError, match="routing_policy must be one of"):
+        module.write_numeric_shard_import_bundle_v2(
+            train,
+            [[0], [1]],
+            num_shards=2,
+            output_dir=tmp_path,
+            routing_policy="unknown_policy",
+            routing_generation=1,
+            routing_artifact_path=artifact_path,
+        )
+
+
+def test_generic_v2_bundle_rejects_multi_copy_simple_kmeans_layout(tmp_path):
+    module = load_module()
+    train = module.np.array([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32)
+    point_to_shards = [[0, 1], [1]]
+    artifact = {
+        "format_version": 1,
+        "generation": 1,
+        "vector_schema": {
+            "vector_name": "",
+            "dimension": 2,
+            "distance": "Cosine",
+            "datatype": "float32",
+        },
+        "shard_count": 2,
+        "layout_sha256": module.orion_layout_sha256(point_to_shards, 2),
+        "logical_point_count": 2,
+        "physical_point_count": 3,
+        "routing_distance": "squared_l2",
+        "nprobe": 1,
+        "lower_hnsw_ef": 32,
+        "centroids": [
+            {"shard_id": 0, "vector": [1.0, 0.0]},
+            {"shard_id": 1, "vector": [0.0, 1.0]},
+        ],
+    }
+    artifact_path = tmp_path / "generation-1.json"
+    artifact_path.write_text(module.json.dumps(artifact), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exactly one point copy"):
+        module.write_numeric_shard_import_bundle_v2(
+            train,
+            point_to_shards,
+            num_shards=2,
+            output_dir=tmp_path,
+            routing_policy="simple_kmeans",
+            routing_generation=1,
+            routing_artifact_path=artifact_path,
+        )
+
+
 def test_all_shard_keys_and_ef_searches_every_shard_with_uniform_ef():
     module = load_module()
 
@@ -1863,6 +2455,166 @@ def test_preencoded_search_batch_body_matches_normal_json_request(monkeypatch):
     assert captured["method"] == "POST"
     assert captured["path"].endswith("/collections/collection/points/search/batch")
     assert result == [[(0.75, 7)]]
+
+
+@pytest.mark.parametrize("api", ["search", "query"])
+def test_standard_dense_vector_batch_sends_no_client_routing_hints(monkeypatch, api):
+    module = load_module()
+    captured = {}
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        captured.update(
+            base_url=base_url,
+            method=method,
+            path=path,
+            body=body,
+            timeout=timeout,
+        )
+        points = [
+            {"id": 0, "score": 0.99},
+            {"id": 7, "score": 0.75},
+        ]
+        if api == "search":
+            return {"result": [points, points]}
+        return {"result": [{"points": points}, {"points": points}]}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    rows = module.standard_dense_vector_batch(
+        "http://controller:6333",
+        "native collection",
+        module.np.array([[0.1, 0.2], [0.3, 0.4]], dtype=module.np.float32),
+        2,
+        api=api,
+        vector_name="embedding",
+    )
+
+    assert captured["path"] == (
+        f"/collections/native%20collection/points/{api}/batch"
+    )
+    assert rows == [[(0.99, 0), (0.75, 7)], [(0.99, 0), (0.75, 7)]]
+    forbidden = {
+        "shard_key",
+        "hnsw_entry_points",
+        "hnsw_entry_points_by_shard",
+        "hnsw_ef_by_shard",
+        "source_id_dedup_block_size",
+        "params",
+    }
+    for request in captured["body"]["searches"]:
+        assert forbidden.isdisjoint(request)
+        assert request["with_payload"] is False
+        assert request["with_vector"] is False
+        if api == "search":
+            assert request["vector"]["name"] == "embedding"
+            assert "query" not in request
+        else:
+            assert request["using"] == "embedding"
+            assert "vector" not in request
+
+
+def test_standard_dense_vector_batch_rejects_non_numeric_external_ids(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module,
+        "request_json",
+        lambda *_args, **_kwargs: {
+            "result": [[{"id": "uuid-id", "score": 0.9}]]
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="integer external point IDs"):
+        module.standard_dense_vector_batch(
+            "http://controller:6333",
+            "native",
+            module.np.array([[0.1, 0.2]], dtype=module.np.float32),
+            1,
+        )
+
+
+@pytest.mark.parametrize("api", ["search", "query"])
+def test_standard_dense_vector_batch_allows_only_one_public_fixed_hnsw_ef(monkeypatch, api):
+    module = load_module()
+    captured = {}
+
+    def fake_request_json(_base_url, _method, _path, body=None, timeout=300.0):
+        captured["body"] = body
+        points = [{"id": 0, "score": 0.9}]
+        return {
+            "result": [points] if api == "search" else [{"points": points}]
+        }
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    module.standard_dense_vector_batch(
+        "http://controller:6333",
+        "native",
+        module.np.array([[0.1, 0.2]], dtype=module.np.float32),
+        1,
+        api=api,
+        hnsw_ef=64,
+    )
+
+    request = captured["body"]["searches"][0]
+    assert request["params"] == {"hnsw_ef": 64}
+    assert "shard_key" not in request
+    assert "hnsw_ef_by_shard" not in request
+    assert "hnsw_entry_points" not in request
+    assert "hnsw_entry_points_by_shard" not in request
+
+    with pytest.raises(ValueError, match="hnsw_ef"):
+        module.standard_dense_vector_request(
+            [0.1, 0.2],
+            1,
+            api=api,
+            hnsw_ef=0,
+        )
+
+
+def test_standard_dense_vector_evaluator_batches_and_computes_external_id_recall(monkeypatch):
+    module = load_module()
+    call_sizes = []
+
+    def fake_standard_batch(
+        _base_url,
+        _collection,
+        queries,
+        top_k,
+        *,
+        api="search",
+        vector_name="",
+        hnsw_ef=None,
+        timeout=600.0,
+    ):
+        call_sizes.append(len(queries))
+        assert top_k == 2
+        assert api == "query"
+        assert vector_name == ""
+        assert hnsw_ef is None
+        return [
+            [(1.0, int(row[0])), (0.5, 8)]
+            for row in queries
+        ]
+
+    monkeypatch.setattr(module, "standard_dense_vector_batch", fake_standard_batch)
+    result = module.evaluate_standard_dense_vector_batches(
+        "http://controller:6333",
+        "native",
+        module.np.array([[0.0], [1.0], [2.0]], dtype=module.np.float32),
+        module.np.array([[0, 9], [1, 9], [5, 9]], dtype=module.np.int64),
+        top_k=2,
+        batch_size=2,
+        api="query",
+        include_per_query_metrics=True,
+    )
+
+    assert call_sizes == [2, 1]
+    assert result["api"] == "query"
+    assert result["query_count"] == 3
+    assert result["hits"] == 2
+    assert result["recall_at_k"] == pytest.approx(2 / 6)
+    assert result["search_batch_calls"] == 2
+    assert result["search_request_count"] == 3
+    assert result["avg_search_requests_per_query"] == 1.0
+    assert len(result["per_query_rows"]) == 3
 
 
 def test_all_shard_search_plan_chunks_transport_but_keeps_all_shards_and_fixed_ef():

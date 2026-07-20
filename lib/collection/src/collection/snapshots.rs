@@ -17,9 +17,12 @@ use super::Collection;
 use crate::collection::CollectionVersion;
 use crate::common::snapshot_stream::SnapshotStream;
 use crate::common::snapshots_manager::SnapshotStorageManager;
-use crate::config::{COLLECTION_CONFIG_FILE, CollectionConfigInternal, ShardingMethod};
+use crate::config::{
+    AutoShardPolicy, COLLECTION_CONFIG_FILE, CollectionConfigInternal, ShardingMethod,
+};
 use crate::operations::snapshot_ops::SnapshotDescription;
 use crate::operations::types::{CollectionError, CollectionResult, NodeType};
+use crate::orion::{routing_artifact_path, routing_artifact_relative_path};
 use crate::shards::local_shard::LocalShard;
 use crate::shards::remote_shard::RemoteShard;
 use crate::shards::replica_set::ShardReplicaSet;
@@ -28,6 +31,10 @@ use crate::shards::shard_config::{self, ShardConfig};
 use crate::shards::shard_holder::shard_mapping::ShardKeyMapping;
 use crate::shards::shard_holder::{SHARD_KEY_MAPPING_FILE, ShardHolder, shard_not_found_error};
 use crate::shards::shard_path;
+use crate::simple_kmeans::{
+    routing_artifact_path as simple_kmeans_artifact_path,
+    routing_artifact_relative_path as simple_kmeans_artifact_relative_path,
+};
 
 impl Collection {
     pub fn get_snapshots_storage_manager(&self) -> CollectionResult<SnapshotStorageManager> {
@@ -131,11 +138,60 @@ impl Collection {
         )
         .await?;
 
+        let collection_config = self.collection_config.read().await.clone();
         tar.append_data(
-            self.collection_config.read().await.to_bytes()?,
+            collection_config.to_bytes()?,
             Path::new(COLLECTION_CONFIG_FILE),
         )
         .await?;
+
+        if let Some(AutoShardPolicy::Orion { generation, .. }) =
+            collection_config.auto_shard_policy.as_ref()
+        {
+            let actual_shard_count = self.shards_holder.read().await.len();
+            Self::try_load_orion_router(&self.path, &collection_config, actual_shard_count)
+                .map_err(|err| {
+                    CollectionError::service_error(format!(
+                        "cannot create a self-contained Orion snapshot for collection {}: {err}",
+                        self.id,
+                    ))
+                })?
+                .ok_or_else(|| {
+                    CollectionError::service_error(format!(
+                        "Orion policy for collection {} did not produce a router during snapshot validation",
+                        self.id,
+                    ))
+                })?;
+
+            let artifact_path = routing_artifact_path(&self.path, *generation);
+            tar.append_file(&artifact_path, &routing_artifact_relative_path(*generation))
+                .await?;
+        }
+        if let Some(AutoShardPolicy::SimpleKmeans { generation, .. }) =
+            collection_config.auto_shard_policy.as_ref()
+        {
+            let actual_shard_count = self.shards_holder.read().await.len();
+            Self::try_load_simple_kmeans_router(&self.path, &collection_config, actual_shard_count)
+                .map_err(|err| {
+                    CollectionError::service_error(format!(
+                        "cannot create a self-contained Simple KMeans snapshot for collection {}: {err}",
+                        self.id,
+                    ))
+                })?
+                .ok_or_else(|| {
+                    CollectionError::service_error(format!(
+                        "Simple KMeans policy for collection {} did not produce a router during snapshot validation",
+                        self.id,
+                    ))
+                })?;
+
+            let artifact_path = simple_kmeans_artifact_path(&self.path, *generation);
+            tar.append_file(
+                &artifact_path,
+                &simple_kmeans_artifact_relative_path(*generation),
+            )
+            .await?;
+        }
 
         self.shards_holder
             .read()

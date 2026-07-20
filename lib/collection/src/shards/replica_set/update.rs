@@ -930,6 +930,7 @@ mod tests {
             strict_mode_config: None,
             uuid: None,
             metadata: None,
+            auto_shard_policy: None,
         };
 
         let payload_index_schema_dir = Builder::new().prefix("qdrant-test").tempdir().unwrap();

@@ -8,7 +8,7 @@ use futures::stream::FuturesUnordered;
 use crate::collection::Collection;
 use crate::collection::payload_index_schema::PayloadIndexSchema;
 use crate::collection_state::{ShardInfo, State};
-use crate::config::CollectionConfigInternal;
+use crate::config::{AutoShardPolicy, CollectionConfigInternal};
 use crate::operations::types::{CollectionError, CollectionResult};
 use crate::shards::replica_set::ShardReplicaSet;
 use crate::shards::resharding::ReshardState;
@@ -132,6 +132,15 @@ impl Collection {
                 return Err(CollectionError::service_error(err.to_string()));
             }
 
+            if AutoShardPolicy::canonical_ref(config.auto_shard_policy.as_ref())
+                != AutoShardPolicy::canonical_ref(new_config.auto_shard_policy.as_ref())
+            {
+                return Err(CollectionError::service_error(format!(
+                    "collection {} auto shard policy mismatch: existing {:?}, Raft snapshot {:?}",
+                    self.id, config.auto_shard_policy, new_config.auto_shard_policy,
+                )));
+            }
+
             // Destructure `new_config`, to ensure we compare all config fields. Compiler would
             // complain, if new field is added to `CollectionConfig` struct, but not destructured
             // explicitly. We have to explicitly compare config fields, because we want to compare
@@ -145,6 +154,7 @@ impl Collection {
                 strict_mode_config,
                 uuid: _,
                 metadata,
+                auto_shard_policy: _,
             } = &new_config;
 
             let is_core_config_updated = params != &config.params

@@ -14,6 +14,11 @@ mod snapshots;
 mod state_management;
 mod telemetry;
 
+#[cfg(test)]
+mod orion_loader_tests;
+#[cfg(test)]
+mod simple_kmeans_loader_tests;
+
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -29,6 +34,7 @@ use semver::Version;
 use shard::operations::optimization::{OptimizationsRequestOptions, OptimizationsResponse};
 use tokio::runtime::Handle;
 use tokio::sync::{Mutex, RwLock};
+use validator::Validate;
 
 use crate::collection::collection_ops::ABORT_TRANSFERS_ON_SHARD_DROP_FIX_FROM_VERSION;
 use crate::collection::payload_index_schema::PayloadIndexSchema;
@@ -37,12 +43,17 @@ use crate::common::collection_size_stats::{
     CollectionSizeAtomicStats, CollectionSizeStats, CollectionSizeStatsCache,
 };
 use crate::common::is_ready::IsReady;
-use crate::config::{CollectionConfigInternal, ShardingMethod};
+use crate::config::{AutoShardPolicy, CollectionConfigInternal, ShardingMethod};
 use crate::operations::OperationWithClockTag;
 use crate::operations::config_diff::{DiffConfig, OptimizersConfigDiff};
 use crate::operations::shared_storage_config::SharedStorageConfig;
+use crate::operations::types::Datatype;
 use crate::operations::types::{CollectionError, CollectionResult, NodeType, OptimizersStatus};
 use crate::optimizers_builder::OptimizersConfig;
+use crate::orion::{
+    OrionRouter, OrionRoutingArtifact, OrionVectorDatatype, OrionVectorSchemaFingerprint,
+    routing_artifact_path,
+};
 use crate::shards::channel_service::ChannelService;
 use crate::shards::collection_shard_distribution::CollectionShardDistribution;
 use crate::shards::local_shard::clock_map::RecoveryPoint;
@@ -58,6 +69,10 @@ use crate::shards::transfer::helpers::check_transfer_conflicts_strict;
 use crate::shards::transfer::transfer_tasks_pool::{TaskResult, TransferTasksPool};
 use crate::shards::transfer::{ShardTransfer, ShardTransferMethod};
 use crate::shards::{CollectionId, replica_set};
+use crate::simple_kmeans::{
+    SimpleKmeansRouter, SimpleKmeansRoutingArtifact, SimpleKmeansVectorDatatype,
+    SimpleKmeansVectorSchemaFingerprint, routing_artifact_path as simple_kmeans_artifact_path,
+};
 use crate::telemetry::CollectionsAggregatedTelemetry;
 
 /// Collection's data is split into several shards.
@@ -65,6 +80,14 @@ pub struct Collection {
     pub(crate) id: CollectionId,
     pub(crate) shards_holder: SharedShardHolder,
     pub(crate) collection_config: Arc<RwLock<CollectionConfigInternal>>,
+    /// Immutable, generation-specific server-side Orion router.
+    ///
+    /// A missing or invalid artifact leaves this as `None`; ordinary coordinator reads then fail
+    /// closed instead of silently changing to all-shards routing. Artifacts are activated on
+    /// collection load so all coordinators use the same persisted generation and checksum.
+    pub(crate) orion_router: Option<Arc<OrionRouter>>,
+    /// Immutable server-side centroid router for the static Simple KMeans nprobe baseline.
+    pub(crate) simple_kmeans_router: Option<Arc<SimpleKmeansRouter>>,
     pub(crate) shared_storage_config: Arc<SharedStorageConfig>,
     payload_index_schema: Arc<SaveOnDisk<PayloadIndexSchema>>,
     optimizers_overwrite: Option<OptimizersConfigDiff>,
@@ -97,6 +120,230 @@ pub type OnTransferFailure = Arc<dyn Fn(ShardTransfer, CollectionId, &str) + Sen
 pub type OnTransferSuccess = Arc<dyn Fn(ShardTransfer, CollectionId) + Send + Sync>;
 
 impl Collection {
+    fn try_load_orion_router(
+        collection_path: &Path,
+        collection_config: &CollectionConfigInternal,
+        actual_shard_count: usize,
+    ) -> Result<Option<Arc<OrionRouter>>, String> {
+        let Some(policy) = collection_config.auto_shard_policy.as_ref() else {
+            return Ok(None);
+        };
+        let AutoShardPolicy::Orion {
+            generation,
+            artifact_sha256,
+        } = policy
+        else {
+            return Ok(None);
+        };
+
+        if collection_config.params.sharding_method.unwrap_or_default() != ShardingMethod::Auto {
+            return Err(
+                "Orion auto-shard policy requires an automatically sharded collection".to_string(),
+            );
+        }
+
+        policy
+            .validate()
+            .map_err(|err| format!("invalid Orion auto-shard policy: {err}"))?;
+
+        let artifact_path = routing_artifact_path(collection_path, *generation);
+        let artifact = OrionRoutingArtifact::read_json(&artifact_path, Some(artifact_sha256))
+            .map_err(|err| err.to_string())?;
+
+        if artifact.generation != *generation {
+            return Err(crate::orion::OrionRoutingError::GenerationMismatch {
+                expected: *generation,
+                actual: artifact.generation,
+            }
+            .to_string());
+        }
+
+        let actual_shard_count = u32::try_from(actual_shard_count)
+            .map_err(|_| format!("collection has too many shards: {actual_shard_count}"))?;
+        if artifact.shard_count != actual_shard_count {
+            return Err(crate::orion::OrionRoutingError::ShardCountMismatch {
+                expected: actual_shard_count,
+                actual: artifact.shard_count,
+            }
+            .to_string());
+        }
+
+        let vector_name = artifact.vector_schema.vector_name.as_str();
+        let vector_params = collection_config
+            .params
+            .vectors
+            .get_params(vector_name)
+            .ok_or_else(|| {
+                format!("Orion routing vector {vector_name:?} is not configured in the collection")
+            })?;
+        if vector_params.multivector_config.is_some() {
+            return Err(format!(
+                "Orion routing vector {vector_name:?} must be a dense single vector"
+            ));
+        }
+        let datatype = match vector_params.datatype.unwrap_or_default() {
+            Datatype::Float32 => OrionVectorDatatype::Float32,
+            Datatype::Float16 => OrionVectorDatatype::Float16,
+            Datatype::Uint8 => OrionVectorDatatype::Uint8,
+        };
+        let expected_schema = OrionVectorSchemaFingerprint {
+            vector_name: vector_name.to_owned(),
+            dimension: vector_params.size.get() as usize,
+            distance: vector_params.distance,
+            datatype,
+        };
+        artifact
+            .validate_schema(&expected_schema)
+            .map_err(|err| err.to_string())?;
+
+        OrionRouter::new(artifact)
+            .map(Arc::new)
+            .map(Some)
+            .map_err(|err| err.to_string())
+    }
+
+    fn load_orion_router_or_fallback(
+        collection_id: &str,
+        collection_path: &Path,
+        collection_config: &CollectionConfigInternal,
+        actual_shard_count: usize,
+    ) -> Option<Arc<OrionRouter>> {
+        match Self::try_load_orion_router(collection_path, collection_config, actual_shard_count) {
+            Ok(router) => {
+                if let Some(router) = &router {
+                    log::info!(
+                        "Loaded Orion routing generation {} for collection {collection_id}",
+                        router.generation(),
+                    );
+                }
+                router
+            }
+            Err(err) => {
+                log::warn!(
+                    "Orion routing is unavailable for collection {collection_id}: {err}; ordinary all-shards coordinator reads will fail closed until the configured artifact is loaded",
+                );
+                None
+            }
+        }
+    }
+
+    fn try_load_simple_kmeans_router(
+        collection_path: &Path,
+        collection_config: &CollectionConfigInternal,
+        actual_shard_count: usize,
+    ) -> Result<Option<Arc<SimpleKmeansRouter>>, String> {
+        let Some(policy) = collection_config.auto_shard_policy.as_ref() else {
+            return Ok(None);
+        };
+        let AutoShardPolicy::SimpleKmeans {
+            generation,
+            artifact_sha256,
+        } = policy
+        else {
+            return Ok(None);
+        };
+
+        if collection_config.params.sharding_method.unwrap_or_default() != ShardingMethod::Auto {
+            return Err(
+                "Simple KMeans auto-shard policy requires an automatically sharded collection"
+                    .to_string(),
+            );
+        }
+        policy
+            .validate()
+            .map_err(|err| format!("invalid Simple KMeans auto-shard policy: {err}"))?;
+
+        let artifact_path = simple_kmeans_artifact_path(collection_path, *generation);
+        let artifact =
+            SimpleKmeansRoutingArtifact::read_json(&artifact_path, Some(artifact_sha256))
+                .map_err(|err| err.to_string())?;
+        if artifact.generation != *generation {
+            return Err(
+                crate::simple_kmeans::SimpleKmeansRoutingError::GenerationMismatch {
+                    expected: *generation,
+                    actual: artifact.generation,
+                }
+                .to_string(),
+            );
+        }
+
+        let actual_shard_count = u32::try_from(actual_shard_count)
+            .map_err(|_| format!("collection has too many shards: {actual_shard_count}"))?;
+        if artifact.shard_count != actual_shard_count {
+            return Err(
+                crate::simple_kmeans::SimpleKmeansRoutingError::ShardCountMismatch {
+                    expected: actual_shard_count,
+                    actual: artifact.shard_count,
+                }
+                .to_string(),
+            );
+        }
+
+        let vector_name = artifact.vector_schema.vector_name.as_str();
+        let vector_params = collection_config
+            .params
+            .vectors
+            .get_params(vector_name)
+            .ok_or_else(|| {
+                format!(
+                    "Simple KMeans routing vector {vector_name:?} is not configured in the collection"
+                )
+            })?;
+        if vector_params.multivector_config.is_some() {
+            return Err(format!(
+                "Simple KMeans routing vector {vector_name:?} must be a dense single vector"
+            ));
+        }
+        let datatype = match vector_params.datatype.unwrap_or_default() {
+            Datatype::Float32 => SimpleKmeansVectorDatatype::Float32,
+            Datatype::Float16 => SimpleKmeansVectorDatatype::Float16,
+            Datatype::Uint8 => SimpleKmeansVectorDatatype::Uint8,
+        };
+        let expected_schema = SimpleKmeansVectorSchemaFingerprint {
+            vector_name: vector_name.to_owned(),
+            dimension: vector_params.size.get() as usize,
+            distance: vector_params.distance,
+            datatype,
+        };
+        artifact
+            .validate_schema(&expected_schema)
+            .map_err(|err| err.to_string())?;
+
+        SimpleKmeansRouter::new(artifact)
+            .map(Arc::new)
+            .map(Some)
+            .map_err(|err| err.to_string())
+    }
+
+    fn load_simple_kmeans_router_or_fallback(
+        collection_id: &str,
+        collection_path: &Path,
+        collection_config: &CollectionConfigInternal,
+        actual_shard_count: usize,
+    ) -> Option<Arc<SimpleKmeansRouter>> {
+        match Self::try_load_simple_kmeans_router(
+            collection_path,
+            collection_config,
+            actual_shard_count,
+        ) {
+            Ok(router) => {
+                if let Some(router) = &router {
+                    log::info!(
+                        "Loaded Simple KMeans routing generation {} for collection {collection_id}",
+                        router.generation(),
+                    );
+                }
+                router
+            }
+            Err(err) => {
+                log::warn!(
+                    "Simple KMeans routing is unavailable for collection {collection_id}: {err}; ordinary all-shards coordinator reads will fail closed until the configured artifact is loaded",
+                );
+                None
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         name: CollectionId,
@@ -174,10 +421,25 @@ impl Collection {
         CollectionVersion::save(path)?;
         collection_config.save(path)?;
 
+        let orion_router = Self::load_orion_router_or_fallback(
+            &name,
+            path,
+            collection_config,
+            shared_shard_holder.read().await.len(),
+        );
+        let simple_kmeans_router = Self::load_simple_kmeans_router_or_fallback(
+            &name,
+            path,
+            collection_config,
+            shared_shard_holder.read().await.len(),
+        );
+
         Ok(Self {
             id: name.clone(),
             shards_holder: shared_shard_holder,
             collection_config: shared_collection_config,
+            orion_router,
+            simple_kmeans_router,
             optimizers_overwrite,
             payload_index_schema,
             shared_storage_config,
@@ -291,10 +553,25 @@ impl Collection {
                 .expect("Failed to load collection size stats"),
         );
 
+        let orion_router = Self::load_orion_router_or_fallback(
+            &collection_id,
+            path,
+            &collection_config,
+            shared_shard_holder.read().await.len(),
+        );
+        let simple_kmeans_router = Self::load_simple_kmeans_router_or_fallback(
+            &collection_id,
+            path,
+            &collection_config,
+            shared_shard_holder.read().await.len(),
+        );
+
         Self {
             id: collection_id.clone(),
             shards_holder: shared_shard_holder,
             collection_config: shared_collection_config,
+            orion_router,
+            simple_kmeans_router,
             optimizers_overwrite,
             payload_index_schema,
             shared_storage_config,
