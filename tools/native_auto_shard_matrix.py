@@ -93,7 +93,12 @@ def load_config(path: str | Path) -> dict[str, Any]:
     unknown_shared = sorted(set(shared) - SHARED_ARGUMENTS)
     if unknown_shared:
         raise ValueError(f"unsupported shared benchmark arguments: {unknown_shared}")
-    required_shared = {"base_url", "hdf5_path", "topology"}
+    required_shared = {
+        "base_url",
+        "hdf5_path",
+        "topology",
+        "deployment_manifest",
+    }
     missing_shared = sorted(required_shared - set(shared))
     if missing_shared:
         raise ValueError(f"matrix shared arguments are missing: {missing_shared}")
@@ -152,12 +157,20 @@ def load_config(path: str | Path) -> dict[str, Any]:
     window = float(data.get("same_recall_window", 0.003))
     if window < 0:
         raise ValueError("same_recall_window must be non-negative")
+    require_strict = data.get("require_strict_same_recall", False)
+    if not isinstance(require_strict, bool):
+        raise ValueError("require_strict_same_recall must be a boolean")
+    pairwise_window = float(data.get("same_recall_pairwise_window", window))
+    if pairwise_window < 0:
+        raise ValueError("same_recall_pairwise_window must be non-negative")
     return {
         "config_path": str(config_path),
         "shared": dict(shared),
         "cases": normalized_cases,
         "same_recall_targets": normalized_targets,
         "same_recall_window": window,
+        "same_recall_pairwise_window": pairwise_window,
+        "require_strict_same_recall": require_strict,
     }
 
 
@@ -361,6 +374,18 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
     parameters = manifest.get("parameters") or {}
     cluster = manifest.get("cluster_preflight") or {}
     topology = manifest.get("topology")
+    collection_info = manifest.get("collection_info") or {}
+    collection_config = collection_info.get("config") or {}
+    collection_params = collection_config.get("params") or {}
+    hnsw_config = collection_config.get("hnsw_config") or {}
+    optimizer_config = (
+        collection_config.get("optimizer_config")
+        or collection_config.get("optimizers_config")
+        or {}
+    )
+    collection_cluster = manifest.get("collection_cluster") or {}
+    readiness = manifest.get("indexing_readiness")
+    placement_proof = manifest.get("placement_proof")
     image_identity = image.get("id") or image.get("digest")
     if not dataset.get("sha256"):
         raise RuntimeError("case manifest is missing dataset SHA-256 provenance")
@@ -370,11 +395,179 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("case manifest is missing deployment commit provenance")
     if not benchmark_repository.get("commit"):
         raise RuntimeError("case manifest is missing benchmark-client commit provenance")
+    deployment_commit = repository.get("commit")
+    benchmark_commit = benchmark_repository.get("commit")
+    if deployment_commit != benchmark_commit:
+        raise RuntimeError(
+            "case manifest deployment/benchmark commit mismatch: "
+            f"deployment={deployment_commit}, benchmark={benchmark_commit}"
+        )
+    deployment_tracked_dirty = repository.get(
+        "tracked_dirty", repository.get("dirty")
+    )
+    if deployment_tracked_dirty is not False:
+        raise RuntimeError(
+            "case manifest deployment repository must have tracked_dirty=false"
+        )
+    benchmark_tracked_dirty = benchmark_repository.get(
+        "tracked_dirty", benchmark_repository.get("dirty")
+    )
+    if benchmark_tracked_dirty is not False:
+        raise RuntimeError(
+            "case manifest benchmark repository must have tracked_dirty=false"
+        )
     if not isinstance(topology, dict):
         raise RuntimeError("case manifest is missing topology provenance")
     process_affinity = manifest.get("process_affinity")
     if not isinstance(process_affinity, list) or not process_affinity:
         raise RuntimeError("case manifest is missing benchmark CPU-affinity provenance")
+
+    sharding_method = str(collection_params.get("sharding_method") or "").lower()
+    if not sharding_method:
+        raise RuntimeError("case manifest is missing collection sharding_method")
+    if sharding_method != "auto":
+        raise RuntimeError(
+            f"case manifest collection sharding_method is not auto: {sharding_method!r}"
+        )
+    numeric_shard_count = collection_params.get("shard_number")
+    if (
+        isinstance(numeric_shard_count, bool)
+        or not isinstance(numeric_shard_count, int)
+        or numeric_shard_count <= 0
+    ):
+        raise RuntimeError(
+            "case manifest has invalid numeric shard count: "
+            f"{numeric_shard_count!r}"
+        )
+    replication_factor = collection_params.get("replication_factor")
+    write_consistency_factor = collection_params.get("write_consistency_factor")
+    for field, value in (
+        ("replication_factor", replication_factor),
+        ("write_consistency_factor", write_consistency_factor),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RuntimeError(f"case manifest has invalid {field}: {value!r}")
+    for field in ("m", "ef_construct", "full_scan_threshold"):
+        value = hnsw_config.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RuntimeError(
+                f"case manifest has invalid HNSW {field}: {value!r}"
+            )
+    for field in ("indexing_threshold", "default_segment_number"):
+        value = optimizer_config.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RuntimeError(
+                f"case manifest has invalid optimizer {field}: {value!r}"
+            )
+
+    if not isinstance(readiness, dict):
+        raise RuntimeError("case manifest is missing indexing readiness proof")
+    if readiness.get("fully_indexed") is not True:
+        raise RuntimeError(
+            "formal matrix requires fully indexed collections; "
+            f"completion_mode={readiness.get('completion_mode')!r}, "
+            f"indexed_vectors_count={readiness.get('indexed_vectors_count')!r}, "
+            f"points_count={readiness.get('points_count')!r}"
+        )
+    readiness_status = str(readiness.get("status") or "").lower()
+    if readiness_status != "green":
+        raise RuntimeError(
+            "case manifest collection readiness is not green: "
+            f"{readiness.get('status')!r}"
+        )
+    optimizer_status = readiness.get("optimizer_status")
+    optimizer_ready = optimizer_status == "ok" or (
+        isinstance(optimizer_status, dict) and optimizer_status.get("ok") is True
+    )
+    if not optimizer_ready:
+        raise RuntimeError(
+            "case manifest collection optimizer is not ready: "
+            f"{optimizer_status!r}"
+        )
+    update_queue = readiness.get("update_queue")
+    if not isinstance(update_queue, dict):
+        raise RuntimeError("case manifest readiness is missing update_queue proof")
+    update_queue_length = update_queue.get("length")
+    if (
+        isinstance(update_queue_length, bool)
+        or not isinstance(update_queue_length, int)
+        or update_queue_length != 0
+    ):
+        raise RuntimeError(
+            "case manifest collection update queue is not empty: "
+            f"{update_queue_length!r}"
+        )
+    readiness_transfers = readiness.get("shard_transfers")
+    if not isinstance(readiness_transfers, list) or readiness_transfers:
+        raise RuntimeError(
+            "case manifest readiness has active or invalid shard transfers: "
+            f"{readiness_transfers!r}"
+        )
+    cluster_transfers = collection_cluster.get("shard_transfers")
+    if not isinstance(cluster_transfers, list) or cluster_transfers:
+        raise RuntimeError(
+            "case manifest collection cluster has active or invalid shard transfers: "
+            f"{cluster_transfers!r}"
+        )
+    if collection_cluster.get("shard_count") != numeric_shard_count:
+        raise RuntimeError(
+            "case manifest collection cluster shard count does not match config: "
+            f"cluster={collection_cluster.get('shard_count')!r}, "
+            f"config={numeric_shard_count}"
+        )
+
+    if (
+        not isinstance(placement_proof, dict)
+        or placement_proof.get("valid") is not True
+    ):
+        raise RuntimeError("case manifest is missing a valid numeric placement proof")
+    if placement_proof.get("shard_count") != numeric_shard_count:
+        raise RuntimeError(
+            "case manifest placement shard count does not match collection config"
+        )
+    if placement_proof.get("replication_factor") != replication_factor:
+        raise RuntimeError(
+            "case manifest placement replication factor does not match "
+            "collection config"
+        )
+    proof_transfers = placement_proof.get("shard_transfers")
+    if not isinstance(proof_transfers, list) or proof_transfers:
+        raise RuntimeError(
+            "case manifest placement proof has active or invalid shard transfers: "
+            f"{proof_transfers!r}"
+        )
+    raw_placement = placement_proof.get("placement")
+    if not isinstance(raw_placement, dict):
+        raise RuntimeError("case manifest placement proof is missing exact placement")
+    exact_placement: dict[str, int] = {}
+    for raw_shard_id, raw_peer_id in raw_placement.items():
+        try:
+            shard_id = int(raw_shard_id)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"case manifest placement has invalid shard ID: {raw_shard_id!r}"
+            ) from exc
+        if isinstance(raw_peer_id, bool) or not isinstance(raw_peer_id, int):
+            raise RuntimeError(
+                "case manifest placement has invalid peer ID for shard "
+                f"{shard_id}: {raw_peer_id!r}"
+            )
+        if shard_id < 0 or str(shard_id) in exact_placement:
+            raise RuntimeError(
+                "case manifest placement has duplicate or invalid shard ID: "
+                f"{raw_shard_id!r}"
+            )
+        exact_placement[str(shard_id)] = raw_peer_id
+    expected_shard_ids = {str(shard_id) for shard_id in range(numeric_shard_count)}
+    if set(exact_placement) != expected_shard_ids:
+        raise RuntimeError(
+            "case manifest placement does not cover the exact numeric shard range: "
+            f"expected={sorted(expected_shard_ids)}, actual={sorted(exact_placement)}"
+        )
+    exact_placement = {
+        shard_id: exact_placement[shard_id]
+        for shard_id in sorted(exact_placement, key=int)
+    }
     return {
         "dataset_sha256": dataset["sha256"],
         "dataset_shapes": {
@@ -384,9 +577,10 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
         },
         "image_identity": image_identity,
         "image_tag": image.get("tag"),
-        "deployment_commit": repository.get("commit"),
-        "benchmark_commit": benchmark_repository.get("commit"),
-        "benchmark_dirty": benchmark_repository.get("dirty"),
+        "deployment_commit": deployment_commit,
+        "benchmark_commit": benchmark_commit,
+        "deployment_tracked_dirty": deployment_tracked_dirty,
+        "benchmark_tracked_dirty": benchmark_tracked_dirty,
         "topology_sha256": canonical_sha256(topology),
         "peer_uris": cluster.get("peers"),
         "process_affinity": process_affinity,
@@ -396,6 +590,26 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
         "eval_query_count": parameters.get("eval_query_count"),
         "top_k": parameters.get("top_k"),
         "batch_size": parameters.get("batch_size"),
+        "sharding_method": sharding_method,
+        "numeric_shard_count": numeric_shard_count,
+        "replication_factor": replication_factor,
+        "write_consistency_factor": write_consistency_factor,
+        "hnsw": {
+            "m": hnsw_config["m"],
+            "ef_construct": hnsw_config["ef_construct"],
+            "full_scan_threshold": hnsw_config["full_scan_threshold"],
+        },
+        "optimizer": {
+            "indexing_threshold": optimizer_config["indexing_threshold"],
+            "default_segment_number": optimizer_config["default_segment_number"],
+        },
+        "exact_placement": exact_placement,
+        "readiness": {
+            "status": readiness_status,
+            "optimizer_ok": True,
+            "update_queue_length": update_queue_length,
+            "shard_transfers": readiness_transfers,
+        },
     }
 
 
@@ -444,7 +658,9 @@ def same_recall_selection(
     frontier: list[dict[str, Any]], target: float, window: float
 ) -> dict[str, Any]:
     within = [
-        point for point in frontier if abs(float(point["recall_at_k"]) - target) <= window
+        point
+        for point in frontier
+        if abs(float(point["recall_at_k"]) - target) <= window + 1e-12
     ]
     if within:
         selected = max(within, key=lambda row: float(row["qps"]))
@@ -465,6 +681,111 @@ def same_recall_selection(
         "recall_match_status": status,
         "recall_window": window,
     }
+
+
+def same_recall_confirmation_summary(
+    selections: list[dict[str, Any]],
+    targets: list[float],
+    pairwise_window: float,
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for target in targets:
+        rows = [
+            row
+            for row in selections
+            if math.isclose(
+                float(row["target_recall"]),
+                float(target),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        ]
+        by_method: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            method = str(row.get("method") or "")
+            if method in by_method:
+                raise RuntimeError(
+                    f"same-recall target {target} has duplicate selection for {method}"
+                )
+            by_method[method] = row
+        if set(by_method) != set(METHODS):
+            raise RuntimeError(
+                f"same-recall target {target} does not contain all three methods: "
+                f"{sorted(by_method)}"
+            )
+
+        recalls = {
+            method: float(by_method[method]["recall_at_k"]) for method in METHODS
+        }
+        pairwise_gaps: dict[str, float] = {}
+        for index, left in enumerate(METHODS):
+            for right in METHODS[index + 1 :]:
+                pairwise_gaps[f"{left}_vs_{right}_recall_gap"] = abs(
+                    recalls[left] - recalls[right]
+                )
+        pairwise_spread = max(recalls.values()) - min(recalls.values())
+        nearest_methods = [
+            method
+            for method in METHODS
+            if by_method[method].get("recall_match_status") != "strict"
+        ]
+        all_methods_strict = not nearest_methods
+        pairwise_within_window = pairwise_spread <= pairwise_window + 1e-12
+        strict_same_recall = all_methods_strict and pairwise_within_window
+        status_parts: list[str] = []
+        if nearest_methods:
+            status_parts.append("nearest_selection")
+        if not pairwise_within_window:
+            status_parts.append("pairwise_spread_exceeded")
+        summary: dict[str, Any] = {
+            "target_recall": float(target),
+            "method_count": len(METHODS),
+            "required_methods": ",".join(METHODS),
+            "all_methods_strict": all_methods_strict,
+            "nearest_methods": ",".join(nearest_methods),
+            "pairwise_recall_spread": pairwise_spread,
+            "pairwise_recall_window": pairwise_window,
+            "pairwise_within_window": pairwise_within_window,
+            "strict_same_recall": strict_same_recall,
+            "confirmation_status": (
+                "strict" if strict_same_recall else "+".join(status_parts)
+            ),
+            **pairwise_gaps,
+        }
+        for method in METHODS:
+            selected = by_method[method]
+            summary.update(
+                {
+                    f"{method}_case_name": selected.get("case_name"),
+                    f"{method}_recall_at_k": recalls[method],
+                    f"{method}_qps": selected.get("qps"),
+                    f"{method}_recall_delta": selected.get("recall_delta"),
+                    f"{method}_recall_match_status": selected.get(
+                        "recall_match_status"
+                    ),
+                }
+            )
+        summaries.append(summary)
+    return summaries
+
+
+def enforce_strict_same_recall(confirmations: list[dict[str, Any]]) -> None:
+    failures = [
+        {
+            "target_recall": row["target_recall"],
+            "confirmation_status": row["confirmation_status"],
+            "nearest_methods": row["nearest_methods"],
+            "pairwise_recall_spread": row["pairwise_recall_spread"],
+            "pairwise_recall_window": row["pairwise_recall_window"],
+        }
+        for row in confirmations
+        if row.get("strict_same_recall") is not True
+    ]
+    if failures:
+        raise RuntimeError(
+            "strict same-recall confirmation failed: "
+            + json.dumps(failures, sort_keys=True)
+        )
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -545,9 +866,17 @@ def collect_results(
                     float(config["same_recall_window"]),
                 )
             )
+    confirmations = same_recall_confirmation_summary(
+        selections,
+        [float(target) for target in config["same_recall_targets"]],
+        float(config["same_recall_pairwise_window"]),
+    )
     write_csv(matrix_dir / "recall_qps_points.csv", points)
     write_csv(matrix_dir / "pareto_frontier.csv", frontiers)
     write_csv(matrix_dir / "same_recall_selection.csv", selections)
+    write_csv(matrix_dir / "same_recall_confirmation.csv", confirmations)
+    if config["require_strict_same_recall"]:
+        enforce_strict_same_recall(confirmations)
     plots = write_plots(matrix_dir, points)
     manifest = {
         "schema_version": 1,
@@ -562,6 +891,9 @@ def collect_results(
         "shared_provenance": shared_provenance,
         "same_recall_targets": config["same_recall_targets"],
         "same_recall_window": config["same_recall_window"],
+        "same_recall_pairwise_window": config["same_recall_pairwise_window"],
+        "require_strict_same_recall": config["require_strict_same_recall"],
+        "same_recall_confirmation": confirmations,
         "taskset_cpus": taskset_cpus,
         "cases": case_records
         or [
@@ -575,6 +907,7 @@ def collect_results(
             "recall_qps_points": "recall_qps_points.csv",
             "pareto_frontier": "pareto_frontier.csv",
             "same_recall_selection": "same_recall_selection.csv",
+            "same_recall_confirmation": "same_recall_confirmation.csv",
             "plots": plots,
         },
     }

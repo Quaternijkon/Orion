@@ -28,7 +28,7 @@ from tools import qdrant_two_level_routing_experiment as experiment  # noqa: E40
 ROUTED_METHODS = {"orion", "simple_kmeans"}
 PREPARATION_MANIFEST = "preparation_manifest.json"
 PROVENANCE_METADATA_KEY = "native_auto_shard_prepare"
-PROVENANCE_SCHEMA_VERSION = 1
+PROVENANCE_SCHEMA_VERSION = 2
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -157,6 +157,73 @@ def verify_checksum_listing(layout_dir: Path) -> dict[str, str]:
     return verified
 
 
+def validate_faithful_orion_build_parameters(
+    build_parameters: dict[str, Any], artifact_payload: dict[str, Any]
+) -> int:
+    faithful_constants = {
+        "initial_num_shards": 31,
+        "sample_denominator": 32,
+        "upper_sample_seed": 100,
+        "upper_m": 32,
+        "upper_ef_construction": 100,
+        "k_overlap": 10,
+        "kmeans_iters": 10,
+        "kmeans_seed": 1,
+        "topology_iters": 50,
+        "use_multi_assign": True,
+        "multi_assign_min_max_vote": 2,
+        "multi_assign_vote_delta": 0,
+        "multi_assign_max_shards": 0,
+        "enable_fission": True,
+        "upper_graph_seed": 100,
+        "allow_decoupled_runtime_upper_search": False,
+    }
+    semantic_drift = {
+        key: {"expected": expected, "actual": build_parameters.get(key)}
+        for key, expected in faithful_constants.items()
+        if build_parameters.get(key) != expected
+        or type(build_parameters.get(key)) is not type(expected)
+    }
+    if semantic_drift:
+        raise RuntimeError(
+            "refusing non-faithful Orion layout: main-idea parameter drift: "
+            f"{semantic_drift}"
+        )
+    attachment_search_ef = build_parameters.get("attachment_search_ef")
+    if (
+        isinstance(attachment_search_ef, bool)
+        or not isinstance(attachment_search_ef, int)
+        or attachment_search_ef <= 0
+    ):
+        raise RuntimeError("Orion layout does not prove a positive attachment_search_ef")
+    if attachment_search_ef != 100:
+        raise RuntimeError(
+            "refusing non-faithful Orion layout: attachment_search_ef must be 100"
+        )
+    runtime_bindings = {
+        "upper_k": artifact_payload.get("upper_k"),
+        "upper_search_ef": artifact_payload.get("upper_ef_search"),
+        "dynamic_ef_base": artifact_payload.get("dynamic_ef_base"),
+        "dynamic_ef_factor": artifact_payload.get("dynamic_ef_factor"),
+    }
+    mismatched_runtime = {
+        key: {"manifest": build_parameters.get(key), "artifact": value}
+        for key, value in runtime_bindings.items()
+        if build_parameters.get(key) != value
+    }
+    if mismatched_runtime:
+        raise RuntimeError(
+            "Orion build manifest/runtime artifact mismatch: "
+            f"{mismatched_runtime}"
+        )
+    if build_parameters.get("upper_search_ef") != build_parameters.get("upper_k"):
+        raise RuntimeError(
+            "refusing non-faithful Orion layout: runtime upper_search_ef "
+            "must equal upper_k"
+        )
+    return attachment_search_ef
+
+
 def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     layout_dir = Path(layout_path).expanduser().resolve()
     if not layout_dir.is_dir():
@@ -179,6 +246,9 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         )
     if build_manifest.get("mode") != "production_bundle":
         raise RuntimeError("layout must be a completed production_bundle build")
+    build_parameters = build_manifest.get("parameters") or {}
+    if not isinstance(build_parameters, dict):
+        raise ValueError("layout build manifest parameters must be a JSON object")
 
     outputs = build_manifest.get("outputs") or {}
     artifact_path = safe_child(
@@ -220,6 +290,12 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         else cluster_tool.validate_local_simple_kmeans_artifact
     )
     artifact = validator(artifact_path, generation, artifact_sha256)
+    attachment_search_ef = None
+    if method == "orion":
+        attachment_search_ef = validate_faithful_orion_build_parameters(
+            build_parameters,
+            artifact_payload,
+        )
 
     import_manifest = json.loads(import_manifest_path.read_text(encoding="utf-8"))
     if not isinstance(import_manifest, dict):
@@ -291,6 +367,8 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         "import_manifest_path": str(import_manifest_path),
         "import_manifest_sha256": layout_common.sha256_path(import_manifest_path),
         "checksums": checksums,
+        "build_parameters": build_parameters,
+        "attachment_search_ef": attachment_search_ef,
         "generation": generation,
         "vector_schema": artifact["vector_schema"],
         "shard_count": artifact["shard_count"],
@@ -304,13 +382,33 @@ def optional_collection_info(base_url: str, collection: str) -> dict[str, Any] |
     try:
         return experiment.collection_info(base_url, collection)
     except RuntimeError as exc:
-        if "404" in str(exc):
+        if "(HTTP 404)" in str(exc):
             return None
         raise
 
 
 def optimizer_ok(value: Any) -> bool:
     return value == "ok" or (isinstance(value, dict) and value.get("ok") is True)
+
+
+def collection_readiness_proof(
+    info: dict[str, Any], expected_points: int
+) -> dict[str, Any]:
+    indexed_vectors_count = int(info.get("indexed_vectors_count") or 0)
+    return {
+        "status": info.get("status"),
+        "optimizer_status": info.get("optimizer_status"),
+        "points_count": int(info.get("points_count") or 0),
+        "expected_points_count": int(expected_points),
+        "indexed_vectors_count": indexed_vectors_count,
+        "fully_indexed": indexed_vectors_count >= expected_points,
+        "completion_mode": (
+            "fully_indexed"
+            if indexed_vectors_count >= expected_points
+            else "stable_small_segment_full_scan_exception"
+        ),
+        "segments_count": int(info.get("segments_count") or 0),
+    }
 
 
 def build_provenance_metadata(
@@ -357,6 +455,13 @@ def build_provenance_metadata(
             ),
             "generation": int(layout["generation"]),
         }
+        if method == "orion":
+            attachment_search_ef = layout.get("attachment_search_ef")
+            if attachment_search_ef != 100:
+                raise ValueError(
+                    "routed Orion provenance requires attachment_search_ef=100"
+                )
+            provenance["routing"]["attachment_search_ef"] = 100
     return {
         PROVENANCE_METADATA_KEY: {
             "schema_version": PROVENANCE_SCHEMA_VERSION,
@@ -746,6 +851,7 @@ def prepare(args: argparse.Namespace) -> Path:
     existing = optional_collection_info(args.base_url, args.collection)
     created = existing is None
     create_response = None
+    initial_readiness = None
     if created:
         create_response = experiment.create_numeric_auto_shard_collection(
             args.base_url,
@@ -761,6 +867,14 @@ def prepare(args: argparse.Namespace) -> Path:
             full_scan_threshold=args.full_scan_threshold,
             indexing_threshold=args.indexing_threshold,
             metadata=provenance_metadata,
+        )
+        initial_readiness = collection_readiness_proof(
+            experiment.wait_collection_indexed(
+                args.base_url,
+                args.collection,
+                0,
+            ),
+            0,
         )
         info = experiment.collection_info(args.base_url, args.collection)
     else:
@@ -849,6 +963,14 @@ def prepare(args: argparse.Namespace) -> Path:
             f"collection points_count={populated.get('points_count')!r}, "
             f"expected={physical_count}"
         )
+    indexing_readiness = collection_readiness_proof(
+        experiment.wait_collection_indexed(
+            args.base_url,
+            args.collection,
+            physical_count,
+        ),
+        physical_count,
+    )
     if args.method in ROUTED_METHODS:
         assert layout is not None
         commands.append(run_command(installer_command(args, layout)))
@@ -940,6 +1062,8 @@ def prepare(args: argparse.Namespace) -> Path:
         "physical_point_count": physical_count,
         "created_collection": created,
         "create_response": create_response,
+        "initial_readiness": initial_readiness,
+        "indexing_readiness": indexing_readiness,
         "initial_collection_proof": reuse_proof,
         "initial_placement_proof": initial_placement_proof,
         "layout": layout,

@@ -83,9 +83,9 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
         },
         "deployment": {
             "image": {"id": image_id, "tag": "native:test"},
-            "repository": {"commit": "commit-1"},
+            "repository": {"commit": "commit-1", "dirty": False},
         },
-        "repository": {"commit": "benchmark-commit", "dirty": False},
+        "repository": {"commit": "commit-1", "dirty": False},
         "process_affinity": list(range(8, 20)),
         "topology": {
             "controller": {"private_ip": "10.10.1.1"},
@@ -102,6 +102,49 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
                 "303": "http://10.10.1.3:6335",
                 "404": "http://10.10.1.4:6335",
             }
+        },
+        "collection_info": {
+            "status": "green",
+            "optimizer_status": "ok",
+            "update_queue": {"length": 0},
+            "config": {
+                "params": {
+                    "sharding_method": "auto",
+                    "shard_number": 3,
+                    "replication_factor": 1,
+                    "write_consistency_factor": 1,
+                },
+                "hnsw_config": {
+                    "m": 32,
+                    "ef_construct": 100,
+                    "full_scan_threshold": 10000,
+                },
+                "optimizer_config": {
+                    "indexing_threshold": 10000,
+                    "default_segment_number": 0,
+                },
+            },
+        },
+        "collection_cluster": {
+            "shard_count": 3,
+            "shard_transfers": [],
+        },
+        "indexing_readiness": {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": 1000,
+            "indexed_vectors_count": 1000,
+            "fully_indexed": True,
+            "completion_mode": "fully_indexed",
+            "update_queue": {"length": 0},
+            "shard_transfers": [],
+        },
+        "placement_proof": {
+            "valid": True,
+            "shard_count": 3,
+            "replication_factor": 1,
+            "placement": {0: 202, 1: 303, 2: 404},
+            "shard_transfers": [],
         },
         "parameters": {
             "vector_distance": "cosine",
@@ -188,6 +231,8 @@ def write_case_result(
 def test_config_validation_and_taskset_command(tmp_path):
     module = load_module()
     config = module.load_config(write_config(tmp_path))
+    assert config["require_strict_same_recall"] is False
+    assert config["same_recall_pairwise_window"] == config["same_recall_window"]
     command = module.benchmark_command(
         config["shared"],
         config["cases"][0],
@@ -220,6 +265,25 @@ def test_config_validation_and_taskset_command(tmp_path):
     invalid_trace["cases"][0]["orion_route_trace"] = True
     with pytest.raises(ValueError, match="must not provide orion_route_trace"):
         module.load_config(write_config(tmp_path / "invalid-trace", invalid_trace))
+
+    invalid_strict = base_config()
+    invalid_strict["require_strict_same_recall"] = "false"
+    with pytest.raises(ValueError, match="must be a boolean"):
+        module.load_config(write_config(tmp_path / "invalid-strict", invalid_strict))
+
+    invalid_pairwise = base_config()
+    invalid_pairwise["same_recall_pairwise_window"] = -0.001
+    with pytest.raises(ValueError, match="pairwise_window must be non-negative"):
+        module.load_config(
+            write_config(tmp_path / "invalid-pairwise", invalid_pairwise)
+        )
+
+    missing_deployment = base_config()
+    del missing_deployment["shared"]["deployment_manifest"]
+    with pytest.raises(ValueError, match="deployment_manifest"):
+        module.load_config(
+            write_config(tmp_path / "missing-deployment", missing_deployment)
+        )
 
 
 def test_matrix_output_must_be_new_and_outside_repository(tmp_path):
@@ -335,9 +399,32 @@ def test_collect_aggregates_tables_and_preserves_null_orion_costs(monkeypatch, t
     )
 
     assert manifest["shared_provenance"]["image_identity"] == "sha256:same"
+    assert manifest["shared_provenance"]["deployment_commit"] == "commit-1"
+    assert manifest["shared_provenance"]["benchmark_commit"] == "commit-1"
+    assert manifest["shared_provenance"]["deployment_tracked_dirty"] is False
+    assert manifest["shared_provenance"]["benchmark_tracked_dirty"] is False
+    assert manifest["shared_provenance"]["sharding_method"] == "auto"
+    assert manifest["shared_provenance"]["numeric_shard_count"] == 3
+    assert manifest["shared_provenance"]["replication_factor"] == 1
+    assert manifest["shared_provenance"]["write_consistency_factor"] == 1
+    assert manifest["shared_provenance"]["hnsw"] == {
+        "m": 32,
+        "ef_construct": 100,
+        "full_scan_threshold": 10000,
+    }
+    assert manifest["shared_provenance"]["optimizer"] == {
+        "indexing_threshold": 10000,
+        "default_segment_number": 0,
+    }
+    assert manifest["shared_provenance"]["exact_placement"] == {
+        "0": 202,
+        "1": 303,
+        "2": 404,
+    }
     assert (matrix_dir / "recall_qps_points.csv").is_file()
     assert (matrix_dir / "pareto_frontier.csv").is_file()
     assert (matrix_dir / "same_recall_selection.csv").is_file()
+    assert (matrix_dir / "same_recall_confirmation.csv").is_file()
     assert (matrix_dir / "run_manifest.json").is_file()
     orion_points = [point for point in plotted_points if point["method"] == "orion"]
     assert all(point["visited_shards"] is None for point in orion_points)
@@ -357,6 +444,23 @@ def test_collect_aggregates_tables_and_preserves_null_orion_costs(monkeypatch, t
         selections = list(csv.DictReader(handle))
     assert len(selections) == 6
     assert {row["recall_match_status"] for row in selections} == {"strict"}
+
+    with (matrix_dir / "same_recall_confirmation.csv").open(
+        "r", newline="", encoding="utf-8"
+    ) as handle:
+        confirmations = list(csv.DictReader(handle))
+    assert len(confirmations) == 2
+    assert {row["confirmation_status"] for row in confirmations} == {"strict"}
+    assert {row["strict_same_recall"] for row in confirmations} == {"True"}
+    assert float(confirmations[0]["pairwise_recall_spread"]) == pytest.approx(
+        0.002
+    )
+    assert manifest["require_strict_same_recall"] is False
+    assert manifest["same_recall_pairwise_window"] == pytest.approx(0.003)
+    assert all(
+        row["strict_same_recall"] is True
+        for row in manifest["same_recall_confirmation"]
+    )
 
 
 def test_collect_rejects_image_dataset_or_topology_provenance_drift(tmp_path):
@@ -378,6 +482,179 @@ def test_collect_rejects_image_dataset_or_topology_provenance_drift(tmp_path):
 
     with pytest.raises(RuntimeError, match="shared provenance mismatch"):
         module.validate_shared_provenance(results)
+
+
+def test_provenance_requires_same_clean_tracked_commit_with_dirty_fallback():
+    module = load_module()
+    manifest = shared_manifest("hash_all")
+
+    fingerprint = module.provenance_fingerprint(manifest)
+
+    assert fingerprint["deployment_commit"] == "commit-1"
+    assert fingerprint["benchmark_commit"] == "commit-1"
+    assert fingerprint["deployment_tracked_dirty"] is False
+    assert fingerprint["benchmark_tracked_dirty"] is False
+
+    mismatched = json.loads(json.dumps(manifest))
+    mismatched["repository"]["commit"] = "different"
+    with pytest.raises(RuntimeError, match="deployment/benchmark commit mismatch"):
+        module.provenance_fingerprint(mismatched)
+
+    dirty = json.loads(json.dumps(manifest))
+    dirty["repository"]["dirty"] = True
+    with pytest.raises(RuntimeError, match="tracked_dirty=false"):
+        module.provenance_fingerprint(dirty)
+
+    dirty_deployment = json.loads(json.dumps(manifest))
+    dirty_deployment["deployment"]["repository"]["dirty"] = True
+    with pytest.raises(
+        RuntimeError, match="deployment repository.*tracked_dirty=false"
+    ):
+        module.provenance_fingerprint(dirty_deployment)
+
+    explicitly_clean = json.loads(json.dumps(manifest))
+    explicitly_clean["repository"]["tracked_dirty"] = False
+    explicitly_clean["repository"]["dirty"] = True
+    assert (
+        module.provenance_fingerprint(explicitly_clean)["benchmark_tracked_dirty"]
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("status", "yellow", "not green"),
+        ("optimizer_status", {"error": "backlog"}, "optimizer is not ready"),
+        ("update_queue", {"length": 1}, "update queue is not empty"),
+        ("shard_transfers", [{"shard_id": 0}], "active or invalid shard transfers"),
+    ],
+)
+def test_provenance_rejects_non_ready_collection(field, value, message):
+    module = load_module()
+    manifest = shared_manifest("hash_all")
+    manifest["indexing_readiness"][field] = value
+
+    with pytest.raises(RuntimeError, match=message):
+        module.provenance_fingerprint(manifest)
+
+
+def test_provenance_rejects_stable_but_not_fully_indexed_collection():
+    module = load_module()
+    manifest = shared_manifest("hash_all")
+    manifest["indexing_readiness"].update(
+        {
+            "indexed_vectors_count": 990,
+            "fully_indexed": False,
+            "completion_mode": "stable_small_segment_full_scan_exception",
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="requires fully indexed collections"):
+        module.provenance_fingerprint(manifest)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("params", "sharding_method", "custom"),
+        ("params", "shard_number", 4),
+        ("params", "replication_factor", 2),
+        ("params", "write_consistency_factor", 2),
+        ("hnsw_config", "m", 16),
+        ("hnsw_config", "ef_construct", 200),
+        ("hnsw_config", "full_scan_threshold", 5000),
+        ("optimizer_config", "indexing_threshold", 20000),
+        ("optimizer_config", "default_segment_number", 2),
+        ("placement", "2", 202),
+    ],
+)
+def test_shared_fingerprint_rejects_collection_or_placement_drift(
+    section, field, value
+):
+    module = load_module()
+    results = []
+    for index, method in enumerate(module.METHODS):
+        manifest = shared_manifest(method)
+        if index == 2:
+            if section == "placement":
+                manifest["placement_proof"]["placement"][int(field)] = value
+            else:
+                manifest["collection_info"]["config"][section][field] = value
+            if section == "params" and field == "shard_number":
+                manifest["collection_cluster"]["shard_count"] = value
+                manifest["placement_proof"]["shard_count"] = value
+                manifest["placement_proof"]["placement"][3] = 202
+            if section == "params" and field == "replication_factor":
+                manifest["placement_proof"]["replication_factor"] = value
+        results.append(
+            {
+                "point": {"method": method, "case_name": f"case-{method}"},
+                "manifest": manifest,
+            }
+        )
+
+    expected_error = (
+        "not auto"
+        if section == "params" and field == "sharding_method"
+        else "shared provenance mismatch"
+    )
+    with pytest.raises(RuntimeError, match=expected_error):
+        module.validate_shared_provenance(results)
+
+
+@pytest.mark.parametrize(
+    ("target", "selection_window", "pairwise_window", "recalls", "status"),
+    [
+        (0.95, 0.003, 0.003, [0.899, 0.900, 0.901], "nearest_selection"),
+        (
+            0.90,
+            0.010,
+            0.003,
+            [0.894, 0.900, 0.906],
+            "pairwise_spread_exceeded",
+        ),
+    ],
+)
+def test_collect_strict_same_recall_rejects_nearest_or_pairwise_spread(
+    tmp_path, target, selection_window, pairwise_window, recalls, status
+):
+    module = load_module()
+    value = base_config()
+    value["same_recall_targets"] = [target]
+    value["same_recall_window"] = selection_window
+    value["same_recall_pairwise_window"] = pairwise_window
+    value["require_strict_same_recall"] = True
+    config = module.load_config(write_config(tmp_path, value))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    for case, recall in zip(config["cases"], recalls):
+        write_case_result(
+            matrix_dir,
+            case,
+            recall,
+            100.0,
+            visited=1.5 if case["method"] == "orion" else 3,
+            ef_sum=54 if case["method"] == "orion" else 120,
+        )
+
+    with pytest.raises(RuntimeError, match="strict same-recall confirmation failed"):
+        module.collect_results(
+            matrix_dir,
+            config,
+            case_records=None,
+            run_id="native-run",
+            mode="collect_only",
+            taskset_cpus=None,
+        )
+
+    with (matrix_dir / "same_recall_confirmation.csv").open(
+        "r", newline="", encoding="utf-8"
+    ) as handle:
+        confirmation = next(csv.DictReader(handle))
+    assert confirmation["strict_same_recall"] == "False"
+    assert confirmation["confirmation_status"] == status
+    assert not (matrix_dir / "run_manifest.json").exists()
 
 
 def test_plot_writer_generates_all_curves_without_coercing_null_orion_costs(tmp_path):
@@ -442,3 +719,5 @@ def test_example_config_is_valid_and_contains_only_placeholders():
         for case in config["cases"]
         if case["method"] != "orion"
     )
+    assert config["require_strict_same_recall"] is False
+    assert config["same_recall_pairwise_window"] == pytest.approx(0.003)

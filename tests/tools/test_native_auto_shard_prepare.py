@@ -82,6 +82,112 @@ def collection_info(method, points_count, policy=None, metadata=None):
     }
 
 
+def test_optional_collection_info_treats_http_404_as_absent(monkeypatch):
+    module = load_module()
+
+    def missing_collection(*_args):
+        raise RuntimeError(
+            "GET http://10.10.1.1:6333/collections/missing "
+            "failed (HTTP 404): collection does not exist"
+        )
+
+    monkeypatch.setattr(module.experiment, "collection_info", missing_collection)
+
+    assert module.optional_collection_info("http://10.10.1.1:6333", "missing") is None
+
+
+def test_optional_collection_info_does_not_hide_non_404_errors(monkeypatch):
+    module = load_module()
+
+    def unavailable_collection(*_args):
+        raise RuntimeError(
+            "GET http://10.10.1.1:6333/collections/example "
+            "failed (HTTP 503): upstream payload mentioned 404 but is unavailable"
+        )
+
+    monkeypatch.setattr(module.experiment, "collection_info", unavailable_collection)
+
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        module.optional_collection_info("http://10.10.1.1:6333", "example")
+
+
+def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
+    module = load_module()
+    parameters = {
+        "initial_num_shards": 31,
+        "sample_denominator": 32,
+        "upper_sample_seed": 100,
+        "upper_m": 32,
+        "upper_ef_construction": 100,
+        "attachment_search_ef": 100,
+        "upper_k": 36,
+        "upper_search_ef": 36,
+        "dynamic_ef_base": 48,
+        "dynamic_ef_factor": 15,
+        "k_overlap": 10,
+        "kmeans_iters": 10,
+        "kmeans_seed": 1,
+        "topology_iters": 50,
+        "use_multi_assign": True,
+        "multi_assign_min_max_vote": 2,
+        "multi_assign_vote_delta": 0,
+        "multi_assign_max_shards": 0,
+        "enable_fission": True,
+        "upper_graph_seed": 100,
+        "allow_decoupled_runtime_upper_search": False,
+    }
+    artifact = {
+        "upper_k": 36,
+        "upper_ef_search": 36,
+        "dynamic_ef_base": 48,
+        "dynamic_ef_factor": 15,
+    }
+
+    assert module.validate_faithful_orion_build_parameters(parameters, artifact) == 100
+
+    invalid_attachment = dict(parameters, attachment_search_ef=99)
+    with pytest.raises(RuntimeError, match="attachment_search_ef must be 100"):
+        module.validate_faithful_orion_build_parameters(
+            invalid_attachment, artifact
+        )
+
+    decoupled_runtime = dict(parameters, upper_search_ef=100)
+    decoupled_artifact = dict(artifact, upper_ef_search=100)
+    with pytest.raises(RuntimeError, match="must equal upper_k"):
+        module.validate_faithful_orion_build_parameters(
+            decoupled_runtime, decoupled_artifact
+        )
+
+    mismatched_artifact = dict(artifact, dynamic_ef_factor=16)
+    with pytest.raises(RuntimeError, match="runtime artifact mismatch"):
+        module.validate_faithful_orion_build_parameters(
+            parameters, mismatched_artifact
+        )
+
+    for field, non_faithful_value in (
+        ("initial_num_shards", 46),
+        ("sample_denominator", 16),
+        ("upper_sample_seed", 99),
+        ("upper_m", 16),
+        ("upper_ef_construction", 200),
+        ("k_overlap", 8),
+        ("kmeans_iters", 20),
+        ("kmeans_seed", 7),
+        ("topology_iters", 25),
+        ("use_multi_assign", False),
+        ("multi_assign_min_max_vote", 3),
+        ("multi_assign_vote_delta", 1),
+        ("multi_assign_max_shards", 2),
+        ("enable_fission", False),
+        ("upper_graph_seed", 101),
+        ("allow_decoupled_runtime_upper_search", True),
+    ):
+        with pytest.raises(RuntimeError, match="main-idea parameter drift"):
+            module.validate_faithful_orion_build_parameters(
+                dict(parameters, **{field: non_faithful_value}), artifact
+            )
+
+
 def patch_common_cluster(module, monkeypatch, tmp_path):
     deployment_path = tmp_path / "deployment-manifest.json"
     deployment_path.write_text('{"run_id":"prepare-test"}\n', encoding="utf-8")
@@ -135,6 +241,17 @@ def patch_common_cluster(module, monkeypatch, tmp_path):
         lambda *_args: {"peer_id": 101, "shard_count": 4},
     )
     monkeypatch.setattr(
+        module.experiment,
+        "wait_collection_indexed",
+        lambda *_args, **_kwargs: {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": 0,
+            "indexed_vectors_count": 0,
+            "segments_count": 0,
+        },
+    )
+    monkeypatch.setattr(
         module,
         "run_standard_api_smoke",
         lambda *_args, **_kwargs: {
@@ -162,6 +279,21 @@ def test_hash_all_prepare_creates_places_and_publicly_upserts(monkeypatch, tmp_p
         ),
     )
     monkeypatch.setattr(module, "optional_collection_info", lambda *_args: None)
+    readiness_waits = []
+    monkeypatch.setattr(
+        module.experiment,
+        "wait_collection_indexed",
+        lambda _base_url, _collection, expected_points: readiness_waits.append(
+            expected_points
+        )
+        or {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": expected_points,
+            "indexed_vectors_count": expected_points,
+            "segments_count": 1 if expected_points else 0,
+        },
+    )
     created = []
     monkeypatch.setattr(
         module.experiment,
@@ -213,6 +345,7 @@ def test_hash_all_prepare_creates_places_and_publicly_upserts(monkeypatch, tmp_p
     assert created[0][1]["metadata"] == provenance
     assert upserts[0][1]["batch_size"] == 2
     assert upserts[0][1]["vector_name"] == ""
+    assert readiness_waits == [0, 3]
     manifest = json.loads(manifest_path.read_text())
     assert manifest["method"] == "hash_all"
     assert manifest["created_collection"] is True
@@ -220,6 +353,8 @@ def test_hash_all_prepare_creates_places_and_publicly_upserts(monkeypatch, tmp_p
     assert manifest["commands"][0]["kind"] == "public_hash_all_upsert"
     assert manifest["commands"][0]["proof"]["uses_shard_key"] is False
     assert manifest["checksums"]["dataset_sha256"] == "d" * 64
+    assert manifest["initial_readiness"]["points_count"] == 0
+    assert manifest["indexing_readiness"]["indexed_vectors_count"] == 3
     assert manifest["standard_api_smoke"]["standard_request_contract"] is True
     assert manifest["provenance_metadata"] == provenance
     assert "raw" not in manifest["cluster_preflight"]
@@ -263,6 +398,7 @@ def test_routed_prepare_runs_importer_and_matching_installer(
         "shard_count": 4,
         "logical_point_count": 3,
         "physical_point_count": 3,
+        "attachment_search_ef": 100,
         "smoke_vector": [1.0, 0.0],
         "checksums": {"generation-7.json": "a" * 64},
     }
@@ -321,6 +457,10 @@ def test_routed_prepare_runs_importer_and_matching_installer(
     assert manifest["checksums"]["routing_artifact_sha256"] == "a" * 64
     assert manifest["final_collection_proof"]["points_count"] == 3
     assert manifest["provenance_metadata"] == provenance
+    envelope = provenance[module.PROVENANCE_METADATA_KEY]
+    assert envelope["schema_version"] == 2
+    if method == "orion":
+        assert envelope["provenance"]["routing"]["attachment_search_ef"] == 100
 
 
 def test_validate_collection_configuration_rejects_hnsw_policy_and_count_drift():
@@ -427,6 +567,7 @@ def test_existing_partial_routed_collection_can_resume_and_converge_placement(
         "shard_count": 4,
         "logical_point_count": 3,
         "physical_point_count": 3,
+        "attachment_search_ef": 100,
         "smoke_vector": [1.0, 0.0],
         "checksums": {},
     }

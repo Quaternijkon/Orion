@@ -433,7 +433,10 @@ def wrap_node_command(
     wrapped = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
     for option in ssh_options or []:
         wrapped.extend(["-o", option])
-    wrapped.extend([target, "bash", "-lc", shlex.quote(command_text)])
+    # Do not use a remote login shell here. CloudLab's stock .bash_logout can
+    # turn a successful `set -e` script into SSH status 1 while the login shell
+    # exits, and orchestration commands must not depend on user profile files.
+    wrapped.extend([target, "bash", "-c", shlex.quote(command_text)])
     return wrapped
 
 
@@ -1083,12 +1086,25 @@ def git_state(repo: Path) -> dict[str, Any]:
     status = subprocess.run(
         ["git", "status", "--porcelain"], cwd=repo, check=True, text=True, capture_output=True
     ).stdout
+    tracked_status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
     dirty_paths = [line[3:].strip() for line in status.splitlines() if len(line) >= 4]
+    tracked_dirty_paths = [
+        line[3:].strip() for line in tracked_status.splitlines() if len(line) >= 4
+    ]
     return {
         "commit": commit,
         "short_commit": commit[:12],
         "dirty": bool(dirty_paths),
         "dirty_paths": dirty_paths,
+        "tracked_dirty": bool(tracked_dirty_paths),
+        "tracked_dirty_paths": tracked_dirty_paths,
+        "untracked_entry_count": max(0, len(dirty_paths) - len(tracked_dirty_paths)),
     }
 
 

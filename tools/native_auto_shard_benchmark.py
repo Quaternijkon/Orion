@@ -718,12 +718,42 @@ def mean_and_stdev(rows: list[dict[str, Any]], field: str) -> tuple[float, float
     return statistics.fmean(values), statistics.stdev(values) if len(values) > 1 else 0.0
 
 
+def validate_repository_binding(
+    repository: dict[str, Any], deployment_manifest: dict[str, Any] | None
+) -> dict[str, Any]:
+    benchmark_commit = repository.get("commit")
+    if not benchmark_commit:
+        raise RuntimeError("benchmark repository commit provenance is unavailable")
+    tracked_dirty = repository.get("tracked_dirty", repository.get("dirty"))
+    if tracked_dirty is not False:
+        raise RuntimeError(
+            "benchmark repository has tracked changes; commit or revert them before timing"
+        )
+    deployment_repository = (deployment_manifest or {}).get("repository") or {}
+    deployment_commit = deployment_repository.get("commit")
+    if deployment_manifest is not None and not deployment_commit:
+        raise RuntimeError("deployment manifest is missing repository commit provenance")
+    if deployment_commit is not None and deployment_commit != benchmark_commit:
+        raise RuntimeError(
+            "deployment/benchmark commit mismatch: "
+            f"deployment={deployment_commit}, benchmark={benchmark_commit}"
+        )
+    return {
+        "deployment_commit": deployment_commit,
+        "benchmark_commit": benchmark_commit,
+        "tracked_dirty": False,
+        "untracked_entry_count": repository.get("untracked_entry_count"),
+    }
+
+
 def run(args: argparse.Namespace) -> Path:
     validate_args(args)
     distance = experiment.vector_distance_config(args.vector_distance)
     topology = experiment.load_cluster_topology(args.topology)
     cluster_preflight = experiment.validate_cluster_preflight(args.base_url, topology)
     deployment_manifest = experiment.load_optional_json(args.deployment_manifest)
+    repository = experiment.repository_provenance(REPO_ROOT)
+    repository_binding = validate_repository_binding(repository, deployment_manifest)
     dataset = load_dataset(
         args.hdf5_path,
         args.warmup_query_count,
@@ -733,6 +763,16 @@ def run(args: argparse.Namespace) -> Path:
     )
 
     collection_info = experiment.collection_info(args.base_url, args.collection)
+    initial_points_count = collection_info.get("points_count")
+    if isinstance(initial_points_count, bool) or not isinstance(initial_points_count, int):
+        raise RuntimeError(
+            f"collection has invalid points_count: {initial_points_count!r}"
+        )
+    collection_info = experiment.wait_collection_indexed(
+        args.base_url,
+        args.collection,
+        initial_points_count,
+    )
     collection_cluster = experiment.collection_cluster_info(args.base_url, args.collection)
     if collection_cluster is None:
         raise RuntimeError("collection cluster placement is unavailable")
@@ -745,6 +785,11 @@ def run(args: argparse.Namespace) -> Path:
         raise RuntimeError(
             f"collection is not benchmark-ready: status={status!r}, "
             f"optimizer_status={optimizer_status!r}"
+        )
+    update_queue = collection_info.get("update_queue") or {}
+    if int(update_queue.get("length") or 0) != 0:
+        raise RuntimeError(
+            f"collection update queue is not empty: {update_queue.get('length')!r}"
         )
     params = ((collection_info.get("config") or {}).get("params") or {})
     shard_count = params.get("shard_number")
@@ -788,6 +833,21 @@ def run(args: argparse.Namespace) -> Path:
         points_count,
         dataset["train_count"],
     )
+    indexed_vectors_count = int(collection_info.get("indexed_vectors_count") or 0)
+    indexing_readiness = {
+        "points_count": points_count,
+        "indexed_vectors_count": indexed_vectors_count,
+        "fully_indexed": indexed_vectors_count >= points_count,
+        "completion_mode": (
+            "fully_indexed"
+            if indexed_vectors_count >= points_count
+            else "stable_small_segment_full_scan_exception"
+        ),
+        "status": collection_info.get("status"),
+        "optimizer_status": collection_info.get("optimizer_status"),
+        "update_queue": collection_info.get("update_queue"),
+        "shard_transfers": collection_cluster.get("shard_transfers") or [],
+    }
     placement_proof = experiment.validate_numeric_shard_round_robin_placement(
         collection_info,
         collection_cluster,
@@ -892,7 +952,6 @@ def run(args: argparse.Namespace) -> Path:
     if args.write_per_query_metrics:
         experiment.write_csv(output_dir / "per_query_metrics.csv", per_query_rows)
 
-    repository = experiment.repository_provenance(REPO_ROOT)
     dataset_manifest = {
         "path": str(dataset["path"]),
         "sha256": experiment.sha256_path(dataset["path"]),
@@ -925,6 +984,7 @@ def run(args: argparse.Namespace) -> Path:
         },
         "dataset": dataset_manifest,
         "repository": repository,
+        "repository_binding": repository_binding,
         "deployment": deployment_evidence,
         "process_affinity": (
             sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None
@@ -934,6 +994,7 @@ def run(args: argparse.Namespace) -> Path:
         "cluster_snapshot": cluster_preflight["raw"],
         "collection_info": collection_info,
         "collection_cluster": collection_cluster,
+        "indexing_readiness": indexing_readiness,
         "placement_proof": placement_proof,
         "live_policy": policy,
         "artifact": artifact_proof,

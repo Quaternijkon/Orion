@@ -64,8 +64,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--upper-sample-seed", type=int, default=100)
     parser.add_argument("--upper-m", type=int, default=32)
     parser.add_argument("--upper-ef-construction", type=int, default=100)
+    parser.add_argument(
+        "--attachment-search-ef",
+        type=int,
+        default=100,
+        help=(
+            "Offline L0-to-L1 attachment HNSW EF. Faithful Method4/Orion "
+            "builds keep this at 100 independently of the runtime upper EF."
+        ),
+    )
     parser.add_argument("--upper-search-ef", type=int, default=100)
     parser.add_argument("--upper-k", type=int, default=100)
+    parser.add_argument(
+        "--allow-decoupled-runtime-upper-search",
+        action="store_true",
+        help=(
+            "Diagnostic-only: allow runtime upper_search_ef != upper_k. "
+            "Faithful main-idea builds keep both equal to EF_SEARCH_UP."
+        ),
+    )
     parser.add_argument("--k-overlap", type=int, default=10)
     parser.add_argument("--upper-build-batch-size", type=int, default=10_000)
 
@@ -112,6 +129,7 @@ def validate_args(args: argparse.Namespace) -> None:
         "sample_denominator": args.sample_denominator,
         "upper_m": args.upper_m,
         "upper_ef_construction": args.upper_ef_construction,
+        "attachment_search_ef": args.attachment_search_ef,
         "upper_search_ef": args.upper_search_ef,
         "upper_k": args.upper_k,
         "k_overlap": args.k_overlap,
@@ -133,8 +151,18 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--multi-assign-vote-delta must be non-negative")
     if int(args.multi_assign_max_shards) < 0:
         raise ValueError("--multi-assign-max-shards must be non-negative")
-    if int(args.upper_search_ef) < max(int(args.upper_k), int(args.k_overlap)):
-        raise ValueError("--upper-search-ef must be at least max(--upper-k, --k-overlap)")
+    if int(args.attachment_search_ef) < int(args.k_overlap):
+        raise ValueError("--attachment-search-ef must be at least --k-overlap")
+    if int(args.upper_search_ef) < int(args.upper_k):
+        raise ValueError("--upper-search-ef must be at least --upper-k")
+    if (
+        int(args.upper_search_ef) != int(args.upper_k)
+        and not args.allow_decoupled_runtime_upper_search
+    ):
+        raise ValueError(
+            "faithful Orion requires --upper-search-ef == --upper-k; "
+            "use --allow-decoupled-runtime-upper-search only for diagnostics"
+        )
     if not args.bundle_prefix or Path(args.bundle_prefix).name != args.bundle_prefix:
         raise ValueError("--bundle-prefix must be a non-empty file-name component")
 
@@ -336,8 +364,12 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "upper_sample_seed": int(args.upper_sample_seed),
         "upper_m": int(args.upper_m),
         "upper_ef_construction": int(args.upper_ef_construction),
+        "attachment_search_ef": int(args.attachment_search_ef),
         "upper_search_ef": int(args.upper_search_ef),
         "upper_k": int(args.upper_k),
+        "allow_decoupled_runtime_upper_search": bool(
+            args.allow_decoupled_runtime_upper_search
+        ),
         "k_overlap": int(args.k_overlap),
         "upper_build_batch_size": int(args.upper_build_batch_size),
         "dynamic_ef_base": int(args.dynamic_ef_base),
@@ -381,7 +413,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         int(train.shape[1]),
         int(args.upper_m),
         int(args.upper_ef_construction),
-        int(args.upper_search_ef),
+        int(args.attachment_search_ef),
         distance_config["hnsw_space"],
     )
     point_to_l1s = experiment.compute_point_to_l1s(

@@ -55,7 +55,7 @@ def smoke_args(module, hdf5_path: Path, output_dir: Path, *extra: str):
             "--upper-k",
             "2",
             "--upper-search-ef",
-            "4",
+            "2",
             "--k-overlap",
             "2",
             "--upper-build-batch-size",
@@ -228,6 +228,8 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "multi_assign_vote_delta": 1,
         "multi_assign_max_shards": 2,
     }
+    upper_build_call = calls[2]
+    assert upper_build_call[6] == 100
     graphless_call = calls[5]
     assert graphless_call[3] == routing.point_to_shards
     assert graphless_call[4] == 3
@@ -235,7 +237,7 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "generation": 7,
         "vector_distance": "cosine",
         "upper_k": 2,
-        "upper_ef_search": 4,
+        "upper_ef_search": 2,
         "dynamic_ef_base": 48,
         "dynamic_ef_factor": 15,
         "vector_name": "",
@@ -251,6 +253,8 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
     assert manifest["routing"]["physical_point_count"] == 6
     assert manifest["artifact_binding"]["layout_sha256"] == "a" * 64
     assert manifest["routing"]["fission_events"] == routing.fission_events
+    assert manifest["parameters"]["attachment_search_ef"] == 100
+    assert manifest["parameters"]["upper_search_ef"] == 2
     checksum_lines = (output_dir / module.CHECKSUMS_NAME).read_text().splitlines()
     assert any(line.endswith(f"  {module.GRAPHLESS_NAME}") for line in checksum_lines)
     assert any(line.endswith(f"  {module.BUILD_MANIFEST_NAME}") for line in checksum_lines)
@@ -440,6 +444,10 @@ def test_existing_output_is_rejected_before_dataset_or_algorithm_work(monkeypatc
         (("--generation", "0"), "generation"),
         (("--dynamic-ef-factor", "-1"), "dynamic-ef-factor"),
         (("--multi-assign-vote-delta", "-1"), "multi-assign-vote-delta"),
+        (
+            ("--attachment-search-ef", "1", "--k-overlap", "2"),
+            "attachment-search-ef",
+        ),
         (("--upper-k", "8", "--upper-search-ef", "4"), "upper-search-ef"),
     ],
 )
@@ -454,3 +462,59 @@ def test_invalid_layout_parameters_are_rejected(tmp_path, extra, message):
 
     with pytest.raises(ValueError, match=message):
         module.validate_args(args)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        (
+            "--upper-k",
+            "1",
+            "--upper-search-ef",
+            "1",
+            "--k-overlap",
+            "2",
+            "--attachment-search-ef",
+            "2",
+        ),
+        (
+            "--upper-k",
+            "8",
+            "--upper-search-ef",
+            "8",
+            "--k-overlap",
+            "2",
+            "--attachment-search-ef",
+            "2",
+        ),
+    ],
+)
+def test_attachment_and_runtime_upper_ef_are_validated_independently(
+    tmp_path, extra
+):
+    module = load_module()
+    args = smoke_args(
+        module,
+        tmp_path / "input.hdf5",
+        tmp_path / "layout",
+        *extra,
+    )
+
+    module.validate_args(args)
+
+
+def test_runtime_upper_search_decoupling_requires_explicit_diagnostic_flag(tmp_path):
+    module = load_module()
+    args = smoke_args(
+        module,
+        tmp_path / "input.hdf5",
+        tmp_path / "layout",
+        "--upper-search-ef",
+        "4",
+    )
+
+    with pytest.raises(ValueError, match="upper-search-ef == --upper-k"):
+        module.validate_args(args)
+
+    args.allow_decoupled_runtime_upper_search = True
+    module.validate_args(args)

@@ -516,7 +516,9 @@ def request_json(
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"{method} {url} failed: {exc.read().decode()}") from exc
+        raise RuntimeError(
+            f"{method} {url} failed (HTTP {exc.code}): {exc.read().decode()}"
+        ) from exc
 
 
 def request_json_encoded(
@@ -537,7 +539,9 @@ def request_json_encoded(
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"{method} {url} failed: {exc.read().decode()}") from exc
+        raise RuntimeError(
+            f"{method} {url} failed (HTTP {exc.code}): {exc.read().decode()}"
+        ) from exc
 
 
 def encode_search_batch_body(searches: list[dict[str, Any]]) -> bytes:
@@ -6851,7 +6855,22 @@ def repository_provenance(repo: str | Path | None = None) -> dict[str, Any]:
         status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=root, check=True, text=True, capture_output=True
         ).stdout
-        return {"root": str(root), "commit": commit, "dirty": bool(status.strip())}
+        tracked_status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root,
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout
+        status_lines = [line for line in status.splitlines() if line.strip()]
+        tracked_lines = [line for line in tracked_status.splitlines() if line.strip()]
+        return {
+            "root": str(root),
+            "commit": commit,
+            "dirty": bool(status_lines),
+            "tracked_dirty": bool(tracked_lines),
+            "untracked_entry_count": max(0, len(status_lines) - len(tracked_lines)),
+        }
     except (OSError, subprocess.CalledProcessError) as exc:
         return {"root": str(root), "error": str(exc)}
 

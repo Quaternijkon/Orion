@@ -222,6 +222,37 @@ def test_argument_guards_restrict_hnsw_ef_and_repository_output(tmp_path):
         module.create_output_directory(output)
 
 
+def test_repository_binding_requires_same_clean_tracked_commit():
+    module = load_module()
+    deployment = {"repository": {"commit": "abc123"}}
+
+    proof = module.validate_repository_binding(
+        {
+            "commit": "abc123",
+            "dirty": True,
+            "tracked_dirty": False,
+            "untracked_entry_count": 7,
+        },
+        deployment,
+    )
+
+    assert proof == {
+        "deployment_commit": "abc123",
+        "benchmark_commit": "abc123",
+        "tracked_dirty": False,
+        "untracked_entry_count": 7,
+    }
+
+    with pytest.raises(RuntimeError, match="tracked changes"):
+        module.validate_repository_binding(
+            {"commit": "abc123", "tracked_dirty": True}, deployment
+        )
+    with pytest.raises(RuntimeError, match="commit mismatch"):
+        module.validate_repository_binding(
+            {"commit": "different", "tracked_dirty": False}, deployment
+        )
+
+
 def test_hash_all_scalar_hnsw_ef_uses_standard_request_field_only():
     module = load_module()
     request = module.experiment.standard_dense_vector_request(
@@ -511,7 +542,7 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
     deployment.write_text(
         json.dumps(
             {
-                "repository": {"commit": "deployed-commit"},
+                "repository": {"commit": "current-commit"},
                 "image": {"tag": "image:tag", "id": "sha256:image"},
                 "nodes": [{"role": "controller", "cpuset": "0-7"}],
             }
@@ -622,6 +653,11 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         module.experiment,
+        "wait_collection_indexed",
+        lambda *_args, **_kwargs: collection_info,
+    )
+    monkeypatch.setattr(
+        module.experiment,
         "validate_numeric_shard_round_robin_placement",
         lambda *_args: {"valid": True, "shards_per_worker": {202: 1, 303: 1, 404: 1}},
     )
@@ -631,7 +667,12 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
     monkeypatch.setattr(
         module.experiment,
         "repository_provenance",
-        lambda *_args: {"commit": "current-commit", "dirty": False},
+        lambda *_args: {
+            "commit": "current-commit",
+            "dirty": True,
+            "tracked_dirty": False,
+            "untracked_entry_count": 4,
+        },
     )
 
     output = module.run(args)

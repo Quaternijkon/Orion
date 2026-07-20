@@ -859,6 +859,8 @@ fn intermediate_query_infos(request: &ShardQueryRequest) -> Vec<IntermediateQuer
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     fn scored_point(id: u64, score: f32) -> ScoredPoint {
@@ -949,5 +951,90 @@ mod tests {
             vec![1_u64.into(), 2_u64.into()],
         );
         assert_eq!(orion[0].score, 0.9);
+    }
+
+    #[test]
+    fn per_shard_top_window_preserves_deduplicated_global_window_with_offset() {
+        const NUM_SHARDS: usize = 4;
+        const NUM_EXTERNAL_IDS: u64 = 48;
+
+        for order in [Order::LargeBetter, Order::SmallBetter] {
+            for seed in 0_u64..16 {
+                let full_shards = (0..NUM_SHARDS)
+                    .map(|shard_index| {
+                        let mut shard = (0..NUM_EXTERNAL_IDS)
+                            // Every external ID occurs in multiple shards, while remaining unique
+                            // within each shard. Vary the omitted shard to exercise different
+                            // duplicate positions in the ordered lists.
+                            .filter(|external_id| {
+                                (external_id + seed + shard_index as u64) % NUM_SHARDS as u64 != 0
+                            })
+                            .map(|external_id| {
+                                let global_rank = (external_id * 37 + seed * 17) % NUM_EXTERNAL_IDS;
+                                let score = global_rank as f32 + shard_index as f32 / 100.0;
+                                scored_point(external_id, score)
+                            })
+                            .collect::<Vec<_>>();
+
+                        shard.sort_by(|left, right| match order {
+                            Order::LargeBetter => right.score.total_cmp(&left.score),
+                            Order::SmallBetter => left.score.total_cmp(&right.score),
+                        });
+                        shard
+                    })
+                    .collect::<Vec<_>>();
+
+                for shard in &full_shards {
+                    assert_eq!(
+                        shard
+                            .iter()
+                            .map(|point| point.id)
+                            .collect::<HashSet<_>>()
+                            .len(),
+                        shard.len(),
+                        "external IDs must be unique within a shard",
+                    );
+                }
+                assert!(
+                    full_shards.iter().map(Vec::len).sum::<usize>()
+                        > full_shards
+                            .iter()
+                            .flatten()
+                            .map(|point| point.id)
+                            .collect::<HashSet<_>>()
+                            .len(),
+                    "the fixture must contain cross-shard duplicate external IDs",
+                );
+
+                for (offset, limit) in [(0, 1), (1, 3), (3, 5), (7, 4), (11, 9)] {
+                    let top = offset + limit;
+                    let truncated_shards = full_shards
+                        .iter()
+                        .map(|shard| shard.iter().take(top).cloned().collect())
+                        .collect();
+
+                    let full_window =
+                        merge_ordered_shard_results(full_shards.clone(), order, top, true)
+                            .into_iter()
+                            .skip(offset)
+                            .take(limit)
+                            .map(|point| (point.id, point.score))
+                            .collect::<Vec<_>>();
+                    let truncated_window =
+                        merge_ordered_shard_results(truncated_shards, order, top, true)
+                            .into_iter()
+                            .skip(offset)
+                            .take(limit)
+                            .map(|point| (point.id, point.score))
+                            .collect::<Vec<_>>();
+
+                    assert_eq!(
+                        truncated_window, full_window,
+                        "per-shard top {top} changed the global window for seed {seed}, \
+                         order {order:?}, offset {offset}, and limit {limit}",
+                    );
+                }
+            }
+        }
     }
 }

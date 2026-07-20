@@ -311,6 +311,8 @@ def test_remote_command_uses_batch_mode_ssh_and_local_command_does_not():
     assert local[:2] == ["bash", "-lc"]
     assert remote[:5] == ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
     assert "hp052.utah.cloudlab.us" in remote
+    assert remote[-3:-1] == ["bash", "-c"]
+    assert "-lc" not in remote
 
 
 def test_clean_is_scoped_to_exact_run_role_path():
