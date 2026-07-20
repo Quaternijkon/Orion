@@ -534,7 +534,7 @@ impl SegmentsSearcher {
     }
 }
 
-#[derive(PartialEq, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub enum SearchType {
     #[default]
     Nearest,
@@ -558,7 +558,7 @@ impl From<&QueryEnum> for SearchType {
     }
 }
 
-#[derive(PartialEq, Default, Debug)]
+#[derive(Clone, Default, Debug)]
 struct BatchSearchParams<'a> {
     pub search_type: SearchType,
     pub vector_name: &'a VectorName,
@@ -566,8 +566,56 @@ struct BatchSearchParams<'a> {
     pub with_payload: WithPayload,
     pub with_vector: WithVector,
     pub top: usize,
-    pub hnsw_entry_points: Option<&'a [PointIdType]>,
     pub params: Option<&'a SearchParams>,
+}
+
+impl BatchSearchParams<'_> {
+    /// Whether two searches can share one segment read lock.
+    ///
+    /// HNSW entry points are deliberately not part of this key: they are kept in
+    /// [`HnswSearchProfile`] and passed to the segment separately for each query.
+    /// EF can also vary when sampling is disabled. With sampling enabled, EF
+    /// contributes to the per-segment sampling limit, so it remains part of the
+    /// batching key to preserve the existing search semantics.
+    fn can_batch_with(&self, other: &Self, use_sampling: bool) -> bool {
+        self.search_type == other.search_type
+            && self.vector_name == other.vector_name
+            && self.filter == other.filter
+            && self.with_payload == other.with_payload
+            && self.with_vector == other.with_vector
+            && self.top == other.top
+            && if use_sampling {
+                self.params == other.params
+            } else {
+                search_params_equal_except_hnsw_ef(self.params, other.params)
+            }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct HnswSearchProfile<'a> {
+    entry_points: Option<&'a [PointIdType]>,
+    params: Option<&'a SearchParams>,
+}
+
+fn search_params_equal_except_hnsw_ef(
+    left: Option<&SearchParams>,
+    right: Option<&SearchParams>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => {
+            let mut left = *left;
+            let mut right = *right;
+            left.hnsw_ef = None;
+            right.hnsw_ef = None;
+            left == right
+        }
+        // Keep `None` distinct from `Some(SearchParams::default())` even though
+        // they currently execute equivalently. This makes the optimization
+        // fail closed if option presence gains meaning in the future.
+        _ => false,
+    }
 }
 
 /// Returns suggested search sampling size for a given number of points and required limit.
@@ -633,6 +681,7 @@ fn search_in_segment(
     let mut result: Vec<Vec<ScoredPoint>> = Vec::with_capacity(batch_size);
     let mut further_results: Vec<bool> = Vec::with_capacity(batch_size); // if segment have more points to return
     let mut vectors_batch: Vec<QueryVector> = vec![];
+    let mut hnsw_profiles_batch: Vec<HnswSearchProfile<'_>> = vec![];
     let mut prev_params = BatchSearchParams::default();
 
     for search_query in &request.searches {
@@ -648,34 +697,46 @@ fn search_in_segment(
             with_payload: WithPayload::from(with_payload_interface),
             with_vector: search_query.with_vector.clone().unwrap_or_default(),
             top: search_query.limit + search_query.offset,
-            hnsw_entry_points: search_query.hnsw_entry_points.as_deref(),
+            params: search_query.params.as_ref(),
+        };
+        let hnsw_profile = HnswSearchProfile {
+            entry_points: search_query.hnsw_entry_points.as_deref(),
             params: search_query.params.as_ref(),
         };
 
         let query = search_query.query.clone().into();
 
-        // same params enables batching (cmp expensive on large filters)
-        if params == prev_params {
+        // Same common parameters enable batching (comparison is expensive on
+        // large filters). Per-query HNSW entry points, and EF when sampling is
+        // disabled, are intentionally carried in a parallel profile vector.
+        if vectors_batch.is_empty() {
+            prev_params = params;
             vectors_batch.push(query);
+            hnsw_profiles_batch.push(hnsw_profile);
+        } else if prev_params.can_batch_with(&params, use_sampling) {
+            vectors_batch.push(query);
+            hnsw_profiles_batch.push(hnsw_profile);
         } else {
             // different params means different batches
             // execute what has been batched so far
-            if !vectors_batch.is_empty() {
-                let (mut res, mut further) = execute_batch_search(
-                    &segment,
-                    &vectors_batch,
-                    &prev_params,
-                    use_sampling,
-                    segment_query_context,
-                    timeout,
-                )?;
-                further_results.append(&mut further);
-                result.append(&mut res);
-                vectors_batch.clear()
-            }
+            let (mut res, mut further) = execute_batch_search(
+                &segment,
+                &vectors_batch,
+                &hnsw_profiles_batch,
+                &prev_params,
+                use_sampling,
+                segment_query_context,
+                timeout,
+            )?;
+            further_results.append(&mut further);
+            result.append(&mut res);
+            vectors_batch.clear();
+            hnsw_profiles_batch.clear();
+
             // start new batch for current search query
-            vectors_batch.push(query);
             prev_params = params;
+            vectors_batch.push(query);
+            hnsw_profiles_batch.push(hnsw_profile);
         }
     }
 
@@ -684,6 +745,7 @@ fn search_in_segment(
         let (mut res, mut further) = execute_batch_search(
             &segment,
             &vectors_batch,
+            &hnsw_profiles_batch,
             &prev_params,
             use_sampling,
             segment_query_context,
@@ -699,11 +761,14 @@ fn search_in_segment(
 fn execute_batch_search(
     segment: &LockedSegment,
     vectors_batch: &[QueryVector],
+    hnsw_profiles_batch: &[HnswSearchProfile<'_>],
     search_params: &BatchSearchParams,
     use_sampling: bool,
     segment_query_context: &SegmentQueryContext,
     timeout: Duration,
 ) -> CollectionResult<(Vec<Vec<ScoredPoint>>, Vec<bool>)> {
+    debug_assert_eq!(vectors_batch.len(), hnsw_profiles_batch.len());
+
     let locked_segment = segment.get();
     let Some(read_segment) = locked_segment.try_read_for(timeout) else {
         return Err(CollectionError::timeout(timeout, "batch search"));
@@ -712,39 +777,92 @@ fn execute_batch_search(
     let segment_points = read_segment.available_point_count_without_deferred();
     let segment_config = read_segment.config();
 
-    let top = if use_sampling {
-        let ef_limit = search_params
-            .params
-            .and_then(|p| p.hnsw_ef)
-            .or_else(|| get_hnsw_ef_construct(segment_config, search_params.vector_name));
-        sampling_limit(
-            search_params.top,
-            ef_limit,
-            segment_points,
-            segment_query_context.available_point_count(),
-        )
-    } else {
-        search_params.top
-    };
+    let tops = hnsw_profiles_batch
+        .iter()
+        .map(|profile| {
+            if use_sampling {
+                let ef_limit = profile
+                    .params
+                    .and_then(|p| p.hnsw_ef)
+                    .or_else(|| get_hnsw_ef_construct(segment_config, search_params.vector_name));
+                sampling_limit(
+                    search_params.top,
+                    ef_limit,
+                    segment_points,
+                    segment_query_context.available_point_count(),
+                )
+            } else {
+                search_params.top
+            }
+        })
+        .collect_vec();
 
-    let vectors_batch = &vectors_batch.iter().collect_vec();
-    let res = read_segment.search_batch(
-        search_params.vector_name,
-        vectors_batch,
-        &search_params.with_payload,
-        &search_params.with_vector,
-        search_params.filter,
-        top,
-        search_params.hnsw_entry_points,
-        search_params.params,
-        segment_query_context,
-    )?;
+    let first_profile = hnsw_profiles_batch
+        .first()
+        .expect("non-empty vector batch must have a matching HNSW profile");
+    let first_top = tops
+        .first()
+        .copied()
+        .expect("non-empty vector batch must have a matching top");
+    let homogeneous = hnsw_profiles_batch
+        .iter()
+        .all(|profile| profile == first_profile)
+        && tops.iter().all(|top| *top == first_top);
+
+    let res = if homogeneous {
+        // Preserve Qdrant's existing vector-index batch path whenever every
+        // query has the same HNSW profile.
+        let vectors_batch = vectors_batch.iter().collect_vec();
+        read_segment.search_batch(
+            search_params.vector_name,
+            &vectors_batch,
+            &search_params.with_payload,
+            &search_params.with_vector,
+            search_params.filter,
+            first_top,
+            first_profile.entry_points,
+            first_profile.params,
+            segment_query_context,
+        )?
+    } else {
+        // HNSW graph traversals are already executed per query by the current
+        // vector-index batch implementation. Keep that behavior, but retain one
+        // segment read lock for the whole shard-local batch and pass each query
+        // its exact entry points and EF/search parameters.
+        let mut res = Vec::with_capacity(vectors_batch.len());
+        for ((vector, profile), top) in vectors_batch
+            .iter()
+            .zip(hnsw_profiles_batch)
+            .zip(tops.iter().copied())
+        {
+            let mut query_results = read_segment.search_batch(
+                search_params.vector_name,
+                &[vector],
+                &search_params.with_payload,
+                &search_params.with_vector,
+                search_params.filter,
+                top,
+                profile.entry_points,
+                profile.params,
+                segment_query_context,
+            )?;
+            if query_results.len() != 1 {
+                return Err(CollectionError::service_error(format!(
+                    "segment search returned {} rows for one heterogeneous batch query",
+                    query_results.len(),
+                )));
+            }
+            res.push(query_results.pop().unwrap());
+        }
+        res
+    };
 
     drop(read_segment);
 
     let further_results = res
         .iter()
-        .map(|batch_result| batch_result.len() == top)
+        .zip(tops)
+        .map(|(batch_result, top)| batch_result.len() == top)
         .collect();
 
     Ok((res, further_results))
@@ -772,9 +890,11 @@ mod tests {
     use api::rest::SearchRequestInternal;
     use common::counter::hardware_counter::HardwareCounterCell;
     use segment::data_types::vectors::DEFAULT_VECTOR_NAME;
+    use segment::entry::entry_point::ReadSegmentEntry;
     use segment::fixtures::index_fixtures::random_vector;
     use segment::index::VectorIndexEnum;
-    use segment::types::{Condition, HasIdCondition};
+    use segment::segment_constructor::segment_builder::SegmentBuilder;
+    use segment::types::{Condition, HasIdCondition, HnswConfig, HnswGlobalConfig};
     use shard::optimizers::config::DEFAULT_INDEXING_THRESHOLD_KB;
     use tempfile::Builder;
 
@@ -1029,6 +1149,173 @@ mod tests {
     #[test]
     fn test_sampling_limit_high() {
         assert_eq!(sampling_limit(1000000, None, 464530, 35103551), 1000000);
+    }
+
+    #[test]
+    fn test_heterogeneous_hnsw_batch_compatibility_is_sampling_safe() {
+        let low_ef = SearchParams {
+            hnsw_ef: Some(32),
+            ..Default::default()
+        };
+        let high_ef = SearchParams {
+            hnsw_ef: Some(96),
+            ..Default::default()
+        };
+        let exact_high_ef = SearchParams {
+            exact: true,
+            ..high_ef
+        };
+
+        let low = BatchSearchParams {
+            search_type: SearchType::Nearest,
+            vector_name: DEFAULT_VECTOR_NAME,
+            filter: None,
+            with_payload: false.into(),
+            with_vector: false.into(),
+            top: 10,
+            params: Some(&low_ef),
+        };
+        let high = BatchSearchParams {
+            params: Some(&high_ef),
+            ..low.clone()
+        };
+        let exact = BatchSearchParams {
+            params: Some(&exact_high_ef),
+            ..low.clone()
+        };
+
+        assert!(low.can_batch_with(&high, false));
+        assert!(!low.can_batch_with(&high, true));
+        assert!(!low.can_batch_with(&exact, false));
+        assert!(!low.can_batch_with(
+            &BatchSearchParams {
+                params: None,
+                ..low.clone()
+            },
+            false,
+        ));
+    }
+
+    #[test]
+    fn test_heterogeneous_hnsw_batch_matches_individual_segment_searches() {
+        const DIM: usize = 256;
+
+        let segments_dir = Builder::new().prefix("segments_dir").tempdir().unwrap();
+        let segments_temp_dir = Builder::new()
+            .prefix("segments_temp_dir")
+            .tempdir()
+            .unwrap();
+
+        // Build a real HNSW segment with full-scan fallback disabled. A plain
+        // index, or an HNSW index that elects a small-cardinality full scan,
+        // ignores both custom entry points and HNSW EF and therefore cannot
+        // validate this optimization.
+        let plain_segment = random_segment(segments_dir.path(), 100, 200, DIM);
+        let entry_points = plain_segment.iter_points().take(2).collect_vec();
+        assert_eq!(entry_points.len(), 2);
+
+        let mut config = plain_segment.segment_config.clone();
+        config
+            .vector_data
+            .get_mut(DEFAULT_VECTOR_NAME)
+            .unwrap()
+            .index = Indexes::Hnsw(HnswConfig {
+            m: 8,
+            ef_construct: 32,
+            full_scan_threshold: 0,
+            max_indexing_threads: 1,
+            on_disk: Some(false),
+            payload_m: None,
+            inline_storage: None,
+        });
+        let mut builder = SegmentBuilder::new(
+            segments_temp_dir.path(),
+            &config,
+            &HnswGlobalConfig::default(),
+        )
+        .unwrap();
+        builder
+            .update(&[&plain_segment], &AtomicBool::new(false))
+            .unwrap();
+        let indexed_segment = builder.build_for_test(segments_dir.path());
+        {
+            assert!(matches!(
+                &*indexed_segment.vector_data[DEFAULT_VECTOR_NAME]
+                    .vector_index
+                    .borrow(),
+                VectorIndexEnum::Hnsw(_),
+            ));
+        }
+        let segment = LockedSegment::new(indexed_segment);
+
+        let make_request = |vector: Vec<f32>, entry_point: u64, ef: usize| CoreSearchRequest {
+            query: vector.into(),
+            with_payload: None,
+            with_vector: None,
+            filter: None,
+            params: Some(SearchParams {
+                hnsw_ef: Some(ef),
+                ..Default::default()
+            }),
+            hnsw_entry_points: Some(vec![entry_point.into()]),
+            hnsw_entry_points_by_shard: None,
+            hnsw_ef_by_shard: None,
+            source_id_dedup_block_size: None,
+            limit: 3,
+            score_threshold: None,
+            offset: 0,
+        };
+        let query = vec![0.5; DIM];
+        let requests = vec![
+            make_request(query.clone(), entry_points[0].as_u64(), 4),
+            make_request(query, entry_points[1].as_u64(), 128),
+        ];
+
+        let batch_hw = HwMeasurementAcc::new();
+        let batch_query_context =
+            QueryContext::new(DEFAULT_INDEXING_THRESHOLD_KB, batch_hw.clone());
+        let (batch_results, batch_further) = search_in_segment(
+            segment.clone(),
+            Arc::new(CoreSearchRequestBatch {
+                searches: requests.clone(),
+            }),
+            false,
+            &batch_query_context.get_segment_query_context(),
+            TEST_TIMEOUT,
+        )
+        .unwrap();
+
+        let mut individual_results = Vec::with_capacity(requests.len());
+        let mut individual_further = Vec::with_capacity(requests.len());
+        let mut individual_cpu = Vec::with_capacity(requests.len());
+        for request in requests {
+            let query_hw = HwMeasurementAcc::new();
+            let query_context = QueryContext::new(DEFAULT_INDEXING_THRESHOLD_KB, query_hw.clone());
+            let (mut results, mut further) = search_in_segment(
+                segment.clone(),
+                Arc::new(CoreSearchRequestBatch {
+                    searches: vec![request],
+                }),
+                false,
+                &query_context.get_segment_query_context(),
+                TEST_TIMEOUT,
+            )
+            .unwrap();
+            individual_results.push(results.pop().unwrap());
+            individual_further.push(further.pop().unwrap());
+            individual_cpu.push(query_hw.get_cpu());
+        }
+
+        assert_eq!(batch_results, individual_results);
+        assert_eq!(batch_further, individual_further);
+        assert!(
+            individual_cpu[1] > individual_cpu[0],
+            "higher per-query HNSW EF must perform more distance computations: {individual_cpu:?}",
+        );
+        assert_eq!(
+            batch_hw.get_cpu(),
+            individual_cpu.into_iter().sum::<usize>(),
+        );
     }
 
     /// Tests whether calculating the effective ef limit value is correct.

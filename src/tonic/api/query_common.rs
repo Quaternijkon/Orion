@@ -265,6 +265,38 @@ pub(crate) struct CoreSearchByShardRow {
     pub points: Vec<ScoredPoint>,
 }
 
+type CoreSearchByShardMergeSpec = (usize, usize, usize, Option<u64>);
+
+fn attach_core_search_by_shard_results(
+    shard_id: ShardId,
+    original_rows: Vec<CoreSearchByShardMergeSpec>,
+    rows: Vec<Vec<ScoredPoint>>,
+) -> Result<Vec<CoreSearchByShardRow>, Status> {
+    if rows.len() != original_rows.len() {
+        return Err(Status::internal(format!(
+            "Shard {shard_id} returned {} rows for {} peer-batched search slots",
+            rows.len(),
+            original_rows.len(),
+        )));
+    }
+
+    Ok(original_rows
+        .into_iter()
+        .zip(rows)
+        .map(
+            |((query_index, limit, offset, source_id_dedup_block_size), points)| {
+                CoreSearchByShardRow {
+                    query_index,
+                    limit,
+                    offset,
+                    source_id_dedup_block_size,
+                    points,
+                }
+            },
+        )
+        .collect())
+}
+
 pub(crate) fn premerge_core_search_by_shard_rows(
     rows: Vec<CoreSearchByShardRow>,
     query_count: usize,
@@ -383,24 +415,18 @@ pub async fn core_search_batch_by_shard(
                 )
                 .await
                 .map_err(Status::from)?;
-            Ok::<_, Status>((original_rows, rows))
+            Ok::<_, Status>((shard_id, original_rows, rows))
         }
     });
 
     let shard_results = future::try_join_all(shard_searches).await?;
     let mut shard_rows = Vec::new();
-    for (original_rows, rows) in shard_results {
-        for ((query_index, limit, offset, source_id_dedup_block_size), points) in
-            original_rows.into_iter().zip(rows)
-        {
-            shard_rows.push(CoreSearchByShardRow {
-                query_index,
-                limit,
-                offset,
-                source_id_dedup_block_size,
-                points,
-            });
-        }
+    for (shard_id, original_rows, rows) in shard_results {
+        shard_rows.extend(attach_core_search_by_shard_results(
+            shard_id,
+            original_rows,
+            rows,
+        )?);
     }
 
     let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count);
@@ -1309,5 +1335,31 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(30)],
         );
+    }
+
+    #[test]
+    fn core_search_by_shard_rejects_missing_or_extra_shard_rows() {
+        let specs = vec![(0, 10, 0, None), (1, 10, 0, None)];
+
+        let missing =
+            attach_core_search_by_shard_results(7, specs.clone(), vec![vec![scored(1, 1.0)]])
+                .err()
+                .unwrap();
+        assert_eq!(missing.code(), tonic::Code::Internal);
+        assert!(missing.message().contains("Shard 7 returned 1 rows for 2"));
+
+        let extra = attach_core_search_by_shard_results(
+            9,
+            specs,
+            vec![
+                vec![scored(1, 1.0)],
+                vec![scored(2, 0.9)],
+                vec![scored(3, 0.8)],
+            ],
+        )
+        .err()
+        .unwrap();
+        assert_eq!(extra.code(), tonic::Code::Internal);
+        assert!(extra.message().contains("Shard 9 returned 3 rows for 2"));
     }
 }

@@ -207,6 +207,108 @@ fn search_dedup_point_id(
     ExtendedPointId::NumId((point_num_id - 1) % block_size)
 }
 
+struct PeerShardMajorGroup {
+    remote: RemoteShard,
+    original_indices: Vec<usize>,
+    is_payload_required_by_query: Vec<bool>,
+    entries: Vec<CoreSearchByShardEntry>,
+}
+
+impl PeerShardMajorGroup {
+    fn new(remote: RemoteShard) -> Self {
+        Self {
+            remote,
+            original_indices: Vec::new(),
+            is_payload_required_by_query: Vec::new(),
+            entries: Vec::new(),
+        }
+    }
+
+    fn local_query_index(&mut self, original_index: usize, request: &CoreSearchRequest) -> usize {
+        peer_local_query_index(
+            &mut self.original_indices,
+            &mut self.is_payload_required_by_query,
+            original_index,
+            request,
+        )
+    }
+}
+
+fn peer_local_query_index(
+    original_indices: &mut Vec<usize>,
+    is_payload_required_by_query: &mut Vec<bool>,
+    original_index: usize,
+    request: &CoreSearchRequest,
+) -> usize {
+    if let Some(query_index) = original_indices
+        .iter()
+        .position(|known_index| *known_index == original_index)
+    {
+        return query_index;
+    }
+
+    let query_index = original_indices.len();
+    original_indices.push(original_index);
+    is_payload_required_by_query.push(
+        request
+            .with_payload
+            .as_ref()
+            .is_some_and(|with_payload| with_payload.is_required()),
+    );
+    query_index
+}
+
+fn peer_premerge_disabled() -> bool {
+    std::env::var("QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE").is_ok_and(|value| {
+        let value = value.to_ascii_lowercase();
+        matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    })
+}
+
+fn numeric_peer_premerge_request_is_safe(
+    replication_factor: u32,
+    read_consistency: Option<ReadConsistency>,
+    all_queries_are_large_better: bool,
+) -> bool {
+    replication_factor == 1 && read_consistency.is_none() && all_queries_are_large_better
+}
+
+fn numeric_peer_premerge_replica_peer(
+    this_peer_id: PeerId,
+    configured_replica_count: usize,
+    readable_peers: &[PeerId],
+    has_local_shard: bool,
+    has_remote: bool,
+) -> Option<PeerId> {
+    if configured_replica_count != 1
+        || readable_peers.len() != 1
+        || has_local_shard
+        || readable_peers[0] == this_peer_id
+        || !has_remote
+    {
+        return None;
+    }
+    Some(readable_peers[0])
+}
+
+fn peer_premerge_entry(
+    collection_id: &str,
+    local_query_index: usize,
+    shard_id: ShardId,
+    specialized: &CoreSearchRequest,
+    original: &CoreSearchRequest,
+) -> CoreSearchByShardEntry {
+    let search_points = CollectionCoreSearchRequest((collection_id.to_owned(), specialized)).into();
+    CoreSearchByShardEntry {
+        query_index: local_query_index as u64,
+        shard_id,
+        search_points: Some(search_points),
+        final_limit: original.limit as u64,
+        final_offset: Some(original.offset as u64),
+        source_id_dedup_block_size: original.source_id_dedup_block_size,
+    }
+}
+
 impl Collection {
     #[cfg(feature = "testing")]
     pub async fn search(
@@ -338,39 +440,6 @@ impl Collection {
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
-        struct PeerShardMajorGroup {
-            remote: RemoteShard,
-            original_indices: Vec<usize>,
-            is_payload_required_by_query: Vec<bool>,
-            entries: Vec<CoreSearchByShardEntry>,
-        }
-
-        impl PeerShardMajorGroup {
-            fn local_query_index(
-                &mut self,
-                original_index: usize,
-                request: &CoreSearchRequest,
-            ) -> usize {
-                if let Some(query_index) = self
-                    .original_indices
-                    .iter()
-                    .position(|known_index| *known_index == original_index)
-                {
-                    return query_index;
-                }
-
-                let query_index = self.original_indices.len();
-                self.original_indices.push(original_index);
-                self.is_payload_required_by_query.push(
-                    request
-                        .with_payload
-                        .as_ref()
-                        .is_some_and(|with_payload| with_payload.is_required()),
-                );
-                query_index
-            }
-        }
-
         if requests.is_empty() {
             return Ok(Some(Vec::new()));
         }
@@ -420,25 +489,16 @@ impl Collection {
 
                     let group = peer_groups
                         .entry(peer_id)
-                        .or_insert_with(|| PeerShardMajorGroup {
-                            remote,
-                            original_indices: Vec::new(),
-                            is_payload_required_by_query: Vec::new(),
-                            entries: Vec::new(),
-                        });
+                        .or_insert_with(|| PeerShardMajorGroup::new(remote));
                     let local_query_index = group.local_query_index(original_index, request);
                     let specialized = specialize_core_search_for_shard_major(request, shard_key);
-                    let search_points =
-                        CollectionCoreSearchRequest((self.id.clone(), &specialized)).into();
-
-                    group.entries.push(CoreSearchByShardEntry {
-                        query_index: local_query_index as u64,
-                        shard_id: replica_set.shard_id,
-                        search_points: Some(search_points),
-                        final_limit: request.limit as u64,
-                        final_offset: Some(request.offset as u64),
-                        source_id_dedup_block_size: request.source_id_dedup_block_size,
-                    });
+                    group.entries.push(peer_premerge_entry(
+                        &self.id,
+                        local_query_index,
+                        replica_set.shard_id,
+                        &specialized,
+                        request,
+                    ));
                 }
             }
         }
@@ -447,6 +507,21 @@ impl Collection {
             return Ok(None);
         }
 
+        let request = Arc::new(CoreSearchRequestBatch {
+            searches: original_requests,
+        });
+        self.execute_peer_shard_major_premerge(peer_groups, request, timeout, hw_measurement_acc)
+            .await
+            .map(Some)
+    }
+
+    async fn execute_peer_shard_major_premerge(
+        &self,
+        peer_groups: BTreeMap<PeerId, PeerShardMajorGroup>,
+        original_requests: Arc<CoreSearchRequestBatch>,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let processed_timeout = RemoteShard::process_read_timeout(timeout, "search")?;
         let peer_searches = peer_groups.into_values().map(|group| {
             let collection_name = self.id.clone();
@@ -484,19 +559,128 @@ impl Collection {
         let peer_results = future::try_join_all(peer_searches).await?;
         let mut all_peer_rows = Vec::with_capacity(peer_results.len());
         for (original_indices, rows) in peer_results {
-            let mut peer_rows = vec![Vec::new(); original_requests.len()];
+            let mut peer_rows = vec![Vec::new(); original_requests.searches.len()];
             for (original_index, row) in original_indices.into_iter().zip(rows) {
                 peer_rows[original_index] = row;
             }
             all_peer_rows.push(peer_rows);
         }
 
-        let request = Arc::new(CoreSearchRequestBatch {
-            searches: original_requests,
-        });
-        self.merge_from_shards(all_peer_rows, request, true)
+        self.merge_from_shards(all_peer_rows, original_requests, true)
             .await
-            .map(Some)
+    }
+
+    /// Batch Orion's numeric auto-shard searches by the worker peer that owns them.
+    ///
+    /// The fast path deliberately has a narrow safety envelope. It is used only for an RF=1
+    /// collection with no explicit read consistency and a large-better distance, where every
+    /// selected shard has exactly one configured/readable replica, that replica is remote, and the
+    /// coordinator has no local shard object for it. The order restriction matches the existing
+    /// peer-local merge RPC's unambiguous ordering contract; small-better distances keep the
+    /// ordinary path. Under these conditions the worker-side `ShardId` request still enters the
+    /// ordinary `ShardReplicaSet` read path, while one internal RPC can carry all numeric shards
+    /// owned by that peer. Any topology, ordering, or consistency ambiguity falls back to the
+    /// existing per-shard coordinator path before issuing a peer-batched request.
+    async fn try_orion_numeric_peer_premerge(
+        &self,
+        searches_by_shard: &BTreeMap<ShardId, Vec<(usize, CoreSearchRequest)>>,
+        original_requests: Arc<CoreSearchRequestBatch>,
+        read_consistency: Option<ReadConsistency>,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+        if searches_by_shard.is_empty() || peer_premerge_disabled() {
+            return Ok(None);
+        }
+        let topology_check_started = Instant::now();
+
+        let collection_params = self.collection_config.read().await.params.clone();
+        let all_queries_are_large_better = original_requests
+            .searches
+            .iter()
+            .map(|request| {
+                collection_params
+                    .get_distance(request.query.get_vector_name())
+                    .map(|distance| distance.distance_order() == Order::LargeBetter)
+            })
+            .collect::<CollectionResult<Vec<_>>>()?
+            .into_iter()
+            .all(|large_better| large_better);
+        if !numeric_peer_premerge_request_is_safe(
+            collection_params.replication_factor.get(),
+            read_consistency,
+            all_queries_are_large_better,
+        ) {
+            return Ok(None);
+        }
+
+        let mut peer_groups: BTreeMap<PeerId, PeerShardMajorGroup> = BTreeMap::new();
+        {
+            let shard_holder = self.shards_holder.read().await;
+            for (&shard_id, searches) in searches_by_shard {
+                let Some(replica_set) = shard_holder.get_shard(shard_id) else {
+                    return Ok(None);
+                };
+
+                let configured_replica_count = replica_set.peers().len();
+                let readable_peers = replica_set.readable_shards();
+                let has_local_shard = replica_set.has_local_shard().await;
+                let remote = if readable_peers.len() == 1 {
+                    replica_set.remote_shard_for_peer(readable_peers[0]).await
+                } else {
+                    None
+                };
+                let Some(peer_id) = numeric_peer_premerge_replica_peer(
+                    self.this_peer_id,
+                    configured_replica_count,
+                    &readable_peers,
+                    has_local_shard,
+                    remote.is_some(),
+                ) else {
+                    return Ok(None);
+                };
+                let remote = remote.expect("numeric peer-premerge safety checked remote presence");
+
+                let group = peer_groups
+                    .entry(peer_id)
+                    .or_insert_with(|| PeerShardMajorGroup::new(remote));
+                for (original_index, specialized) in searches {
+                    let Some(original) = original_requests.searches.get(*original_index) else {
+                        return Err(CollectionError::service_error(format!(
+                            "Orion numeric peer-premerge query index {original_index} is outside batch size {}",
+                            original_requests.searches.len(),
+                        )));
+                    };
+                    let local_query_index = group.local_query_index(*original_index, original);
+                    group.entries.push(peer_premerge_entry(
+                        &self.id,
+                        local_query_index,
+                        shard_id,
+                        specialized,
+                        original,
+                    ));
+                }
+            }
+        }
+
+        if peer_groups.is_empty() {
+            return Ok(None);
+        }
+
+        let peer_timeout = remaining_search_timeout(
+            timeout,
+            topology_check_started.elapsed(),
+            "Orion numeric peer-premerge topology check",
+        )?;
+
+        self.execute_peer_shard_major_premerge(
+            peer_groups,
+            original_requests,
+            peer_timeout,
+            hw_measurement_acc,
+        )
+        .await
+        .map(Some)
     }
 
     async fn do_core_search_batch(
@@ -751,6 +935,19 @@ impl Collection {
             request_started.elapsed(),
             "Orion distributed search",
         )?;
+
+        if let Some(rows) = self
+            .try_orion_numeric_peer_premerge(
+                &searches_by_shard,
+                request.clone(),
+                read_consistency,
+                lower_timeout,
+                hw_measurement_acc.clone(),
+            )
+            .await?
+        {
+            return Ok(Some(rows));
+        }
 
         let batch_size = request.searches.len();
         let all_shard_rows = {
@@ -1463,5 +1660,108 @@ mod tests {
         assert_eq!(routing_chunk_size(9, 8), 2);
         assert_eq!(routing_chunk_size(200, 8), 25);
         assert_eq!(routing_chunk_size(200, 0), 200);
+    }
+
+    #[test]
+    fn numeric_peer_premerge_requires_rf1_default_consistency_and_one_remote_replica() {
+        assert!(numeric_peer_premerge_request_is_safe(1, None, true));
+        assert!(!numeric_peer_premerge_request_is_safe(2, None, true));
+        assert!(!numeric_peer_premerge_request_is_safe(
+            1,
+            Some(ReadConsistency::Factor(1)),
+            true,
+        ));
+        assert!(!numeric_peer_premerge_request_is_safe(1, None, false));
+
+        assert_eq!(
+            numeric_peer_premerge_replica_peer(1, 1, &[2], false, true),
+            Some(2),
+        );
+        assert_eq!(
+            numeric_peer_premerge_replica_peer(1, 2, &[2], false, true),
+            None,
+        );
+        assert_eq!(
+            numeric_peer_premerge_replica_peer(1, 1, &[2, 3], false, true),
+            None,
+        );
+        assert_eq!(
+            numeric_peer_premerge_replica_peer(1, 1, &[1], true, false),
+            None,
+        );
+        assert_eq!(
+            numeric_peer_premerge_replica_peer(1, 1, &[2], false, false),
+            None,
+        );
+    }
+
+    #[test]
+    fn numeric_peer_premerge_wire_entry_preserves_ordered_multiep_dynamic_ef_and_top_window() {
+        let mut original = default_dense_request();
+        original.limit = 10;
+        original.offset = 7;
+        original.source_id_dedup_block_size = Some(1_000_001);
+        let target = OrionShardTarget {
+            shard_id: 9,
+            entry_points: vec![
+                PointIdType::from(31),
+                PointIdType::from(29),
+                PointIdType::from(11),
+            ],
+            ef: 76,
+        };
+        let specialized = specialize_core_search_for_orion_target(&original, &target);
+
+        let entry = peer_premerge_entry("orion", 3, target.shard_id, &specialized, &original);
+        assert_eq!(entry.query_index, 3);
+        assert_eq!(entry.shard_id, target.shard_id);
+        assert_eq!(entry.final_limit, 10);
+        assert_eq!(entry.final_offset, Some(7));
+        assert_eq!(entry.source_id_dedup_block_size, Some(1_000_001));
+
+        let roundtrip = CoreSearchRequest::try_from(entry.search_points.unwrap()).unwrap();
+        assert_eq!(roundtrip.limit, 17);
+        assert_eq!(roundtrip.offset, 0);
+        assert_eq!(roundtrip.hnsw_entry_points, Some(target.entry_points));
+        assert_eq!(roundtrip.params.and_then(|params| params.hnsw_ef), Some(76),);
+    }
+
+    #[test]
+    fn peer_premerge_query_slots_preserve_non_monotonic_original_indices() {
+        let mut original_indices = Vec::new();
+        let mut payload_required = Vec::new();
+        let mut no_payload = default_dense_request();
+        no_payload.with_payload = Some(WithPayloadInterface::Bool(false));
+        let mut with_payload = default_dense_request();
+        with_payload.with_payload = Some(WithPayloadInterface::Bool(true));
+
+        assert_eq!(
+            peer_local_query_index(&mut original_indices, &mut payload_required, 5, &no_payload),
+            0,
+        );
+        assert_eq!(
+            peer_local_query_index(
+                &mut original_indices,
+                &mut payload_required,
+                1,
+                &with_payload,
+            ),
+            1,
+        );
+        assert_eq!(
+            peer_local_query_index(
+                &mut original_indices,
+                &mut payload_required,
+                5,
+                &with_payload,
+            ),
+            0,
+        );
+        assert_eq!(
+            peer_local_query_index(&mut original_indices, &mut payload_required, 9, &no_payload),
+            2,
+        );
+        assert_eq!(original_indices, vec![5, 1, 9]);
+        assert_eq!(payload_required, vec![false, true, false]);
     }
 }
