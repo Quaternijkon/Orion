@@ -529,6 +529,31 @@ export SIMPLE_LAYOUT=$ARTIFACT_ROOT/simple-kmeans-profile-a
 "$PYTHON" tools/simple_kmeans_native_layout.py --hdf5-path "$DATASET" --output-dir "$SIMPLE_LAYOUT" --generation "$GENERATION" --p "$EFFECTIVE_SHARDS" --vector-distance cosine --nprobe 32 --lower-hnsw-ef 80 --kmeans-train-size 10000 --kmeans-iters 10 --kmeans-seed 1 --cargo tools/cargo_in_docker.sh --cargo-target-dir "$CARGO_TARGET_DIR"
 ```
 
+`nprobe` 和 `lower_hnsw_ef` 只控制 coordinator 查询路由与 lower HNSW 搜索，不应触发
+KMeans 重训。虽然 baseline builder 使用固定 seed，独立 profile build 仍会重复执行全量
+centroid training 和 assignment，且只能由 matrix 在事后检查 centroids/layout 是否漂移。
+正式 Simple KMeans sweep 因此也必须 build once：先用上述命令生成 canonical bundle，再从
+它派生其它 runtime profile：
+
+```bash
+"$PYTHON" tools/simple_kmeans_native_runtime_profile.py \
+  --source-layout-dir "$SIMPLE_LAYOUT" \
+  --output-dir "$ARTIFACT_ROOT/simple-kmeans-profile-b" \
+  --generation 2 \
+  --nprobe 26 \
+  --lower-hnsw-ef 210 \
+  --payload-mode copy \
+  --cargo tools/cargo_in_docker.sh \
+  --cargo-target-dir "$CARGO_TARGET_DIR"
+```
+
+该派生器只允许改变 generation、`nprobe` 和 `lower_hnsw_ef`；centroid 顺序与 float32 bits、
+single-assignment `layout_sha256`、shard counts、dataset/routing summary、`.f32le` 和
+assignments SHA 必须保持一致。Rust typed writer 重新生成 canonical runtime artifact。
+prepare 会验证 source 参数和摘要 checksum、offline artifact fingerprint、import payload
+binding、copy/hardlink 证明以及 formal-evidence 标记；copy profile 可进入正式 matrix，显式
+hardlink profile 只能用于诊断。
+
 两种 CLI 都打印 production artifact、artifact SHA、import manifest、logical/physical count、
 layout SHA 和 checksums 路径。这里的 profile 参数只是可执行示例，不表示已达到任何目标
 recall。

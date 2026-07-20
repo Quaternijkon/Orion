@@ -41,6 +41,18 @@ ORION_RUNTIME_PARAMETER_KEYS = (
     "dynamic_ef_base",
     "dynamic_ef_factor",
 )
+SIMPLE_KMEANS_LAYOUT_TOOLS = {
+    "tools/simple_kmeans_native_layout.py",
+    "tools/simple_kmeans_native_runtime_profile.py",
+}
+SIMPLE_KMEANS_RUNTIME_PROFILE_TOOL = (
+    "tools/simple_kmeans_native_runtime_profile.py"
+)
+SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS = (
+    "generation",
+    "nprobe",
+    "lower_hnsw_ef",
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -388,6 +400,194 @@ def validate_orion_runtime_profile_derivation(
     return source
 
 
+def validate_simple_kmeans_runtime_profile_derivation(
+    build_manifest: dict[str, Any],
+    build_parameters: dict[str, Any],
+    artifact_payload: dict[str, Any],
+) -> dict[str, Any]:
+    derivation = build_manifest.get("derivation")
+    if not isinstance(derivation, dict):
+        raise RuntimeError(
+            "Simple KMeans runtime profile is missing derivation metadata"
+        )
+    if derivation.get("format_version") != 1:
+        raise RuntimeError(
+            "unsupported Simple KMeans runtime-profile derivation format"
+        )
+    if derivation.get("kind") != "simple_kmeans_runtime_profile":
+        raise RuntimeError("Simple KMeans runtime-profile derivation kind mismatch")
+    if derivation.get("allowed_parameter_changes") != list(
+        SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS
+    ):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile allowed parameter set mismatch"
+        )
+
+    source = derivation.get("source")
+    if not isinstance(source, dict):
+        raise RuntimeError(
+            "Simple KMeans runtime profile is missing its source binding"
+        )
+    source_parameters = source.get("parameters")
+    if not isinstance(source_parameters, dict):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source parameters are missing"
+        )
+    expected_parameters_sha256 = cluster_tool.normalize_sha256(
+        str(source.get("parameters_sha256") or "")
+    )
+    if canonical_json_sha256(source_parameters) != expected_parameters_sha256:
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source parameters checksum mismatch"
+        )
+    for digest_field in (
+        "build_manifest_sha256",
+        "graphless_artifact_sha256",
+        "production_artifact_sha256",
+        "import_manifest_sha256",
+        "dataset_sha256",
+        "routing_sha256",
+        "offline_artifact_sha256",
+        "vectors_sha256",
+        "assignments_sha256",
+    ):
+        cluster_tool.normalize_sha256(str(source.get(digest_field) or ""))
+
+    changed_parameters = {
+        key
+        for key in set(source_parameters) | set(build_parameters)
+        if source_parameters.get(key) != build_parameters.get(key)
+    }
+    forbidden_changes = changed_parameters - set(
+        SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS
+    )
+    if forbidden_changes:
+        raise RuntimeError(
+            "Simple KMeans runtime profile changes offline KMeans parameters: "
+            f"{sorted(forbidden_changes)}"
+        )
+    parameter_changes = derivation.get("parameter_changes")
+    if not isinstance(parameter_changes, dict) or set(parameter_changes) != set(
+        SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS
+    ):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile parameter change proof is incomplete"
+        )
+    for key in SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS:
+        change = parameter_changes.get(key)
+        if not isinstance(change, dict) or change != {
+            "source": source_parameters.get(key),
+            "derived": build_parameters.get(key),
+        }:
+            raise RuntimeError(
+                "Simple KMeans runtime-profile parameter change proof mismatch "
+                f"for {key}"
+            )
+
+    source_generation = source.get("generation")
+    if (
+        isinstance(source_generation, bool)
+        or not isinstance(source_generation, int)
+        or source_generation <= 0
+    ):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source generation is invalid"
+        )
+    if source_parameters.get("generation") != source_generation:
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source generation binding mismatch"
+        )
+    runtime_bindings = {
+        "generation": artifact_payload.get("generation"),
+        "nprobe": artifact_payload.get("nprobe"),
+        "lower_hnsw_ef": artifact_payload.get("lower_hnsw_ef"),
+    }
+    runtime_mismatches = {
+        key: {"manifest": build_parameters.get(key), "artifact": value}
+        for key, value in runtime_bindings.items()
+        if build_parameters.get(key) != value
+    }
+    if runtime_mismatches:
+        raise RuntimeError(
+            "Simple KMeans build manifest/runtime artifact mismatch: "
+            f"{runtime_mismatches}"
+        )
+    source_nprobe = source_parameters.get("nprobe")
+    source_lower_ef = source_parameters.get("lower_hnsw_ef")
+    shard_count = artifact_payload.get("shard_count")
+    if (
+        isinstance(source_nprobe, bool)
+        or not isinstance(source_nprobe, int)
+        or source_nprobe <= 0
+        or isinstance(shard_count, bool)
+        or not isinstance(shard_count, int)
+        or source_nprobe > shard_count
+    ):
+        raise RuntimeError("Simple KMeans runtime-profile source nprobe is invalid")
+    if (
+        isinstance(source_lower_ef, bool)
+        or not isinstance(source_lower_ef, int)
+        or source_lower_ef <= 0
+    ):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source lower_hnsw_ef is invalid"
+        )
+    if source_parameters.get("num_shards") != shard_count:
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source shard-count binding mismatch"
+        )
+
+    dataset = build_manifest.get("dataset")
+    routing = build_manifest.get("routing")
+    if not isinstance(dataset, dict) or not isinstance(routing, dict):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile dataset/routing proof is missing"
+        )
+    if canonical_json_sha256(dataset) != source.get("dataset_sha256"):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile dataset changed from its source"
+        )
+    if canonical_json_sha256(routing) != source.get("routing_sha256"):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile routing summary changed from its source"
+        )
+
+    current_expected = {
+        "layout_sha256": artifact_payload.get("layout_sha256"),
+        "logical_point_count": artifact_payload.get("logical_point_count"),
+        "physical_point_count": artifact_payload.get("physical_point_count"),
+        "shard_count": shard_count,
+    }
+    source_binding_mismatches = {
+        key: {"expected": expected, "actual": source.get(key)}
+        for key, expected in current_expected.items()
+        if source.get(key) != expected
+    }
+    if source_binding_mismatches:
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source layout binding mismatch: "
+            f"{source_binding_mismatches}"
+        )
+    if source.get("assignments_sha256") != artifact_payload.get("layout_sha256"):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile source assignments do not match "
+            "layout_sha256"
+        )
+    offline_artifact = {
+        key: value
+        for key, value in artifact_payload.items()
+        if key not in SIMPLE_KMEANS_RUNTIME_PARAMETER_KEYS
+    }
+    if canonical_json_sha256(offline_artifact) != source.get(
+        "offline_artifact_sha256"
+    ):
+        raise RuntimeError(
+            "Simple KMeans runtime-profile centroid/offline artifact changed "
+            "from its source"
+        )
+    return source
+
+
 def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     layout_dir = Path(layout_path).expanduser().resolve()
     if not layout_dir.is_dir():
@@ -402,7 +602,7 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     expected_tools = (
         ORION_LAYOUT_TOOLS
         if method == "orion"
-        else {"tools/simple_kmeans_native_layout.py"}
+        else SIMPLE_KMEANS_LAYOUT_TOOLS
     )
     actual_tool = build_manifest.get("tool")
     if actual_tool not in expected_tools:
@@ -469,6 +669,14 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
                 build_parameters,
                 artifact_payload,
             )
+    elif actual_tool == SIMPLE_KMEANS_RUNTIME_PROFILE_TOOL:
+        runtime_profile_source = (
+            validate_simple_kmeans_runtime_profile_derivation(
+                build_manifest,
+                build_parameters,
+                artifact_payload,
+            )
+        )
 
     import_manifest = json.loads(import_manifest_path.read_text(encoding="utf-8"))
     if not isinstance(import_manifest, dict):
@@ -508,7 +716,19 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     }
     if mismatches:
         raise RuntimeError(f"import manifest/artifact mismatch: {mismatches}")
+    bundle_paths: dict[str, Path] = {}
+    for field in ("vectors_file", "assignments_file"):
+        file_path = safe_child(layout_dir, import_manifest.get(field), field)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"import bundle file is missing: {file_path}")
+        digest_field = field.replace("_file", "_sha256")
+        if layout_common.sha256_path(file_path) != cluster_tool.normalize_sha256(
+            str(import_manifest.get(digest_field) or "")
+        ):
+            raise RuntimeError(f"import bundle {field} checksum mismatch")
+        bundle_paths[field] = file_path
     if runtime_profile_source is not None:
+        profile_label = "Orion" if method == "orion" else "Simple KMeans"
         source_import_mismatches = {
             field: {
                 "expected": runtime_profile_source.get(field),
@@ -519,14 +739,17 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         }
         if source_import_mismatches:
             raise RuntimeError(
-                "Orion runtime-profile reused import payload binding mismatch: "
+                f"{profile_label} runtime-profile reused import payload "
+                "binding mismatch: "
                 f"{source_import_mismatches}"
             )
         reused_payloads = (build_manifest.get("derivation") or {}).get(
             "reused_payloads"
         )
         if not isinstance(reused_payloads, dict):
-            raise RuntimeError("Orion runtime profile lacks reused payload proof")
+            raise RuntimeError(
+                f"{profile_label} runtime profile lacks reused payload proof"
+            )
         for proof_name, manifest_prefix in (
             ("vectors", "vectors"),
             ("assignments", "assignments"),
@@ -534,17 +757,32 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
             proof = reused_payloads.get(proof_name)
             if not isinstance(proof, dict):
                 raise RuntimeError(
-                    f"Orion runtime profile lacks {proof_name} reuse proof"
+                    f"{profile_label} runtime profile lacks {proof_name} reuse proof"
                 )
+            destination_path = bundle_paths[f"{manifest_prefix}_file"]
             expected_proof = {
                 "destination_file": import_manifest.get(f"{manifest_prefix}_file"),
                 "sha256": import_manifest.get(f"{manifest_prefix}_sha256"),
+                "size_bytes": destination_path.stat().st_size,
             }
+            if (
+                not isinstance(proof.get("source_file"), str)
+                or not proof.get("source_file")
+                or Path(proof["source_file"]).name != proof["source_file"]
+            ):
+                expected_proof["source_file"] = "one source file name"
             proof_mismatches = {
                 key: {"expected": expected, "actual": proof.get(key)}
                 for key, expected in expected_proof.items()
                 if proof.get(key) != expected
             }
+            if isinstance(proof.get("size_bytes"), bool) or not isinstance(
+                proof.get("size_bytes"), int
+            ):
+                proof_mismatches["size_bytes"] = {
+                    "expected": destination_path.stat().st_size,
+                    "actual": proof.get("size_bytes"),
+                }
             if proof.get("materialization") not in {"hardlink", "copy"}:
                 proof_mismatches["materialization"] = {
                     "expected": "hardlink or copy",
@@ -558,7 +796,8 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
                 }
             if proof_mismatches:
                 raise RuntimeError(
-                    f"Orion runtime-profile {proof_name} reuse proof mismatch: "
+                    f"{profile_label} runtime-profile {proof_name} reuse proof "
+                    "mismatch: "
                     f"{proof_mismatches}"
                 )
         formal_evidence_eligible = all(
@@ -572,19 +811,9 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
             is not formal_evidence_eligible
         ):
             raise RuntimeError(
-                "Orion runtime-profile formal evidence eligibility mismatch"
+                f"{profile_label} runtime-profile formal evidence eligibility "
+                "mismatch"
             )
-    bundle_paths: dict[str, Path] = {}
-    for field in ("vectors_file", "assignments_file"):
-        file_path = safe_child(layout_dir, import_manifest.get(field), field)
-        if not file_path.is_file():
-            raise FileNotFoundError(f"import bundle file is missing: {file_path}")
-        digest_field = field.replace("_file", "_sha256")
-        if layout_common.sha256_path(file_path) != cluster_tool.normalize_sha256(
-            str(import_manifest.get(digest_field) or "")
-        ):
-            raise RuntimeError(f"import bundle {field} checksum mismatch")
-        bundle_paths[field] = file_path
     dimension = int(artifact["vector_schema"].get("dimension") or 0)
     with bundle_paths["vectors_file"].open("rb") as handle:
         first_row = handle.read(dimension * 4)

@@ -21,6 +21,18 @@ def load_module():
     return module
 
 
+def load_simple_runtime_profile_module():
+    path = REPO_ROOT / "tools/simple_kmeans_native_runtime_profile.py"
+    spec = importlib.util.spec_from_file_location(
+        "simple_kmeans_native_runtime_profile_for_prepare_test", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def args_for(module, tmp_path, method, *extra):
     values = [
         "--method",
@@ -704,6 +716,211 @@ def test_load_simple_layout_validates_build_artifact_and_import_binding(tmp_path
     assert proof["logical_point_count"] == proof["physical_point_count"] == 2
     assert proof["artifact_sha256"] == module.layout_common.sha256_path(artifact)
     assert proof["smoke_vector"] == [1.0, 0.0]
+
+
+def build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path):
+    runtime = load_simple_runtime_profile_module()
+    source_dir = tmp_path / "simple-source"
+    source_dir.mkdir()
+    train = module.experiment.np.asarray(
+        [[1.0, 0.0], [0.0, 1.0]], dtype=module.experiment.np.float32
+    )
+    point_to_shards = [[0], [1]]
+    graphless = module.experiment.write_simple_kmeans_graphless_artifact(
+        train,
+        train.copy(),
+        point_to_shards,
+        2,
+        source_dir / "simple-kmeans-graphless.json",
+        generation=1,
+        vector_distance="cosine",
+        nprobe=1,
+        lower_hnsw_ef=32,
+    )
+    artifact = source_dir / "generation-1.json"
+    artifact.write_bytes(graphless.read_bytes())
+    import_manifest = module.experiment.write_numeric_shard_import_bundle_v2(
+        train,
+        point_to_shards,
+        2,
+        source_dir,
+        routing_policy="simple_kmeans",
+        routing_generation=1,
+        routing_artifact_path=artifact,
+        prefix="numeric",
+    )
+    artifact_payload = json.loads(artifact.read_text())
+    parameters = {
+        "generation": 1,
+        "num_shards": 2,
+        "vector_distance": "cosine",
+        "vector_name": "",
+        "routing_distance": "squared_l2",
+        "nprobe": 1,
+        "lower_hnsw_ef": 32,
+        "kmeans_train_size": 2,
+        "kmeans_iters": 3,
+        "kmeans_seed": 7,
+        "cargo_target_dir": None,
+    }
+    routing = {
+        "policy": "simple_kmeans",
+        "logical_point_count": 2,
+        "physical_point_count": 2,
+        "expansion_ratio": 1.0,
+        "shard_counts": [1, 1],
+    }
+    source_files = module.layout_common.relative_file_records(
+        source_dir,
+        {
+            module.layout_common.BUILD_MANIFEST_NAME,
+            module.layout_common.CHECKSUMS_NAME,
+        },
+    )
+    source_build_manifest = {
+        "format_version": 1,
+        "tool": "tools/simple_kmeans_native_layout.py",
+        "mode": "production_bundle",
+        "dataset": {
+            "path": "/data/test.hdf5",
+            "size_bytes": 1,
+            "sha256": "d" * 64,
+            "train_rows_total": 2,
+            "train_rows_used": 2,
+            "dimension": 2,
+        },
+        "parameters": parameters,
+        "artifact_binding": {
+            "format_version": 1,
+            "generation": 1,
+            "shard_count": 2,
+            "logical_point_count": 2,
+            "physical_point_count": 2,
+            "routing_distance": "squared_l2",
+            "nprobe": 1,
+            "lower_hnsw_ef": 32,
+            "layout_sha256": artifact_payload["layout_sha256"],
+        },
+        "routing": routing,
+        "outputs": {
+            "graphless_artifact": graphless.name,
+            "production_artifact": artifact.name,
+            "import_manifest": import_manifest.name,
+            "files": source_files,
+        },
+    }
+    module.layout_common.write_json_new(
+        source_dir / module.layout_common.BUILD_MANIFEST_NAME,
+        source_build_manifest,
+    )
+    module.layout_common.write_checksums(source_dir)
+
+    def fake_builder(_args, graphless_path, production_path):
+        production_path.write_bytes(graphless_path.read_bytes())
+        Path(f"{production_path}.sha256").write_text(
+            module.layout_common.sha256_path(production_path) + "\n",
+            encoding="utf-8",
+        )
+        return ["mock-cargo", "simple_kmeans_build_artifact"]
+
+    monkeypatch.setattr(runtime.simple_layout, "run_rust_builder", fake_builder)
+    derived_dir = tmp_path / "simple-derived"
+    runtime.build(
+        runtime.parse_args(
+            [
+                "--source-layout-dir",
+                str(source_dir),
+                "--output-dir",
+                str(derived_dir),
+                "--generation",
+                "2",
+                "--nprobe",
+                "2",
+                "--lower-hnsw-ef",
+                "96",
+            ]
+        )
+    )
+    return derived_dir
+
+
+def rewrite_layout_checksums(module, layout_dir):
+    (layout_dir / module.layout_common.CHECKSUMS_NAME).unlink()
+    module.layout_common.write_checksums(layout_dir)
+
+
+def test_load_simple_runtime_profile_accepts_one_offline_layout(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    derived_dir = build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path)
+
+    proof = module.load_routed_layout("simple_kmeans", derived_dir)
+
+    assert proof["generation"] == 2
+    assert len(proof["artifact"]["layout_sha256"]) == 64
+    artifact = json.loads(Path(proof["artifact_path"]).read_text())
+    assert artifact["nprobe"] == 2
+    assert artifact["lower_hnsw_ef"] == 96
+    build_manifest = json.loads(
+        (derived_dir / module.layout_common.BUILD_MANIFEST_NAME).read_text()
+    )
+    assert build_manifest["derivation"]["formal_evidence_eligible"] is True
+
+
+def test_load_simple_runtime_profile_rejects_offline_parameter_drift(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    derived_dir = build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path)
+    manifest_path = derived_dir / module.layout_common.BUILD_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text())
+    manifest["parameters"]["kmeans_seed"] = 99
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    rewrite_layout_checksums(module, derived_dir)
+
+    with pytest.raises(RuntimeError, match="offline KMeans parameters"):
+        module.load_routed_layout("simple_kmeans", derived_dir)
+
+
+def test_load_simple_runtime_profile_rejects_formal_eligibility_lie(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    derived_dir = build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path)
+    manifest_path = derived_dir / module.layout_common.BUILD_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text())
+    manifest["derivation"]["formal_evidence_eligible"] = False
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    rewrite_layout_checksums(module, derived_dir)
+
+    with pytest.raises(RuntimeError, match="formal evidence eligibility"):
+        module.load_routed_layout("simple_kmeans", derived_dir)
+
+
+def test_simple_runtime_profile_rejects_centroid_or_payload_proof_drift(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    derived_dir = build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path)
+    manifest_path = derived_dir / module.layout_common.BUILD_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text())
+    artifact_path = derived_dir / manifest["outputs"]["production_artifact"]
+    artifact = json.loads(artifact_path.read_text())
+    artifact["centroids"][0]["vector"][0] = 0.5
+
+    with pytest.raises(RuntimeError, match="centroid/offline artifact"):
+        module.validate_simple_kmeans_runtime_profile_derivation(
+            manifest,
+            manifest["parameters"],
+            artifact,
+        )
+
+    manifest["derivation"]["reused_payloads"]["vectors"]["sha256"] = "e" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    rewrite_layout_checksums(module, derived_dir)
+    with pytest.raises(RuntimeError, match="vectors reuse proof mismatch"):
+        module.load_routed_layout("simple_kmeans", derived_dir)
 
 
 def test_standard_search_and_query_smoke_uses_no_routing_hints(monkeypatch):
