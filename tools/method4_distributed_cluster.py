@@ -1585,10 +1585,25 @@ def preserve_run_manifest_metadata(
         "orion_artifacts",
         "simple_kmeans_artifacts",
         "peer_premerge_transitions",
+        "last_peer_premerge_transition",
         "image_transitions",
+        "last_image_transition",
     ):
         if key in stored:
             data[key] = stored[key]
+
+    for transitions_key, last_transition_key in (
+        ("peer_premerge_transitions", "last_peer_premerge_transition"),
+        ("image_transitions", "last_image_transition"),
+    ):
+        if last_transition_key in data:
+            continue
+        transitions = data.get(transitions_key) or []
+        if not transitions or not isinstance(transitions[-1], dict):
+            continue
+        transition_id = transitions[-1].get("transition_id")
+        if transition_id:
+            data[last_transition_key] = transition_id
     return data
 
 

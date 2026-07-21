@@ -2192,6 +2192,8 @@ def test_manifest_preserves_deployment_commit_and_records_current_tooling_repo(
         "dirty": False,
         "dirty_paths": [],
     }
+    stored["last_peer_premerge_transition"] = "run-1-peer-premerge-0002"
+    stored["last_image_transition"] = "run-1-image-0003"
     tooling_state = {
         "commit": "new-tooling-commit",
         "short_commit": "new-tooling",
@@ -2227,10 +2229,64 @@ def test_manifest_preserves_deployment_commit_and_records_current_tooling_repo(
 
     assert payload["repository"] == stored["repository"]
     assert payload["repository"]["commit"] == "old-deployment-commit"
+    assert payload["last_peer_premerge_transition"] == "run-1-peer-premerge-0002"
+    assert payload["last_image_transition"] == "run-1-image-0003"
     assert payload["tooling_repository"] == {
         "path": str(tmp_path.resolve()),
         **tooling_state,
     }
+
+
+def test_manifest_recovers_last_transition_markers_from_preserved_history(
+    monkeypatch, tmp_path, capsys
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled", "all")
+    stored["peer_premerge_transitions"] = [
+        {"transition_id": "run-1-peer-premerge-0002"}
+    ]
+    stored["image_transitions"] = [{"transition_id": "run-1-image-0003"}]
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "git_state",
+        lambda _repo: {
+            "commit": "tooling-commit",
+            "short_commit": "tooling",
+            "dirty": False,
+            "dirty_paths": [],
+            "tracked_dirty": False,
+            "tracked_dirty_paths": [],
+            "untracked_entry_count": 0,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda node, _name, _args: matching_node_inspect(
+            module, value, node, False, "all"
+        ),
+    )
+    monkeypatch.setattr(module, "node_facts", lambda *_args: {})
+    args = SimpleNamespace(
+        repo=str(tmp_path),
+        run_id="run-1",
+        image_tag=None,
+        disable_peer_premerge=False,
+        peer_premerge_shards_per_rpc="all",
+        dry_run=True,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_manifest(args, value) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["last_peer_premerge_transition"] == (
+        "run-1-peer-premerge-0002"
+    )
+    assert payload["last_image_transition"] == "run-1-image-0003"
 
 
 def test_set_peer_premerge_same_mode_reuses_controller_and_appends_proof(
