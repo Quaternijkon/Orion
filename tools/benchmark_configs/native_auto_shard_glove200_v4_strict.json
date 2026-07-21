@@ -1,0 +1,66 @@
+{
+  "shared": {
+    "base_url": "http://10.10.1.1:6333",
+    "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "topology": "/users/dry/Orion/tools/distributed/cloudlab_orion_4node.json",
+    "deployment_manifest": "/proj/intelisys-PG0/exp/orion-distributed/native-20260721-glove200-full-v4/manifest.json",
+    "warmup_query_count": 500,
+    "eval_query_count": 3000,
+    "top_k": 10,
+    "batch_size": 200,
+    "stability_repeats": 3,
+    "api": "search",
+    "vector_distance": "cosine",
+    "vector_name": "",
+    "cargo_runner": "/users/dry/Orion/tools/cargo_in_docker.sh",
+    "cargo_target_dir": "/proj/intelisys-PG0/exp/orion-distributed/cargo-target-native",
+    "write_per_query_metrics": true
+  },
+  "same_recall_targets": [
+    0.9,
+    0.95
+  ],
+  "same_recall_window": 0.003,
+  "same_recall_pairwise_window": 0.003,
+  "require_strict_same_recall": true,
+  "cases": [
+    {
+      "name": "hash_all_r090_ef37",
+      "method": "hash_all",
+      "collection": "dist_native-20260721-glove200-full-v4_hash_all",
+      "hnsw_ef": 37
+    },
+    {
+      "name": "hash_all_r095_ef71",
+      "method": "hash_all",
+      "collection": "dist_native-20260721-glove200-full-v4_hash_all",
+      "hnsw_ef": 71
+    },
+    {
+      "name": "orion_r090_u48_b48_f14_g7",
+      "method": "orion",
+      "collection": "dist_native-20260721-glove200-full-v4_orion_r090_u48",
+      "artifact": "/users/dry/orion-distributed/native-20260720-glove200-full-v3/artifacts/orion-formal-copy-r090-u48-b48-f14-g7/generation-7.json",
+      "orion_route_trace": true
+    },
+    {
+      "name": "orion_r095_u112_b64_f16_g8",
+      "method": "orion",
+      "collection": "dist_native-20260721-glove200-full-v4_orion_r095_u112",
+      "artifact": "/users/dry/orion-distributed/native-20260720-glove200-full-v3/artifacts/orion-formal-copy-r095-u112-b64-f16-g8/generation-8.json",
+      "orion_route_trace": true
+    },
+    {
+      "name": "simple_r090_n19_ef109_g11",
+      "method": "simple_kmeans",
+      "collection": "dist_native-20260721-glove200-full-v4_simple_r090_ef109_g11",
+      "artifact": "/proj/intelisys-PG0/exp/orion-distributed/native-20260720-glove200-full-v3/artifacts/simple-formal-copy-r090-n19-ef109-g11/generation-11.json"
+    },
+    {
+      "name": "simple_r095_n26_ef210_g10",
+      "method": "simple_kmeans",
+      "collection": "dist_native-20260721-glove200-full-v4_simple_r095_ef210_g10",
+      "artifact": "/proj/intelisys-PG0/exp/orion-distributed/native-20260720-glove200-full-v3/artifacts/simple-formal-copy-r095-n26-ef210-g10/generation-10.json"
+    }
+  ]
+}

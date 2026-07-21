@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
 use api::conversions::json::json_path_from_proto;
 use api::grpc::qdrant::{
-    BatchResult, CoreSearchByShardEntry, CoreSearchPoints, CountPoints, CountResponse,
+    BatchResult, CoreSearchByShardCompactEntry, CoreSearchByShardEntry,
+    CoreSearchByShardQueryTemplate, CoreSearchPoints, CountPoints, CountResponse,
     DiscoverBatchResponse, DiscoverPoints, DiscoverResponse, FacetCounts, FacetResponse, GetPoints,
     GetResponse, GroupsResult, QueryBatchResponse, QueryGroupsResponse, QueryPointGroups,
     QueryPoints, QueryResponse, ReadConsistency as ReadConsistencyGrpc, RecommendBatchResponse,
@@ -25,7 +26,7 @@ use futures::future;
 use segment::data_types::facets::FacetParams;
 use segment::data_types::order_by::{OrderBy, OrderByInterface};
 use segment::data_types::vectors::{DEFAULT_VECTOR_NAME, NamedQuery, VectorInternal};
-use segment::types::ScoredPoint;
+use segment::types::{PointIdType, ScoredPoint};
 use shard::count::CountRequestInternal;
 use shard::query::query_enum::QueryEnum;
 use shard::scroll::ScrollRequestInternal;
@@ -300,18 +301,26 @@ fn attach_core_search_by_shard_results(
 pub(crate) fn premerge_core_search_by_shard_rows(
     rows: Vec<CoreSearchByShardRow>,
     query_count: usize,
-) -> Vec<Vec<ScoredPoint>> {
+) -> Result<Vec<Vec<ScoredPoint>>, Status> {
     let mut candidate_groups_by_query = vec![Vec::new(); query_count];
     let mut merge_specs = vec![None; query_count];
 
     for row in rows {
         if row.query_index >= query_count {
-            continue;
+            return Err(Status::internal(format!(
+                "peer-local shard row query_index {} is outside query_count {query_count}",
+                row.query_index,
+            )));
         }
 
         let merge_spec = (row.limit, row.offset, row.source_id_dedup_block_size);
         if let Some(existing_spec) = merge_specs[row.query_index] {
-            debug_assert_eq!(existing_spec, merge_spec);
+            if existing_spec != merge_spec {
+                return Err(Status::internal(format!(
+                    "peer-local shard rows disagree on merge metadata for query_index {}",
+                    row.query_index,
+                )));
+            }
         } else {
             merge_specs[row.query_index] = Some(merge_spec);
         }
@@ -323,16 +332,24 @@ pub(crate) fn premerge_core_search_by_shard_rows(
         .into_iter()
         .enumerate()
         .map(|(query_index, candidate_groups)| {
-            let Some((limit, offset, source_id_dedup_block_size)) = merge_specs[query_index] else {
-                return Vec::new();
-            };
+            let (limit, offset, source_id_dedup_block_size) =
+                merge_specs[query_index].ok_or_else(|| {
+                    Status::internal(format!(
+                        "peer-local shard response has no rows for query_index {query_index}"
+                    ))
+                })?;
+            let peer_limit = limit.checked_add(offset).ok_or_else(|| {
+                Status::invalid_argument(format!(
+                    "peer-local merge limit + offset overflows usize for query_index {query_index}"
+                ))
+            })?;
 
-            crate::common::query::merge_shard_major_candidates(
+            Ok(crate::common::query::merge_shard_major_candidates(
                 candidate_groups,
-                limit.saturating_add(offset),
+                peer_limit,
                 0,
                 source_id_dedup_block_size,
-            )
+            ))
         })
         .collect()
 }
@@ -354,22 +371,46 @@ pub async fn core_search_batch_by_shard(
         request: CoreSearchRequest,
     }
 
+    if searches.is_empty() {
+        return Err(Status::invalid_argument("searches is empty"));
+    }
+    let search_entry_count = searches.len();
     let mut query_count = 0usize;
     let mut by_shard: BTreeMap<ShardId, Vec<SearchByShardWork>> = BTreeMap::new();
 
     for entry in searches {
         let query_index = usize::try_from(entry.query_index)
             .map_err(|_| Status::invalid_argument("query_index does not fit into usize"))?;
+        if query_index >= search_entry_count {
+            return Err(Status::invalid_argument(format!(
+                "query_index {query_index} is outside the maximum dense query-slot count {search_entry_count}"
+            )));
+        }
         let limit = usize::try_from(entry.final_limit)
             .map_err(|_| Status::invalid_argument("final_limit does not fit into usize"))?;
         let offset = usize::try_from(entry.final_offset.unwrap_or_default())
             .map_err(|_| Status::invalid_argument("final_offset does not fit into usize"))?;
+        if limit == 0 {
+            return Err(Status::invalid_argument("final_limit must be positive"));
+        }
+        limit.checked_add(offset).ok_or_else(|| {
+            Status::invalid_argument("final_limit + final_offset overflows usize")
+        })?;
+        if entry.source_id_dedup_block_size == Some(0) {
+            return Err(Status::invalid_argument(
+                "source_id_dedup_block_size must be positive when present",
+            ));
+        }
         let search_points = entry
             .search_points
             .ok_or_else(|| Status::invalid_argument("search_points is missing"))?;
         let request = CoreSearchRequest::try_from(search_points)?;
 
-        query_count = query_count.max(query_index.saturating_add(1));
+        query_count = query_count.max(
+            query_index
+                .checked_add(1)
+                .ok_or_else(|| Status::invalid_argument("query_index is too large"))?,
+        );
         by_shard
             .entry(entry.shard_id)
             .or_default()
@@ -429,7 +470,310 @@ pub async fn core_search_batch_by_shard(
         )?);
     }
 
-    let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count);
+    let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count)?;
+    let response = SearchBatchResponse {
+        result: premerged_rows
+            .into_iter()
+            .map(|points| BatchResult {
+                result: points.into_iter().map(|point| point.into()).collect(),
+            })
+            .collect(),
+        time: timing.elapsed().as_secs_f64(),
+        usage: Usage::from_hardware_usage(request_hw_counter.to_grpc_api()).into_non_empty(),
+    };
+
+    Ok(Response::new(response))
+}
+
+#[derive(Debug)]
+struct CompactSearchTemplate {
+    request: CoreSearchRequest,
+    final_limit: usize,
+    final_offset: usize,
+    source_id_dedup_block_size: Option<u64>,
+}
+
+#[derive(Debug)]
+struct CompactSearchByShardWork {
+    query_index: usize,
+    limit: usize,
+    offset: usize,
+    source_id_dedup_block_size: Option<u64>,
+    request: CoreSearchRequest,
+}
+
+fn validate_compact_orion_query_template(
+    query_slot: usize,
+    request: &CoreSearchRequest,
+) -> Result<(), Status> {
+    if request.filter.is_some() {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must not contain a filter"
+        )));
+    }
+    if request.params.as_ref().is_some_and(|params| params.exact) {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must not request exact search"
+        )));
+    }
+    if request.hnsw_entry_points.is_some()
+        || request.hnsw_entry_points_by_shard.is_some()
+        || request.hnsw_ef_by_shard.is_some()
+    {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must not contain shard-specific HNSW overrides"
+        )));
+    }
+    if request.source_id_dedup_block_size.is_some() {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must carry source-ID dedup only in the compact template envelope"
+        )));
+    }
+
+    let QueryEnum::Nearest(named_query) = &request.query else {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must be a nearest-neighbor query"
+        )));
+    };
+    let VectorInternal::Dense(vector) = &named_query.query else {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} must contain one dense query vector"
+        )));
+    };
+    if vector.is_empty() {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} has an empty dense query vector"
+        )));
+    }
+    if let Some(dimension) = vector.iter().position(|value| !value.is_finite()) {
+        return Err(Status::invalid_argument(format!(
+            "query template {query_slot} has a non-finite dense query value at dimension {dimension}"
+        )));
+    }
+    Ok(())
+}
+
+fn decode_compact_searches_by_shard(
+    collection_name: &str,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    searches: Vec<CoreSearchByShardCompactEntry>,
+) -> Result<
+    (
+        usize,
+        Vec<CoreSearchRequest>,
+        BTreeMap<ShardId, Vec<CompactSearchByShardWork>>,
+    ),
+    Status,
+> {
+    if query_templates.is_empty() {
+        return Err(Status::invalid_argument("query_templates is empty"));
+    }
+    if searches.is_empty() {
+        return Err(Status::invalid_argument("compact searches is empty"));
+    }
+
+    let templates = query_templates
+        .into_iter()
+        .enumerate()
+        .map(|(query_slot, template)| {
+            let search_points = template.search_points.ok_or_else(|| {
+                Status::invalid_argument(format!(
+                    "query template {query_slot} is missing search_points"
+                ))
+            })?;
+            if search_points.collection_name != collection_name {
+                return Err(Status::invalid_argument(format!(
+                    "query template {query_slot} collection_name does not match outer request"
+                )));
+            }
+
+            let request = CoreSearchRequest::try_from(search_points)?;
+            if request.limit == 0 {
+                return Err(Status::invalid_argument(format!(
+                    "query template {query_slot} has zero limit"
+                )));
+            }
+            request.limit.checked_add(request.offset).ok_or_else(|| {
+                Status::invalid_argument(format!(
+                    "query template {query_slot} limit + offset overflows usize"
+                ))
+            })?;
+            if template.source_id_dedup_block_size == Some(0) {
+                return Err(Status::invalid_argument(format!(
+                    "query template {query_slot} source_id_dedup_block_size must be positive when present"
+                )));
+            }
+            validate_compact_orion_query_template(query_slot, &request)?;
+
+            Ok(CompactSearchTemplate {
+                final_limit: request.limit,
+                final_offset: request.offset,
+                source_id_dedup_block_size: template.source_id_dedup_block_size,
+                request,
+            })
+        })
+        .collect::<Result<Vec<_>, Status>>()?;
+
+    let query_count = templates.len();
+    let template_requests = templates
+        .iter()
+        .map(|template| template.request.clone())
+        .collect::<Vec<_>>();
+    let mut referenced_slots = vec![false; query_count];
+    let mut seen_query_shards = HashSet::new();
+    let mut by_shard: BTreeMap<ShardId, Vec<CompactSearchByShardWork>> = BTreeMap::new();
+
+    for entry in searches {
+        let query_index = usize::try_from(entry.query_slot)
+            .map_err(|_| Status::invalid_argument("query_slot does not fit into usize"))?;
+        let Some(template) = templates.get(query_index) else {
+            return Err(Status::invalid_argument(format!(
+                "query_slot {query_index} is outside query_templates length {query_count}"
+            )));
+        };
+        if !seen_query_shards.insert((query_index, entry.shard_id)) {
+            return Err(Status::invalid_argument(format!(
+                "duplicate compact search for query_slot {query_index} and shard {}",
+                entry.shard_id
+            )));
+        }
+        if entry.hnsw_entry_points.is_empty() {
+            return Err(Status::invalid_argument(format!(
+                "compact search for query_slot {query_index} and shard {} has no HNSW entry points",
+                entry.shard_id
+            )));
+        }
+        let hnsw_ef = usize::try_from(entry.hnsw_ef)
+            .map_err(|_| Status::invalid_argument("hnsw_ef does not fit into usize"))?;
+        if hnsw_ef == 0 {
+            return Err(Status::invalid_argument("hnsw_ef must be positive"));
+        }
+        let hnsw_entry_points = entry
+            .hnsw_entry_points
+            .into_iter()
+            .map(PointIdType::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut seen_entry_points = HashSet::with_capacity(hnsw_entry_points.len());
+        if let Some(duplicate) = hnsw_entry_points
+            .iter()
+            .find(|entry_point| !seen_entry_points.insert(**entry_point))
+        {
+            return Err(Status::invalid_argument(format!(
+                "compact search for query_slot {query_index} and shard {} contains duplicate ordered HNSW entry point {duplicate}",
+                entry.shard_id,
+            )));
+        }
+
+        let mut request = template.request.clone();
+        request.limit = template
+            .final_limit
+            .checked_add(template.final_offset)
+            .ok_or_else(|| {
+                Status::invalid_argument(format!(
+                    "query template {query_index} limit + offset overflows usize"
+                ))
+            })?;
+        request.offset = 0;
+        request.hnsw_entry_points = Some(hnsw_entry_points);
+        request.hnsw_entry_points_by_shard = None;
+        request.hnsw_ef_by_shard = None;
+        request.source_id_dedup_block_size = None;
+        let mut params = request.params.unwrap_or_default();
+        params.hnsw_ef = Some(hnsw_ef);
+        request.params = Some(params);
+
+        referenced_slots[query_index] = true;
+        by_shard
+            .entry(entry.shard_id)
+            .or_default()
+            .push(CompactSearchByShardWork {
+                query_index,
+                limit: template.final_limit,
+                offset: template.final_offset,
+                source_id_dedup_block_size: template.source_id_dedup_block_size,
+                request,
+            });
+    }
+
+    if let Some(unreferenced_slot) = referenced_slots.iter().position(|referenced| !referenced) {
+        return Err(Status::invalid_argument(format!(
+            "query template slot {unreferenced_slot} has no compact shard search"
+        )));
+    }
+
+    Ok((query_count, template_requests, by_shard))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn core_search_batch_by_shard_compact(
+    toc: &TableOfContent,
+    collection_name: String,
+    wire_version: u32,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    searches: Vec<CoreSearchByShardCompactEntry>,
+    auth: Auth,
+    timeout: Option<Duration>,
+    request_hw_counter: RequestHwCounter,
+) -> Result<Response<SearchBatchResponse>, Status> {
+    if wire_version != 1 {
+        return Err(Status::invalid_argument(format!(
+            "unsupported compact peer-search wire_version {wire_version}; expected 1"
+        )));
+    }
+    let (query_count, template_requests, by_shard) =
+        decode_compact_searches_by_shard(&collection_name, query_templates, searches)?;
+    toc.validate_orion_compact_peer_search(&collection_name, &template_requests, &auth)
+        .await
+        .map_err(Status::from)?;
+
+    let timing = Instant::now();
+    let shard_searches = by_shard.into_iter().map(|(shard_id, works)| {
+        let original_rows = works
+            .iter()
+            .map(|work| {
+                (
+                    work.query_index,
+                    work.limit,
+                    work.offset,
+                    work.source_id_dedup_block_size,
+                )
+            })
+            .collect::<Vec<_>>();
+        let request = CoreSearchRequestBatch {
+            searches: works.into_iter().map(|work| work.request).collect(),
+        };
+        let collection_name = collection_name.clone();
+        let auth = auth.clone();
+        let request_hw_counter = request_hw_counter.clone();
+
+        async move {
+            let rows = toc
+                .core_search_batch(
+                    &collection_name,
+                    request,
+                    None,
+                    ShardSelectorInternal::ShardId(shard_id),
+                    auth,
+                    timeout,
+                    request_hw_counter.get_counter(),
+                )
+                .await
+                .map_err(Status::from)?;
+            Ok::<_, Status>((shard_id, original_rows, rows))
+        }
+    });
+
+    let shard_results = future::try_join_all(shard_searches).await?;
+    let mut shard_rows = Vec::new();
+    for (shard_id, original_rows, rows) in shard_results {
+        shard_rows.extend(attach_core_search_by_shard_results(
+            shard_id,
+            original_rows,
+            rows,
+        )?);
+    }
+
+    let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count)?;
     let response = SearchBatchResponse {
         result: premerged_rows
             .into_iter()
@@ -1272,7 +1616,10 @@ pub async fn search_points_matrix(
 
 #[cfg(test)]
 mod tests {
-    use segment::types::{ExtendedPointId, ScoredPoint};
+    use prost::Message as _;
+    use segment::data_types::vectors::MultiDenseVectorInternal;
+    use segment::types::{ExtendedPointId, Filter, ScoredPoint, SearchParams};
+    use segment::vector_storage::query::RecoQuery;
 
     use super::*;
 
@@ -1286,6 +1633,385 @@ mod tests {
             shard_key: None,
             order_value: None,
         }
+    }
+
+    fn compact_template(
+        collection_name: &str,
+        limit: u64,
+        offset: u64,
+        source_id_dedup_block_size: Option<u64>,
+    ) -> CoreSearchByShardQueryTemplate {
+        CoreSearchByShardQueryTemplate {
+            search_points: Some(CoreSearchPoints {
+                collection_name: collection_name.to_string(),
+                query: Some(api::grpc::qdrant::QueryEnum {
+                    query: Some(api::grpc::qdrant::query_enum::Query::NearestNeighbors(
+                        VectorInternal::Dense(vec![1.0, 2.0, 3.0, 4.0]).into(),
+                    )),
+                }),
+                filter: None,
+                limit,
+                with_payload: None,
+                params: None,
+                score_threshold: None,
+                offset: Some(offset),
+                vector_name: None,
+                with_vectors: None,
+                read_consistency: None,
+                hnsw_entry_points: Vec::new(),
+            }),
+            source_id_dedup_block_size,
+        }
+    }
+
+    fn compact_entry(
+        query_slot: u64,
+        shard_id: ShardId,
+        entry_points: &[u64],
+        hnsw_ef: u64,
+    ) -> CoreSearchByShardCompactEntry {
+        CoreSearchByShardCompactEntry {
+            query_slot,
+            shard_id,
+            hnsw_entry_points: entry_points
+                .iter()
+                .copied()
+                .map(PointIdType::from)
+                .map(Into::into)
+                .collect(),
+            hnsw_ef,
+        }
+    }
+
+    #[test]
+    fn compact_decoder_preserves_ordered_multiep_dynamic_ef_and_merge_window() {
+        let (query_count, template_requests, by_shard) = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 7, Some(1_000_001))],
+            vec![
+                compact_entry(0, 9, &[31, 29, 11], 76),
+                compact_entry(0, 10, &[5, 3], 88),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(query_count, 1);
+        assert_eq!(template_requests.len(), 1);
+        assert_eq!(by_shard.len(), 2);
+        let work = &by_shard[&9][0];
+        assert_eq!(work.query_index, 0);
+        assert_eq!(work.limit, 10);
+        assert_eq!(work.offset, 7);
+        assert_eq!(work.source_id_dedup_block_size, Some(1_000_001));
+        assert_eq!(work.request.limit, 17);
+        assert_eq!(work.request.offset, 0);
+        assert_eq!(
+            work.request.hnsw_entry_points,
+            Some(vec![
+                PointIdType::from(31),
+                PointIdType::from(29),
+                PointIdType::from(11),
+            ])
+        );
+        assert_eq!(
+            work.request
+                .params
+                .as_ref()
+                .and_then(|params| params.hnsw_ef),
+            Some(76)
+        );
+        assert!(work.request.source_id_dedup_block_size.is_none());
+    }
+
+    #[test]
+    fn compact_decoder_rejects_bad_query_slot_contracts() {
+        let empty_templates = decode_compact_searches_by_shard(
+            "orion",
+            Vec::new(),
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(
+            empty_templates
+                .message()
+                .contains("query_templates is empty")
+        );
+
+        let empty_searches = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert!(
+            empty_searches
+                .message()
+                .contains("compact searches is empty")
+        );
+
+        let out_of_range = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            vec![compact_entry(1, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert_eq!(out_of_range.code(), tonic::Code::InvalidArgument);
+        assert!(out_of_range.message().contains("outside query_templates"));
+
+        let duplicate = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            vec![
+                compact_entry(0, 9, &[31], 76),
+                compact_entry(0, 9, &[29], 88),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(duplicate.code(), tonic::Code::InvalidArgument);
+        assert!(duplicate.message().contains("duplicate compact search"));
+
+        let unreferenced = decode_compact_searches_by_shard(
+            "orion",
+            vec![
+                compact_template("orion", 10, 0, None),
+                compact_template("orion", 10, 0, None),
+            ],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert_eq!(unreferenced.code(), tonic::Code::InvalidArgument);
+        assert!(unreferenced.message().contains("slot 1 has no compact"));
+    }
+
+    #[test]
+    fn compact_decoder_rejects_missing_template_and_shard_overrides() {
+        let missing_template = decode_compact_searches_by_shard(
+            "orion",
+            vec![CoreSearchByShardQueryTemplate {
+                search_points: None,
+                source_id_dedup_block_size: None,
+            }],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(missing_template.message().contains("missing search_points"));
+
+        let missing_eps = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            vec![compact_entry(0, 9, &[], 76)],
+        )
+        .unwrap_err();
+        assert!(missing_eps.message().contains("no HNSW entry points"));
+
+        let zero_ef = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            vec![compact_entry(0, 9, &[31], 0)],
+        )
+        .unwrap_err();
+        assert!(zero_ef.message().contains("hnsw_ef must be positive"));
+
+        let collection_mismatch = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("other", 10, 0, None)],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(
+            collection_mismatch
+                .message()
+                .contains("collection_name does not match")
+        );
+
+        let mut template_with_entry_points = compact_template("orion", 10, 0, None);
+        template_with_entry_points
+            .search_points
+            .as_mut()
+            .unwrap()
+            .hnsw_entry_points = vec![PointIdType::from(7).into()];
+        let ambiguous_template = decode_compact_searches_by_shard(
+            "orion",
+            vec![template_with_entry_points],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(
+            ambiguous_template
+                .message()
+                .contains("must not contain shard-specific")
+        );
+
+        let duplicate_entry_point = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, None)],
+            vec![compact_entry(0, 9, &[31, 29, 31], 76)],
+        )
+        .unwrap_err();
+        assert!(
+            duplicate_entry_point
+                .message()
+                .contains("duplicate ordered HNSW entry point")
+        );
+
+        let zero_dedup = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 10, 0, Some(0))],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(
+            zero_dedup
+                .message()
+                .contains("source_id_dedup_block_size must be positive")
+        );
+
+        let zero_limit = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", 0, 0, None)],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(zero_limit.message().contains("zero limit"));
+
+        let overflow = decode_compact_searches_by_shard(
+            "orion",
+            vec![compact_template("orion", u64::MAX, 1, None)],
+            vec![compact_entry(0, 9, &[31], 76)],
+        )
+        .unwrap_err();
+        assert!(overflow.message().contains("limit + offset overflows"));
+    }
+
+    #[test]
+    fn compact_template_validator_rejects_non_orion_query_shapes() {
+        let base = CoreSearchRequest::try_from(
+            compact_template("orion", 10, 0, None)
+                .search_points
+                .unwrap(),
+        )
+        .unwrap();
+
+        let mut filtered = base.clone();
+        filtered.filter = Some(Filter::new());
+        assert!(
+            validate_compact_orion_query_template(0, &filtered)
+                .unwrap_err()
+                .message()
+                .contains("must not contain a filter")
+        );
+
+        let mut exact = base.clone();
+        exact.params = Some(SearchParams {
+            exact: true,
+            ..Default::default()
+        });
+        assert!(
+            validate_compact_orion_query_template(0, &exact)
+                .unwrap_err()
+                .message()
+                .contains("must not request exact")
+        );
+
+        let mut multi_dense = base.clone();
+        multi_dense.query = QueryEnum::Nearest(NamedQuery::new(
+            VectorInternal::MultiDense(MultiDenseVectorInternal::new(vec![1.0, 2.0], 1)),
+            "multi",
+        ));
+        assert!(
+            validate_compact_orion_query_template(0, &multi_dense)
+                .unwrap_err()
+                .message()
+                .contains("one dense query vector")
+        );
+
+        let mut empty = base.clone();
+        empty.query = QueryEnum::Nearest(NamedQuery::new(VectorInternal::Dense(Vec::new()), ""));
+        assert!(
+            validate_compact_orion_query_template(0, &empty)
+                .unwrap_err()
+                .message()
+                .contains("empty dense")
+        );
+
+        let mut non_finite = base.clone();
+        non_finite.query =
+            QueryEnum::Nearest(NamedQuery::new(VectorInternal::Dense(vec![f32::NAN]), ""));
+        assert!(
+            validate_compact_orion_query_template(0, &non_finite)
+                .unwrap_err()
+                .message()
+                .contains("non-finite")
+        );
+
+        let mut recommend = base;
+        recommend.query = QueryEnum::RecommendBestScore(NamedQuery::new(
+            RecoQuery::new(
+                vec![VectorInternal::Dense(vec![1.0, 2.0, 3.0, 4.0])],
+                Vec::new(),
+            ),
+            "",
+        ));
+        assert!(
+            validate_compact_orion_query_template(0, &recommend)
+                .unwrap_err()
+                .message()
+                .contains("nearest-neighbor")
+        );
+    }
+
+    #[test]
+    fn compact_wire_eliminates_repeated_200d_query_payload_per_shard() {
+        let mut template = compact_template("orion", 10, 0, None);
+        template.search_points.as_mut().unwrap().query = Some(api::grpc::qdrant::QueryEnum {
+            query: Some(api::grpc::qdrant::query_enum::Query::NearestNeighbors(
+                VectorInternal::Dense((0..200).map(|value| value as f32 / 200.0).collect()).into(),
+            )),
+        });
+
+        let legacy_searches = (0..16)
+            .map(|shard_id| {
+                let mut search_points = template.search_points.clone().unwrap();
+                search_points.hnsw_entry_points = [31, 29, 11, 7]
+                    .into_iter()
+                    .map(PointIdType::from)
+                    .map(Into::into)
+                    .collect();
+                let mut params = search_points.params.unwrap_or_default();
+                params.hnsw_ef = Some(76);
+                search_points.params = Some(params);
+                CoreSearchByShardEntry {
+                    query_index: 0,
+                    shard_id,
+                    search_points: Some(search_points),
+                    final_limit: 10,
+                    final_offset: Some(0),
+                    source_id_dedup_block_size: None,
+                }
+            })
+            .collect();
+        let legacy = api::grpc::qdrant::CoreSearchBatchByShardInternal {
+            collection_name: "orion".to_string(),
+            searches: legacy_searches,
+            timeout: None,
+        };
+        let compact = api::grpc::qdrant::CoreSearchBatchByShardCompactInternal {
+            collection_name: "orion".to_string(),
+            query_templates: vec![template],
+            searches: (0..16)
+                .map(|shard_id| compact_entry(0, shard_id, &[31, 29, 11, 7], 76))
+                .collect(),
+            timeout: None,
+            wire_version: 1,
+        };
+
+        assert_eq!(compact.query_templates.len(), 1);
+        assert!(
+            compact.encoded_len() * 4 < legacy.encoded_len(),
+            "compact={} legacy={}",
+            compact.encoded_len(),
+            legacy.encoded_len(),
+        );
     }
 
     #[test]
@@ -1315,7 +2041,8 @@ mod tests {
                 },
             ],
             2,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             premerged[0]
@@ -1335,6 +2062,70 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(30)],
         );
+    }
+
+    #[test]
+    fn core_search_by_shard_premerge_rejects_invalid_row_contracts() {
+        let out_of_range = premerge_core_search_by_shard_rows(
+            vec![CoreSearchByShardRow {
+                query_index: 1,
+                limit: 1,
+                offset: 0,
+                source_id_dedup_block_size: None,
+                points: vec![scored(1, 1.0)],
+            }],
+            1,
+        )
+        .unwrap_err();
+        assert!(out_of_range.message().contains("outside query_count"));
+
+        let missing_slot = premerge_core_search_by_shard_rows(
+            vec![CoreSearchByShardRow {
+                query_index: 0,
+                limit: 1,
+                offset: 0,
+                source_id_dedup_block_size: None,
+                points: vec![scored(1, 1.0)],
+            }],
+            2,
+        )
+        .unwrap_err();
+        assert!(missing_slot.message().contains("no rows for query_index 1"));
+
+        let metadata_conflict = premerge_core_search_by_shard_rows(
+            vec![
+                CoreSearchByShardRow {
+                    query_index: 0,
+                    limit: 1,
+                    offset: 0,
+                    source_id_dedup_block_size: None,
+                    points: vec![scored(1, 1.0)],
+                },
+                CoreSearchByShardRow {
+                    query_index: 0,
+                    limit: 2,
+                    offset: 0,
+                    source_id_dedup_block_size: None,
+                    points: vec![scored(2, 0.9)],
+                },
+            ],
+            1,
+        )
+        .unwrap_err();
+        assert!(metadata_conflict.message().contains("merge metadata"));
+
+        let overflow = premerge_core_search_by_shard_rows(
+            vec![CoreSearchByShardRow {
+                query_index: 0,
+                limit: usize::MAX,
+                offset: 1,
+                source_id_dedup_block_size: None,
+                points: vec![scored(1, 1.0)],
+            }],
+            1,
+        )
+        .unwrap_err();
+        assert!(overflow.message().contains("limit + offset overflows"));
     }
 
     #[test]

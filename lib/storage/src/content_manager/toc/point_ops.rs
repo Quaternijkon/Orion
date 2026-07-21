@@ -133,6 +133,15 @@ impl TableOfContent {
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> StorageResult<Vec<Vec<ScoredPoint>>> {
+        if request
+            .searches
+            .iter()
+            .any(|request| request.source_id_dedup_block_size == Some(0))
+        {
+            return Err(StorageError::bad_request(
+                "source_id_dedup_block_size must be positive when present",
+            ));
+        }
         let mut collection_pass = None;
         for request in &mut request.searches {
             collection_pass =
@@ -153,6 +162,32 @@ impl TableOfContent {
             )
             .await
             .map_err(|err| err.into())
+    }
+
+    /// Revalidate the collection-level safety contract for Orion's compact internal peer RPC.
+    ///
+    /// The request is still authorized here even though the internal handler currently supplies
+    /// full peer credentials. Keeping the check next to the ordinary point-operation path avoids
+    /// exposing unchecked collection access outside the storage crate.
+    pub async fn validate_orion_compact_peer_search(
+        &self,
+        collection_name: &str,
+        requests: &[CoreSearchRequest],
+        auth: &Auth,
+    ) -> StorageResult<()> {
+        let representative_request = requests.first().ok_or_else(|| {
+            StorageError::bad_request("Orion compact peer search has no query templates")
+        })?;
+        let collection_pass = auth.check_point_op(
+            collection_name,
+            representative_request,
+            "validate_orion_compact_peer_search",
+        )?;
+        let collection = self.get_collection(&collection_pass).await?;
+        collection
+            .validate_orion_compact_peer_queries(requests)
+            .await
+            .map_err(Into::into)
     }
 
     #[allow(clippy::too_many_arguments)]

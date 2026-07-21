@@ -6,15 +6,15 @@ use std::time::{Duration, Instant};
 use api::grpc::HardwareUsage;
 use api::grpc::qdrant::points_internal_server::PointsInternal;
 use api::grpc::qdrant::{
-    ClearPayloadPointsInternal, CoreSearchBatchByShardInternal, CoreSearchBatchPointsInternal,
-    CountPointsInternal, CountResponse, CreateFieldIndexCollectionInternal,
-    DeleteFieldIndexCollectionInternal, DeletePayloadPointsInternal, DeletePointsInternal,
-    DeleteVectorsInternal, FacetCountsInternal, FacetResponseInternal, GetPointsInternal,
-    GetResponse, IntermediateResult, PointsOperationResponseInternal, QueryBatchPointsInternal,
-    QueryBatchResponseInternal, QueryResultInternal, QueryShardPoints, RecommendPointsInternal,
-    RecommendResponse, ScrollPointsInternal, ScrollResponse, SearchBatchResponse,
-    SetPayloadPointsInternal, SyncPointsInternal, UpdateBatchInternal, UpdateVectorsInternal,
-    UpsertPointsInternal,
+    ClearPayloadPointsInternal, CoreSearchBatchByShardCompactInternal,
+    CoreSearchBatchByShardInternal, CoreSearchBatchPointsInternal, CountPointsInternal,
+    CountResponse, CreateFieldIndexCollectionInternal, DeleteFieldIndexCollectionInternal,
+    DeletePayloadPointsInternal, DeletePointsInternal, DeleteVectorsInternal, FacetCountsInternal,
+    FacetResponseInternal, GetPointsInternal, GetResponse, IntermediateResult,
+    PointsOperationResponseInternal, QueryBatchPointsInternal, QueryBatchResponseInternal,
+    QueryResultInternal, QueryShardPoints, RecommendPointsInternal, RecommendResponse,
+    ScrollPointsInternal, ScrollResponse, SearchBatchResponse, SetPayloadPointsInternal,
+    SyncPointsInternal, UpdateBatchInternal, UpdateVectorsInternal, UpsertPointsInternal,
 };
 use api::grpc::update_operation::Update;
 use collection::operations::shard_selector_internal::ShardSelectorInternal;
@@ -747,6 +747,38 @@ impl PointsInternal for PointsInternalService {
         let res = core_search_batch_by_shard(
             self.toc.as_ref(),
             collection_name,
+            searches,
+            full_internal_auth(),
+            timeout,
+            hw_data,
+        )
+        .await?;
+
+        Ok(res)
+    }
+
+    async fn core_search_batch_by_shard_compact(
+        &self,
+        request: Request<CoreSearchBatchByShardCompactInternal>,
+    ) -> Result<Response<SearchBatchResponse>, Status> {
+        validate_and_log(request.get_ref());
+
+        let CoreSearchBatchByShardCompactInternal {
+            collection_name,
+            query_templates,
+            searches,
+            timeout,
+            wire_version,
+        } = request.into_inner();
+
+        let timeout = timeout.map(Duration::from_secs);
+        let hw_data =
+            self.get_request_collection_hw_usage_counter_for_internal(collection_name.clone());
+        let res = core_search_batch_by_shard_compact(
+            self.toc.as_ref(),
+            collection_name,
+            wire_version,
+            query_templates,
             searches,
             full_internal_auth(),
             timeout,

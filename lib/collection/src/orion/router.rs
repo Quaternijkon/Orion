@@ -215,7 +215,7 @@ impl OrionRouter {
             .collect()
     }
 
-    fn validate_query(&self, query: &[f32]) -> OrionRoutingResult<()> {
+    pub(crate) fn validate_query(&self, query: &[f32]) -> OrionRoutingResult<()> {
         if query.len() != self.dimension {
             return Err(OrionRoutingError::QueryDimensionMismatch {
                 expected: self.dimension,

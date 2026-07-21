@@ -390,6 +390,28 @@ async fn configured_orion_policy_fails_closed_when_router_is_unavailable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn eligible_orion_route_failure_refuses_silent_all_shards_fallback() {
+    let (collection, _collection_dir, _snapshots_path) = fixture().await;
+
+    let error = collection
+        .core_search_batch(
+            shard::search::CoreSearchRequestBatch {
+                searches: vec![core_request_for_vector(vec![0.0, 1.0, 2.0], false)],
+            },
+            None,
+            ShardSelectorInternal::All,
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("Orion routing generation 1 failed"));
+    assert!(message.contains("refusing a silent all-shards fallback"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn controlled_numeric_shard_import_keeps_the_same_external_id_in_two_shards() {
     let (collection, _collection_dir, _snapshots_path) = fixture().await;
     collection.collection_config.write().await.auto_shard_policy = Some(AutoShardPolicy::Orion {

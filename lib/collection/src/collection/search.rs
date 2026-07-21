@@ -4,14 +4,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ahash::{AHashMap, AHashSet};
-use api::grpc::qdrant::{CoreSearchBatchByShardInternal, CoreSearchByShardEntry};
+use api::grpc::qdrant::{
+    CoreSearchBatchByShardCompactInternal, CoreSearchBatchByShardInternal,
+    CoreSearchByShardCompactEntry, CoreSearchByShardEntry, CoreSearchByShardQueryTemplate,
+};
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::{TryFutureExt, future};
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use segment::data_types::vectors::VectorInternal;
 use segment::types::{
     ExtendedPointId, Filter, Order, ScoredPoint, ShardKey, WithPayloadInterface, WithVector,
 };
+use segment::utils::scored_point_ties::ScoredPointTies;
 use shard::query::query_enum::QueryEnum;
 use shard::retrieve::record_internal::RecordInternal;
 use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
@@ -19,7 +23,7 @@ use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::Collection;
-use crate::config::AutoShardPolicy;
+use crate::config::{AutoShardPolicy, CollectionConfigInternal};
 use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
@@ -59,12 +63,56 @@ fn orion_eligible_dense_query<'a>(
     Some(vector)
 }
 
+fn validate_orion_compact_peer_query_vectors_config(
+    collection_config: &CollectionConfigInternal,
+    vector_names: &[String],
+) -> CollectionResult<()> {
+    if vector_names.is_empty() {
+        return Err(CollectionError::bad_request(
+            "Orion compact peer search has no query vectors",
+        ));
+    }
+    if !matches!(
+        collection_config.auto_shard_policy,
+        Some(AutoShardPolicy::Orion { .. })
+    ) {
+        return Err(CollectionError::bad_request(
+            "Orion compact peer search requires an Orion auto-shard collection",
+        ));
+    }
+
+    for vector_name in vector_names {
+        let vector_params = collection_config
+            .params
+            .vectors
+            .get_params(vector_name)
+            .ok_or_else(|| {
+                CollectionError::bad_request(format!(
+                    "Orion compact peer search vector {vector_name:?} is not configured"
+                ))
+            })?;
+        if vector_params.multivector_config.is_some() {
+            return Err(CollectionError::bad_request(format!(
+                "Orion compact peer search vector {vector_name:?} must be a dense single vector"
+            )));
+        }
+        if vector_params.distance.distance_order() != Order::LargeBetter {
+            return Err(CollectionError::bad_request(format!(
+                "Orion compact peer search vector {vector_name:?} must use a LargeBetter distance"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn specialize_core_search_for_orion_target(
     request: &CoreSearchRequest,
     target: &OrionShardTarget,
-) -> CoreSearchRequest {
+) -> CollectionResult<CoreSearchRequest> {
     let mut specialized = request.clone();
-    specialized.limit = request.limit.saturating_add(request.offset);
+    specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
+        CollectionError::bad_request("Orion lower-search limit + offset overflows usize")
+    })?;
     specialized.offset = 0;
     specialized.hnsw_entry_points = Some(target.entry_points.clone());
     specialized.hnsw_entry_points_by_shard = None;
@@ -74,15 +122,17 @@ fn specialize_core_search_for_orion_target(
     let mut params = specialized.params.unwrap_or_default();
     params.hnsw_ef = Some(target.ef);
     specialized.params = Some(params);
-    specialized
+    Ok(specialized)
 }
 
 fn specialize_core_search_for_simple_kmeans_target(
     request: &CoreSearchRequest,
     target: &SimpleKmeansShardTarget,
-) -> CoreSearchRequest {
+) -> CollectionResult<CoreSearchRequest> {
     let mut specialized = request.clone();
-    specialized.limit = request.limit.saturating_add(request.offset);
+    specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
+        CollectionError::bad_request("Simple KMeans lower-search limit + offset overflows usize")
+    })?;
     specialized.offset = 0;
     // Simple KMeans selects shards only. Lower HNSW starts from its ordinary entry point.
     specialized.hnsw_entry_points = None;
@@ -93,7 +143,7 @@ fn specialize_core_search_for_simple_kmeans_target(
     let mut params = specialized.params.unwrap_or_default();
     params.hnsw_ef = Some(target.ef);
     specialized.params = Some(params);
-    specialized
+    Ok(specialized)
 }
 
 fn remaining_search_timeout(
@@ -161,10 +211,12 @@ pub(crate) fn specialize_search_batch_for_shard(
 fn specialize_core_search_for_shard_major(
     request: &CoreSearchRequest,
     shard_key: &ShardKey,
-) -> CoreSearchRequest {
+) -> CollectionResult<CoreSearchRequest> {
     let mut specialized = request.clone();
 
-    specialized.limit = request.limit.saturating_add(request.offset);
+    specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
+        CollectionError::bad_request("shard-major lower-search limit + offset overflows usize")
+    })?;
     specialized.offset = 0;
 
     if let Some(entry_points) = request
@@ -188,7 +240,7 @@ fn specialize_core_search_for_shard_major(
 
     specialized.hnsw_entry_points_by_shard = None;
     specialized.hnsw_ef_by_shard = None;
-    specialized
+    Ok(specialized)
 }
 
 fn search_dedup_point_id(
@@ -231,6 +283,227 @@ impl PeerShardMajorGroup {
             original_index,
             request,
         )
+    }
+}
+
+struct CompactPeerShardMajorGroup {
+    remote: RemoteShard,
+    original_indices: Vec<usize>,
+    is_payload_required_by_query: Vec<bool>,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    entries: Vec<CoreSearchByShardCompactEntry>,
+}
+
+struct CompactPeerShardMajorRpc {
+    original_indices: Vec<usize>,
+    is_payload_required_by_query: Vec<bool>,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    entries: Vec<CoreSearchByShardCompactEntry>,
+}
+
+impl CompactPeerShardMajorGroup {
+    fn new(remote: RemoteShard) -> Self {
+        Self {
+            remote,
+            original_indices: Vec::new(),
+            is_payload_required_by_query: Vec::new(),
+            query_templates: Vec::new(),
+            entries: Vec::new(),
+        }
+    }
+
+    fn local_query_index(
+        &mut self,
+        collection_id: &str,
+        original_index: usize,
+        request: &CoreSearchRequest,
+    ) -> usize {
+        if let Some(query_index) = self
+            .original_indices
+            .iter()
+            .position(|known_index| *known_index == original_index)
+        {
+            return query_index;
+        }
+
+        let query_index = peer_local_query_index(
+            &mut self.original_indices,
+            &mut self.is_payload_required_by_query,
+            original_index,
+            request,
+        );
+        self.query_templates
+            .push(compact_peer_query_template(collection_id, request));
+        debug_assert_eq!(query_index + 1, self.query_templates.len());
+        query_index
+    }
+}
+
+const COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV: &str =
+    "QDRANT_ORION_PEER_PREMERGE_SHARDS_PER_RPC";
+const COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION: u32 = 1;
+
+fn parse_compact_orion_peer_premerge_shards_per_rpc(value: &str) -> Result<Option<usize>, String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if matches!(normalized.as_str(), "0" | "all" | "unlimited") {
+        return Ok(None);
+    }
+
+    let value = normalized.parse::<usize>().map_err(|_| {
+        format!(
+            "{COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV} must be a positive integer, 0, all, or unlimited"
+        )
+    })?;
+    if value == 0 {
+        return Ok(None);
+    }
+    Ok(Some(value))
+}
+
+fn compact_orion_peer_premerge_shards_per_rpc() -> CollectionResult<Option<usize>> {
+    let value = match std::env::var(COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(CollectionError::service_error(format!(
+                "{COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV} is not valid Unicode"
+            )));
+        }
+    };
+    parse_compact_orion_peer_premerge_shards_per_rpc(&value).map_err(CollectionError::service_error)
+}
+
+fn split_compact_peer_shard_major_rpcs(
+    original_indices: Vec<usize>,
+    is_payload_required_by_query: Vec<bool>,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    entries: Vec<CoreSearchByShardCompactEntry>,
+    shards_per_rpc: Option<usize>,
+) -> CollectionResult<Vec<CompactPeerShardMajorRpc>> {
+    if original_indices.len() != is_payload_required_by_query.len()
+        || original_indices.len() != query_templates.len()
+    {
+        return Err(CollectionError::service_error(format!(
+            "Compact peer-local query metadata lengths disagree: indices={}, payload={}, templates={}",
+            original_indices.len(),
+            is_payload_required_by_query.len(),
+            query_templates.len(),
+        )));
+    }
+
+    let Some(shards_per_rpc) = shards_per_rpc.filter(|value| *value > 0) else {
+        return Ok(vec![CompactPeerShardMajorRpc {
+            original_indices,
+            is_payload_required_by_query,
+            query_templates,
+            entries,
+        }]);
+    };
+
+    let mut entries_by_shard = BTreeMap::<ShardId, Vec<CoreSearchByShardCompactEntry>>::new();
+    for entry in entries {
+        entries_by_shard
+            .entry(entry.shard_id)
+            .or_default()
+            .push(entry);
+    }
+    if entries_by_shard.len() <= shards_per_rpc {
+        return Ok(vec![CompactPeerShardMajorRpc {
+            original_indices,
+            is_payload_required_by_query,
+            query_templates,
+            entries: entries_by_shard.into_values().flatten().collect(),
+        }]);
+    }
+
+    let distinct_shard_count = entries_by_shard.len();
+    let mut rpcs = Vec::with_capacity(distinct_shard_count.div_ceil(shards_per_rpc));
+    let mut current_rpc = CompactPeerShardMajorRpc {
+        original_indices: Vec::new(),
+        is_payload_required_by_query: Vec::new(),
+        query_templates: Vec::new(),
+        entries: Vec::new(),
+    };
+    let mut current_shard_count = 0usize;
+
+    for shard_entries in entries_by_shard.into_values() {
+        if current_shard_count == shards_per_rpc {
+            rpcs.push(current_rpc);
+            current_rpc = CompactPeerShardMajorRpc {
+                original_indices: Vec::new(),
+                is_payload_required_by_query: Vec::new(),
+                query_templates: Vec::new(),
+                entries: Vec::new(),
+            };
+            current_shard_count = 0;
+        }
+
+        for mut entry in shard_entries {
+            let peer_query_index = usize::try_from(entry.query_slot).map_err(|_| {
+                CollectionError::service_error(format!(
+                    "Compact peer-local query slot {} does not fit into usize",
+                    entry.query_slot,
+                ))
+            })?;
+            let Some(&original_index) = original_indices.get(peer_query_index) else {
+                return Err(CollectionError::service_error(format!(
+                    "Compact peer-local query slot {peer_query_index} is outside peer query slot count {}",
+                    original_indices.len(),
+                )));
+            };
+            let Some(&is_payload_required) = is_payload_required_by_query.get(peer_query_index)
+            else {
+                return Err(CollectionError::service_error(format!(
+                    "Compact peer-local payload slot {peer_query_index} is outside peer payload slot count {}",
+                    is_payload_required_by_query.len(),
+                )));
+            };
+            let Some(query_template) = query_templates.get(peer_query_index) else {
+                return Err(CollectionError::service_error(format!(
+                    "Compact peer-local template slot {peer_query_index} is outside peer template slot count {}",
+                    query_templates.len(),
+                )));
+            };
+
+            let chunk_query_index = if let Some(query_index) = current_rpc
+                .original_indices
+                .iter()
+                .position(|known_index| *known_index == original_index)
+            {
+                query_index
+            } else {
+                let query_index = current_rpc.original_indices.len();
+                current_rpc.original_indices.push(original_index);
+                current_rpc
+                    .is_payload_required_by_query
+                    .push(is_payload_required);
+                current_rpc.query_templates.push(query_template.clone());
+                query_index
+            };
+            entry.query_slot = u64::try_from(chunk_query_index).map_err(|_| {
+                CollectionError::service_error(
+                    "Compact peer-local chunk query slot does not fit into u64",
+                )
+            })?;
+            current_rpc.entries.push(entry);
+        }
+        current_shard_count += 1;
+    }
+
+    if !current_rpc.entries.is_empty() {
+        rpcs.push(current_rpc);
+    }
+    Ok(rpcs)
+}
+
+fn compact_peer_query_template(
+    collection_id: &str,
+    request: &CoreSearchRequest,
+) -> CoreSearchByShardQueryTemplate {
+    let search_points = CollectionCoreSearchRequest((collection_id.to_owned(), request)).into();
+    CoreSearchByShardQueryTemplate {
+        search_points: Some(search_points),
+        source_id_dedup_block_size: request.source_id_dedup_block_size,
     }
 }
 
@@ -309,7 +582,101 @@ fn peer_premerge_entry(
     }
 }
 
+fn compact_peer_premerge_entry(
+    local_query_index: usize,
+    shard_id: ShardId,
+    specialized: &CoreSearchRequest,
+) -> CollectionResult<CoreSearchByShardCompactEntry> {
+    let entry_points = specialized
+        .hnsw_entry_points
+        .as_ref()
+        .filter(|entry_points| !entry_points.is_empty())
+        .ok_or_else(|| {
+            CollectionError::service_error(format!(
+                "Orion compact peer-premerge shard {shard_id} has no ordered HNSW entry points"
+            ))
+        })?;
+    let mut seen_entry_points = AHashSet::with_capacity(entry_points.len());
+    if let Some(duplicate) = entry_points
+        .iter()
+        .find(|entry_point| !seen_entry_points.insert(**entry_point))
+    {
+        return Err(CollectionError::service_error(format!(
+            "Orion compact peer-premerge shard {shard_id} contains duplicate ordered HNSW entry point {duplicate}"
+        )));
+    }
+    let hnsw_ef = specialized
+        .params
+        .as_ref()
+        .and_then(|params| params.hnsw_ef)
+        .filter(|hnsw_ef| *hnsw_ef > 0)
+        .ok_or_else(|| {
+            CollectionError::service_error(format!(
+                "Orion compact peer-premerge shard {shard_id} has no positive per-shard HNSW EF"
+            ))
+        })?;
+
+    Ok(CoreSearchByShardCompactEntry {
+        query_slot: local_query_index as u64,
+        shard_id,
+        hnsw_entry_points: entry_points.iter().cloned().map(Into::into).collect(),
+        hnsw_ef: hnsw_ef as u64,
+    })
+}
+
 impl Collection {
+    /// Validate the worker-side collection contract for Orion's compact internal peer RPC.
+    ///
+    /// The controller fast path already has the same safety gate, but the worker revalidates it so
+    /// a malformed or mixed-version controller cannot make the peer merge SmallBetter results as
+    /// LargeBetter or run the compact Orion protocol against a different auto-shard policy.
+    pub async fn validate_orion_compact_peer_queries(
+        &self,
+        requests: &[CoreSearchRequest],
+    ) -> CollectionResult<()> {
+        if requests.is_empty() {
+            return Err(CollectionError::bad_request(
+                "Orion compact peer search has no query templates",
+            ));
+        }
+        let router = self.orion_router.as_ref().ok_or_else(|| {
+            CollectionError::service_error(
+                "Orion compact peer search requires a loaded Orion routing artifact",
+            )
+        })?;
+
+        let mut vector_names = AHashSet::new();
+        for request in requests {
+            let QueryEnum::Nearest(named_query) = &request.query else {
+                return Err(CollectionError::bad_request(
+                    "Orion compact peer search requires nearest-neighbor query templates",
+                ));
+            };
+            let VectorInternal::Dense(vector) = &named_query.query else {
+                return Err(CollectionError::bad_request(
+                    "Orion compact peer search requires dense query templates",
+                ));
+            };
+            let vector_name = request.query.get_vector_name();
+            if vector_name != router.vector_name() {
+                return Err(CollectionError::bad_request(format!(
+                    "Orion compact peer search vector {vector_name:?} does not match routing vector {:?}",
+                    router.vector_name(),
+                )));
+            }
+            router.validate_query(vector).map_err(|err| {
+                CollectionError::bad_request(format!(
+                    "Orion compact peer search query does not match the routing schema: {err}"
+                ))
+            })?;
+            vector_names.insert(vector_name.to_owned());
+        }
+
+        let vector_names = vector_names.into_iter().collect::<Vec<_>>();
+        let collection_config = self.collection_config.read().await;
+        validate_orion_compact_peer_query_vectors_config(&collection_config, &vector_names)
+    }
+
     #[cfg(feature = "testing")]
     pub async fn search(
         &self,
@@ -363,11 +730,24 @@ impl Collection {
 
         let metadata_required = is_payload_required || with_vectors;
 
-        let sum_limits: usize = request.searches.iter().map(|s| s.limit).sum();
-        let sum_offsets: usize = request.searches.iter().map(|s| s.offset).sum();
+        let sum_limits = request
+            .searches
+            .iter()
+            .try_fold(0usize, |sum, search| sum.checked_add(search.limit))
+            .ok_or_else(|| CollectionError::bad_request("batch search limits overflow usize"))?;
+        let sum_offsets = request
+            .searches
+            .iter()
+            .try_fold(0usize, |sum, search| sum.checked_add(search.offset))
+            .ok_or_else(|| CollectionError::bad_request("batch search offsets overflow usize"))?;
 
         // Number of records we need to retrieve to fill the search result.
-        let require_transfers = self.shards_holder.read().await.len() * (sum_limits + sum_offsets);
+        let require_transfers = self
+            .shards_holder
+            .read()
+            .await
+            .len()
+            .saturating_mul(sum_limits.saturating_add(sum_offsets));
         // Actually used number of records.
         let used_transfers = sum_limits;
 
@@ -491,7 +871,7 @@ impl Collection {
                         .entry(peer_id)
                         .or_insert_with(|| PeerShardMajorGroup::new(remote));
                     let local_query_index = group.local_query_index(original_index, request);
-                    let specialized = specialize_core_search_for_shard_major(request, shard_key);
+                    let specialized = specialize_core_search_for_shard_major(request, shard_key)?;
                     group.entries.push(peer_premerge_entry(
                         &self.id,
                         local_query_index,
@@ -570,6 +950,82 @@ impl Collection {
             .await
     }
 
+    async fn execute_peer_shard_major_premerge_compact(
+        &self,
+        peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup>,
+        original_requests: Arc<CoreSearchRequestBatch>,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let processed_timeout = RemoteShard::process_read_timeout(timeout, "search")?;
+        let shards_per_rpc = compact_orion_peer_premerge_shards_per_rpc()?;
+        let mut peer_rpcs = Vec::new();
+        for group in peer_groups.into_values() {
+            let CompactPeerShardMajorGroup {
+                remote,
+                original_indices,
+                is_payload_required_by_query,
+                query_templates,
+                entries,
+            } = group;
+            let rpcs = split_compact_peer_shard_major_rpcs(
+                original_indices,
+                is_payload_required_by_query,
+                query_templates,
+                entries,
+                shards_per_rpc,
+            )?;
+            peer_rpcs.extend(rpcs.into_iter().map(|rpc| (remote.clone(), rpc)));
+        }
+
+        let peer_searches = peer_rpcs.into_iter().map(|(remote, rpc)| {
+            let collection_name = self.id.clone();
+            let hw_measurement_acc = hw_measurement_acc.clone();
+            async move {
+                let original_indices = rpc.original_indices;
+                let is_payload_required_by_query = rpc.is_payload_required_by_query;
+                let request = CoreSearchBatchByShardCompactInternal {
+                    collection_name,
+                    query_templates: rpc.query_templates,
+                    searches: rpc.entries,
+                    timeout: processed_timeout.map(|timeout| timeout.as_secs()),
+                    wire_version: COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION,
+                };
+                let rows = remote
+                    .core_search_batch_by_shard_compact(
+                        request,
+                        processed_timeout,
+                        is_payload_required_by_query,
+                        hw_measurement_acc,
+                    )
+                    .await?;
+
+                if rows.len() != original_indices.len() {
+                    return Err(CollectionError::service_error(format!(
+                        "Compact peer-local shard-major search returned {} rows for {} query slots",
+                        rows.len(),
+                        original_indices.len(),
+                    )));
+                }
+
+                Ok::<_, CollectionError>((original_indices, rows))
+            }
+        });
+
+        let peer_results = future::try_join_all(peer_searches).await?;
+        let mut all_peer_rows = Vec::with_capacity(peer_results.len());
+        for (original_indices, rows) in peer_results {
+            let mut peer_rows = vec![Vec::new(); original_requests.searches.len()];
+            for (original_index, row) in original_indices.into_iter().zip(rows) {
+                peer_rows[original_index] = row;
+            }
+            all_peer_rows.push(peer_rows);
+        }
+
+        self.merge_from_shards(all_peer_rows, original_requests, true)
+            .await
+    }
+
     /// Batch Orion's numeric auto-shard searches by the worker peer that owns them.
     ///
     /// The fast path deliberately has a narrow safety envelope. It is used only for an RF=1
@@ -614,7 +1070,7 @@ impl Collection {
             return Ok(None);
         }
 
-        let mut peer_groups: BTreeMap<PeerId, PeerShardMajorGroup> = BTreeMap::new();
+        let mut peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup> = BTreeMap::new();
         {
             let shard_holder = self.shards_holder.read().await;
             for (&shard_id, searches) in searches_by_shard {
@@ -643,7 +1099,7 @@ impl Collection {
 
                 let group = peer_groups
                     .entry(peer_id)
-                    .or_insert_with(|| PeerShardMajorGroup::new(remote));
+                    .or_insert_with(|| CompactPeerShardMajorGroup::new(remote));
                 for (original_index, specialized) in searches {
                     let Some(original) = original_requests.searches.get(*original_index) else {
                         return Err(CollectionError::service_error(format!(
@@ -651,14 +1107,13 @@ impl Collection {
                             original_requests.searches.len(),
                         )));
                     };
-                    let local_query_index = group.local_query_index(*original_index, original);
-                    group.entries.push(peer_premerge_entry(
-                        &self.id,
+                    let local_query_index =
+                        group.local_query_index(&self.id, *original_index, original);
+                    group.entries.push(compact_peer_premerge_entry(
                         local_query_index,
                         shard_id,
                         specialized,
-                        original,
-                    ));
+                    )?);
                 }
             }
         }
@@ -673,7 +1128,7 @@ impl Collection {
             "Orion numeric peer-premerge topology check",
         )?;
 
-        self.execute_peer_shard_major_premerge(
+        self.execute_peer_shard_major_premerge_compact(
             peer_groups,
             original_requests,
             peer_timeout,
@@ -822,8 +1277,10 @@ impl Collection {
 
     /// Execute a native Orion route through ordinary numeric shard replica sets.
     ///
-    /// Returning `Ok(None)` is an intentional, request-wide fallback to Qdrant's normal
-    /// all-shards behavior. We never execute a partial Orion route.
+    /// Returning `Ok(None)` is reserved for requests that are not eligible for native Orion
+    /// routing. Once an eligible batch enters Orion, every routing or placement failure is
+    /// fail-closed; silently changing that batch into an all-shards search would change the
+    /// configured algorithm and contaminate benchmark semantics.
     async fn try_orion_core_search_batch(
         &self,
         request: Arc<CoreSearchRequestBatch>,
@@ -895,29 +1352,24 @@ impl Collection {
                 ))
             })?;
             for (query_index, route_result) in routed_query_chunk {
-                let targets = match route_result {
-                    Ok(targets) if !targets.is_empty() => targets,
-                    Ok(_) => {
-                        log::warn!(
-                            "Orion routing generation {} returned no shards for collection {}; falling back to all shards for the batch",
-                            router.generation(),
-                            self.id,
-                        );
-                        return Ok(None);
-                    }
-                    Err(err) => {
-                        log::warn!(
-                            "Orion routing generation {} failed for collection {}: {err}; falling back to all shards for the batch",
-                            router.generation(),
-                            self.id,
-                        );
-                        return Ok(None);
-                    }
-                };
+                let targets = route_result.map_err(|err| {
+                    CollectionError::service_error(format!(
+                        "Orion routing generation {} failed for collection {}: {err}; refusing a silent all-shards fallback",
+                        router.generation(),
+                        self.id,
+                    ))
+                })?;
+                if targets.is_empty() {
+                    return Err(CollectionError::service_error(format!(
+                        "Orion routing generation {} returned no shards for collection {}; refusing a silent all-shards fallback",
+                        router.generation(),
+                        self.id,
+                    )));
+                }
 
                 let original = &request.searches[query_index];
                 for target in targets {
-                    let specialized = specialize_core_search_for_orion_target(original, &target);
+                    let specialized = specialize_core_search_for_orion_target(original, &target)?;
                     searches_by_shard
                         .entry(target.shard_id)
                         .or_default()
@@ -927,7 +1379,11 @@ impl Collection {
         }
 
         if searches_by_shard.is_empty() {
-            return Ok(None);
+            return Err(CollectionError::service_error(format!(
+                "Orion routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
+                router.generation(),
+                self.id,
+            )));
         }
 
         let lower_timeout = remaining_search_timeout(
@@ -957,12 +1413,11 @@ impl Collection {
                 .copied()
                 .find(|shard_id| shard_holder.get_shard(*shard_id).is_none())
             {
-                log::warn!(
-                    "Orion routing generation {} selected missing shard {missing_shard} for collection {}; falling back to all shards for the batch",
+                return Err(CollectionError::service_error(format!(
+                    "Orion routing generation {} selected missing shard {missing_shard} for collection {}; refusing a silent all-shards fallback",
                     router.generation(),
                     self.id,
-                );
-                return Ok(None);
+                )));
             }
 
             let shard_searches = searches_by_shard.into_iter().map(|(shard_id, searches)| {
@@ -1012,8 +1467,9 @@ impl Collection {
 
     /// Execute a static Simple KMeans nprobe route through ordinary numeric shard replica sets.
     ///
-    /// Eligibility and failures are batch-wide: any unsupported request or invalid route falls
-    /// back to Qdrant's normal all-shards path, never to a partial centroid route.
+    /// Eligibility is batch-wide: unsupported requests use Qdrant's normal path before routing.
+    /// Once an eligible batch enters Simple KMeans, invalid routes fail closed rather than
+    /// silently changing the configured baseline into an all-shards search.
     async fn try_simple_kmeans_core_search_batch(
         &self,
         request: Arc<CoreSearchRequestBatch>,
@@ -1084,30 +1540,25 @@ impl Collection {
                 ))
             })?;
             for (query_index, route_result) in routed_query_chunk {
-                let targets = match route_result {
-                    Ok(targets) if !targets.is_empty() => targets,
-                    Ok(_) => {
-                        log::warn!(
-                            "Simple KMeans routing generation {} returned no shards for collection {}; falling back to all shards for the batch",
-                            router.generation(),
-                            self.id,
-                        );
-                        return Ok(None);
-                    }
-                    Err(err) => {
-                        log::warn!(
-                            "Simple KMeans routing generation {} failed for collection {}: {err}; falling back to all shards for the batch",
-                            router.generation(),
-                            self.id,
-                        );
-                        return Ok(None);
-                    }
-                };
+                let targets = route_result.map_err(|err| {
+                    CollectionError::service_error(format!(
+                        "Simple KMeans routing generation {} failed for collection {}: {err}; refusing a silent all-shards fallback",
+                        router.generation(),
+                        self.id,
+                    ))
+                })?;
+                if targets.is_empty() {
+                    return Err(CollectionError::service_error(format!(
+                        "Simple KMeans routing generation {} returned no shards for collection {}; refusing a silent all-shards fallback",
+                        router.generation(),
+                        self.id,
+                    )));
+                }
 
                 let original = &request.searches[query_index];
                 for target in targets {
                     let specialized =
-                        specialize_core_search_for_simple_kmeans_target(original, &target);
+                        specialize_core_search_for_simple_kmeans_target(original, &target)?;
                     searches_by_shard
                         .entry(target.shard_id)
                         .or_default()
@@ -1117,7 +1568,11 @@ impl Collection {
         }
 
         if searches_by_shard.is_empty() {
-            return Ok(None);
+            return Err(CollectionError::service_error(format!(
+                "Simple KMeans routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
+                router.generation(),
+                self.id,
+            )));
         }
         let lower_timeout = remaining_search_timeout(
             timeout,
@@ -1133,12 +1588,11 @@ impl Collection {
                 .copied()
                 .find(|shard_id| shard_holder.get_shard(*shard_id).is_none())
             {
-                log::warn!(
-                    "Simple KMeans routing generation {} selected missing shard {missing_shard} for collection {}; falling back to all shards for the batch",
+                return Err(CollectionError::service_error(format!(
+                    "Simple KMeans routing generation {} selected missing shard {missing_shard} for collection {}; refusing a silent all-shards fallback",
                     router.generation(),
                     self.id,
-                );
-                return Ok(None);
+                )));
             }
 
             let shard_searches = searches_by_shard.into_iter().map(|(shard_id, searches)| {
@@ -1275,27 +1729,29 @@ impl Collection {
                 .iter_mut()
                 .map(|res| res.get_mut(batch_index).map_or(Vec::new(), mem::take));
 
-            let merged_iter = match order {
-                Order::LargeBetter => Either::Left(results_from_shards.kmerge_by(|a, b| a > b)),
-                Order::SmallBetter => Either::Right(results_from_shards.kmerge_by(|a, b| a < b)),
-            }
-            .filter(|point| {
-                seen_ids.insert(search_dedup_point_id(
-                    point.id,
-                    request.source_id_dedup_block_size,
-                ))
-            });
+            let merged_iter = results_from_shards
+                .kmerge_by(|a, b| match order {
+                    Order::LargeBetter => ScoredPointTies(a) > ScoredPointTies(b),
+                    Order::SmallBetter => ScoredPointTies(a) < ScoredPointTies(b),
+                })
+                .filter(|point| {
+                    seen_ids.insert(search_dedup_point_id(
+                        point.id,
+                        request.source_id_dedup_block_size,
+                    ))
+                });
 
-            // Skip `offset` only for client requests
-            // to avoid applying `offset` twice in distributed mode.
-            let top_res = if is_client_request && request.offset > 0 {
-                merged_iter
-                    .skip(request.offset)
-                    .take(request.limit)
-                    .collect()
+            // Skip `offset` only for client requests to avoid applying it twice in distributed
+            // mode. Internal merges retain the full `limit + offset` window for the coordinator.
+            let (skip, take) = if is_client_request {
+                (request.offset, request.limit)
             } else {
-                merged_iter.take(request.offset + request.limit).collect()
+                let window = request.limit.checked_add(request.offset).ok_or_else(|| {
+                    CollectionError::bad_request("search merge limit + offset overflows usize")
+                })?;
+                (0, window)
             };
+            let top_res = merged_iter.skip(skip).take(take).collect();
 
             top_results.push(top_res);
 
@@ -1328,7 +1784,9 @@ impl Collection {
 mod tests {
     use std::collections::HashMap;
 
-    use segment::data_types::vectors::{MultiDenseVectorInternal, NamedQuery, VectorInternal};
+    use segment::data_types::vectors::{
+        DEFAULT_VECTOR_NAME, MultiDenseVectorInternal, NamedQuery, VectorInternal,
+    };
     use segment::types::{
         Filter, PointIdType, SearchParams, ShardKey, WithPayloadInterface, WithVector,
     };
@@ -1358,6 +1816,32 @@ mod tests {
 
     fn default_dense_request() -> CoreSearchRequest {
         core_search_request(vec![1.0, 2.0, 3.0, 4.0].into())
+    }
+
+    #[test]
+    fn compact_peer_collection_contract_requires_orion_and_large_better() {
+        let mut config = crate::tests::fixtures::create_collection_config();
+        let vector_names = vec![DEFAULT_VECTOR_NAME.to_owned()];
+
+        let wrong_policy =
+            validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap_err();
+        assert!(wrong_policy.to_string().contains("Orion auto-shard"));
+
+        config.auto_shard_policy = Some(AutoShardPolicy::Orion {
+            generation: 1,
+            artifact_sha256: "0".repeat(64),
+        });
+        validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap();
+
+        let crate::operations::types::VectorsConfig::Single(vector_params) =
+            &mut config.params.vectors
+        else {
+            panic!("fixture must use a single default vector");
+        };
+        vector_params.distance = segment::types::Distance::Euclid;
+        let small_better =
+            validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap_err();
+        assert!(small_better.to_string().contains("LargeBetter"));
     }
 
     #[test]
@@ -1474,7 +1958,7 @@ mod tests {
             ],
             ef: 76,
         };
-        let specialized = specialize_core_search_for_orion_target(&request, &target);
+        let specialized = specialize_core_search_for_orion_target(&request, &target).unwrap();
 
         assert_eq!(specialized.query, request.query);
         assert_eq!(specialized.filter, request.filter);
@@ -1513,7 +1997,8 @@ mod tests {
             shard_id: 2,
             ef: 80,
         };
-        let specialized = specialize_core_search_for_simple_kmeans_target(&request, &target);
+        let specialized =
+            specialize_core_search_for_simple_kmeans_target(&request, &target).unwrap();
         assert_eq!(specialized.query, request.query);
         assert_eq!(specialized.limit, 17);
         assert_eq!(specialized.offset, 0);
@@ -1710,7 +2195,7 @@ mod tests {
             ],
             ef: 76,
         };
-        let specialized = specialize_core_search_for_orion_target(&original, &target);
+        let specialized = specialize_core_search_for_orion_target(&original, &target).unwrap();
 
         let entry = peer_premerge_entry("orion", 3, target.shard_id, &specialized, &original);
         assert_eq!(entry.query_index, 3);
@@ -1724,6 +2209,239 @@ mod tests {
         assert_eq!(roundtrip.offset, 0);
         assert_eq!(roundtrip.hnsw_entry_points, Some(target.entry_points));
         assert_eq!(roundtrip.params.and_then(|params| params.hnsw_ef), Some(76),);
+    }
+
+    #[test]
+    fn compact_peer_wire_separates_one_query_template_from_ordered_shard_overrides() {
+        let mut original = default_dense_request();
+        original.limit = 10;
+        original.offset = 7;
+        original.source_id_dedup_block_size = Some(1_000_001);
+        original.with_payload = Some(WithPayloadInterface::Bool(true));
+        let target = OrionShardTarget {
+            shard_id: 9,
+            entry_points: vec![
+                PointIdType::from(31),
+                PointIdType::from(29),
+                PointIdType::from(11),
+            ],
+            ef: 76,
+        };
+        let specialized = specialize_core_search_for_orion_target(&original, &target).unwrap();
+
+        let template = compact_peer_query_template("orion", &original);
+        assert_eq!(
+            template.source_id_dedup_block_size,
+            original.source_id_dedup_block_size
+        );
+        let roundtrip = CoreSearchRequest::try_from(template.search_points.unwrap()).unwrap();
+        assert_eq!(
+            roundtrip.query.get_vector_name(),
+            original.query.get_vector_name()
+        );
+        let QueryEnum::Nearest(roundtrip_query) = &roundtrip.query else {
+            panic!("compact query template changed nearest-query kind");
+        };
+        let QueryEnum::Nearest(original_query) = &original.query else {
+            panic!("test request must be nearest-query kind");
+        };
+        assert_eq!(roundtrip_query.query, original_query.query);
+        assert_eq!(roundtrip.limit, 10);
+        assert_eq!(roundtrip.offset, 7);
+        assert!(roundtrip.hnsw_entry_points.is_none());
+        assert_eq!(roundtrip.with_payload, original.with_payload);
+
+        let entry = compact_peer_premerge_entry(3, target.shard_id, &specialized).unwrap();
+        assert_eq!(entry.query_slot, 3);
+        assert_eq!(entry.shard_id, target.shard_id);
+        assert_eq!(entry.hnsw_ef, 76);
+        assert_eq!(
+            entry
+                .hnsw_entry_points
+                .into_iter()
+                .map(PointIdType::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            target.entry_points
+        );
+    }
+
+    #[test]
+    fn compact_peer_query_templates_are_dense_and_not_repeated_per_shard() {
+        let mut original_indices = Vec::new();
+        let mut payload_required = Vec::new();
+        let mut templates = Vec::new();
+        let request = default_dense_request();
+
+        for original_index in [5, 1, 5, 9, 1] {
+            let before = original_indices.len();
+            let query_index = peer_local_query_index(
+                &mut original_indices,
+                &mut payload_required,
+                original_index,
+                &request,
+            );
+            if original_indices.len() != before {
+                templates.push(compact_peer_query_template("orion", &request));
+            }
+            assert!(query_index < templates.len());
+        }
+
+        assert_eq!(original_indices, vec![5, 1, 9]);
+        assert_eq!(templates.len(), 3);
+        assert_eq!(payload_required, vec![false, false, false]);
+    }
+
+    #[test]
+    fn compact_peer_chunk_config_is_bounded_and_invalid_values_fail_closed() {
+        assert_eq!(
+            parse_compact_orion_peer_premerge_shards_per_rpc("1"),
+            Ok(Some(1))
+        );
+        assert_eq!(
+            parse_compact_orion_peer_premerge_shards_per_rpc(" 4 "),
+            Ok(Some(4))
+        );
+        assert_eq!(
+            parse_compact_orion_peer_premerge_shards_per_rpc("0"),
+            Ok(None)
+        );
+        assert_eq!(
+            parse_compact_orion_peer_premerge_shards_per_rpc("00"),
+            Ok(None)
+        );
+        assert_eq!(
+            parse_compact_orion_peer_premerge_shards_per_rpc("ALL"),
+            Ok(None)
+        );
+        assert!(parse_compact_orion_peer_premerge_shards_per_rpc("").is_err());
+        assert!(parse_compact_orion_peer_premerge_shards_per_rpc("four").is_err());
+    }
+
+    #[test]
+    fn compact_peer_chunks_keep_shards_whole_and_remap_dense_query_templates() {
+        let requests = [
+            default_dense_request(),
+            default_dense_request(),
+            default_dense_request(),
+        ];
+        let original_indices = vec![5, 1, 9];
+        let payload_required = vec![false, true, false];
+        let templates = requests
+            .iter()
+            .map(|request| compact_peer_query_template("orion", request))
+            .collect::<Vec<_>>();
+        let entries = vec![
+            CoreSearchByShardCompactEntry {
+                query_slot: 0,
+                shard_id: 10,
+                hnsw_entry_points: vec![PointIdType::from(31).into()],
+                hnsw_ef: 48,
+            },
+            CoreSearchByShardCompactEntry {
+                query_slot: 2,
+                shard_id: 12,
+                hnsw_entry_points: vec![PointIdType::from(29).into()],
+                hnsw_ef: 76,
+            },
+            CoreSearchByShardCompactEntry {
+                query_slot: 2,
+                shard_id: 10,
+                hnsw_entry_points: vec![PointIdType::from(17).into(), PointIdType::from(11).into()],
+                hnsw_ef: 64,
+            },
+            CoreSearchByShardCompactEntry {
+                query_slot: 1,
+                shard_id: 11,
+                hnsw_entry_points: vec![PointIdType::from(7).into()],
+                hnsw_ef: 56,
+            },
+            CoreSearchByShardCompactEntry {
+                query_slot: 0,
+                shard_id: 13,
+                hnsw_entry_points: vec![PointIdType::from(5).into()],
+                hnsw_ef: 52,
+            },
+        ];
+
+        let rpcs = split_compact_peer_shard_major_rpcs(
+            original_indices,
+            payload_required,
+            templates,
+            entries,
+            Some(2),
+        )
+        .unwrap();
+
+        assert_eq!(rpcs.len(), 2);
+        assert_eq!(rpcs[0].original_indices, vec![5, 9, 1]);
+        assert_eq!(rpcs[0].query_templates.len(), 3);
+        assert_eq!(
+            rpcs[0].is_payload_required_by_query,
+            vec![false, false, true]
+        );
+        assert_eq!(rpcs[1].original_indices, vec![9, 5]);
+        assert_eq!(rpcs[1].query_templates.len(), 2);
+        assert_eq!(rpcs[1].is_payload_required_by_query, vec![false, false]);
+
+        let shard_and_query_slots = rpcs
+            .iter()
+            .map(|rpc| {
+                rpc.entries
+                    .iter()
+                    .map(|entry| (entry.shard_id, entry.query_slot))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shard_and_query_slots,
+            vec![vec![(10, 0), (10, 1), (11, 2)], vec![(12, 0), (13, 1)]]
+        );
+        assert_eq!(rpcs[0].entries[1].hnsw_ef, 64);
+        assert_eq!(
+            rpcs[0].entries[1]
+                .hnsw_entry_points
+                .iter()
+                .cloned()
+                .map(PointIdType::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            vec![PointIdType::from(17), PointIdType::from(11)]
+        );
+
+        let mut shard_to_rpc = HashMap::new();
+        for (rpc_index, rpc) in rpcs.iter().enumerate() {
+            let shards = rpc
+                .entries
+                .iter()
+                .map(|entry| entry.shard_id)
+                .collect::<AHashSet<_>>();
+            assert!(shards.len() <= 2);
+            for shard_id in shards {
+                assert!(shard_to_rpc.insert(shard_id, rpc_index).is_none());
+            }
+        }
+        assert_eq!(shard_to_rpc.len(), 4);
+    }
+
+    #[test]
+    fn compact_peer_chunking_rejects_query_metadata_mismatch_before_rpc() {
+        let request = default_dense_request();
+        let error = split_compact_peer_shard_major_rpcs(
+            vec![3],
+            Vec::new(),
+            vec![compact_peer_query_template("orion", &request)],
+            vec![CoreSearchByShardCompactEntry {
+                query_slot: 0,
+                shard_id: 7,
+                hnsw_entry_points: vec![PointIdType::from(11).into()],
+                hnsw_ef: 48,
+            }],
+            Some(1),
+        )
+        .err()
+        .unwrap();
+        assert!(error.to_string().contains("metadata lengths disagree"));
     }
 
     #[test]

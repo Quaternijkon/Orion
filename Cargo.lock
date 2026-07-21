@@ -5841,6 +5841,7 @@ dependencies = [
  "procfs",
  "prometheus",
  "prost 0.11.9",
+ "prost 0.12.6",
  "pyroscope",
  "raft",
  "raft-proto",

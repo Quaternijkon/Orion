@@ -29,12 +29,57 @@ RESOURCE_PREFIX = "orion-dist-"
 EXPECTED_COMMIT = "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352"
 PEER_PREMERGE_DISABLE_ENV = "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE"
 PEER_PREMERGE_MODE_LABEL = "orion.distributed.peer_premerge"
+PEER_PREMERGE_SHARDS_PER_RPC_ENV = "QDRANT_ORION_PEER_PREMERGE_SHARDS_PER_RPC"
+PEER_PREMERGE_SHARDS_PER_RPC_LABEL = (
+    "orion.distributed.peer_premerge_shards_per_rpc"
+)
 CONTROLLER_FINGERPRINT_LABEL = "orion.distributed.controller_fingerprint"
 NOFILE_LABEL = "orion.distributed.nofile"
 CONTAINER_NOFILE_SOFT = 65536
 CONTAINER_NOFILE_HARD = 65536
 ORION_ARTIFACT_FORMAT_VERSION = 1
 SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
+
+
+def normalize_peer_premerge_shards_per_rpc(value: Any) -> str:
+    """Return the canonical controller chunk setting: ``all`` or a decimal N."""
+    if value is None:
+        return "all"
+    if isinstance(value, bool):
+        raise ValueError(
+            "peer-premerge shards-per-rpc must be all, 0, or a positive integer"
+        )
+    normalized = str(value).strip().lower()
+    if normalized == "all":
+        return "all"
+    if not re.fullmatch(r"[0-9]+", normalized):
+        raise ValueError(
+            "peer-premerge shards-per-rpc must be all, 0, or a positive integer"
+        )
+    parsed = int(normalized, 10)
+    if parsed == 0:
+        return "all"
+    if parsed > (2**63 - 1):
+        raise ValueError("peer-premerge shards-per-rpc is too large for the runtime")
+    return str(parsed)
+
+
+def add_peer_premerge_chunk_argument(
+    parser: argparse.ArgumentParser,
+    *,
+    option: str = "--peer-premerge-shards-per-rpc",
+    default: str | None = "all",
+) -> None:
+    parser.add_argument(
+        option,
+        type=normalize_peer_premerge_shards_per_rpc,
+        default=default,
+        metavar="{all|0|N}",
+        help=(
+            "Controller-only maximum routed logical shards per peer-premerge RPC. "
+            "all and 0 preserve one RPC per worker; N enables whole-shard chunking."
+        ),
+    )
 
 
 def add_install_artifact_parser(
@@ -93,6 +138,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable native shard-major peer pre-merge on the controller for an A/B run.",
     )
+    add_peer_premerge_chunk_argument(deploy)
 
     status = subparsers.add_parser(
         "status", help="Inspect containers, endpoints, peers, and placement."
@@ -102,6 +148,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate/report status against a controller with peer pre-merge disabled.",
     )
+    add_peer_premerge_chunk_argument(status)
     subparsers.add_parser("down", help="Stop this run's containers and preserve storage.")
     clean = subparsers.add_parser("clean", help="Delete this run's containers and local storage.")
     clean.add_argument(
@@ -115,6 +162,25 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Record/validate a controller with peer pre-merge disabled.",
     )
+    add_peer_premerge_chunk_argument(manifest)
+    set_peer_premerge = subparsers.add_parser(
+        "set-peer-premerge",
+        help=(
+            "Safely recreate only this run's controller to change native "
+            "shard-major peer pre-merge mode and/or RPC shard chunking."
+        ),
+    )
+    set_peer_premerge.add_argument(
+        "--mode",
+        choices=("enabled", "disabled"),
+        default=None,
+    )
+    add_peer_premerge_chunk_argument(
+        set_peer_premerge,
+        option="--shards-per-rpc",
+        default=None,
+    )
+    set_peer_premerge.add_argument("--wait-timeout", type=float, default=180.0)
     add_install_artifact_parser(
         subparsers,
         "install-orion-artifact",
@@ -225,11 +291,38 @@ def expected_peer_premerge_mode(
     return "disabled" if disable_peer_premerge else "enabled"
 
 
+def validate_peer_premerge_mode(mode: str) -> str:
+    normalized = str(mode).strip().lower()
+    if normalized not in {"enabled", "disabled"}:
+        raise ValueError(
+            "peer-premerge mode must be exactly 'enabled' or 'disabled'"
+        )
+    return normalized
+
+
+def peer_premerge_disabled(mode: str) -> bool:
+    return validate_peer_premerge_mode(mode) == "disabled"
+
+
+def expected_peer_premerge_shards_per_rpc(
+    node: dict[str, Any], shards_per_rpc: Any = "all"
+) -> str:
+    if str(node.get("role")) != "controller":
+        return "not_applicable"
+    return normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
+
+
+def peer_premerge_shards_per_rpc_env_value(shards_per_rpc: Any) -> str | None:
+    normalized = normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
+    return None if normalized == "all" else normalized
+
+
 def controller_config_fingerprint(
     node: dict[str, Any],
     run_id: str,
     image_id: str,
     disable_peer_premerge: bool = False,
+    peer_premerge_shards_per_rpc: Any = "all",
 ) -> str:
     """Fingerprint controller settings that must not drift across an A/B run."""
     if str(node.get("role")) != "controller":
@@ -247,6 +340,11 @@ def controller_config_fingerprint(
             "hard": CONTAINER_NOFILE_HARD,
         },
     }
+    normalized_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        peer_premerge_shards_per_rpc
+    )
+    if normalized_shards_per_rpc != "all":
+        payload["peer_premerge_shards_per_rpc"] = normalized_shards_per_rpc
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
@@ -294,19 +392,73 @@ def inspected_peer_premerge_mode(
     return str(label_mode) if label_mode in {"enabled", "disabled"} else env_mode
 
 
+def inspected_peer_premerge_shards_per_rpc(
+    inspected: dict[str, Any] | None, node: dict[str, Any]
+) -> str | None:
+    if str(node.get("role")) != "controller":
+        return "not_applicable"
+    if not inspected:
+        return None
+    config = inspected.get("Config") or {}
+    labels = config.get("Labels") or {}
+    label_value = labels.get(PEER_PREMERGE_SHARDS_PER_RPC_LABEL)
+    env_values = [
+        str(item).partition("=")[2]
+        for item in config.get("Env") or []
+        if str(item).partition("=")[:2]
+        == (PEER_PREMERGE_SHARDS_PER_RPC_ENV, "=")
+    ]
+    if label_value is None and not env_values:
+        return "all"
+    if label_value is None or len(env_values) != 1:
+        return "inconsistent"
+    try:
+        label_normalized = normalize_peer_premerge_shards_per_rpc(label_value)
+        env_normalized = normalize_peer_premerge_shards_per_rpc(env_values[0])
+    except ValueError:
+        return "inconsistent"
+    if (
+        label_normalized == "all"
+        or env_normalized == "all"
+        or label_normalized != env_normalized
+    ):
+        return "inconsistent"
+    return label_normalized
+
+
 def peer_premerge_summary(
     disable_peer_premerge: bool,
     current_mode: str | None = None,
+    requested_shards_per_rpc: Any = "all",
+    current_shards_per_rpc: str | None = "all",
 ) -> dict[str, Any]:
     requested_mode = "disabled" if disable_peer_premerge else "enabled"
+    requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        requested_shards_per_rpc
+    )
+    mode_matches = (
+        current_mode == requested_mode if current_mode is not None else None
+    )
+    shards_match = (
+        current_shards_per_rpc == requested_shards_per_rpc
+        if current_shards_per_rpc is not None
+        else None
+    )
     return {
         "scope": "controller",
         "requested_mode": requested_mode,
         "current_mode": current_mode,
+        "mode_matches_requested": mode_matches,
+        "requested_shards_per_rpc": requested_shards_per_rpc,
+        "current_shards_per_rpc": current_shards_per_rpc,
+        "shards_per_rpc_matches_requested": shards_match,
         "matches_requested": (
-            current_mode == requested_mode if current_mode is not None else None
+            mode_matches and shards_match
+            if mode_matches is not None and shards_match is not None
+            else None
         ),
         "disable_environment_variable": PEER_PREMERGE_DISABLE_ENV,
+        "shards_per_rpc_environment_variable": PEER_PREMERGE_SHARDS_PER_RPC_ENV,
     }
 
 
@@ -643,6 +795,7 @@ def docker_run_command(
     image_tag: str,
     image_id: str,
     disable_peer_premerge: bool = False,
+    peer_premerge_shards_per_rpc: Any = "all",
 ) -> list[str]:
     role = str(node["role"])
     name = container_name(run_id, role)
@@ -675,16 +828,32 @@ def docker_run_command(
         f"{NOFILE_LABEL}={expected_nofile_label()}",
     ]
     if role == "controller":
+        normalized_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+            peer_premerge_shards_per_rpc
+        )
+        controller_fingerprint = controller_config_fingerprint(
+            node,
+            run_id,
+            image_id,
+            disable_peer_premerge,
+            normalized_shards_per_rpc,
+        )
         command.extend(
             [
                 "--label",
                 f"{PEER_PREMERGE_MODE_LABEL}="
                 f"{expected_peer_premerge_mode(node, disable_peer_premerge)}",
                 "--label",
-                f"{CONTROLLER_FINGERPRINT_LABEL}="
-                f"{controller_config_fingerprint(node, run_id, image_id, disable_peer_premerge)}",
+                f"{CONTROLLER_FINGERPRINT_LABEL}={controller_fingerprint}",
             ]
         )
+        if normalized_shards_per_rpc != "all":
+            command.extend(
+                [
+                    "--label",
+                    f"{PEER_PREMERGE_SHARDS_PER_RPC_LABEL}={normalized_shards_per_rpc}",
+                ]
+            )
     command.extend(
         [
             "-e",
@@ -703,6 +872,14 @@ def docker_run_command(
     )
     if role == "controller" and disable_peer_premerge:
         command.extend(["-e", f"{PEER_PREMERGE_DISABLE_ENV}=1"])
+    if role == "controller":
+        shards_per_rpc_env = peer_premerge_shards_per_rpc_env_value(
+            peer_premerge_shards_per_rpc
+        )
+        if shards_per_rpc_env is not None:
+            command.extend(
+                ["-e", f"{PEER_PREMERGE_SHARDS_PER_RPC_ENV}={shards_per_rpc_env}"]
+            )
     command.extend(
         [
             "-v",
@@ -1127,7 +1304,11 @@ def write_manifest(topology: dict[str, Any], run_id: str, data: dict[str, Any]) 
 def preserve_run_manifest_metadata(
     data: dict[str, Any], stored: dict[str, Any]
 ) -> dict[str, Any]:
-    for key in ("orion_artifacts", "simple_kmeans_artifacts"):
+    for key in (
+        "orion_artifacts",
+        "simple_kmeans_artifacts",
+        "peer_premerge_transitions",
+    ):
         if key in stored:
             data[key] = stored[key]
     return data
@@ -1291,6 +1472,8 @@ def build_manifest_data(
     nodes: list[dict[str, Any]] | None = None,
     disable_peer_premerge: bool = False,
     current_peer_premerge_mode: str | None = None,
+    peer_premerge_shards_per_rpc: Any = "all",
+    current_peer_premerge_shards_per_rpc: str | None = None,
 ) -> dict[str, Any]:
     state = git_state(repo)
     return {
@@ -1304,7 +1487,10 @@ def build_manifest_data(
         "controller_uri": controller_uri(topology),
         "worker_uris": [advertised_uri(node, topology) for node in topology["workers"]],
         "peer_premerge": peer_premerge_summary(
-            disable_peer_premerge, current_peer_premerge_mode
+            disable_peer_premerge,
+            current_peer_premerge_mode,
+            peer_premerge_shards_per_rpc,
+            current_peer_premerge_shards_per_rpc,
         ),
         "container_ulimits": {
             "nofile": {
@@ -1475,6 +1661,7 @@ def verify_container_reusable(
     run_id: str,
     image_id: str,
     disable_peer_premerge: bool = False,
+    peer_premerge_shards_per_rpc: Any = "all",
 ) -> bool:
     labels = (inspected.get("Config") or {}).get("Labels") or {}
     expected = {
@@ -1499,8 +1686,15 @@ def verify_container_reusable(
         mismatches["image"] = (inspected.get("Image"), image_id)
     if str(node.get("role")) == "controller":
         expected_mode = expected_peer_premerge_mode(node, disable_peer_premerge)
+        expected_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+            peer_premerge_shards_per_rpc
+        )
         expected_fingerprint = controller_config_fingerprint(
-            node, run_id, image_id, disable_peer_premerge
+            node,
+            run_id,
+            image_id,
+            disable_peer_premerge,
+            expected_shards_per_rpc,
         )
         if labels.get(PEER_PREMERGE_MODE_LABEL) != expected_mode:
             mismatches[PEER_PREMERGE_MODE_LABEL] = (
@@ -1511,6 +1705,14 @@ def verify_container_reusable(
             mismatches[CONTROLLER_FINGERPRINT_LABEL] = (
                 labels.get(CONTROLLER_FINGERPRINT_LABEL),
                 expected_fingerprint,
+            )
+        expected_chunk_label = (
+            None if expected_shards_per_rpc == "all" else expected_shards_per_rpc
+        )
+        if labels.get(PEER_PREMERGE_SHARDS_PER_RPC_LABEL) != expected_chunk_label:
+            mismatches[PEER_PREMERGE_SHARDS_PER_RPC_LABEL] = (
+                labels.get(PEER_PREMERGE_SHARDS_PER_RPC_LABEL),
+                expected_chunk_label,
             )
         env = (inspected.get("Config") or {}).get("Env") or []
         disable_values = [
@@ -1523,6 +1725,32 @@ def verify_container_reusable(
             mismatches[PEER_PREMERGE_DISABLE_ENV] = (
                 disable_values,
                 expected_disable_values,
+            )
+        chunk_values = [
+            str(item).partition("=")[2]
+            for item in env
+            if str(item).partition("=")[:2]
+            == (PEER_PREMERGE_SHARDS_PER_RPC_ENV, "=")
+        ]
+        expected_chunk_values = (
+            [] if expected_shards_per_rpc == "all" else [expected_shards_per_rpc]
+        )
+        if chunk_values != expected_chunk_values:
+            mismatches[PEER_PREMERGE_SHARDS_PER_RPC_ENV] = (
+                chunk_values,
+                expected_chunk_values,
+            )
+    else:
+        env = inspected_environment(inspected)
+        if PEER_PREMERGE_SHARDS_PER_RPC_ENV in env:
+            mismatches[PEER_PREMERGE_SHARDS_PER_RPC_ENV] = (
+                env[PEER_PREMERGE_SHARDS_PER_RPC_ENV],
+                None,
+            )
+        if PEER_PREMERGE_SHARDS_PER_RPC_LABEL in labels:
+            mismatches[PEER_PREMERGE_SHARDS_PER_RPC_LABEL] = (
+                labels[PEER_PREMERGE_SHARDS_PER_RPC_LABEL],
+                None,
             )
     if mismatches:
         raise RuntimeError(
@@ -1555,6 +1783,172 @@ def verify_run_container_identity(
             f"refusing to restart container {name} without exact run ownership: "
             f"{mismatches}"
         )
+
+
+def inspected_environment(inspected: dict[str, Any]) -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for item in (inspected.get("Config") or {}).get("Env") or []:
+        key, separator, value = str(item).partition("=")
+        if separator:
+            environment[key] = value
+    return environment
+
+
+def expected_qdrant_command(
+    topology: dict[str, Any], node: dict[str, Any]
+) -> list[str]:
+    command = ["./qdrant"]
+    if str(node.get("role")) != "controller":
+        command.extend(["--bootstrap", controller_uri(topology)])
+    command.extend(["--uri", advertised_uri(node, topology)])
+    return command
+
+
+def verify_peer_premerge_transition_identity(
+    topology: dict[str, Any],
+    inspected: dict[str, Any] | None,
+    node: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    *,
+    current_mode: str | None = None,
+    current_shards_per_rpc: str | None = None,
+    require_running: bool = True,
+) -> bool:
+    """Fail closed before a run-scoped controller replacement.
+
+    This is intentionally stricter than normal deploy reuse.  A peer-premerge
+    transition removes a container, so the complete immutable runtime identity
+    must match the topology and run manifest before any destructive Docker
+    command is issued.
+    """
+    role = str(node.get("role"))
+    if inspected is None:
+        raise RuntimeError(
+            "run-scoped container does not exist: "
+            f"{container_name(run_id, role)}"
+        )
+    if role == "controller":
+        if current_mode is None:
+            current_mode = inspected_peer_premerge_mode(inspected, node)
+        if current_mode not in {"enabled", "disabled"}:
+            raise RuntimeError(
+                "controller peer-premerge mode is not internally consistent: "
+                f"{current_mode!r}"
+            )
+        disable_peer_premerge = peer_premerge_disabled(current_mode)
+        if current_shards_per_rpc is None:
+            current_shards_per_rpc = inspected_peer_premerge_shards_per_rpc(
+                inspected, node
+            )
+        if current_shards_per_rpc in {None, "inconsistent", "not_applicable"}:
+            raise RuntimeError(
+                "controller peer-premerge shards-per-rpc is not internally "
+                f"consistent: {current_shards_per_rpc!r}"
+            )
+        current_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+            current_shards_per_rpc
+        )
+    else:
+        disable_peer_premerge = False
+        current_shards_per_rpc = "all"
+
+    running = verify_container_reusable(
+        inspected,
+        node,
+        run_id,
+        image_id,
+        disable_peer_premerge,
+        current_shards_per_rpc,
+    )
+    mismatches: dict[str, tuple[Any, Any]] = {}
+    expected_name = container_name(run_id, role)
+    actual_name = str(inspected.get("Name") or "").lstrip("/")
+    if actual_name != expected_name:
+        mismatches["name"] = (actual_name, expected_name)
+
+    config = inspected.get("Config") or {}
+    if str(config.get("Image") or "") != image_tag:
+        mismatches["image_tag"] = (config.get("Image"), image_tag)
+    expected_command = expected_qdrant_command(topology, node)
+    actual_command = [str(value) for value in config.get("Cmd") or []]
+    if actual_command != expected_command:
+        mismatches["command"] = (actual_command, expected_command)
+
+    expected_environment = {
+        "QDRANT__CLUSTER__ENABLED": "true",
+        "QDRANT__CLUSTER__P2P__PORT": str(topology["ports"]["p2p"]),
+        "QDRANT__SERVICE__HTTP_PORT": str(topology["ports"]["http"]),
+        "QDRANT__SERVICE__GRPC_PORT": str(topology["ports"]["grpc"]),
+        "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS": str(
+            node["max_search_threads"]
+        ),
+        "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET": str(
+            node["optimizer_cpu_budget"]
+        ),
+    }
+    actual_environment = inspected_environment(inspected)
+    for key, expected_value in expected_environment.items():
+        if actual_environment.get(key) != expected_value:
+            mismatches[f"environment:{key}"] = (
+                actual_environment.get(key),
+                expected_value,
+            )
+    if role != "controller" and PEER_PREMERGE_DISABLE_ENV in actual_environment:
+        mismatches[f"environment:{PEER_PREMERGE_DISABLE_ENV}"] = (
+            actual_environment[PEER_PREMERGE_DISABLE_ENV],
+            None,
+        )
+    if (
+        role != "controller"
+        and PEER_PREMERGE_SHARDS_PER_RPC_ENV in actual_environment
+    ):
+        mismatches[f"environment:{PEER_PREMERGE_SHARDS_PER_RPC_ENV}"] = (
+            actual_environment[PEER_PREMERGE_SHARDS_PER_RPC_ENV],
+            None,
+        )
+
+    host_config = inspected.get("HostConfig") or {}
+    if str(host_config.get("NetworkMode") or "") != "host":
+        mismatches["network_mode"] = (host_config.get("NetworkMode"), "host")
+    restart_policy = (host_config.get("RestartPolicy") or {}).get("Name")
+    if str(restart_policy or "") != "unless-stopped":
+        mismatches["restart_policy"] = (restart_policy, "unless-stopped")
+
+    expected_storage = str(
+        (local_role_root(topology, run_id, role) / "storage").resolve()
+    )
+    storage_mounts = [
+        mount
+        for mount in inspected.get("Mounts") or []
+        if str((mount or {}).get("Destination") or "") == "/qdrant/storage"
+    ]
+    if len(storage_mounts) != 1:
+        mismatches["storage_mount_count"] = (len(storage_mounts), 1)
+    else:
+        mount = storage_mounts[0] or {}
+        actual_mount = {
+            "type": str(mount.get("Type") or ""),
+            "source": str(mount.get("Source") or ""),
+            "rw": bool(mount.get("RW")),
+        }
+        expected_mount = {
+            "type": "bind",
+            "source": expected_storage,
+            "rw": True,
+        }
+        if actual_mount != expected_mount:
+            mismatches["storage_mount"] = (actual_mount, expected_mount)
+
+    if require_running and not running:
+        mismatches["running"] = (False, True)
+    if mismatches:
+        raise RuntimeError(
+            f"container /{expected_name} is not safe for a peer-premerge "
+            f"transition: {mismatches}"
+        )
+    return running
 
 
 def router_log_command(
@@ -1982,6 +2376,30 @@ def cluster_validation_errors(
             f"URI {controller_uri_value} belongs to {sorted(controller_peer_ids)}, "
             f"endpoint reports {reported_peer_id or '<missing>'}"
         )
+    consensus = result.get("consensus_thread_status")
+    consensus_status = (
+        consensus.get("consensus_thread_status")
+        if isinstance(consensus, dict)
+        else consensus
+    )
+    if consensus_status != "working":
+        errors.append(
+            f"consensus thread status is {consensus_status!r}, expected 'working'"
+        )
+    raft_info = result.get("raft_info") or {}
+    pending_operations = (
+        raft_info.get("pending_operations") if isinstance(raft_info, dict) else None
+    )
+    if pending_operations != 0:
+        errors.append(
+            f"raft pending operations is {pending_operations!r}, expected 0"
+        )
+    message_send_failures = result.get("message_send_failures")
+    if message_send_failures != {}:
+        errors.append(
+            "cluster message_send_failures is not empty: "
+            f"{message_send_failures!r}"
+        )
     return errors
 
 
@@ -2026,6 +2444,33 @@ def collection_validation_errors(
             errors.append(
                 f"collection {name} status is {info.get('status')!r}, expected 'green'"
             )
+        if str(info.get("optimizer_status") or "").lower() != "ok":
+            errors.append(
+                f"collection {name} optimizer_status is "
+                f"{info.get('optimizer_status')!r}, expected 'ok'"
+            )
+        update_queue = info.get("update_queue") or {}
+        update_queue_length = (
+            update_queue.get("length") if isinstance(update_queue, dict) else None
+        )
+        if update_queue_length != 0:
+            errors.append(
+                f"collection {name} update queue length is "
+                f"{update_queue_length!r}, expected 0"
+            )
+        indexed_vectors_count = info.get("indexed_vectors_count")
+        points_count = info.get("points_count")
+        if (
+            isinstance(indexed_vectors_count, int)
+            and not isinstance(indexed_vectors_count, bool)
+            and isinstance(points_count, int)
+            and not isinstance(points_count, bool)
+            and indexed_vectors_count != points_count
+        ):
+            errors.append(
+                f"collection {name} indexed_vectors_count={indexed_vectors_count} "
+                f"does not match points_count={points_count}"
+            )
         reported_peer_id = str(cluster.get("peer_id") or "")
         if controller_peer_id and reported_peer_id != controller_peer_id:
             errors.append(
@@ -2054,6 +2499,28 @@ def collection_validation_errors(
             )
         if not remote_shards:
             errors.append(f"collection {name} has no remote lower-shard placement")
+        params = (((info.get("config") or {}).get("params") or {}))
+        expected_shard_count = params.get("shard_number")
+        if isinstance(expected_shard_count, bool) or not isinstance(
+            expected_shard_count, int
+        ):
+            errors.append(
+                f"collection {name} has invalid shard_number {expected_shard_count!r}"
+            )
+        elif len(remote_shards) != expected_shard_count:
+            errors.append(
+                f"collection {name} has {len(remote_shards)} remote shards, "
+                f"expected {expected_shard_count}"
+            )
+        replication_factor = params.get("replication_factor")
+        if replication_factor != 1:
+            errors.append(
+                f"collection {name} replication_factor is "
+                f"{replication_factor!r}, expected 1"
+            )
+        shard_ids = [str((shard or {}).get("shard_id")) for shard in remote_shards]
+        if len(set(shard_ids)) != len(shard_ids):
+            errors.append(f"collection {name} has duplicate lower-shard replicas")
         for shard in [*local_shards, *remote_shards]:
             if str((shard or {}).get("state") or "") != "Active":
                 errors.append(
@@ -2073,11 +2540,384 @@ def collection_validation_errors(
                 f"collection {name} has lower shards outside worker peers "
                 f"{sorted(worker_peer_ids)}: {unexpected_peer_ids}"
             )
+        worker_counts = {
+            peer_id: sum(
+                1
+                for shard in remote_shards
+                if str((shard or {}).get("peer_id") or "") == peer_id
+            )
+            for peer_id in worker_peer_ids
+        }
+        if worker_counts and max(worker_counts.values()) - min(worker_counts.values()) > 1:
+            errors.append(
+                f"collection {name} worker shard placement is imbalanced: {worker_counts}"
+            )
     return errors
+
+
+def peer_premerge_collection_validation_errors(
+    topology: dict[str, Any],
+    snapshot: dict[str, Any],
+    collections: dict[str, Any],
+    run_id: str,
+) -> list[str]:
+    """Require a real run workload before changing peer-premerge runtime state."""
+    errors = collection_validation_errors(topology, snapshot, collections)
+    if isinstance(collections, dict) and not collections:
+        errors.insert(
+            0,
+            f"run {validate_run_id(run_id)!r} has no run-scoped collections",
+        )
+    return errors
+
+
+def topology_runtime_identity(topology: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "nodes": [
+            {
+                key: node.get(key)
+                for key in (
+                    "role",
+                    "ssh_host",
+                    "private_ip",
+                    "cpuset",
+                    "max_search_threads",
+                    "optimizer_cpu_budget",
+                )
+            }
+            for node in all_nodes(topology)
+        ],
+        "ports": dict(topology.get("ports") or {}),
+        "local_storage_root": str(topology.get("local_storage_root") or ""),
+    }
+
+
+def validate_peer_premerge_transition_manifest(
+    topology: dict[str, Any],
+    run_id: str,
+    manifest: dict[str, Any],
+    image_tag_override: str | None = None,
+    expected_deployment_commit: str | None = None,
+) -> tuple[str, str, str, str, str]:
+    run_id = validate_run_id(run_id)
+    if not manifest:
+        raise RuntimeError(
+            f"run manifest does not exist for {run_id}; deploy the run first"
+        )
+    if str(manifest.get("run_id") or "") != run_id:
+        raise RuntimeError(
+            "run manifest identity mismatch: "
+            f"expected={run_id}, actual={manifest.get('run_id')!r}"
+        )
+    stored_topology = manifest.get("topology")
+    if not isinstance(stored_topology, dict):
+        raise RuntimeError("run manifest does not contain the deployed topology")
+    try:
+        validate_topology(stored_topology)
+        stored_runtime_identity = topology_runtime_identity(stored_topology)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("run manifest contains a malformed topology") from exc
+    if stored_runtime_identity != topology_runtime_identity(topology):
+        raise RuntimeError(
+            "run manifest topology does not match the requested controller/worker runtime"
+        )
+
+    repository = manifest.get("repository") or {}
+    if not isinstance(repository, dict):
+        raise RuntimeError("run manifest repository payload is malformed")
+    deployment_commit = str(repository.get("commit") or "")
+    if not deployment_commit:
+        raise RuntimeError("run manifest does not contain the deployment commit")
+    if (
+        expected_deployment_commit
+        and str(expected_deployment_commit) != deployment_commit
+    ):
+        raise RuntimeError(
+            "run manifest deployment commit does not match --expected-commit: "
+            f"manifest={deployment_commit}, expected={expected_deployment_commit}"
+        )
+
+    image = manifest.get("image") or {}
+    if not isinstance(image, dict):
+        raise RuntimeError("run manifest image payload is malformed")
+    image_tag = str(image.get("tag") or "")
+    image_id = str(image.get("id") or "")
+    if not image_tag or not image_id:
+        raise RuntimeError("run manifest does not contain an exact image tag and id")
+    if image_tag_override and image_tag_override != image_tag:
+        raise RuntimeError(
+            "set-peer-premerge must reuse the deployed image tag: "
+            f"manifest={image_tag}, override={image_tag_override}"
+        )
+
+    peer_premerge = manifest.get("peer_premerge") or {}
+    if not isinstance(peer_premerge, dict):
+        raise RuntimeError("run manifest peer-premerge payload is malformed")
+    manifest_mode = peer_premerge.get("current_mode")
+    if manifest_mode not in {"enabled", "disabled"}:
+        raise RuntimeError(
+            "run manifest does not contain a definitive controller peer-premerge mode"
+        )
+    try:
+        manifest_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+            peer_premerge.get("current_shards_per_rpc", "all")
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            "run manifest contains an invalid controller peer-premerge "
+            "shards-per-rpc value"
+        ) from exc
+    transitions = manifest.get("peer_premerge_transitions") or []
+    if not isinstance(transitions, list) or any(
+        not isinstance(item, dict) for item in transitions
+    ):
+        raise RuntimeError("run manifest contains malformed peer-premerge transitions")
+    nodes = manifest.get("nodes") or []
+    if not isinstance(nodes, list):
+        raise RuntimeError("run manifest nodes payload is malformed")
+    controller_nodes = [
+        node
+        for node in nodes
+        if isinstance(node, dict) and str(node.get("role")) == "controller"
+    ]
+    if len(controller_nodes) != 1:
+        raise RuntimeError(
+            "run manifest must contain exactly one deployed controller node"
+        )
+    return (
+        image_tag,
+        image_id,
+        str(manifest_mode),
+        manifest_shards_per_rpc,
+        deployment_commit,
+    )
+
+
+def transition_cluster_proof(snapshot: dict[str, Any] | None) -> dict[str, Any] | None:
+    if snapshot is None:
+        return None
+    result = snapshot.get("result") or {}
+    peers = result.get("peers") or {}
+    raft_info = result.get("raft_info") or {}
+    return {
+        "peer_id": result.get("peer_id"),
+        "peer_count": len(peers) if isinstance(peers, dict) else None,
+        "peer_uris": sorted(
+            normalize_peer_uri(str((peer or {}).get("uri") or ""))
+            for peer in peers.values()
+        )
+        if isinstance(peers, dict)
+        else [],
+        "consensus_thread_status": result.get("consensus_thread_status"),
+        "pending_operations": raft_info.get("pending_operations"),
+        "message_send_failures": result.get("message_send_failures"),
+    }
+
+
+def transition_controller_proof(
+    topology: dict[str, Any],
+    run_id: str,
+    inspected: dict[str, Any],
+) -> dict[str, Any]:
+    controller = topology["controller"]
+    labels = (inspected.get("Config") or {}).get("Labels") or {}
+    storage_mount = next(
+        (
+            mount
+            for mount in inspected.get("Mounts") or []
+            if str((mount or {}).get("Destination") or "") == "/qdrant/storage"
+        ),
+        {},
+    )
+    return {
+        "container_id": str(inspected.get("Id") or ""),
+        "container_name": container_name(run_id, "controller"),
+        "private_ip": str(controller["private_ip"]),
+        "image_id": str(inspected.get("Image") or ""),
+        "image_tag": str((inspected.get("Config") or {}).get("Image") or ""),
+        "cpuset": str((inspected.get("HostConfig") or {}).get("CpusetCpus") or ""),
+        "nofile": inspected_nofile_limits(inspected),
+        "network_mode": str(
+            (inspected.get("HostConfig") or {}).get("NetworkMode") or ""
+        ),
+        "storage": {
+            "type": storage_mount.get("Type"),
+            "source": storage_mount.get("Source"),
+            "destination": storage_mount.get("Destination"),
+            "rw": storage_mount.get("RW"),
+        },
+        "peer_premerge_mode": inspected_peer_premerge_mode(inspected, controller),
+        "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
+            inspected, controller
+        ),
+        "controller_fingerprint": labels.get(CONTROLLER_FINGERPRINT_LABEL),
+    }
+
+
+def transition_worker_proof(
+    topology: dict[str, Any],
+    run_id: str,
+    node: dict[str, Any],
+    inspected: dict[str, Any],
+) -> dict[str, Any]:
+    role = str(node["role"])
+    storage_mount = next(
+        (
+            mount
+            for mount in inspected.get("Mounts") or []
+            if str((mount or {}).get("Destination") or "") == "/qdrant/storage"
+        ),
+        {},
+    )
+    return {
+        "role": role,
+        "container_id": str(inspected.get("Id") or ""),
+        "container_name": container_name(run_id, role),
+        "private_ip": str(node["private_ip"]),
+        "image_id": str(inspected.get("Image") or ""),
+        "image_tag": str((inspected.get("Config") or {}).get("Image") or ""),
+        "cpuset": str((inspected.get("HostConfig") or {}).get("CpusetCpus") or ""),
+        "nofile": inspected_nofile_limits(inspected),
+        "network_mode": str(
+            (inspected.get("HostConfig") or {}).get("NetworkMode") or ""
+        ),
+        "storage": {
+            "type": storage_mount.get("Type"),
+            "source": storage_mount.get("Source"),
+            "destination": storage_mount.get("Destination"),
+            "rw": storage_mount.get("RW"),
+        },
+    }
+
+
+def transition_collections_proof(collections: dict[str, Any]) -> dict[str, Any]:
+    proof: dict[str, Any] = {}
+    for name, payload in sorted(collections.items()):
+        info = (payload or {}).get("info") or {}
+        cluster_payload = (payload or {}).get("cluster") or {}
+        proof[name] = {
+            "status": info.get("status"),
+            "optimizer_status": info.get("optimizer_status"),
+            "points_count": info.get("points_count"),
+            "indexed_vectors_count": info.get("indexed_vectors_count"),
+            "update_queue": info.get("update_queue"),
+            "local_shards": cluster_payload.get("local_shards") or [],
+            "remote_shards": cluster_payload.get("remote_shards") or [],
+            "shard_transfers": cluster_payload.get("shard_transfers") or [],
+        }
+    return proof
+
+
+def inspect_peer_premerge_transition_workers(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    args: argparse.Namespace,
+) -> dict[str, dict[str, Any]]:
+    inspected_workers: dict[str, dict[str, Any]] = {}
+    for node in topology["workers"]:
+        role = str(node["role"])
+        inspected = inspect_container(node, container_name(run_id, role), args)
+        verify_peer_premerge_transition_identity(
+            topology,
+            inspected,
+            node,
+            run_id,
+            image_tag,
+            image_id,
+            require_running=True,
+        )
+        inspected_workers[role] = inspected
+    return inspected_workers
+
+
+def verify_peer_premerge_transition_proof_identity(
+    *,
+    action: str,
+    before_controller: dict[str, Any],
+    after_controller: dict[str, Any],
+    workers_before: list[dict[str, Any]],
+    workers_after: list[dict[str, Any]],
+    cluster_before: dict[str, Any],
+    cluster_after: dict[str, Any],
+) -> None:
+    before_controller_id = str(before_controller.get("container_id") or "")
+    after_controller_id = str(after_controller.get("container_id") or "")
+    if action == "recreated" and before_controller_id == after_controller_id:
+        raise RuntimeError("controller recreation did not change the container ID")
+    if action == "reused" and before_controller_id != after_controller_id:
+        raise RuntimeError("reused controller changed the container ID")
+    if workers_before != workers_after:
+        raise RuntimeError("worker runtime identity changed during controller transition")
+    if cluster_before.get("peer_id") != cluster_after.get("peer_id"):
+        raise RuntimeError("controller peer ID changed during controller transition")
+
+
+def update_peer_premerge_transition_manifest(
+    topology: dict[str, Any],
+    run_id: str,
+    stored: dict[str, Any],
+    requested_mode: str,
+    final_mode: str | None,
+    requested_shards_per_rpc: Any,
+    final_shards_per_rpc: str | None,
+    transition: dict[str, Any],
+    cluster_snapshot_value: dict[str, Any] | None,
+    controller_inspected: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Update operational state without dropping artifact or archive metadata."""
+    requested_mode = validate_peer_premerge_mode(requested_mode)
+    if final_mode is not None:
+        final_mode = validate_peer_premerge_mode(final_mode)
+    requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        requested_shards_per_rpc
+    )
+    if final_shards_per_rpc is not None:
+        final_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+            final_shards_per_rpc
+        )
+    data = json.loads(json.dumps(stored))
+    transitions = list(data.get("peer_premerge_transitions") or [])
+    transitions.append(transition)
+    data["peer_premerge_transitions"] = transitions
+    data["peer_premerge"] = peer_premerge_summary(
+        peer_premerge_disabled(requested_mode),
+        final_mode,
+        requested_shards_per_rpc,
+        final_shards_per_rpc,
+    )
+    data["generated_at"] = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+    )
+    data["last_peer_premerge_transition"] = transition.get("transition_id")
+    if cluster_snapshot_value is not None:
+        data["cluster_snapshot"] = cluster_snapshot_value
+        data.pop("cluster_snapshot_error", None)
+    if controller_inspected is not None:
+        for node in data.get("nodes") or []:
+            if isinstance(node, dict) and str(node.get("role")) == "controller":
+                node["peer_premerge_mode"] = final_mode
+                node["peer_premerge_shards_per_rpc"] = final_shards_per_rpc
+                node["image_id"] = str(controller_inspected.get("Image") or "")
+                node["cpuset"] = str(
+                    (controller_inspected.get("HostConfig") or {}).get(
+                        "CpusetCpus"
+                    )
+                    or ""
+                )
+                node["nofile"] = inspected_nofile_limits(controller_inspected)
+                node["storage_path"] = str(
+                    local_role_root(topology, run_id, "controller") / "storage"
+                )
+    return data
 
 
 def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     repo = Path(args.repo).resolve()
+    requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        getattr(args, "peer_premerge_shards_per_rpc", "all")
+    )
     stored = read_manifest(topology, args.run_id)
     state = git_state(repo)
     image_tag = args.image_tag or stored.get("image", {}).get("tag") or image_tag_for_commit(state["commit"])
@@ -2148,6 +2988,7 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                     image_tag,
                     desired_image_id,
                     args.disable_peer_premerge,
+                    requested_shards_per_rpc,
                 ),
                 args,
             )
@@ -2157,6 +2998,7 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             args.run_id,
             desired_image_id,
             args.disable_peer_premerge,
+            requested_shards_per_rpc,
         ):
             run_on_node(node, ["sudo", "-n", "docker", "start", name], args)
         if not args.dry_run:
@@ -2171,6 +3013,9 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                 "image_id": actual_image_id,
                 "peer_premerge_mode": expected_peer_premerge_mode(
                     node, args.disable_peer_premerge
+                ),
+                "peer_premerge_shards_per_rpc": expected_peer_premerge_shards_per_rpc(
+                    node, requested_shards_per_rpc
                 ),
                 "nofile": {
                     "soft": CONTAINER_NOFILE_SOFT,
@@ -2198,6 +3043,10 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             expected_peer_premerge_mode(
                 topology["controller"], args.disable_peer_premerge
             ),
+            requested_shards_per_rpc,
+            expected_peer_premerge_shards_per_rpc(
+                topology["controller"], requested_shards_per_rpc
+            ),
         )
         preserve_run_manifest_metadata(data, stored)
         data["image"].update(stored.get("image") or {})
@@ -2222,6 +3071,9 @@ def status_for_node(
         "container_name": name,
         "exists": inspected is not None,
         "peer_premerge_mode": inspected_peer_premerge_mode(inspected, node),
+        "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
+            inspected, node
+        ),
     }
     if inspected:
         status.update(
@@ -2238,6 +3090,9 @@ def status_for_node(
 
 
 def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
+    requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        getattr(args, "peer_premerge_shards_per_rpc", "all")
+    )
     node_statuses = [
         status_for_node(topology, node, args.run_id, args) for node in all_nodes(topology)
     ]
@@ -2249,10 +3104,21 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         ),
         None,
     )
+    controller_shards_per_rpc = next(
+        (
+            node.get("peer_premerge_shards_per_rpc")
+            for node in node_statuses
+            if node.get("role") == "controller"
+        ),
+        None,
+    )
     status = {
         "run_id": args.run_id,
         "peer_premerge": peer_premerge_summary(
-            args.disable_peer_premerge, controller_mode
+            args.disable_peer_premerge,
+            controller_mode,
+            requested_shards_per_rpc,
+            controller_shards_per_rpc,
         ),
         "nodes": node_statuses,
     }
@@ -2261,11 +3127,17 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         for node in node_statuses
         if not node.get("running")
     ]
-    if not status["peer_premerge"]["matches_requested"]:
+    if status["peer_premerge"]["mode_matches_requested"] is not True:
         validation_errors.append(
             "controller peer-premerge mode mismatch: "
             f"requested={status['peer_premerge']['requested_mode']}, "
             f"current={status['peer_premerge']['current_mode']}"
+        )
+    if status["peer_premerge"]["shards_per_rpc_matches_requested"] is not True:
+        validation_errors.append(
+            "controller peer-premerge shards-per-rpc mismatch: "
+            f"requested={status['peer_premerge']['requested_shards_per_rpc']}, "
+            f"current={status['peer_premerge']['current_shards_per_rpc']}"
         )
     if not args.dry_run:
         try:
@@ -2300,6 +3172,684 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     }
     print(json.dumps(status, indent=2), flush=True)
     return 0 if status["validation"]["ok"] else 1
+
+
+def wait_controller_and_cluster_healthy(
+    topology: dict[str, Any], timeout: float, run_id: str | None = None
+) -> dict[str, Any]:
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("wait-timeout must be a positive finite number")
+    started = time.monotonic()
+    wait_http_ready(http_url(topology["controller"], topology), timeout)
+    remaining = timeout - (time.monotonic() - started)
+    if remaining <= 0:
+        raise TimeoutError(
+            "controller became HTTP-ready but exhausted the peer-premerge wait timeout"
+        )
+    if run_id is None:
+        return wait_cluster_healthy(topology, remaining)
+
+    run_id = validate_run_id(run_id)
+    deadline = time.monotonic() + remaining
+    last_errors: list[str] = ["run-scoped collections have not become healthy"]
+    while time.monotonic() < deadline:
+        try:
+            snapshot = cluster_snapshot(topology)
+            last_errors = cluster_validation_errors(topology, snapshot)
+            collections = run_collection_placements(topology, run_id)
+            last_errors.extend(
+                collection_validation_errors(topology, snapshot, collections)
+            )
+            if not last_errors:
+                return snapshot
+        except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
+            last_errors = [str(exc)]
+        time.sleep(1.0)
+    raise TimeoutError(
+        "timed out waiting for the controller, cluster, and run-scoped collections: "
+        + "; ".join(last_errors)
+    )
+
+
+def inspect_peer_premerge_transition_runtime(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    manifest_mode: str,
+    manifest_shards_per_rpc: str,
+    args: argparse.Namespace,
+) -> tuple[dict[str, dict[str, Any]], str, str]:
+    inspected_nodes: dict[str, dict[str, Any]] = {}
+    controller_mode: str | None = None
+    controller_shards_per_rpc: str | None = None
+    for node in all_nodes(topology):
+        role = str(node["role"])
+        inspected = inspect_container(node, container_name(run_id, role), args)
+        if inspected is None:
+            raise RuntimeError(
+                f"run-scoped container does not exist: {container_name(run_id, role)}"
+            )
+        if role == "controller":
+            controller_mode = inspected_peer_premerge_mode(inspected, node)
+            controller_shards_per_rpc = inspected_peer_premerge_shards_per_rpc(
+                inspected, node
+            )
+        verify_peer_premerge_transition_identity(
+            topology,
+            inspected,
+            node,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=controller_mode if role == "controller" else None,
+            current_shards_per_rpc=(
+                controller_shards_per_rpc if role == "controller" else None
+            ),
+            require_running=True,
+        )
+        inspected_nodes[role] = inspected
+    if controller_mode != manifest_mode:
+        raise RuntimeError(
+            "controller peer-premerge mode disagrees with the run manifest: "
+            f"container={controller_mode!r}, manifest={manifest_mode!r}"
+        )
+    if controller_shards_per_rpc != manifest_shards_per_rpc:
+        raise RuntimeError(
+            "controller peer-premerge shards-per-rpc disagrees with the run "
+            "manifest: "
+            f"container={controller_shards_per_rpc!r}, "
+            f"manifest={manifest_shards_per_rpc!r}"
+        )
+
+    image_result = run_on_node(
+        topology["controller"],
+        [
+            "sudo",
+            "-n",
+            "docker",
+            "image",
+            "inspect",
+            image_tag,
+            "--format",
+            "{{.Id}}",
+        ],
+        args,
+        capture=True,
+        check=False,
+    )
+    resolved_image_id = image_result.stdout.strip() if image_result.returncode == 0 else ""
+    if resolved_image_id != image_id:
+        raise RuntimeError(
+            "controller image tag no longer resolves to the deployed image id: "
+            f"tag={image_tag}, expected={image_id}, "
+            f"actual={resolved_image_id or '<missing>'}"
+        )
+    return inspected_nodes, str(controller_mode), str(controller_shards_per_rpc)
+
+
+def replace_peer_premerge_controller(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    mode: str,
+    shards_per_rpc: Any,
+    args: argparse.Namespace,
+) -> None:
+    controller = topology["controller"]
+    name = container_name(run_id, "controller")
+    run_on_node(
+        controller,
+        ["sudo", "-n", "docker", "stop", name],
+        args,
+    )
+    run_on_node(
+        controller,
+        ["sudo", "-n", "docker", "rm", name],
+        args,
+    )
+    run_on_node(
+        controller,
+        docker_run_command(
+            topology,
+            controller,
+            run_id,
+            image_tag,
+            image_id,
+            peer_premerge_disabled(mode),
+            shards_per_rpc,
+        ),
+        args,
+    )
+
+
+def rollback_peer_premerge_controller(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    original_mode: str,
+    original_shards_per_rpc: str,
+    wait_timeout: float,
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Restore the exact original controller config without touching workers."""
+    controller = topology["controller"]
+    name = container_name(run_id, "controller")
+    inspected = inspect_container(controller, name, args)
+    if inspected is not None:
+        candidate_mode = inspected_peer_premerge_mode(inspected, controller)
+        candidate_shards_per_rpc = inspected_peer_premerge_shards_per_rpc(
+            inspected, controller
+        )
+        verify_peer_premerge_transition_identity(
+            topology,
+            inspected,
+            controller,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=candidate_mode,
+            current_shards_per_rpc=candidate_shards_per_rpc,
+            require_running=False,
+        )
+        if (
+            candidate_mode == original_mode
+            and candidate_shards_per_rpc == original_shards_per_rpc
+        ):
+            if not bool((inspected.get("State") or {}).get("Running")):
+                run_on_node(
+                    controller,
+                    ["sudo", "-n", "docker", "start", name],
+                    args,
+                )
+        else:
+            run_on_node(
+                controller,
+                ["sudo", "-n", "docker", "stop", name],
+                args,
+                check=False,
+            )
+            run_on_node(
+                controller,
+                ["sudo", "-n", "docker", "rm", name],
+                args,
+            )
+            inspected = None
+    if inspected is None:
+        run_on_node(
+            controller,
+            docker_run_command(
+                topology,
+                controller,
+                run_id,
+                image_tag,
+                image_id,
+                peer_premerge_disabled(original_mode),
+                original_shards_per_rpc,
+            ),
+            args,
+        )
+
+    snapshot = wait_controller_and_cluster_healthy(topology, wait_timeout, run_id)
+    restored = inspect_container(controller, name, args)
+    verify_peer_premerge_transition_identity(
+        topology,
+        restored,
+        controller,
+        run_id,
+        image_tag,
+        image_id,
+        current_mode=original_mode,
+        current_shards_per_rpc=original_shards_per_rpc,
+        require_running=True,
+    )
+    return snapshot, restored
+
+
+def command_set_peer_premerge(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    run_id = validate_run_id(args.run_id)
+    requested_mode_arg = getattr(args, "mode", None)
+    requested_shards_per_rpc_arg = getattr(args, "shards_per_rpc", None)
+    if requested_mode_arg is None and requested_shards_per_rpc_arg is None:
+        raise ValueError(
+            "set-peer-premerge requires --mode and/or --shards-per-rpc"
+        )
+    wait_timeout = float(args.wait_timeout)
+    if not math.isfinite(wait_timeout) or wait_timeout <= 0:
+        raise ValueError("wait-timeout must be a positive finite number")
+
+    stored = read_manifest(topology, run_id)
+    (
+        image_tag,
+        image_id,
+        manifest_mode,
+        manifest_shards_per_rpc,
+        deployment_commit,
+    ) = (
+        validate_peer_premerge_transition_manifest(
+            topology,
+            run_id,
+            stored,
+            args.image_tag,
+            args.expected_commit,
+        )
+    )
+    requested_mode = (
+        manifest_mode
+        if requested_mode_arg is None
+        else validate_peer_premerge_mode(requested_mode_arg)
+    )
+    requested_shards_per_rpc = (
+        manifest_shards_per_rpc
+        if requested_shards_per_rpc_arg is None
+        else normalize_peer_premerge_shards_per_rpc(
+            requested_shards_per_rpc_arg
+        )
+    )
+    controller = topology["controller"]
+    name = container_name(run_id, "controller")
+
+    if args.dry_run:
+        action = (
+            "reused"
+            if manifest_mode == requested_mode
+            and manifest_shards_per_rpc == requested_shards_per_rpc
+            else "recreated"
+        )
+        if action == "recreated":
+            replace_peer_premerge_controller(
+                topology,
+                run_id,
+                image_tag,
+                image_id,
+                requested_mode,
+                requested_shards_per_rpc,
+                args,
+            )
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "run_id": run_id,
+                    "controller": name,
+                    "from_mode": manifest_mode,
+                    "from_shards_per_rpc": manifest_shards_per_rpc,
+                    "requested_mode": requested_mode,
+                    "requested_shards_per_rpc": requested_shards_per_rpc,
+                    "action": action,
+                    "workers_restarted": False,
+                    "storage_preserved": True,
+                    "manifest_written": False,
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
+    inspected_nodes, current_mode, current_shards_per_rpc = (
+        inspect_peer_premerge_transition_runtime(
+            topology,
+            run_id,
+            image_tag,
+            image_id,
+            manifest_mode,
+            manifest_shards_per_rpc,
+            args,
+        )
+    )
+    before_snapshot = cluster_snapshot(topology)
+    before_errors = cluster_validation_errors(topology, before_snapshot)
+    before_collections = run_collection_placements(topology, run_id)
+    before_errors.extend(
+        peer_premerge_collection_validation_errors(
+            topology, before_snapshot, before_collections, run_id
+        )
+    )
+    if before_errors:
+        raise RuntimeError(
+            "refusing peer-premerge transition from an unhealthy cluster: "
+            + "; ".join(before_errors)
+        )
+
+    previous_transitions = list(stored.get("peer_premerge_transitions") or [])
+    transition_id = f"{run_id}-peer-premerge-{len(previous_transitions) + 1:04d}"
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    before_controller = inspected_nodes["controller"]
+    workers_before = [
+        transition_worker_proof(
+            topology,
+            run_id,
+            node,
+            inspected_nodes[str(node["role"])],
+        )
+        for node in topology["workers"]
+    ]
+    tooling_state = git_state(Path(args.repo).resolve())
+    base_proof: dict[str, Any] = {
+        "schema_version": 1,
+        "transition_id": transition_id,
+        "run_id": run_id,
+        "started_at": started_at,
+        "deployment_commit": deployment_commit,
+        "tooling_repository": {
+            "path": str(Path(args.repo).resolve()),
+            "commit": tooling_state["commit"],
+            "tracked_dirty": tooling_state["tracked_dirty"],
+            "tracked_dirty_paths": tooling_state["tracked_dirty_paths"],
+            "untracked_entry_count": tooling_state["untracked_entry_count"],
+        },
+        "from_mode": current_mode,
+        "from_shards_per_rpc": current_shards_per_rpc,
+        "requested_mode": requested_mode,
+        "requested_shards_per_rpc": requested_shards_per_rpc,
+        "workers_restarted": False,
+        "storage_preserved": True,
+        "controller_before": transition_controller_proof(
+            topology, run_id, before_controller
+        ),
+        "validated_workers": workers_before,
+        "workers_before": workers_before,
+        "cluster_before": transition_cluster_proof(before_snapshot),
+        "collections_before": transition_collections_proof(before_collections),
+    }
+
+    if (
+        current_mode == requested_mode
+        and current_shards_per_rpc == requested_shards_per_rpc
+    ):
+        after_snapshot = wait_controller_and_cluster_healthy(
+            topology, wait_timeout, run_id
+        )
+        after_controller = inspect_container(controller, name, args)
+        verify_peer_premerge_transition_identity(
+            topology,
+            after_controller,
+            controller,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=requested_mode,
+            current_shards_per_rpc=requested_shards_per_rpc,
+            require_running=True,
+        )
+        inspected_workers_after = inspect_peer_premerge_transition_workers(
+            topology, run_id, image_tag, image_id, args
+        )
+        workers_after = [
+            transition_worker_proof(
+                topology,
+                run_id,
+                node,
+                inspected_workers_after[str(node["role"])],
+            )
+            for node in topology["workers"]
+        ]
+        after_collections = run_collection_placements(topology, run_id)
+        after_errors = peer_premerge_collection_validation_errors(
+            topology, after_snapshot, after_collections, run_id
+        )
+        if after_errors:
+            raise RuntimeError(
+                "peer-premerge reuse left unhealthy collections: "
+                + "; ".join(after_errors)
+            )
+        controller_after_proof = transition_controller_proof(
+            topology, run_id, after_controller
+        )
+        cluster_after_proof = transition_cluster_proof(after_snapshot)
+        verify_peer_premerge_transition_proof_identity(
+            action="reused",
+            before_controller=base_proof["controller_before"],
+            after_controller=controller_after_proof,
+            workers_before=workers_before,
+            workers_after=workers_after,
+            cluster_before=base_proof["cluster_before"],
+            cluster_after=cluster_after_proof,
+        )
+        proof = {
+            **base_proof,
+            "finished_at": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            ),
+            "action": "reused",
+            "outcome": "success",
+            "final_mode": requested_mode,
+            "final_shards_per_rpc": requested_shards_per_rpc,
+            "rollback": {"attempted": False},
+            "controller_after": controller_after_proof,
+            "workers_after": workers_after,
+            "cluster_after": cluster_after_proof,
+            "collections_after": transition_collections_proof(after_collections),
+        }
+        updated = update_peer_premerge_transition_manifest(
+            topology,
+            run_id,
+            stored,
+            requested_mode,
+            requested_mode,
+            requested_shards_per_rpc,
+            requested_shards_per_rpc,
+            proof,
+            after_snapshot,
+            after_controller,
+        )
+        path = write_manifest(topology, run_id, updated)
+        print(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "action": "reused",
+                    "mode": requested_mode,
+                    "shards_per_rpc": requested_shards_per_rpc,
+                    "transition_id": transition_id,
+                    "manifest": str(path),
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
+    mutation_started = False
+    try:
+        mutation_started = True
+        replace_peer_premerge_controller(
+            topology,
+            run_id,
+            image_tag,
+            image_id,
+            requested_mode,
+            requested_shards_per_rpc,
+            args,
+        )
+        after_controller = inspect_container(controller, name, args)
+        verify_peer_premerge_transition_identity(
+            topology,
+            after_controller,
+            controller,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=requested_mode,
+            current_shards_per_rpc=requested_shards_per_rpc,
+            require_running=True,
+        )
+        after_snapshot = wait_controller_and_cluster_healthy(
+            topology, wait_timeout, run_id
+        )
+        after_controller = inspect_container(controller, name, args)
+        verify_peer_premerge_transition_identity(
+            topology,
+            after_controller,
+            controller,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=requested_mode,
+            current_shards_per_rpc=requested_shards_per_rpc,
+            require_running=True,
+        )
+        inspected_workers_after = inspect_peer_premerge_transition_workers(
+            topology, run_id, image_tag, image_id, args
+        )
+        workers_after = [
+            transition_worker_proof(
+                topology,
+                run_id,
+                node,
+                inspected_workers_after[str(node["role"])],
+            )
+            for node in topology["workers"]
+        ]
+        after_collections = run_collection_placements(topology, run_id)
+        after_errors = peer_premerge_collection_validation_errors(
+            topology, after_snapshot, after_collections, run_id
+        )
+        if after_errors:
+            raise RuntimeError(
+                "peer-premerge recreation left unhealthy collections: "
+                + "; ".join(after_errors)
+            )
+        controller_after_proof = transition_controller_proof(
+            topology, run_id, after_controller
+        )
+        cluster_after_proof = transition_cluster_proof(after_snapshot)
+        verify_peer_premerge_transition_proof_identity(
+            action="recreated",
+            before_controller=base_proof["controller_before"],
+            after_controller=controller_after_proof,
+            workers_before=workers_before,
+            workers_after=workers_after,
+            cluster_before=base_proof["cluster_before"],
+            cluster_after=cluster_after_proof,
+        )
+        proof = {
+            **base_proof,
+            "finished_at": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            ),
+            "action": "recreated",
+            "outcome": "success",
+            "final_mode": requested_mode,
+            "final_shards_per_rpc": requested_shards_per_rpc,
+            "rollback": {"attempted": False},
+            "controller_after": controller_after_proof,
+            "workers_after": workers_after,
+            "cluster_after": cluster_after_proof,
+            "collections_after": transition_collections_proof(after_collections),
+        }
+        updated = update_peer_premerge_transition_manifest(
+            topology,
+            run_id,
+            stored,
+            requested_mode,
+            requested_mode,
+            requested_shards_per_rpc,
+            requested_shards_per_rpc,
+            proof,
+            after_snapshot,
+            after_controller,
+        )
+        path = write_manifest(topology, run_id, updated)
+    except Exception as transition_error:
+        if not mutation_started:
+            raise
+        rollback_snapshot: dict[str, Any] | None = None
+        rollback_controller: dict[str, Any] | None = None
+        rollback_error: Exception | None = None
+        try:
+            rollback_snapshot, rollback_controller = rollback_peer_premerge_controller(
+                topology,
+                run_id,
+                image_tag,
+                image_id,
+                current_mode,
+                current_shards_per_rpc,
+                wait_timeout,
+                args,
+            )
+        except Exception as exc:
+            rollback_error = exc
+
+        proof = {
+            **base_proof,
+            "finished_at": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            ),
+            "action": "recreated",
+            "outcome": (
+                "failed_rolled_back"
+                if rollback_error is None
+                else "failed_rollback_failed"
+            ),
+            "final_mode": current_mode if rollback_error is None else None,
+            "final_shards_per_rpc": (
+                current_shards_per_rpc if rollback_error is None else None
+            ),
+            "forward_error": str(transition_error),
+            "rollback": {
+                "attempted": True,
+                "succeeded": rollback_error is None,
+                "error": str(rollback_error) if rollback_error else None,
+            },
+            "controller_after": transition_controller_proof(
+                topology, run_id, rollback_controller
+            )
+            if rollback_controller is not None
+            else None,
+            "cluster_after": transition_cluster_proof(rollback_snapshot),
+        }
+        proof_write_error: Exception | None = None
+        try:
+            updated = update_peer_premerge_transition_manifest(
+                topology,
+                run_id,
+                stored,
+                requested_mode,
+                current_mode if rollback_error is None else None,
+                requested_shards_per_rpc,
+                current_shards_per_rpc if rollback_error is None else None,
+                proof,
+                rollback_snapshot,
+                rollback_controller,
+            )
+            write_manifest(topology, run_id, updated)
+        except Exception as exc:
+            proof_write_error = exc
+        details = [f"controller transition failed: {transition_error}"]
+        if rollback_error is None:
+            details.append(
+                f"controller rolled back to {current_mode} with "
+                f"shards_per_rpc={current_shards_per_rpc}"
+            )
+        else:
+            details.append(f"controller rollback failed: {rollback_error}")
+        if proof_write_error is not None:
+            details.append(f"transition proof write failed: {proof_write_error}")
+        raise RuntimeError("; ".join(details)) from transition_error
+
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "action": "recreated",
+                "from_mode": current_mode,
+                "from_shards_per_rpc": current_shards_per_rpc,
+                "mode": requested_mode,
+                "shards_per_rpc": requested_shards_per_rpc,
+                "transition_id": transition_id,
+                "manifest": str(path),
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
+    return 0
 
 
 def artifact_restart_nodes(
@@ -2658,6 +4208,9 @@ def command_clean(args: argparse.Namespace, topology: dict[str, Any]) -> int:
 
 def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     repo = Path(args.repo).resolve()
+    requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
+        getattr(args, "peer_premerge_shards_per_rpc", "all")
+    )
     stored = read_manifest(topology, args.run_id)
     state = git_state(repo)
     image_tag = args.image_tag or stored.get("image", {}).get("tag") or image_tag_for_commit(state["commit"])
@@ -2675,6 +4228,9 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                 "http_url": http_url(node, topology),
                 "storage_path": str(local_role_root(topology, args.run_id, str(node["role"])) / "storage"),
                 "peer_premerge_mode": inspected_peer_premerge_mode(inspected, node),
+                "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
+                    inspected, node
+                ),
                 "nofile": inspected_nofile_limits(inspected),
                 "facts": node_facts(node, args),
             }
@@ -2682,6 +4238,14 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     controller_mode = next(
         (
             node.get("peer_premerge_mode")
+            for node in nodes
+            if node.get("role") == "controller"
+        ),
+        None,
+    )
+    controller_shards_per_rpc = next(
+        (
+            node.get("peer_premerge_shards_per_rpc")
             for node in nodes
             if node.get("role") == "controller"
         ),
@@ -2696,8 +4260,18 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         nodes,
         args.disable_peer_premerge,
         controller_mode,
+        requested_shards_per_rpc,
+        controller_shards_per_rpc,
     )
     preserve_run_manifest_metadata(data, stored)
+    if isinstance(stored.get("repository"), dict) and stored["repository"].get(
+        "commit"
+    ):
+        data["repository"] = json.loads(json.dumps(stored["repository"]))
+        data["tooling_repository"] = {
+            "path": str(repo),
+            **state,
+        }
     data["image"].update(stored.get("image") or {})
     if not args.dry_run:
         try:
@@ -2719,6 +4293,7 @@ def main() -> int:
         "build": command_build,
         "deploy": command_deploy,
         "status": command_status,
+        "set-peer-premerge": command_set_peer_premerge,
         "install-orion-artifact": command_install_orion_artifact,
         "install-simple-kmeans-artifact": command_install_simple_kmeans_artifact,
         "down": command_down,

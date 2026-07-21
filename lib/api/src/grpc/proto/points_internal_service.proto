@@ -32,6 +32,8 @@ service PointsInternal {
       returns (SearchBatchResponse) {}
   rpc CoreSearchBatchByShard(CoreSearchBatchByShardInternal)
       returns (SearchBatchResponse) {}
+  rpc CoreSearchBatchByShardCompact(CoreSearchBatchByShardCompactInternal)
+      returns (SearchBatchResponse) {}
   rpc Scroll(ScrollPointsInternal) returns (ScrollResponse) {}
   rpc Count(CountPointsInternal) returns (CountResponse) {}
   rpc Recommend(RecommendPointsInternal) returns (RecommendResponse) {}
@@ -292,6 +294,32 @@ message CoreSearchBatchByShardInternal {
   string collection_name = 1;
   repeated CoreSearchByShardEntry searches = 2;
   optional uint64 timeout = 3;
+}
+
+// One copy of the query fields shared by every shard-local Orion search for a
+// peer-local query slot. The worker derives the lower-search window from
+// `search_points.limit + search_points.offset` and uses the original values for
+// its peer-local final merge.
+message CoreSearchByShardQueryTemplate {
+  CoreSearchPoints search_points = 1;
+  optional uint64 source_id_dedup_block_size = 2;
+}
+
+// The shard-specific part of an Orion lower search. Entry-point order is
+// significant and must be preserved by the worker.
+message CoreSearchByShardCompactEntry {
+  uint64 query_slot = 1;
+  uint32 shard_id = 2;
+  repeated PointId hnsw_entry_points = 3;
+  uint64 hnsw_ef = 4;
+}
+
+message CoreSearchBatchByShardCompactInternal {
+  string collection_name = 1;
+  repeated CoreSearchByShardQueryTemplate query_templates = 2;
+  repeated CoreSearchByShardCompactEntry searches = 3;
+  optional uint64 timeout = 4;
+  uint32 wire_version = 5;
 }
 
 message ScrollPointsInternal {

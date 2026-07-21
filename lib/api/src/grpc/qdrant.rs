@@ -10831,6 +10831,61 @@ pub struct CoreSearchBatchByShardInternal {
     #[prost(uint64, optional, tag = "3")]
     pub timeout: ::core::option::Option<u64>,
 }
+/// One copy of the query fields shared by every shard-local Orion search for a
+/// peer-local query slot. The worker derives the lower-search window from
+/// `search_points.limit + search_points.offset` and uses the original values for
+/// its peer-local final merge.
+#[derive(serde::Serialize)]
+#[derive(validator::Validate)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CoreSearchByShardQueryTemplate {
+    #[prost(message, optional, tag = "1")]
+    #[validate(nested)]
+    pub search_points: ::core::option::Option<CoreSearchPoints>,
+    #[prost(uint64, optional, tag = "2")]
+    pub source_id_dedup_block_size: ::core::option::Option<u64>,
+}
+/// The shard-specific part of an Orion lower search. Entry-point order is
+/// significant and must be preserved by the worker.
+#[derive(serde::Serialize)]
+#[derive(validator::Validate)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CoreSearchByShardCompactEntry {
+    #[prost(uint64, tag = "1")]
+    pub query_slot: u64,
+    #[prost(uint32, tag = "2")]
+    pub shard_id: u32,
+    #[prost(message, repeated, tag = "3")]
+    pub hnsw_entry_points: ::prost::alloc::vec::Vec<PointId>,
+    #[prost(uint64, tag = "4")]
+    #[validate(range(min = 1))]
+    pub hnsw_ef: u64,
+}
+#[derive(serde::Serialize)]
+#[derive(validator::Validate)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CoreSearchBatchByShardCompactInternal {
+    #[prost(string, tag = "1")]
+    #[validate(
+        length(min = 1, max = 255),
+        custom(function = "common::validation::validate_collection_name_legacy")
+    )]
+    pub collection_name: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    #[validate(nested)]
+    pub query_templates: ::prost::alloc::vec::Vec<CoreSearchByShardQueryTemplate>,
+    #[prost(message, repeated, tag = "3")]
+    #[validate(nested)]
+    pub searches: ::prost::alloc::vec::Vec<CoreSearchByShardCompactEntry>,
+    #[prost(uint64, optional, tag = "4")]
+    pub timeout: ::core::option::Option<u64>,
+    #[prost(uint32, tag = "5")]
+    #[validate(range(min = 1, max = 1))]
+    pub wire_version: u32,
+}
 #[derive(serde::Serialize)]
 #[derive(validator::Validate)]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -11673,6 +11728,38 @@ pub mod points_internal_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn core_search_batch_by_shard_compact(
+            &mut self,
+            request: impl tonic::IntoRequest<
+                super::CoreSearchBatchByShardCompactInternal,
+            >,
+        ) -> std::result::Result<
+            tonic::Response<super::SearchBatchResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/qdrant.PointsInternal/CoreSearchBatchByShardCompact",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "qdrant.PointsInternal",
+                        "CoreSearchBatchByShardCompact",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn scroll(
             &mut self,
             request: impl tonic::IntoRequest<super::ScrollPointsInternal>,
@@ -11916,6 +12003,13 @@ pub mod points_internal_server {
         async fn core_search_batch_by_shard(
             &self,
             request: tonic::Request<super::CoreSearchBatchByShardInternal>,
+        ) -> std::result::Result<
+            tonic::Response<super::SearchBatchResponse>,
+            tonic::Status,
+        >;
+        async fn core_search_batch_by_shard_compact(
+            &self,
+            request: tonic::Request<super::CoreSearchBatchByShardCompactInternal>,
         ) -> std::result::Result<
             tonic::Response<super::SearchBatchResponse>,
             tonic::Status,
@@ -12678,6 +12772,61 @@ pub mod points_internal_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = CoreSearchBatchByShardSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/qdrant.PointsInternal/CoreSearchBatchByShardCompact" => {
+                    #[allow(non_camel_case_types)]
+                    struct CoreSearchBatchByShardCompactSvc<T: PointsInternal>(
+                        pub Arc<T>,
+                    );
+                    impl<
+                        T: PointsInternal,
+                    > tonic::server::UnaryService<
+                        super::CoreSearchBatchByShardCompactInternal,
+                    > for CoreSearchBatchByShardCompactSvc<T> {
+                        type Response = super::SearchBatchResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                super::CoreSearchBatchByShardCompactInternal,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PointsInternal>::core_search_batch_by_shard_compact(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = CoreSearchBatchByShardCompactSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

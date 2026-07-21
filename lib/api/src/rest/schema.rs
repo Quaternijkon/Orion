@@ -1194,6 +1194,7 @@ pub struct SearchRequestInternal {
     /// `shard_id * block_size + source_id + 1`. When set, shard merge uses the
     /// decoded source id for de-duplication before applying the final limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[validate(range(min = 1))]
     pub source_id_dedup_block_size: Option<u64>,
     /// Max number of result to return
     #[serde(alias = "top")]

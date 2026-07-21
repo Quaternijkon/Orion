@@ -311,3 +311,25 @@ async fn configured_simple_kmeans_policy_fails_closed_when_router_is_unavailable
             .contains("refusing a silent all-shards coordinator fallback")
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn eligible_simple_kmeans_route_failure_refuses_silent_all_shards_fallback() {
+    let (collection, _collection_dir, _snapshots_path) = fixture().await;
+
+    let error = collection
+        .core_search_batch(
+            shard::search::CoreSearchRequestBatch {
+                searches: vec![core_request(vec![1.0, 0.0, 2.0], false)],
+            },
+            None,
+            ShardSelectorInternal::All,
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("Simple KMeans routing generation 1 failed"));
+    assert!(message.contains("refusing a silent all-shards fallback"));
+}

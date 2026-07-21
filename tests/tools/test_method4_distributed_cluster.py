@@ -41,6 +41,11 @@ def healthy_cluster_snapshot(module, value):
     return {
         "result": {
             "peer_id": 100,
+            "raft_info": {"pending_operations": 0},
+            "consensus_thread_status": {
+                "consensus_thread_status": "working"
+            },
+            "message_send_failures": {},
             "peers": {
                 str(100 + index): {"uri": module.advertised_uri(node, value)}
                 for index, node in enumerate(module.all_nodes(value))
@@ -52,7 +57,19 @@ def healthy_cluster_snapshot(module, value):
 def healthy_run_collections():
     return {
         "dist_run-1_orion_s3": {
-            "info": {"status": "green"},
+            "info": {
+                "status": "green",
+                "optimizer_status": "ok",
+                "points_count": 300,
+                "indexed_vectors_count": 300,
+                "update_queue": {"length": 0},
+                "config": {
+                    "params": {
+                        "shard_number": 3,
+                        "replication_factor": 1,
+                    }
+                },
+            },
             "cluster": {
                 "peer_id": 100,
                 "local_shards": [],
@@ -74,32 +91,82 @@ def option_values(command, option):
     ]
 
 
-def matching_controller_inspect(module, value, disable_peer_premerge):
-    node = value["controller"]
+def matching_node_inspect(
+    module,
+    value,
+    node,
+    disable_peer_premerge=False,
+    shards_per_rpc="all",
+    container_id=None,
+):
     image_id = "sha256:abc"
     mode = module.expected_peer_premerge_mode(node, disable_peer_premerge)
+    normalized_shards_per_rpc = (
+        module.normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
+        if node["role"] == "controller"
+        else "all"
+    )
     labels = {
         "orion.distributed.run_id": "run-1",
         "orion.distributed.role": node["role"],
         "orion.distributed.private_ip": node["private_ip"],
         "orion.distributed.image_id": image_id,
         module.NOFILE_LABEL: module.expected_nofile_label(),
-        module.PEER_PREMERGE_MODE_LABEL: mode,
-        module.CONTROLLER_FINGERPRINT_LABEL: module.controller_config_fingerprint(
-            node, "run-1", image_id, disable_peer_premerge
-        ),
     }
-    env = (
-        [f"{module.PEER_PREMERGE_DISABLE_ENV}=1"]
-        if disable_peer_premerge
-        else []
-    )
+    if node["role"] == "controller":
+        labels.update(
+            {
+                module.PEER_PREMERGE_MODE_LABEL: mode,
+                module.CONTROLLER_FINGERPRINT_LABEL: (
+                    module.controller_config_fingerprint(
+                        node,
+                        "run-1",
+                        image_id,
+                        disable_peer_premerge,
+                        normalized_shards_per_rpc,
+                    )
+                ),
+            }
+        )
+        if normalized_shards_per_rpc != "all":
+            labels[module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL] = (
+                normalized_shards_per_rpc
+            )
+    env = [
+        "QDRANT__CLUSTER__ENABLED=true",
+        f"QDRANT__CLUSTER__P2P__PORT={value['ports']['p2p']}",
+        f"QDRANT__SERVICE__HTTP_PORT={value['ports']['http']}",
+        f"QDRANT__SERVICE__GRPC_PORT={value['ports']['grpc']}",
+        (
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS="
+            f"{node['max_search_threads']}"
+        ),
+        (
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET="
+            f"{node['optimizer_cpu_budget']}"
+        ),
+    ]
+    if node["role"] == "controller" and disable_peer_premerge:
+        env.append(f"{module.PEER_PREMERGE_DISABLE_ENV}=1")
+    if node["role"] == "controller" and normalized_shards_per_rpc != "all":
+        env.append(
+            f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}="
+            f"{normalized_shards_per_rpc}"
+        )
     return {
-        "Name": "/orion-dist-run-1-controller",
+        "Id": container_id or f"container-{node['role']}",
+        "Name": f"/{module.container_name('run-1', node['role'])}",
         "Image": image_id,
-        "Config": {"Labels": labels, "Env": env},
+        "Config": {
+            "Image": "image:test",
+            "Labels": labels,
+            "Env": env,
+            "Cmd": module.expected_qdrant_command(value, node),
+        },
         "HostConfig": {
             "CpusetCpus": node["cpuset"],
+            "NetworkMode": "host",
+            "RestartPolicy": {"Name": "unless-stopped"},
             "Ulimits": [
                 {
                     "Name": "nofile",
@@ -108,7 +175,65 @@ def matching_controller_inspect(module, value, disable_peer_premerge):
                 }
             ],
         },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": str(
+                    (
+                        module.local_role_root(value, "run-1", node["role"])
+                        / "storage"
+                    ).resolve()
+                ),
+                "Destination": "/qdrant/storage",
+                "RW": True,
+            }
+        ],
         "State": {"Running": True},
+    }
+
+
+def matching_controller_inspect(
+    module, value, disable_peer_premerge, shards_per_rpc="all"
+):
+    return matching_node_inspect(
+        module,
+        value,
+        value["controller"],
+        disable_peer_premerge,
+        shards_per_rpc,
+    )
+
+
+def peer_premerge_manifest(value, mode="enabled", shards_per_rpc=None):
+    peer_premerge = {
+        "requested_mode": mode,
+        "current_mode": mode,
+        "matches_requested": True,
+    }
+    if shards_per_rpc is not None:
+        normalized_shards_per_rpc = str(shards_per_rpc)
+        peer_premerge.update(
+            {
+                "requested_shards_per_rpc": normalized_shards_per_rpc,
+                "current_shards_per_rpc": normalized_shards_per_rpc,
+                "shards_per_rpc_matches_requested": True,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "image": {
+            "tag": "image:test",
+            "id": "sha256:abc",
+            "tar_path": "/shared/image.tar",
+            "tar_sha256": "a" * 64,
+        },
+        "repository": {"commit": "commit-1"},
+        "topology": copy.deepcopy(value),
+        "nodes": [copy.deepcopy(node) for node in [value["controller"], *value["workers"]]],
+        "peer_premerge": peer_premerge,
+        "orion_artifacts": [{"collection": "orion", "generation": 7}],
+        "simple_kmeans_artifacts": [{"collection": "simple", "generation": 9}],
     }
 
 
@@ -192,6 +317,38 @@ def test_cloudlab_topology_has_one_controller_three_unique_workers():
     ]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, "all"),
+        ("all", "all"),
+        ("ALL", "all"),
+        (0, "all"),
+        ("0", "all"),
+        ("00", "all"),
+        (1, "1"),
+        ("4", "4"),
+        ("008", "8"),
+        (2**63 - 1, str(2**63 - 1)),
+    ],
+)
+def test_peer_premerge_shards_per_rpc_normalization(value, expected):
+    module = load_module()
+
+    assert module.normalize_peer_premerge_shards_per_rpc(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "-1", -1, "1.0", 1.0, "many", True, False, 2**63],
+)
+def test_peer_premerge_shards_per_rpc_rejects_invalid_values(value):
+    module = load_module()
+
+    with pytest.raises(ValueError, match="shards-per-rpc"):
+        module.normalize_peer_premerge_shards_per_rpc(value)
+
+
 def test_qdrant_commands_advertise_private_uri_and_workers_bootstrap_controller():
     module = load_module()
     value = topology(module)
@@ -273,6 +430,89 @@ def test_peer_premerge_is_enabled_by_default_and_disabled_only_on_controller():
     assert enabled_fingerprint != disabled_fingerprint
 
 
+def test_controller_fingerprint_preserves_v3_all_compatibility():
+    module = load_module()
+    value = topology(module)
+    controller = value["controller"]
+    legacy_enabled = (
+        "sha256:a5bc3071b4e5c222d873ab914743776ac1c9d1da7b900c7f8a89a9ae590fc9d7"
+    )
+    legacy_disabled = (
+        "sha256:b12bc0bface87b51f3c019247ec7d737aeeb89dfe25ba4883c7351d40e57a3c0"
+    )
+
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc"
+    ) == legacy_enabled
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc", False, "all"
+    ) == legacy_enabled
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc", False, 0
+    ) == legacy_enabled
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc", True, "all"
+    ) == legacy_disabled
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc", False, 4
+    ) != legacy_enabled
+
+
+def test_peer_premerge_rpc_chunking_is_controller_only_and_all_is_implicit():
+    module = load_module()
+    value = topology(module)
+    controller_all = module.docker_run_command(
+        value,
+        value["controller"],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        "all",
+    )
+    controller_bounded = module.docker_run_command(
+        value,
+        value["controller"],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        "008",
+    )
+    worker_bounded = module.docker_run_command(
+        value,
+        value["workers"][0],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        8,
+    )
+
+    chunk_env_prefix = f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}="
+    chunk_label_prefix = f"{module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL}="
+    assert not any(
+        item.startswith(chunk_env_prefix)
+        for item in option_values(controller_all, "-e")
+    )
+    assert not any(
+        item.startswith(chunk_label_prefix)
+        for item in option_values(controller_all, "--label")
+    )
+    assert f"{chunk_env_prefix}8" in option_values(controller_bounded, "-e")
+    assert f"{chunk_label_prefix}8" in option_values(
+        controller_bounded, "--label"
+    )
+    assert not any(
+        item.startswith(chunk_env_prefix)
+        for item in option_values(worker_bounded, "-e")
+    )
+    assert not any(
+        item.startswith(chunk_label_prefix)
+        for item in option_values(worker_bounded, "--label")
+    )
+
+
 @pytest.mark.parametrize("command", ["deploy", "status", "manifest"])
 def test_peer_premerge_cli_defaults_enabled_and_accepts_explicit_disable(
     monkeypatch, command
@@ -280,14 +520,86 @@ def test_peer_premerge_cli_defaults_enabled_and_accepts_explicit_disable(
     module = load_module()
 
     monkeypatch.setattr(module.sys, "argv", ["cluster", "--run-id", "run-1", command])
-    assert module.parse_args().disable_peer_premerge is False
+    default_args = module.parse_args()
+    assert default_args.disable_peer_premerge is False
+    assert default_args.peer_premerge_shards_per_rpc == "all"
 
     monkeypatch.setattr(
         module.sys,
         "argv",
-        ["cluster", "--run-id", "run-1", command, "--disable-peer-premerge"],
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            command,
+            "--disable-peer-premerge",
+            "--peer-premerge-shards-per-rpc",
+            "008",
+        ],
     )
-    assert module.parse_args().disable_peer_premerge is True
+    explicit_args = module.parse_args()
+    assert explicit_args.disable_peer_premerge is True
+    assert explicit_args.peer_premerge_shards_per_rpc == "8"
+
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            command,
+            "--peer-premerge-shards-per-rpc",
+            "0",
+        ],
+    )
+    assert module.parse_args().peer_premerge_shards_per_rpc == "all"
+
+
+@pytest.mark.parametrize(
+    ("options", "expected_mode", "expected_shards_per_rpc"),
+    [
+        (["--mode", "disabled"], "disabled", None),
+        (["--shards-per-rpc", "4"], None, "4"),
+        (
+            ["--mode", "enabled", "--shards-per-rpc", "0"],
+            "enabled",
+            "all",
+        ),
+    ],
+)
+def test_set_peer_premerge_cli_accepts_mode_chunk_or_both(
+    monkeypatch, options, expected_mode, expected_shards_per_rpc
+):
+    module = load_module()
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "set-peer-premerge",
+            *options,
+            "--wait-timeout",
+            "75",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.command == "set-peer-premerge"
+    assert args.mode == expected_mode
+    assert args.shards_per_rpc == expected_shards_per_rpc
+    assert args.wait_timeout == 75.0
+
+
+def test_set_peer_premerge_rejects_invocation_without_mode_or_chunk():
+    module = load_module()
+    args = SimpleNamespace(run_id="run-1", mode=None, shards_per_rpc=None)
+
+    with pytest.raises(ValueError, match="requires --mode and/or --shards-per-rpc"):
+        module.command_set_peer_premerge(args, topology(module))
 
 
 def test_peer_uri_normalization_accepts_qdrant_trailing_slash():
@@ -401,6 +713,148 @@ def test_matching_controller_peer_premerge_container_is_reusable(disable_peer_pr
     )
 
 
+def test_matching_bounded_peer_premerge_container_is_reusable():
+    module = load_module()
+    value = topology(module)
+    inspected = matching_controller_inspect(module, value, False, "008")
+
+    assert module.verify_container_reusable(
+        inspected,
+        value["controller"],
+        "run-1",
+        "sha256:abc",
+        False,
+        8,
+    )
+    assert module.inspected_peer_premerge_shards_per_rpc(
+        inspected, value["controller"]
+    ) == "8"
+
+
+def test_inspected_peer_premerge_shards_per_rpc_is_fail_closed():
+    module = load_module()
+    value = topology(module)
+    controller = value["controller"]
+    worker = value["workers"][0]
+    implicit_all = matching_controller_inspect(module, value, False, "all")
+    bounded = matching_controller_inspect(module, value, False, 4)
+
+    assert module.inspected_peer_premerge_shards_per_rpc(
+        implicit_all, controller
+    ) == "all"
+    assert module.inspected_peer_premerge_shards_per_rpc(bounded, controller) == "4"
+    assert module.inspected_peer_premerge_shards_per_rpc(
+        matching_node_inspect(module, value, worker, False, 4), worker
+    ) == "not_applicable"
+
+    missing_env = copy.deepcopy(bounded)
+    missing_env["Config"]["Env"] = [
+        item
+        for item in missing_env["Config"]["Env"]
+        if not item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=")
+    ]
+    missing_label = copy.deepcopy(bounded)
+    del missing_label["Config"]["Labels"][
+        module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL
+    ]
+    mismatched = copy.deepcopy(bounded)
+    mismatched["Config"]["Env"][-1] = (
+        f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=5"
+    )
+    explicit_all = copy.deepcopy(implicit_all)
+    explicit_all["Config"]["Labels"][
+        module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL
+    ] = "all"
+    explicit_all["Config"]["Env"].append(
+        f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=0"
+    )
+    duplicate_env = copy.deepcopy(bounded)
+    duplicate_env["Config"]["Env"].append(
+        f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=4"
+    )
+
+    for inspected in (
+        missing_env,
+        missing_label,
+        mismatched,
+        explicit_all,
+        duplicate_env,
+    ):
+        assert module.inspected_peer_premerge_shards_per_rpc(
+            inspected, controller
+        ) == "inconsistent"
+
+
+def test_controller_reuse_rejects_bounded_chunk_drift():
+    module = load_module()
+    value = topology(module)
+    controller = value["controller"]
+    bounded = matching_controller_inspect(module, value, False, 4)
+
+    missing_env = copy.deepcopy(bounded)
+    missing_env["Config"]["Env"] = [
+        item
+        for item in missing_env["Config"]["Env"]
+        if not item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=")
+    ]
+    missing_label = copy.deepcopy(bounded)
+    del missing_label["Config"]["Labels"][
+        module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL
+    ]
+    wrong_env = copy.deepcopy(bounded)
+    wrong_env["Config"]["Env"][-1] = (
+        f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=5"
+    )
+    wrong_label = copy.deepcopy(bounded)
+    wrong_label["Config"]["Labels"][
+        module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL
+    ] = "5"
+    wrong_fingerprint = copy.deepcopy(bounded)
+    wrong_fingerprint["Config"]["Labels"][module.CONTROLLER_FINGERPRINT_LABEL] = (
+        module.controller_config_fingerprint(
+            controller, "run-1", "sha256:abc", False, "all"
+        )
+    )
+
+    for inspected in (
+        missing_env,
+        missing_label,
+        wrong_env,
+        wrong_label,
+        wrong_fingerprint,
+    ):
+        with pytest.raises(RuntimeError, match="incompatible configuration"):
+            module.verify_container_reusable(
+                inspected,
+                controller,
+                "run-1",
+                "sha256:abc",
+                False,
+                4,
+            )
+
+
+@pytest.mark.parametrize("leak_kind", ["environment", "label"])
+def test_worker_reuse_rejects_peer_premerge_chunk_metadata(leak_kind):
+    module = load_module()
+    value = topology(module)
+    worker = value["workers"][0]
+    inspected = matching_node_inspect(module, value, worker)
+    if leak_kind == "environment":
+        inspected["Config"]["Env"].append(
+            f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=4"
+        )
+    else:
+        inspected["Config"]["Labels"][
+            module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL
+        ] = "4"
+
+    with pytest.raises(RuntimeError, match="incompatible configuration"):
+        module.verify_container_reusable(
+            inspected, worker, "run-1", "sha256:abc", False, 4
+        )
+
+
 @pytest.mark.parametrize(
     ("container_disabled", "requested_disabled"), [(False, True), (True, False)]
 )
@@ -430,6 +884,64 @@ def test_controller_reuse_rejects_missing_fingerprint():
     with pytest.raises(RuntimeError, match="controller_fingerprint"):
         module.verify_container_reusable(
             inspected, value["controller"], "run-1", "sha256:abc"
+        )
+
+
+def test_peer_premerge_transition_identity_requires_exact_bind_mount_and_runtime():
+    module = load_module()
+    value = topology(module)
+    inspected = matching_controller_inspect(module, value, False)
+
+    assert module.verify_peer_premerge_transition_identity(
+        value,
+        inspected,
+        value["controller"],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        current_mode="enabled",
+    )
+
+    inspected["Mounts"][0]["Source"] = "/tmp/not-this-run"
+    with pytest.raises(RuntimeError, match="storage_mount"):
+        module.verify_peer_premerge_transition_identity(
+            value,
+            inspected,
+            value["controller"],
+            "run-1",
+            "image:test",
+            "sha256:abc",
+            current_mode="enabled",
+        )
+
+
+def test_peer_premerge_transition_manifest_binds_deployment_commit(tmp_path):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value)
+
+    assert module.validate_peer_premerge_transition_manifest(
+        value, "run-1", stored, None, "commit-1"
+    ) == ("image:test", "sha256:abc", "enabled", "all", "commit-1")
+    with pytest.raises(RuntimeError, match="deployment commit"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", stored, None, "other-commit"
+        )
+
+
+def test_peer_premerge_transition_manifest_reads_bounded_chunk_setting(tmp_path):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "disabled", "008")
+
+    assert module.validate_peer_premerge_transition_manifest(
+        value, "run-1", stored, None, "commit-1"
+    ) == ("image:test", "sha256:abc", "disabled", "8", "commit-1")
+
+    stored["peer_premerge"]["current_shards_per_rpc"] = "bad"
+    with pytest.raises(RuntimeError, match="invalid.*shards-per-rpc"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", stored, None, "commit-1"
         )
 
 
@@ -592,6 +1104,7 @@ def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
         image_tag=None,
         dry_run=False,
         disable_peer_premerge=False,
+        peer_premerge_shards_per_rpc="4",
         wait_timeout=1.0,
         ssh_user=None,
         ssh_option=[],
@@ -601,6 +1114,18 @@ def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
     assert image_inspects == 2
     assert ["sudo", "-n", "docker", "load", "--input", str(tar_path)] in commands
     assert written["nodes"][0]["image_id"] == image_id
+    assert written["nodes"][0]["peer_premerge_shards_per_rpc"] == "4"
+    run_command = next(
+        command
+        for command in commands
+        if isinstance(command, list) and command[3:4] == ["run"]
+    )
+    assert f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=4" in option_values(
+        run_command, "-e"
+    )
+    assert f"{module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL}=4" in option_values(
+        run_command, "--label"
+    )
 
 
 def test_deploy_rejects_tag_id_mismatch_after_load(monkeypatch, tmp_path):
@@ -667,6 +1192,9 @@ def test_status_requires_cluster_peer_uris_premerge_and_active_worker_placement(
             "peer_premerge_mode": (
                 "enabled" if node["role"] == "controller" else "not_applicable"
             ),
+            "peer_premerge_shards_per_rpc": (
+                "all" if node["role"] == "controller" else "not_applicable"
+            ),
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -681,6 +1209,73 @@ def test_status_requires_cluster_peer_uris_premerge_and_active_worker_placement(
     assert module.command_status(args, value) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["validation"] == {"ok": True, "errors": []}
+
+
+def test_cluster_proof_and_validation_read_top_level_message_send_failures():
+    module = load_module()
+    value = topology(module)
+    snapshot = healthy_cluster_snapshot(module, value)
+    failures = {"103": {"count": 2, "latest_error": "transport closed"}}
+    snapshot["result"]["message_send_failures"] = failures
+    snapshot["result"]["raft_info"]["message_send_failures"] = {}
+
+    errors = module.cluster_validation_errors(value, snapshot)
+    proof = module.transition_cluster_proof(snapshot)
+
+    assert any("message_send_failures" in error for error in errors)
+    assert proof["message_send_failures"] == failures
+
+
+@pytest.mark.parametrize(
+    ("requested", "current", "expected_return"),
+    [("4", "4", 0), ("8", "4", 1)],
+)
+def test_status_reports_and_validates_peer_premerge_chunk_setting(
+    monkeypatch, capsys, requested, current, expected_return
+):
+    module = load_module()
+    value = topology(module)
+    snapshot = healthy_cluster_snapshot(module, value)
+    collections = healthy_run_collections()
+
+    def fake_node_status(_topology, node, run_id, _args):
+        return {
+            "role": node["role"],
+            "container_name": module.container_name(run_id, node["role"]),
+            "running": True,
+            "peer_premerge_mode": (
+                "enabled" if node["role"] == "controller" else "not_applicable"
+            ),
+            "peer_premerge_shards_per_rpc": (
+                current if node["role"] == "controller" else "not_applicable"
+            ),
+        }
+
+    monkeypatch.setattr(module, "status_for_node", fake_node_status)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda _topology, _run_id: collections,
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        disable_peer_premerge=False,
+        peer_premerge_shards_per_rpc=requested,
+        dry_run=False,
+    )
+
+    assert module.command_status(args, value) == expected_return
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["peer_premerge"]["requested_shards_per_rpc"] == requested
+    assert payload["peer_premerge"]["current_shards_per_rpc"] == current
+    assert payload["peer_premerge"]["shards_per_rpc_matches_requested"] is (
+        expected_return == 0
+    )
+    if expected_return:
+        assert "shards-per-rpc mismatch" in "\n".join(
+            payload["validation"]["errors"]
+        )
 
 
 @pytest.mark.parametrize(
@@ -722,6 +1317,9 @@ def test_status_returns_nonzero_for_cluster_or_placement_mismatch(
                 if node["role"] == "controller"
                 else "not_applicable"
             ),
+            "peer_premerge_shards_per_rpc": (
+                "all" if node["role"] == "controller" else "not_applicable"
+            ),
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -752,6 +1350,9 @@ def test_status_returns_nonzero_when_cluster_endpoint_is_unreachable(
             "running": True,
             "peer_premerge_mode": (
                 "enabled" if node["role"] == "controller" else "not_applicable"
+            ),
+            "peer_premerge_shards_per_rpc": (
+                "all" if node["role"] == "controller" else "not_applicable"
             ),
         }
 
@@ -787,6 +1388,798 @@ def test_status_summary_exposes_requested_and_current_peer_premerge_mode(monkeyp
     assert summary["requested_mode"] == "disabled"
     assert summary["current_mode"] == "disabled"
     assert summary["matches_requested"] is True
+
+
+def test_manifest_reports_requested_and_current_peer_premerge_chunk_setting(
+    monkeypatch, tmp_path, capsys
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled", "4")
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "git_state",
+        lambda _repo: {
+            "commit": "commit-1",
+            "dirty": False,
+            "dirty_paths": [],
+            "tracked_dirty": False,
+            "tracked_dirty_paths": [],
+            "untracked_entry_count": 0,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda node, _name, _args: matching_node_inspect(
+            module, value, node, False, 4
+        ),
+    )
+    monkeypatch.setattr(module, "node_facts", lambda *_args: {})
+    args = SimpleNamespace(
+        repo=str(tmp_path),
+        run_id="run-1",
+        image_tag=None,
+        disable_peer_premerge=False,
+        peer_premerge_shards_per_rpc="4",
+        dry_run=True,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_manifest(args, value) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["peer_premerge"]["requested_shards_per_rpc"] == "4"
+    assert payload["peer_premerge"]["current_shards_per_rpc"] == "4"
+    assert payload["peer_premerge"]["matches_requested"] is True
+    controller = next(
+        node for node in payload["nodes"] if node["role"] == "controller"
+    )
+    assert controller["peer_premerge_shards_per_rpc"] == "4"
+    assert all(
+        node["peer_premerge_shards_per_rpc"] == "not_applicable"
+        for node in payload["nodes"]
+        if node["role"] != "controller"
+    )
+
+
+def test_manifest_preserves_deployment_commit_and_records_current_tooling_repo(
+    monkeypatch, tmp_path, capsys
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled", "all")
+    stored["repository"] = {
+        "path": "/deployment/repository",
+        "commit": "old-deployment-commit",
+        "short_commit": "old-deploy",
+        "dirty": False,
+        "dirty_paths": [],
+    }
+    tooling_state = {
+        "commit": "new-tooling-commit",
+        "short_commit": "new-tooling",
+        "dirty": True,
+        "dirty_paths": ["tools/method4_distributed_cluster.py"],
+        "tracked_dirty": True,
+        "tracked_dirty_paths": ["tools/method4_distributed_cluster.py"],
+        "untracked_entry_count": 0,
+    }
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "git_state", lambda _repo: tooling_state)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda node, _name, _args: matching_node_inspect(
+            module, value, node, False, "all"
+        ),
+    )
+    monkeypatch.setattr(module, "node_facts", lambda *_args: {})
+    args = SimpleNamespace(
+        repo=str(tmp_path),
+        run_id="run-1",
+        image_tag=None,
+        disable_peer_premerge=False,
+        peer_premerge_shards_per_rpc="all",
+        dry_run=True,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_manifest(args, value) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["repository"] == stored["repository"]
+    assert payload["repository"]["commit"] == "old-deployment-commit"
+    assert payload["tooling_repository"] == {
+        "path": str(tmp_path.resolve()),
+        **tooling_state,
+    }
+
+
+def test_set_peer_premerge_same_mode_reuses_controller_and_appends_proof(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    writes = []
+    commands = []
+
+    def fake_inspect(_node, _name, _args):
+        return matching_node_inspect(module, value, _node, False)
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: healthy_run_collections(),
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_controller_and_cluster_healthy",
+        lambda *_args: snapshot,
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="enabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_set_peer_premerge(args, value) == 0
+
+    lifecycle = [
+        command
+        for _role, command in commands
+        if not (isinstance(command, list) and "image" in command)
+    ]
+    assert lifecycle == []
+    assert writes[-1]["orion_artifacts"] == stored["orion_artifacts"]
+    assert writes[-1]["simple_kmeans_artifacts"] == stored[
+        "simple_kmeans_artifacts"
+    ]
+    proof = writes[-1]["peer_premerge_transitions"][-1]
+    assert proof["action"] == "reused"
+    assert proof["outcome"] == "success"
+    assert proof["workers_restarted"] is False
+    assert set(proof["tooling_repository"]) == {
+        "path",
+        "commit",
+        "tracked_dirty",
+        "tracked_dirty_paths",
+        "untracked_entry_count",
+    }
+    assert [worker["container_id"] for worker in proof["validated_workers"]] == [
+        "container-qdrant_shard_1",
+        "container-qdrant_shard_2",
+        "container-qdrant_shard_3",
+    ]
+
+
+def test_set_peer_premerge_rejects_run_without_scoped_collections(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    commands = []
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda node, _name, _args: matching_node_inspect(
+            module, value, node, False
+        ),
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(module, "run_collection_placements", lambda *_args: {})
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("rejected transition must not write a manifest"),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="enabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    with pytest.raises(RuntimeError, match="no run-scoped collections"):
+        module.command_set_peer_premerge(args, value)
+
+    lifecycle = [
+        command[3]
+        for _role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle == []
+
+
+def test_set_peer_premerge_recreates_only_controller_and_preserves_storage(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    state = {"mode": "enabled", "controller_generation": 0}
+    commands = []
+    writes = []
+
+    def fake_inspect(node, _name, _args):
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            state["mode"] == "disabled" if node["role"] == "controller" else False,
+            container_id=(
+                f"container-controller-{state['controller_generation']}"
+                if node["role"] == "controller"
+                else None
+            ),
+        )
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        if isinstance(command, list) and command[3:4] == ["run"]:
+            state["controller_generation"] += 1
+            state["mode"] = (
+                "disabled"
+                if f"{module.PEER_PREMERGE_DISABLE_ENV}=1"
+                in option_values(command, "-e")
+                else "enabled"
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: healthy_run_collections(),
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_controller_and_cluster_healthy",
+        lambda *_args: snapshot,
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="disabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_set_peer_premerge(args, value) == 0
+
+    lifecycle = [
+        (role, command)
+        for role, command in commands
+        if not (isinstance(command, list) and "image" in command)
+    ]
+    assert [role for role, _command in lifecycle] == ["controller"] * 3
+    assert [command[3] for _role, command in lifecycle] == ["stop", "rm", "run"]
+    run_command = lifecycle[-1][1]
+    storage = (
+        module.local_role_root(value, "run-1", "controller") / "storage"
+    ).resolve()
+    assert f"{storage}:/qdrant/storage" in option_values(run_command, "-v")
+    assert f"{module.PEER_PREMERGE_DISABLE_ENV}=1" in option_values(
+        run_command, "-e"
+    )
+    assert not any("rm" == item and str(storage) in run_command for item in run_command)
+    assert writes[-1]["orion_artifacts"] == stored["orion_artifacts"]
+    assert writes[-1]["peer_premerge"]["current_mode"] == "disabled"
+    proof = writes[-1]["peer_premerge_transitions"][-1]
+    assert proof["outcome"] == "success"
+    assert proof["from_mode"] == "enabled"
+    assert proof["final_mode"] == "disabled"
+    assert proof["controller_before"]["container_id"] == "container-controller-0"
+    assert proof["controller_after"]["container_id"] == "container-controller-1"
+
+
+@pytest.mark.parametrize(
+    ("from_chunk", "target_chunk", "expected_action"),
+    [
+        ("all", "4", "recreated"),
+        ("4", "all", "recreated"),
+        ("4", "4", "reused"),
+    ],
+)
+def test_set_peer_premerge_chunk_only_transition_is_controller_scoped(
+    monkeypatch,
+    tmp_path,
+    from_chunk,
+    target_chunk,
+    expected_action,
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled", from_chunk)
+    snapshot = healthy_cluster_snapshot(module, value)
+    state = {
+        "mode": "enabled",
+        "shards_per_rpc": from_chunk,
+        "controller_generation": 0,
+    }
+    commands = []
+    writes = []
+
+    def fake_inspect(node, _name, _args):
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            state["mode"] == "disabled" if node["role"] == "controller" else False,
+            state["shards_per_rpc"],
+            (
+                f"container-controller-{state['controller_generation']}"
+                if node["role"] == "controller"
+                else None
+            ),
+        )
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        if isinstance(command, list) and command[3:4] == ["run"]:
+            state["controller_generation"] += 1
+            env = option_values(command, "-e")
+            state["mode"] = (
+                "disabled"
+                if f"{module.PEER_PREMERGE_DISABLE_ENV}=1" in env
+                else "enabled"
+            )
+            chunk_values = [
+                item.partition("=")[2]
+                for item in env
+                if item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=")
+            ]
+            state["shards_per_rpc"] = chunk_values[0] if chunk_values else "all"
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: healthy_run_collections(),
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_controller_and_cluster_healthy",
+        lambda *_args: snapshot,
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode=None,
+        shards_per_rpc=target_chunk,
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_set_peer_premerge(args, value) == 0
+    lifecycle = [
+        (role, command)
+        for role, command in commands
+        if not (isinstance(command, list) and "image" in command)
+    ]
+    if expected_action == "recreated":
+        assert [role for role, _command in lifecycle] == ["controller"] * 3
+        assert [command[3] for _role, command in lifecycle] == [
+            "stop",
+            "rm",
+            "run",
+        ]
+        run_command = lifecycle[-1][1]
+        chunk_env = option_values(run_command, "-e")
+        chunk_labels = option_values(run_command, "--label")
+        if target_chunk == "all":
+            assert not any(
+                item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=")
+                for item in chunk_env
+            )
+            assert not any(
+                item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL}=")
+                for item in chunk_labels
+            )
+        else:
+            assert (
+                f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}={target_chunk}"
+                in chunk_env
+            )
+            assert (
+                f"{module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL}={target_chunk}"
+                in chunk_labels
+            )
+        assert f"{module.PEER_PREMERGE_DISABLE_ENV}=1" not in chunk_env
+    else:
+        assert lifecycle == []
+
+    assert state["mode"] == "enabled"
+    assert state["shards_per_rpc"] == target_chunk
+    assert state["controller_generation"] == (1 if expected_action == "recreated" else 0)
+    assert writes[-1]["peer_premerge"]["current_mode"] == "enabled"
+    assert writes[-1]["peer_premerge"]["current_shards_per_rpc"] == target_chunk
+    controller_node = next(
+        node for node in writes[-1]["nodes"] if node["role"] == "controller"
+    )
+    assert controller_node["peer_premerge_shards_per_rpc"] == target_chunk
+    proof = writes[-1]["peer_premerge_transitions"][-1]
+    assert proof["action"] == expected_action
+    assert proof["from_mode"] == "enabled"
+    assert proof["requested_mode"] == "enabled"
+    assert proof["final_mode"] == "enabled"
+    assert proof["from_shards_per_rpc"] == from_chunk
+    assert proof["requested_shards_per_rpc"] == target_chunk
+    assert proof["final_shards_per_rpc"] == target_chunk
+    assert proof["workers_restarted"] is False
+    assert proof["controller_after"]["peer_premerge_shards_per_rpc"] == target_chunk
+    if expected_action == "recreated":
+        assert proof["controller_before"]["container_id"] != proof["controller_after"][
+            "container_id"
+        ]
+    else:
+        assert proof["controller_before"]["container_id"] == proof["controller_after"][
+            "container_id"
+        ]
+    assert proof["controller_after"]["controller_fingerprint"] == (
+        module.controller_config_fingerprint(
+            value["controller"],
+            "run-1",
+            "sha256:abc",
+            False,
+            target_chunk,
+        )
+    )
+
+
+def test_set_peer_premerge_failure_rolls_controller_back_and_records_proof(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    state = {"mode": "enabled"}
+    commands = []
+    writes = []
+    waits = 0
+
+    def fake_inspect(node, _name, _args):
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            state["mode"] == "disabled" if node["role"] == "controller" else False,
+        )
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        if isinstance(command, list) and command[3:4] == ["run"]:
+            state["mode"] = (
+                "disabled"
+                if f"{module.PEER_PREMERGE_DISABLE_ENV}=1"
+                in option_values(command, "-e")
+                else "enabled"
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def fake_wait(*_args):
+        nonlocal waits
+        waits += 1
+        if waits == 1:
+            raise TimeoutError("injected four-peer timeout")
+        return snapshot
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: healthy_run_collections(),
+    )
+    monkeypatch.setattr(module, "wait_controller_and_cluster_healthy", fake_wait)
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="disabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    with pytest.raises(RuntimeError, match="rolled back to enabled"):
+        module.command_set_peer_premerge(args, value)
+
+    assert state["mode"] == "enabled"
+    lifecycle = [
+        command[3]
+        for _role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle == ["stop", "rm", "run", "stop", "rm", "run"]
+    proof = writes[-1]["peer_premerge_transitions"][-1]
+    assert proof["outcome"] == "failed_rolled_back"
+    assert proof["rollback"] == {
+        "attempted": True,
+        "succeeded": True,
+        "error": None,
+    }
+    assert writes[-1]["peer_premerge"]["current_mode"] == "enabled"
+    assert writes[-1]["orion_artifacts"] == stored["orion_artifacts"]
+
+
+def test_set_peer_premerge_chunk_failure_rolls_back_exact_original_chunk(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled", "3")
+    snapshot = healthy_cluster_snapshot(module, value)
+    state = {"mode": "enabled", "shards_per_rpc": "3"}
+    commands = []
+    writes = []
+    waits = 0
+
+    def fake_inspect(node, _name, _args):
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            state["mode"] == "disabled" if node["role"] == "controller" else False,
+            state["shards_per_rpc"],
+        )
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        if isinstance(command, list) and command[3:4] == ["run"]:
+            env = option_values(command, "-e")
+            chunk_values = [
+                item.partition("=")[2]
+                for item in env
+                if item.startswith(f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=")
+            ]
+            state["mode"] = (
+                "disabled"
+                if f"{module.PEER_PREMERGE_DISABLE_ENV}=1" in env
+                else "enabled"
+            )
+            state["shards_per_rpc"] = chunk_values[0] if chunk_values else "all"
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def fake_wait(*_args):
+        nonlocal waits
+        waits += 1
+        if waits == 1:
+            raise TimeoutError("injected chunk transition timeout")
+        return snapshot
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: healthy_run_collections(),
+    )
+    monkeypatch.setattr(module, "wait_controller_and_cluster_healthy", fake_wait)
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode=None,
+        shards_per_rpc="5",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    with pytest.raises(RuntimeError, match="shards_per_rpc=3"):
+        module.command_set_peer_premerge(args, value)
+
+    assert state == {"mode": "enabled", "shards_per_rpc": "3"}
+    lifecycle = [
+        (role, command[3])
+        for role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle == [
+        ("controller", "stop"),
+        ("controller", "rm"),
+        ("controller", "run"),
+        ("controller", "stop"),
+        ("controller", "rm"),
+        ("controller", "run"),
+    ]
+    proof = writes[-1]["peer_premerge_transitions"][-1]
+    assert proof["outcome"] == "failed_rolled_back"
+    assert proof["from_shards_per_rpc"] == "3"
+    assert proof["requested_shards_per_rpc"] == "5"
+    assert proof["final_shards_per_rpc"] == "3"
+    assert proof["rollback"] == {
+        "attempted": True,
+        "succeeded": True,
+        "error": None,
+    }
+    assert writes[-1]["peer_premerge"]["current_mode"] == "enabled"
+    assert writes[-1]["peer_premerge"]["current_shards_per_rpc"] == "3"
+
+
+def test_set_peer_premerge_dry_run_plans_only_controller_and_writes_nothing(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    commands = []
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda node, command, _args, **_kwargs: commands.append(
+            (node["role"], command)
+        )
+        or subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("dry-run must not write the manifest"),
+    )
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda *_args: pytest.fail("dry-run must not inspect live containers"),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="disabled",
+        shards_per_rpc="4",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=True,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    assert module.command_set_peer_premerge(args, value) == 0
+    assert [role for role, _command in commands] == ["controller"] * 3
+    assert [command[3] for _role, command in commands] == ["stop", "rm", "run"]
+    run_command = commands[-1][1]
+    assert f"{module.PEER_PREMERGE_DISABLE_ENV}=1" in option_values(
+        run_command, "-e"
+    )
+    assert f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}=4" in option_values(
+        run_command, "-e"
+    )
+    assert f"{module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL}=4" in option_values(
+        run_command, "--label"
+    )
+    assert all("clean" not in command for _role, command in commands)
 
 
 def test_install_orion_artifact_cli_accepts_optional_restart_order(monkeypatch):

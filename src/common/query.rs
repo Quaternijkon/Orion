@@ -12,6 +12,7 @@ use collection::operations::universal_query::collection_query::*;
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::future;
 use segment::types::{ExtendedPointId, ScoredPoint, ShardKey};
+use segment::utils::scored_point_ties::ScoredPointTies;
 use shard::retrieve::record_internal::RecordInternal;
 use shard::scroll::ScrollRequestInternal;
 use shard::search::CoreSearchRequestBatch;
@@ -73,10 +74,12 @@ fn shard_major_peer_premerge_disabled() -> bool {
 fn specialize_core_search_for_shard(
     request: &CoreSearchRequest,
     shard_key: &ShardKey,
-) -> CoreSearchRequest {
+) -> Result<CoreSearchRequest, StorageError> {
     let mut specialized = request.clone();
 
-    specialized.limit = request.limit.saturating_add(request.offset);
+    specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
+        StorageError::bad_request("shard-major lower-search limit + offset overflows usize")
+    })?;
     specialized.offset = 0;
 
     if let Some(entry_points) = request
@@ -100,7 +103,7 @@ fn specialize_core_search_for_shard(
 
     specialized.hnsw_entry_points_by_shard = None;
     specialized.hnsw_ef_by_shard = None;
-    specialized
+    Ok(specialized)
 }
 
 fn search_dedup_point_id(
@@ -139,9 +142,9 @@ pub(crate) fn merge_shard_major_candidates(
     let large_better = infer_large_better(&candidate_groups);
     let mut candidates = candidate_groups.into_iter().flatten().collect::<Vec<_>>();
     if large_better {
-        candidates.sort_by(|a, b| b.cmp(a));
+        candidates.sort_by(|a, b| ScoredPointTies(b).cmp(&ScoredPointTies(a)));
     } else {
-        candidates.sort_by(|a, b| a.cmp(b));
+        candidates.sort_by(|a, b| ScoredPointTies(a).cmp(&ScoredPointTies(b)));
     }
 
     let mut seen_ids = HashSet::new();
@@ -161,9 +164,11 @@ fn premerge_shard_major_candidates_by_peer(
     limit: usize,
     offset: usize,
     source_id_dedup_block_size: Option<u64>,
-) -> Vec<Vec<ScoredPoint>> {
-    let peer_limit = limit.saturating_add(offset);
-    peer_candidate_groups
+) -> Result<Vec<Vec<ScoredPoint>>, StorageError> {
+    let peer_limit = limit.checked_add(offset).ok_or_else(|| {
+        StorageError::bad_request("peer-local merge limit + offset overflows usize")
+    })?;
+    Ok(peer_candidate_groups
         .into_iter()
         .map(|candidate_groups| {
             merge_shard_major_candidates(
@@ -173,7 +178,7 @@ fn premerge_shard_major_candidates_by_peer(
                 source_id_dedup_block_size,
             )
         })
-        .collect()
+        .collect())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,7 +218,7 @@ async fn do_search_batch_points_shard_major(
         };
 
         for shard_key in shard_keys {
-            let specialized = specialize_core_search_for_shard(&request, &shard_key);
+            let specialized = specialize_core_search_for_shard(&request, &shard_key)?;
             if let Some((_key, items)) = shard_groups
                 .iter_mut()
                 .find(|(known_key, _items)| *known_key == shard_key)
@@ -643,7 +648,7 @@ mod tests {
             score_threshold: None,
         };
 
-        let specialized = specialize_core_search_for_shard(&request, &shard_key);
+        let specialized = specialize_core_search_for_shard(&request, &shard_key).unwrap();
 
         assert_eq!(
             specialized.hnsw_entry_points,
@@ -654,6 +659,41 @@ mod tests {
         assert!(specialized.hnsw_ef_by_shard.is_none());
         assert_eq!(specialized.limit, 13);
         assert_eq!(specialized.offset, 0);
+    }
+
+    #[test]
+    fn shard_major_specialization_and_peer_premerge_reject_window_overflow() {
+        let shard_key = ShardKey::from("centroid_00");
+        let request = CoreSearchRequest {
+            query: vec![0.1, 0.2].into(),
+            filter: None,
+            params: None,
+            hnsw_entry_points: None,
+            hnsw_entry_points_by_shard: Some(std::collections::HashMap::new()),
+            hnsw_ef_by_shard: Some(std::collections::HashMap::new()),
+            source_id_dedup_block_size: None,
+            limit: usize::MAX,
+            offset: 1,
+            with_payload: None,
+            with_vector: None,
+            score_threshold: None,
+        };
+
+        let specialization = specialize_core_search_for_shard(&request, &shard_key).unwrap_err();
+        assert!(
+            specialization
+                .to_string()
+                .contains("limit + offset overflows")
+        );
+
+        let premerge = premerge_shard_major_candidates_by_peer(
+            vec![vec![vec![scored(1, 1.0)]]],
+            usize::MAX,
+            1,
+            None,
+        )
+        .unwrap_err();
+        assert!(premerge.to_string().contains("limit + offset overflows"));
     }
 
     #[test]
@@ -710,7 +750,7 @@ mod tests {
             None,
         );
         let peer_partials =
-            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 3, 1, None);
+            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 3, 1, None).unwrap();
         let two_stage = merge_shard_major_candidates(peer_partials, 3, 1, None);
 
         assert_eq!(
@@ -743,7 +783,7 @@ mod tests {
             Some(100),
         );
         let peer_partials =
-            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 4, 1, Some(100));
+            premerge_shard_major_candidates_by_peer(vec![peer_a, peer_b], 4, 1, Some(100)).unwrap();
         let two_stage = merge_shard_major_candidates(peer_partials, 4, 1, Some(100));
 
         assert_eq!(
@@ -755,6 +795,81 @@ mod tests {
                 .into_iter()
                 .map(|point| point.id)
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn shard_major_chunked_peer_premerge_preserves_topk_offset_and_cross_chunk_dedup() {
+        let shard_rows = [
+            vec![scored(101, 0.99), scored(3, 0.92), scored(5, 0.75)],
+            vec![scored(4, 0.96), scored(6, 0.90), scored(8, 0.70)],
+            vec![scored(1, 0.98), scored(7, 0.94), scored(9, 0.80)],
+            vec![scored(102, 0.97), scored(10, 0.93), scored(11, 0.85)],
+        ];
+
+        let baseline = merge_shard_major_candidates(shard_rows.clone().into(), 3, 1, Some(100));
+        let chunk_partials = premerge_shard_major_candidates_by_peer(
+            vec![
+                vec![shard_rows[0].clone(), shard_rows[1].clone()],
+                vec![shard_rows[2].clone(), shard_rows[3].clone()],
+            ],
+            3,
+            1,
+            Some(100),
+        )
+        .unwrap();
+        let chunked = merge_shard_major_candidates(chunk_partials, 3, 1, Some(100));
+
+        assert_eq!(chunked, baseline);
+        assert_eq!(
+            chunked
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            vec![
+                ExtendedPointId::NumId(102),
+                ExtendedPointId::NumId(4),
+                ExtendedPointId::NumId(7),
+            ],
+        );
+    }
+
+    #[test]
+    fn shard_major_peer_and_chunk_reordering_is_stable_at_equal_score_boundaries() {
+        let peer_a = vec![
+            vec![scored(101, 0.9), scored(2, 0.9)],
+            vec![scored(303, 0.9)],
+        ];
+        let peer_b = vec![vec![scored(1, 0.9), scored(202, 0.9)], vec![scored(3, 0.9)]];
+
+        let baseline = merge_shard_major_candidates(
+            peer_a.clone().into_iter().chain(peer_b.clone()).collect(),
+            3,
+            0,
+            Some(100),
+        );
+        let reordered = merge_shard_major_candidates(
+            peer_b.clone().into_iter().chain(peer_a.clone()).collect(),
+            3,
+            0,
+            Some(100),
+        );
+        let peer_partials =
+            premerge_shard_major_candidates_by_peer(vec![peer_b, peer_a], 3, 0, Some(100)).unwrap();
+        let two_stage = merge_shard_major_candidates(peer_partials, 3, 0, Some(100));
+
+        assert_eq!(reordered, baseline);
+        assert_eq!(two_stage, baseline);
+        assert_eq!(
+            baseline
+                .into_iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            vec![
+                ExtendedPointId::NumId(303),
+                ExtendedPointId::NumId(202),
+                ExtendedPointId::NumId(101),
+            ],
         );
     }
 }
