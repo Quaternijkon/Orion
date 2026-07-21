@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashSet};
+
 use segment::types::{Distance, ExtendedPointId};
 
 use super::*;
@@ -69,6 +71,41 @@ fn valid_artifact() -> OrionRoutingArtifact {
             ],
         }),
     }
+}
+
+fn route_upper_labels_per_shard_dedup_reference(
+    artifact: &OrionRoutingArtifact,
+    ordered_labels: &[ExtendedPointId],
+) -> Vec<OrionShardTarget> {
+    #[derive(Default)]
+    struct TargetBuilder {
+        entry_points: Vec<ExtendedPointId>,
+        seen: HashSet<ExtendedPointId>,
+    }
+
+    let mut targets: BTreeMap<_, TargetBuilder> = BTreeMap::new();
+    for &label in ordered_labels.iter().take(artifact.upper_k) {
+        let node = artifact
+            .upper_nodes
+            .iter()
+            .find(|node| node.label == label)
+            .expect("reference labels must exist in the artifact");
+        for &shard_id in &node.shard_membership {
+            let target = targets.entry(shard_id).or_default();
+            if target.seen.insert(label) {
+                target.entry_points.push(label);
+            }
+        }
+    }
+
+    targets
+        .into_iter()
+        .map(|(shard_id, target)| OrionShardTarget {
+            shard_id,
+            ef: artifact.dynamic_ef_base + artifact.dynamic_ef_factor * target.entry_points.len(),
+            entry_points: target.entry_points,
+        })
+        .collect()
 }
 
 #[test]
@@ -237,9 +274,37 @@ fn routes_all_memberships_with_sorted_shards_ordered_unique_eps_and_dynamic_ef()
 }
 
 #[test]
+fn optimized_route_planner_matches_per_shard_dedup_reference() {
+    let artifact = valid_artifact();
+    let router = OrionRouter::new_brute_force_testing(artifact.clone()).unwrap();
+    let labels = [id(10), id(20), id(30), id(40)];
+
+    // Exhaustively cover duplicates, all membership overlaps, and labels beyond upper_k. The
+    // reference is the previous BTreeMap plus one HashSet per target-shard implementation.
+    for sequence_len in 0usize..=5 {
+        let sequence_count = labels.len().pow(sequence_len as u32);
+        for mut encoded_sequence in 0..sequence_count {
+            let mut sequence = Vec::with_capacity(sequence_len);
+            for _ in 0..sequence_len {
+                sequence.push(labels[encoded_sequence % labels.len()]);
+                encoded_sequence /= labels.len();
+            }
+
+            assert_eq!(
+                router.route_upper_labels(sequence.iter().copied()).unwrap(),
+                route_upper_labels_per_shard_dedup_reference(&artifact, &sequence),
+                "sequence={sequence:?}",
+            );
+        }
+    }
+}
+
+#[test]
 fn route_query_combines_server_side_upper_search_and_route_plan() {
     let router = OrionRouter::new(valid_artifact()).unwrap();
+    let hits = router.search_upper(&[0.1, 0.0]).unwrap();
     let targets = router.route_query(&[0.1, 0.0]).unwrap();
+    assert_eq!(targets, router.route_upper_hits(&hits).unwrap());
     assert_eq!(
         targets
             .iter()

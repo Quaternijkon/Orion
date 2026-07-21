@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::collections::BinaryHeap;
 
+use ahash::{AHashMap, AHashSet};
 use ordered_float::OrderedFloat;
 use segment::data_types::vectors::VectorElementType;
 use segment::spaces::metric::Metric;
@@ -63,7 +64,7 @@ pub struct OrionRouter {
     dynamic_ef_base: usize,
     dynamic_ef_factor: usize,
     nodes: Vec<RuntimeUpperNode>,
-    node_by_label: HashMap<ExtendedPointId, usize>,
+    node_by_label: AHashMap<ExtendedPointId, usize>,
     search_backend: UpperSearchBackend,
 }
 
@@ -83,7 +84,7 @@ impl OrionRouter {
         brute_force_testing: bool,
     ) -> OrionRoutingResult<Self> {
         artifact.validate()?;
-        let node_by_label: HashMap<_, _> = artifact
+        let node_by_label: AHashMap<_, _> = artifact
             .upper_nodes
             .iter()
             .enumerate()
@@ -160,7 +161,10 @@ impl OrionRouter {
     /// Search the upper tier and build the complete configured shard union.
     pub fn route_query(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         let hits = self.search_upper(query)?;
-        self.route_upper_hits(&hits)
+        // Both production upper-search backends return each node at most once. Avoid allocating
+        // duplicate-label tracking on this query-hot path while keeping the public route helpers
+        // defensive for arbitrary caller-supplied labels.
+        self.route_upper_labels_impl(hits.iter().map(|hit| hit.label), false)
     }
 
     /// Convert ordered upper hits into sorted logical-shard targets.
@@ -178,37 +182,52 @@ impl OrionRouter {
         &self,
         ordered_labels: impl IntoIterator<Item = ExtendedPointId>,
     ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
-        #[derive(Default)]
-        struct TargetBuilder {
-            entry_points: Vec<ExtendedPointId>,
-            seen: HashSet<ExtendedPointId>,
-        }
+        self.route_upper_labels_impl(ordered_labels, true)
+    }
 
-        let mut target_builders: BTreeMap<ShardId, TargetBuilder> = BTreeMap::new();
+    fn route_upper_labels_impl(
+        &self,
+        ordered_labels: impl IntoIterator<Item = ExtendedPointId>,
+        deduplicate_labels: bool,
+    ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
+        let mut seen_labels =
+            deduplicate_labels.then(|| AHashSet::with_capacity(self.upper_k.saturating_mul(2)));
+        // Logical shard IDs are validated as the dense range `0..shard_count` when the artifact
+        // is loaded. Indexing that range directly avoids hashing every membership and makes the
+        // final shard-ID order intrinsic rather than requiring a per-query sort.
+        let mut entry_points_by_shard = vec![Vec::new(); self.shard_count as usize];
         for label in ordered_labels.into_iter().take(self.upper_k) {
             let Some(&node_index) = self.node_by_label.get(&label) else {
                 return Err(OrionRoutingError::UnknownUpperLabel { label });
             };
+            if seen_labels
+                .as_mut()
+                .is_some_and(|seen_labels| !seen_labels.insert(label))
+            {
+                continue;
+            }
             let node = &self.nodes[node_index];
             for &shard_id in &node.shard_membership {
-                let target = target_builders.entry(shard_id).or_default();
-                if target.seen.insert(label) {
-                    target.entry_points.push(label);
-                }
+                // Artifact validation guarantees that one upper node cannot list the same shard
+                // twice. A label-global duplicate check is therefore exactly equivalent to the
+                // previous HashSet attached to every target shard.
+                entry_points_by_shard[shard_id as usize].push(label);
             }
         }
 
-        target_builders
+        entry_points_by_shard
             .into_iter()
-            .map(|(shard_id, target)| {
+            .enumerate()
+            .filter(|(_, entry_points)| !entry_points.is_empty())
+            .map(|(shard_id, entry_points)| {
                 let ef = self
                     .dynamic_ef_factor
-                    .checked_mul(target.entry_points.len())
+                    .checked_mul(entry_points.len())
                     .and_then(|increment| self.dynamic_ef_base.checked_add(increment))
                     .ok_or(OrionRoutingError::DynamicEfOverflow)?;
                 Ok(OrionShardTarget {
-                    shard_id,
-                    entry_points: target.entry_points,
+                    shard_id: shard_id as ShardId,
+                    entry_points,
                     ef,
                 })
             })
@@ -276,7 +295,7 @@ impl OrionRouter {
             }
         }
 
-        let mut visited = HashSet::with_capacity(self.upper_ef_search.saturating_mul(2));
+        let mut visited = AHashSet::with_capacity(self.upper_ef_search.saturating_mul(2));
         let mut candidates: BinaryHeap<Reverse<(OrderedFloat<f32>, usize)>> = BinaryHeap::new();
         let mut nearest: BinaryHeap<(OrderedFloat<f32>, usize)> = BinaryHeap::new();
         visited.insert(current);
@@ -351,7 +370,7 @@ fn similarity(distance: Distance, left: &[f32], right: &[f32]) -> f32 {
 
 fn compile_graph(
     graph: &OrionUpperHnswGraph,
-    node_by_label: &HashMap<ExtendedPointId, usize>,
+    node_by_label: &AHashMap<ExtendedPointId, usize>,
 ) -> OrionRoutingResult<RuntimeUpperGraph> {
     let mut neighbors_by_node_and_level = vec![Vec::new(); node_by_label.len()];
     for graph_node in &graph.nodes {
