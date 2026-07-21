@@ -27,6 +27,12 @@ use crate::types::{
     VectorName, VectorNameBuf, WithPayload, WithVector,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HnswSearchProfile<'a> {
+    pub entry_points: Option<&'a [PointIdType]>,
+    pub params: Option<&'a SearchParams>,
+}
+
 /// Define all operations on segment that do not require mutable access.
 ///
 /// Assume all operations are idempotent - which means that no matter how many times an operation
@@ -55,6 +61,63 @@ pub trait ReadSegmentEntry: SnapshotEntry {
         params: Option<&SearchParams>,
         query_context: &SegmentQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPoint>>>;
+
+    /// Search a batch whose HNSW entry points, EF/search parameters, and top
+    /// values may differ per query.
+    ///
+    /// The default implementation deliberately preserves the historical
+    /// single-query call sequence. Concrete segments can override it to reuse
+    /// immutable segment-local setup without changing any query's graph
+    /// traversal inputs. Proxy segments use this fallback so their deleted
+    /// point handling remains exactly the same as [`Self::search_batch`].
+    #[allow(clippy::too_many_arguments)]
+    fn search_batch_with_hnsw_profiles(
+        &self,
+        vector_name: &VectorName,
+        query_vectors: &[&QueryVector],
+        with_payload: &WithPayload,
+        with_vector: &WithVector,
+        filter: Option<&Filter>,
+        tops: &[usize],
+        hnsw_profiles: &[HnswSearchProfile<'_>],
+        query_context: &SegmentQueryContext,
+    ) -> OperationResult<Vec<Vec<ScoredPoint>>> {
+        if query_vectors.len() != tops.len() || query_vectors.len() != hnsw_profiles.len() {
+            return Err(OperationError::service_error(format!(
+                "heterogeneous segment batch length mismatch: vectors={}, tops={}, profiles={}",
+                query_vectors.len(),
+                tops.len(),
+                hnsw_profiles.len(),
+            )));
+        }
+
+        let mut results = Vec::with_capacity(query_vectors.len());
+        for ((query_vector, top), profile) in query_vectors
+            .iter()
+            .zip(tops.iter().copied())
+            .zip(hnsw_profiles)
+        {
+            let mut query_results = self.search_batch(
+                vector_name,
+                &[*query_vector],
+                with_payload,
+                with_vector,
+                filter,
+                top,
+                profile.entry_points,
+                profile.params,
+                query_context,
+            )?;
+            if query_results.len() != 1 {
+                return Err(OperationError::service_error(format!(
+                    "segment search returned {} rows for one heterogeneous batch query",
+                    query_results.len(),
+                )));
+            }
+            results.push(query_results.pop().unwrap());
+        }
+        Ok(results)
+    }
 
     /// Rescore results with a formula that can reference payload values.
     ///

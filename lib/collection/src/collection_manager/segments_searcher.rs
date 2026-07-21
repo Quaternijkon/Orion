@@ -13,6 +13,7 @@ use segment::common::operation_error::OperationError;
 use segment::data_types::modifier::Modifier;
 use segment::data_types::query_context::{FormulaContext, QueryContext, SegmentQueryContext};
 use segment::data_types::vectors::QueryVector;
+use segment::entry::HnswSearchProfile;
 use segment::types::{
     Filter, Indexes, PointIdType, ScoredPoint, SearchParams, SegmentConfig, VectorName,
     WithPayload, WithPayloadInterface, WithVector,
@@ -592,12 +593,6 @@ impl BatchSearchParams<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct HnswSearchProfile<'a> {
-    entry_points: Option<&'a [PointIdType]>,
-    params: Option<&'a SearchParams>,
-}
-
 fn search_params_equal_except_hnsw_ef(
     left: Option<&SearchParams>,
     right: Option<&SearchParams>,
@@ -825,36 +820,21 @@ fn execute_batch_search(
             segment_query_context,
         )?
     } else {
-        // HNSW graph traversals are already executed per query by the current
-        // vector-index batch implementation. Keep that behavior, but retain one
-        // segment read lock for the whole shard-local batch and pass each query
-        // its exact entry points and EF/search parameters.
-        let mut res = Vec::with_capacity(vectors_batch.len());
-        for ((vector, profile), top) in vectors_batch
-            .iter()
-            .zip(hnsw_profiles_batch)
-            .zip(tops.iter().copied())
-        {
-            let mut query_results = read_segment.search_batch(
-                search_params.vector_name,
-                &[vector],
-                &search_params.with_payload,
-                &search_params.with_vector,
-                search_params.filter,
-                top,
-                profile.entry_points,
-                profile.params,
-                segment_query_context,
-            )?;
-            if query_results.len() != 1 {
-                return Err(CollectionError::service_error(format!(
-                    "segment search returned {} rows for one heterogeneous batch query",
-                    query_results.len(),
-                )));
-            }
-            res.push(query_results.pop().unwrap());
-        }
-        res
+        // Keep one graph traversal per query with the exact same ordered
+        // MultiEP list, top, and Dynamic EF. Original segments additionally
+        // reuse immutable vector/index setup; proxy segments retain the
+        // historical per-query fallback through the trait default.
+        let vectors_batch = vectors_batch.iter().collect_vec();
+        read_segment.search_batch_with_hnsw_profiles(
+            search_params.vector_name,
+            &vectors_batch,
+            &search_params.with_payload,
+            &search_params.with_vector,
+            search_params.filter,
+            &tops,
+            hnsw_profiles_batch,
+            segment_query_context,
+        )?
     };
 
     drop(read_segment);
@@ -1211,8 +1191,8 @@ mod tests {
         // ignores both custom entry points and HNSW EF and therefore cannot
         // validate this optimization.
         let plain_segment = random_segment(segments_dir.path(), 100, 200, DIM);
-        let entry_points = plain_segment.iter_points().take(2).collect_vec();
-        assert_eq!(entry_points.len(), 2);
+        let entry_points = plain_segment.iter_points().take(3).collect_vec();
+        assert_eq!(entry_points.len(), 3);
 
         let mut config = plain_segment.segment_config.clone();
         config
@@ -1248,27 +1228,36 @@ mod tests {
         }
         let segment = LockedSegment::new(indexed_segment);
 
-        let make_request = |vector: Vec<f32>, entry_point: u64, ef: usize| CoreSearchRequest {
-            query: vector.into(),
-            with_payload: None,
-            with_vector: None,
-            filter: None,
-            params: Some(SearchParams {
-                hnsw_ef: Some(ef),
-                ..Default::default()
-            }),
-            hnsw_entry_points: Some(vec![entry_point.into()]),
-            hnsw_entry_points_by_shard: None,
-            hnsw_ef_by_shard: None,
-            source_id_dedup_block_size: None,
-            limit: 3,
-            score_threshold: None,
-            offset: 0,
-        };
+        let make_request =
+            |vector: Vec<f32>, entry_points: &[PointIdType], ef: usize| CoreSearchRequest {
+                query: vector.into(),
+                with_payload: None,
+                with_vector: None,
+                filter: None,
+                params: Some(SearchParams {
+                    hnsw_ef: Some(ef),
+                    ..Default::default()
+                }),
+                hnsw_entry_points: Some(entry_points.to_vec()),
+                hnsw_entry_points_by_shard: None,
+                hnsw_ef_by_shard: None,
+                source_id_dedup_block_size: None,
+                limit: 3,
+                score_threshold: None,
+                offset: 0,
+            };
         let query = vec![0.5; DIM];
         let requests = vec![
-            make_request(query.clone(), entry_points[0].as_u64(), 4),
-            make_request(query, entry_points[1].as_u64(), 128),
+            make_request(
+                query.clone(),
+                &[entry_points[0], entry_points[1], entry_points[2]],
+                4,
+            ),
+            make_request(
+                query,
+                &[entry_points[2], entry_points[1], entry_points[0]],
+                128,
+            ),
         ];
 
         let batch_hw = HwMeasurementAcc::new();
@@ -1307,6 +1296,23 @@ mod tests {
         }
 
         assert_eq!(batch_results, individual_results);
+        let batch_id_score_bits = batch_results
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|point| (point.id, point.score.to_bits()))
+                    .collect_vec()
+            })
+            .collect_vec();
+        let individual_id_score_bits = individual_results
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|point| (point.id, point.score.to_bits()))
+                    .collect_vec()
+            })
+            .collect_vec();
+        assert_eq!(batch_id_score_bits, individual_id_score_bits);
         assert_eq!(batch_further, individual_further);
         assert!(
             individual_cpu[1] > individual_cpu[0],

@@ -24,7 +24,8 @@ use crate::data_types::query_context::{
 use crate::data_types::segment_record::{NamedVectorsOwned, SegmentRecord};
 use crate::data_types::vectors::{QueryVector, VectorInternal};
 use crate::entry::entry_point::{
-    NonAppendableSegmentEntry, ReadSegmentEntry, SegmentEntry, StorageSegmentEntry,
+    HnswSearchProfile, NonAppendableSegmentEntry, ReadSegmentEntry, SegmentEntry,
+    StorageSegmentEntry,
 };
 use crate::id_tracker::{IdTracker, PointMappingsGuard};
 use crate::index::field_index::{CardinalityEstimation, FieldIndex};
@@ -112,6 +113,99 @@ impl ReadSegmentEntry for Segment {
                 )
             })
             .collect()
+    }
+
+    fn search_batch_with_hnsw_profiles(
+        &self,
+        vector_name: &VectorName,
+        query_vectors: &[&QueryVector],
+        with_payload: &WithPayload,
+        with_vector: &WithVector,
+        filter: Option<&Filter>,
+        tops: &[usize],
+        hnsw_profiles: &[HnswSearchProfile<'_>],
+        query_context: &SegmentQueryContext,
+    ) -> OperationResult<Vec<Vec<ScoredPoint>>> {
+        if query_vectors.len() != tops.len() || query_vectors.len() != hnsw_profiles.len() {
+            return Err(OperationError::service_error(format!(
+                "heterogeneous segment batch length mismatch: vectors={}, tops={}, profiles={}",
+                query_vectors.len(),
+                tops.len(),
+                hnsw_profiles.len(),
+            )));
+        }
+
+        let Some(first_query) = query_vectors.first() else {
+            return Ok(Vec::new());
+        };
+
+        // Preserve the historical error timing: validate the first query
+        // before resolving vector data, then validate each later query just
+        // before its own graph traversal.
+        check_query_vectors(vector_name, &[*first_query], &self.segment_config)?;
+        let vector_data = self
+            .vector_data
+            .get(vector_name)
+            .ok_or_else(|| OperationError::vector_name_not_exists(vector_name))?;
+        let vector_query_context =
+            query_context.get_vector_context(vector_name, self.deferred_internal_id());
+
+        // Translate the complete batch while holding the ID tracker only once.
+        // Iteration order is retained for every ordered MultiEP list.
+        let custom_entry_points = {
+            let id_tracker = self.id_tracker.borrow();
+            hnsw_profiles
+                .iter()
+                .map(|profile| {
+                    profile.entry_points.map(|entry_points| {
+                        entry_points
+                            .iter()
+                            .filter_map(|point_id| id_tracker.internal_id(*point_id))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let vector_index = vector_data.vector_index.borrow();
+        let hw_counter = vector_query_context.hardware_counter();
+        let mut results = Vec::with_capacity(query_vectors.len());
+        for (query_index, (((query_vector, top), profile), internal_entry_points)) in query_vectors
+            .iter()
+            .zip(tops.iter().copied())
+            .zip(hnsw_profiles)
+            .zip(&custom_entry_points)
+            .enumerate()
+        {
+            if query_index > 0 {
+                check_query_vectors(vector_name, &[*query_vector], &self.segment_config)?;
+            }
+            let mut internal_results = vector_index.search_with_custom_entry_points(
+                &[*query_vector],
+                filter,
+                top,
+                profile.params,
+                internal_entry_points.as_deref(),
+                &vector_query_context,
+            )?;
+
+            check_stopped(&vector_query_context.is_stopped())?;
+            if internal_results.len() != 1 {
+                return Err(OperationError::service_error(format!(
+                    "segment search returned {} rows for one heterogeneous batch query",
+                    internal_results.len(),
+                )));
+            }
+            results.push(self.process_search_result(
+                internal_results.pop().unwrap(),
+                with_payload,
+                with_vector,
+                &hw_counter,
+                &vector_query_context.is_stopped(),
+            )?);
+        }
+
+        Ok(results)
     }
 
     fn rescore_with_formula(

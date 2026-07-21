@@ -8,8 +8,8 @@ use segment::data_types::named_vectors::NamedVectors;
 use segment::data_types::query_context::QueryContext;
 use segment::data_types::vectors::{DEFAULT_VECTOR_NAME, QueryVector, only_default_vector};
 use segment::entry::{
-    NonAppendableSegmentEntry as _, ReadSegmentEntry as _, SegmentEntry as _, SnapshotEntry as _,
-    StorageSegmentEntry as _,
+    HnswSearchProfile, NonAppendableSegmentEntry as _, ReadSegmentEntry as _, SegmentEntry as _,
+    SnapshotEntry as _, StorageSegmentEntry as _,
 };
 use segment::types::{FieldCondition, PayloadSchemaType};
 use tempfile::Builder;
@@ -212,6 +212,75 @@ fn test_search_batch_equivalence_multi_random() {
     eprintln!("search_batch_result = {search_batch_result:#?}");
 
     assert_eq!(all_single_results, search_batch_result)
+}
+
+#[test]
+fn test_profiled_search_batch_proxy_falls_back_to_individual_queries() {
+    let dir = Builder::new().prefix("segment_dir").tempdir().unwrap();
+    let original_segment = LockedSegment::new(random_segment(dir.path(), 100, 200, 4));
+    let proxy_segment = ProxySegment::new(original_segment);
+
+    let q1: QueryVector = [1.0, 1.0, 1.0, 0.1].into();
+    let q2: QueryVector = [0.1, 1.0, 0.1, 1.0].into();
+    let query_vectors = [&q1, &q2];
+    let tops = [3, 7];
+    let low_ef = SearchParams {
+        hnsw_ef: Some(8),
+        ..Default::default()
+    };
+    let high_ef = SearchParams {
+        hnsw_ef: Some(64),
+        ..Default::default()
+    };
+    let profiles = [
+        HnswSearchProfile {
+            entry_points: None,
+            params: Some(&low_ef),
+        },
+        HnswSearchProfile {
+            entry_points: None,
+            params: Some(&high_ef),
+        },
+    ];
+
+    let query_context = QueryContext::default();
+    let segment_query_context = query_context.get_segment_query_context();
+    let profiled_results = proxy_segment
+        .search_batch_with_hnsw_profiles(
+            DEFAULT_VECTOR_NAME,
+            &query_vectors,
+            &WithPayload::default(),
+            &false.into(),
+            None,
+            &tops,
+            &profiles,
+            &segment_query_context,
+        )
+        .unwrap();
+
+    let mut individual_results = Vec::with_capacity(query_vectors.len());
+    for ((query_vector, top), profile) in query_vectors
+        .iter()
+        .zip(tops.iter().copied())
+        .zip(&profiles)
+    {
+        let mut result = proxy_segment
+            .search_batch(
+                DEFAULT_VECTOR_NAME,
+                &[*query_vector],
+                &WithPayload::default(),
+                &false.into(),
+                None,
+                top,
+                profile.entry_points,
+                profile.params,
+                &segment_query_context,
+            )
+            .unwrap();
+        individual_results.push(result.pop().unwrap());
+    }
+
+    assert_eq!(profiled_results, individual_results);
 }
 
 fn wrap_proxy(original_segment: LockedSegment) -> ProxySegment {
