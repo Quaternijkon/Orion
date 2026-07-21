@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import math
@@ -39,6 +41,9 @@ CONTAINER_NOFILE_SOFT = 65536
 CONTAINER_NOFILE_HARD = 65536
 ORION_ARTIFACT_FORMAT_VERSION = 1
 SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
+IMAGE_CANDIDATE_SCHEMA_VERSION = 1
+IMAGE_TRANSITION_SCHEMA_VERSION = 1
+NON_IMAGE_SOURCE_PREFIXES = ("tools/", "tests/", "docs/", "results/")
 
 
 def normalize_peer_premerge_shards_per_rpc(value: Any) -> str:
@@ -130,6 +135,14 @@ def parse_args() -> argparse.Namespace:
     build = subparsers.add_parser("build", help="Build and export the release image.")
     build.add_argument("--allow-dirty", action="store_true")
     build.add_argument("--force", action="store_true")
+    build.add_argument(
+        "--stage-for-transition",
+        action="store_true",
+        help=(
+            "Build an immutable candidate image archive without replacing the "
+            "active run manifest."
+        ),
+    )
 
     deploy = subparsers.add_parser("deploy", help="Load and start all four cluster nodes.")
     deploy.add_argument("--wait-timeout", type=float, default=180.0)
@@ -181,6 +194,21 @@ def parse_args() -> argparse.Namespace:
         default=None,
     )
     set_peer_premerge.add_argument("--wait-timeout", type=float, default=180.0)
+    transition_image = subparsers.add_parser(
+        "transition-image",
+        help=(
+            "Safely recreate all four run-scoped containers with a staged image "
+            "while preserving their storage volumes."
+        ),
+    )
+    transition_image.add_argument("--candidate-manifest", required=True)
+    transition_image.add_argument("--expected-current-image-id", required=True)
+    transition_image.add_argument(
+        "--strategy",
+        choices=("offline",),
+        default="offline",
+    )
+    transition_image.add_argument("--wait-timeout", type=float, default=300.0)
     add_install_artifact_parser(
         subparsers,
         "install-orion-artifact",
@@ -559,6 +587,43 @@ def simple_kmeans_artifact_destination(
 
 def manifest_path(topology: dict[str, Any], run_id: str) -> Path:
     return shared_run_dir(topology, run_id) / "manifest.json"
+
+
+def lifecycle_lock_path(topology: dict[str, Any], run_id: str) -> Path:
+    return shared_run_dir(topology, run_id) / "lifecycle.lock"
+
+
+@contextlib.contextmanager
+def run_lifecycle_lock(topology: dict[str, Any], run_id: str):
+    """Serialize destructive lifecycle operations for one experiment run."""
+    path = lifecycle_lock_path(topology, validate_run_id(run_id))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError(
+                f"another lifecycle operation already holds the run lock: {path}"
+            ) from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "acquired_at": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                    ),
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        handle.flush()
+        try:
+            yield path
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def shell_join(command: list[str]) -> str:
@@ -1285,6 +1350,111 @@ def git_state(repo: Path) -> dict[str, Any]:
     }
 
 
+def is_image_affecting_path(path: str) -> bool:
+    normalized = str(path).replace(os.sep, "/").lstrip("./")
+    return bool(normalized) and not normalized.startswith(NON_IMAGE_SOURCE_PREFIXES)
+
+
+def image_affecting_dirty_paths(paths: list[str]) -> list[str]:
+    return sorted({str(path) for path in paths if is_image_affecting_path(str(path))})
+
+
+def _git_nul_paths(repo: Path, command: list[str]) -> list[str]:
+    result = subprocess.run(
+        command,
+        cwd=repo,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return sorted(
+        path.decode("utf-8", errors="surrogateescape")
+        for path in result.stdout.split(b"\0")
+        if path
+    )
+
+
+def image_source_fingerprint(repo: Path, commit: str) -> dict[str, Any]:
+    """Hash the exact image-affecting working source state reproducibly."""
+    tracked_paths = image_affecting_dirty_paths(
+        _git_nul_paths(
+            repo,
+            ["git", "diff", "--name-only", "-z", "HEAD", "--"],
+        )
+    )
+    untracked_paths = image_affecting_dirty_paths(
+        _git_nul_paths(
+            repo,
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        )
+    )
+    digest = hashlib.sha256()
+
+    def add_field(label: bytes, payload: bytes) -> None:
+        digest.update(label)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+
+    add_field(b"commit", str(commit).encode("ascii"))
+    if tracked_paths:
+        diff = subprocess.run(
+            ["git", "diff", "--binary", "HEAD", "--", *tracked_paths],
+            cwd=repo,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    else:
+        diff = b""
+    add_field(b"tracked-diff", diff)
+    for relative in untracked_paths:
+        path = (repo / relative).resolve()
+        if repo not in path.parents:
+            raise RuntimeError(
+                f"untracked image source escapes repository root: {relative}"
+            )
+        if not path.is_file():
+            raise RuntimeError(
+                f"untracked image source is not a regular file: {relative}"
+            )
+        add_field(b"untracked-path", relative.encode("utf-8"))
+        add_field(b"untracked-bytes", path.read_bytes())
+    return {
+        "sha256": digest.hexdigest(),
+        "tracked_paths": tracked_paths,
+        "untracked_paths": untracked_paths,
+        "dirty_paths": sorted({*tracked_paths, *untracked_paths}),
+    }
+
+
+def transition_candidate_image_tag(
+    base_tag: str,
+    commit: str,
+    source_fingerprint: str,
+    dirty: bool,
+) -> str:
+    marker = "dirty" if dirty else "source"
+    suffix = f"-{marker}-{source_fingerprint[:12]}"
+    if "@" in base_tag:
+        raise ValueError("candidate image tag must not use an immutable digest reference")
+    return f"{base_tag}{suffix}"
+
+
+def image_candidate_dir(topology: dict[str, Any], run_id: str) -> Path:
+    return shared_run_dir(topology, run_id) / "image-candidates"
+
+
+def image_candidate_paths(
+    topology: dict[str, Any], run_id: str, image_tag: str
+) -> tuple[Path, Path]:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", image_tag).strip("._")
+    if not slug:
+        raise ValueError(f"cannot derive a safe candidate filename from {image_tag!r}")
+    digest = hashlib.sha256(image_tag.encode("utf-8")).hexdigest()[:12]
+    base = image_candidate_dir(topology, run_id) / f"{slug}-{digest}"
+    return base.with_suffix(".tar"), base.with_suffix(".json")
+
+
 def read_manifest(topology: dict[str, Any], run_id: str) -> dict[str, Any]:
     path = manifest_path(topology, run_id)
     if not path.exists():
@@ -1301,6 +1471,113 @@ def write_manifest(topology: dict[str, Any], run_id: str, data: dict[str, Any]) 
     return path
 
 
+def write_image_candidate_manifest(path: Path, data: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    temporary.replace(path)
+    return path
+
+
+def read_image_candidate_manifest(path: str | Path) -> dict[str, Any]:
+    candidate_path = Path(path).resolve()
+    if not candidate_path.is_file():
+        raise FileNotFoundError(f"candidate image manifest not found: {candidate_path}")
+    payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("candidate image manifest payload is not an object")
+    return payload
+
+
+def validate_image_candidate_manifest(
+    topology: dict[str, Any], run_id: str, candidate_manifest_path: str | Path
+) -> dict[str, Any]:
+    run_id = validate_run_id(run_id)
+    candidate_path = Path(candidate_manifest_path).resolve()
+    expected_directory = image_candidate_dir(topology, run_id).resolve()
+    if expected_directory not in candidate_path.parents:
+        raise RuntimeError(
+            "candidate image manifest is outside this run's image-candidates "
+            f"directory: {candidate_path}"
+        )
+    payload = read_image_candidate_manifest(candidate_path)
+    if payload.get("schema_version") != IMAGE_CANDIDATE_SCHEMA_VERSION:
+        raise RuntimeError(
+            "candidate image manifest has unsupported schema_version: "
+            f"{payload.get('schema_version')!r}"
+        )
+    if payload.get("kind") != "orion-image-transition-candidate":
+        raise RuntimeError("candidate image manifest has an unexpected kind")
+    if str(payload.get("run_id") or "") != run_id:
+        raise RuntimeError(
+            "candidate image manifest run-id mismatch: "
+            f"expected={run_id}, actual={payload.get('run_id')!r}"
+        )
+    if payload.get("topology_runtime_identity") != topology_runtime_identity(topology):
+        raise RuntimeError(
+            "candidate image manifest topology does not match this four-node runtime"
+        )
+    source_fingerprint = str(payload.get("source_fingerprint") or "")
+    if not SHA256_RE.fullmatch(source_fingerprint):
+        raise RuntimeError(
+            "candidate image manifest has an invalid source fingerprint"
+        )
+    repository = payload.get("repository") or {}
+    if not isinstance(repository, dict):
+        raise RuntimeError("candidate image repository payload is malformed")
+    if str(repository.get("source_fingerprint") or "") != source_fingerprint:
+        raise RuntimeError(
+            "candidate image repository fingerprint disagrees with the manifest"
+        )
+    image = payload.get("image") or {}
+    if not isinstance(image, dict):
+        raise RuntimeError("candidate image payload is malformed")
+    image_tag = str(image.get("tag") or "")
+    image_id = str(image.get("id") or "")
+    if not image_tag or not image_id:
+        raise RuntimeError("candidate image manifest requires an exact tag and id")
+    dirty_paths = repository.get("image_affecting_dirty_paths") or []
+    if not isinstance(dirty_paths, list) or any(
+        not isinstance(path, str) for path in dirty_paths
+    ):
+        raise RuntimeError(
+            "candidate image manifest has malformed image-affecting dirty paths"
+        )
+    if dirty_paths and f"-dirty-{source_fingerprint[:12]}" not in image_tag:
+        raise RuntimeError(
+            "dirty candidate image tag does not contain its source fingerprint"
+        )
+    tar_path_value = str(image.get("tar_path") or "")
+    if not tar_path_value:
+        raise RuntimeError("candidate image manifest has no tar_path")
+    tar_path = Path(tar_path_value).resolve()
+    if expected_directory not in tar_path.parents:
+        raise RuntimeError(
+            "candidate image archive is outside this run's image-candidates directory"
+        )
+    verified = validate_manifest_image_archive(tar_path, image_tag, payload)
+    expected_size = image.get("tar_size_bytes")
+    if isinstance(expected_size, bool) or not isinstance(expected_size, int):
+        raise RuntimeError("candidate image manifest has an invalid tar size")
+    if tar_path.stat().st_size != expected_size:
+        raise RuntimeError(
+            "candidate image tar size mismatch: "
+            f"manifest={expected_size}, actual={tar_path.stat().st_size}"
+        )
+    return {
+        "manifest_path": str(candidate_path),
+        "manifest": payload,
+        "image_tag": image_tag,
+        "image_id": image_id,
+        "tar_path": str(tar_path),
+        "tar_sha256": verified["tar_sha256"],
+        "tar_size_bytes": expected_size,
+        "source_fingerprint": source_fingerprint,
+    }
+
+
 def preserve_run_manifest_metadata(
     data: dict[str, Any], stored: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1308,6 +1585,7 @@ def preserve_run_manifest_metadata(
         "orion_artifacts",
         "simple_kmeans_artifacts",
         "peer_premerge_transitions",
+        "image_transitions",
     ):
         if key in stored:
             data[key] = stored[key]
@@ -1549,6 +1827,155 @@ def command_bootstrap(args: argparse.Namespace, topology: dict[str, Any]) -> int
     return 0
 
 
+def command_build_transition_candidate(
+    args: argparse.Namespace,
+    topology: dict[str, Any],
+    repo: Path,
+    state: dict[str, Any],
+    source: dict[str, Any],
+) -> int:
+    dirty_paths = list(source["dirty_paths"])
+    base_tag = args.image_tag or image_tag_for_commit(state["commit"])
+    image_tag = transition_candidate_image_tag(
+        base_tag,
+        state["commit"],
+        source["sha256"],
+        bool(dirty_paths),
+    )
+    tar_path, candidate_manifest_path = image_candidate_paths(
+        topology, args.run_id, image_tag
+    )
+    if args.dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "run_id": args.run_id,
+                    "image_tag": image_tag,
+                    "source_fingerprint": source["sha256"],
+                    "tar_path": str(tar_path),
+                    "candidate_manifest": str(candidate_manifest_path),
+                    "active_manifest_written": False,
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
+    tar_exists = tar_path.exists()
+    manifest_exists = candidate_manifest_path.exists()
+    if tar_exists or manifest_exists:
+        try:
+            candidate = validate_image_candidate_manifest(
+                topology, args.run_id, candidate_manifest_path
+            )
+            current_image_id = image_id_local(image_tag)
+            if current_image_id != candidate["image_id"]:
+                raise RuntimeError(
+                    "candidate tag id does not match its immutable manifest: "
+                    f"manifest={candidate['image_id']}, current={current_image_id}"
+                )
+        except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:
+            if not args.force:
+                raise RuntimeError(
+                    "existing transition candidate is incomplete or inconsistent; "
+                    "use --force only to repair this exact source candidate"
+                ) from exc
+        else:
+            run_command(["sudo", "-n", "chmod", "0644", str(tar_path)])
+            print(
+                "Reusing immutable transition candidate "
+                f"{candidate_manifest_path} ({candidate['image_id']}, "
+                f"sha256={candidate['tar_sha256']})",
+                flush=True,
+            )
+            return 0
+
+    candidate_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_tar = tar_path.with_suffix(tar_path.suffix + ".partial")
+    if temporary_tar.exists():
+        temporary_tar.unlink()
+    run_command(
+        [
+            "sudo",
+            "-n",
+            "docker",
+            "buildx",
+            "build",
+            "--load",
+            "--build-arg",
+            f"GIT_COMMIT_ID={state['commit']}",
+            "--tag",
+            image_tag,
+            ".",
+        ]
+    )
+    run_command(
+        ["sudo", "-n", "docker", "run", "--rm", image_tag, "./qdrant", "--version"]
+    )
+    source_after_build = image_source_fingerprint(repo, state["commit"])
+    if source_after_build != source:
+        raise RuntimeError(
+            "image-affecting source changed during candidate build; refusing to "
+            "publish a mismatched candidate manifest"
+        )
+    run_command(
+        [
+            "sudo",
+            "-n",
+            "docker",
+            "save",
+            "--output",
+            str(temporary_tar),
+            image_tag,
+        ]
+    )
+    run_command(["sudo", "-n", "mv", "--", str(temporary_tar), str(tar_path)])
+    run_command(["sudo", "-n", "chmod", "0644", str(tar_path)])
+    image_id = image_id_local(image_tag)
+    candidate_data = {
+        "schema_version": IMAGE_CANDIDATE_SCHEMA_VERSION,
+        "kind": "orion-image-transition-candidate",
+        "run_id": validate_run_id(args.run_id),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "topology_runtime_identity": topology_runtime_identity(topology),
+        "source_fingerprint": source["sha256"],
+        "repository": {
+            "path": str(repo),
+            **state,
+            "source_fingerprint": source["sha256"],
+            "image_affecting_dirty_paths": dirty_paths,
+            "image_affecting_tracked_paths": source["tracked_paths"],
+            "image_affecting_untracked_paths": source["untracked_paths"],
+        },
+        "image": {
+            "tag": image_tag,
+            "id": image_id,
+            "tar_path": str(tar_path),
+            "tar_size_bytes": tar_path.stat().st_size,
+            "tar_sha256": sha256_file(tar_path),
+        },
+    }
+    path = write_image_candidate_manifest(candidate_manifest_path, candidate_data)
+    print(
+        json.dumps(
+            {
+                "run_id": args.run_id,
+                "image_tag": image_tag,
+                "image_id": image_id,
+                "source_fingerprint": source["sha256"],
+                "tar_path": str(tar_path),
+                "candidate_manifest": str(path),
+                "active_manifest_written": False,
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
+    return 0
+
+
 def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     repo = Path(args.repo).resolve()
     state = git_state(repo)
@@ -1556,16 +1983,21 @@ def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         raise RuntimeError(
             f"expected commit {args.expected_commit}, found {state['commit']}; refusing mixed-image experiment"
         )
-    binary_affecting_dirty = [
-        path
-        for path in state.get("dirty_paths", [])
-        if not path.startswith(("tools/", "tests/", "docs/", "results/"))
-    ]
+    staged_transition = bool(getattr(args, "stage_for_transition", False))
+    source = image_source_fingerprint(repo, state["commit"]) if staged_transition else None
+    binary_affecting_dirty = (
+        list(source["dirty_paths"])
+        if source is not None
+        else image_affecting_dirty_paths(state.get("dirty_paths", []))
+    )
     if binary_affecting_dirty and not args.allow_dirty:
         raise RuntimeError(
             "working tree has Qdrant-image-affecting changes; use --allow-dirty only for an "
             f"explicitly non-canonical build: {binary_affecting_dirty}"
         )
+    if staged_transition:
+        assert source is not None
+        return command_build_transition_candidate(args, topology, repo, state, source)
     image_tag = args.image_tag or image_tag_for_commit(state["commit"])
     run_dir = shared_run_dir(topology, args.run_id)
     tar_path = run_dir / f"{image_tag.replace(':', '_')}.tar"
@@ -2708,6 +3140,18 @@ def transition_cluster_proof(snapshot: dict[str, Any] | None) -> dict[str, Any] 
         )
         if isinstance(peers, dict)
         else [],
+        "peers": sorted(
+            [
+                {
+                    "peer_id": str(peer_id),
+                    "uri": normalize_peer_uri(str((peer or {}).get("uri") or "")),
+                }
+                for peer_id, peer in peers.items()
+            ],
+            key=lambda item: (item["peer_id"], item["uri"]),
+        )
+        if isinstance(peers, dict)
+        else [],
         "consensus_thread_status": result.get("consensus_thread_status"),
         "pending_operations": raft_info.get("pending_operations"),
         "message_send_failures": result.get("message_send_failures"),
@@ -2791,6 +3235,15 @@ def transition_worker_proof(
 
 
 def transition_collections_proof(collections: dict[str, Any]) -> dict[str, Any]:
+    def canonical_entries(values: Any) -> list[Any]:
+        if not isinstance(values, list):
+            return []
+        copied = json.loads(json.dumps(values))
+        return sorted(
+            copied,
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
+        )
+
     proof: dict[str, Any] = {}
     for name, payload in sorted(collections.items()):
         info = (payload or {}).get("info") or {}
@@ -2801,11 +3254,27 @@ def transition_collections_proof(collections: dict[str, Any]) -> dict[str, Any]:
             "points_count": info.get("points_count"),
             "indexed_vectors_count": info.get("indexed_vectors_count"),
             "update_queue": info.get("update_queue"),
-            "local_shards": cluster_payload.get("local_shards") or [],
-            "remote_shards": cluster_payload.get("remote_shards") or [],
-            "shard_transfers": cluster_payload.get("shard_transfers") or [],
+            "config": json.loads(json.dumps(info.get("config") or {})),
+            "peer_id": cluster_payload.get("peer_id"),
+            "local_shards": canonical_entries(cluster_payload.get("local_shards")),
+            "remote_shards": canonical_entries(cluster_payload.get("remote_shards")),
+            "shard_transfers": canonical_entries(
+                cluster_payload.get("shard_transfers")
+            ),
         }
     return proof
+
+
+def verify_transition_collections_unchanged(
+    before: dict[str, Any], after: dict[str, Any], *, operation: str
+) -> None:
+    before_proof = transition_collections_proof(before)
+    after_proof = transition_collections_proof(after)
+    if before_proof != after_proof:
+        raise RuntimeError(
+            f"{operation} changed run-scoped collection identity or placement: "
+            f"before={before_proof}, after={after_proof}"
+        )
 
 
 def inspect_peer_premerge_transition_workers(
@@ -3408,7 +3877,7 @@ def rollback_peer_premerge_controller(
     return snapshot, restored
 
 
-def command_set_peer_premerge(
+def _command_set_peer_premerge_unlocked(
     args: argparse.Namespace, topology: dict[str, Any]
 ) -> int:
     run_id = validate_run_id(args.run_id)
@@ -3598,6 +4067,11 @@ def command_set_peer_premerge(
                 "peer-premerge reuse left unhealthy collections: "
                 + "; ".join(after_errors)
             )
+        verify_transition_collections_unchanged(
+            before_collections,
+            after_collections,
+            operation="peer-premerge reuse",
+        )
         controller_after_proof = transition_controller_proof(
             topology, run_id, after_controller
         )
@@ -3715,6 +4189,11 @@ def command_set_peer_premerge(
                 "peer-premerge recreation left unhealthy collections: "
                 + "; ".join(after_errors)
             )
+        verify_transition_collections_unchanged(
+            before_collections,
+            after_collections,
+            operation="peer-premerge recreation",
+        )
         controller_after_proof = transition_controller_proof(
             topology, run_id, after_controller
         )
@@ -3850,6 +4329,784 @@ def command_set_peer_premerge(
         flush=True,
     )
     return 0
+
+
+def command_set_peer_premerge(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    if bool(getattr(args, "dry_run", False)) or (
+        getattr(args, "mode", None) is None
+        and getattr(args, "shards_per_rpc", None) is None
+    ):
+        return _command_set_peer_premerge_unlocked(args, topology)
+    with run_lifecycle_lock(topology, args.run_id):
+        return _command_set_peer_premerge_unlocked(args, topology)
+
+
+def validate_image_transition_active_manifest(
+    topology: dict[str, Any],
+    run_id: str,
+    manifest: dict[str, Any],
+    expected_current_image_id: str,
+    image_tag_override: str | None = None,
+) -> dict[str, Any]:
+    (
+        image_tag,
+        image_id,
+        peer_premerge_mode,
+        peer_premerge_shards_per_rpc,
+        deployment_commit,
+    ) = validate_peer_premerge_transition_manifest(
+        topology,
+        run_id,
+        manifest,
+        image_tag_override,
+        None,
+    )
+    expected_current_image_id = str(expected_current_image_id or "")
+    if not expected_current_image_id:
+        raise ValueError("expected-current-image-id must not be empty")
+    if image_id != expected_current_image_id:
+        raise RuntimeError(
+            "active image id does not match --expected-current-image-id: "
+            f"manifest={image_id}, expected={expected_current_image_id}"
+        )
+    expected_roles = {str(node["role"]) for node in all_nodes(topology)}
+    manifest_nodes = manifest.get("nodes") or []
+    manifest_roles = [
+        str(node.get("role"))
+        for node in manifest_nodes
+        if isinstance(node, dict) and node.get("role") is not None
+    ]
+    if len(manifest_nodes) != 4 or set(manifest_roles) != expected_roles or len(
+        manifest_roles
+    ) != len(set(manifest_roles)):
+        raise RuntimeError(
+            "run manifest must contain exactly one node entry for each four-node role"
+        )
+    transitions = manifest.get("image_transitions") or []
+    if not isinstance(transitions, list) or any(
+        not isinstance(item, dict) for item in transitions
+    ):
+        raise RuntimeError("run manifest contains malformed image transitions")
+    image = manifest.get("image") or {}
+    tar_path_value = str(image.get("tar_path") or "")
+    if not tar_path_value:
+        raise RuntimeError(
+            "active image manifest has no immutable archive for rollback"
+        )
+    tar_path = Path(tar_path_value).resolve()
+    archive = validate_manifest_image_archive(tar_path, image_tag, manifest)
+    return {
+        "image_tag": image_tag,
+        "image_id": image_id,
+        "tar_path": str(tar_path),
+        "tar_sha256": archive["tar_sha256"],
+        "peer_premerge_mode": peer_premerge_mode,
+        "peer_premerge_shards_per_rpc": peer_premerge_shards_per_rpc,
+        "deployment_commit": deployment_commit,
+    }
+
+
+def remote_image_id(
+    node: dict[str, Any], image_tag: str, args: argparse.Namespace
+) -> str:
+    result = run_on_node(
+        node,
+        [
+            "sudo",
+            "-n",
+            "docker",
+            "image",
+            "inspect",
+            image_tag,
+            "--format",
+            "{{.Id}}",
+        ],
+        args,
+        capture=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def verify_remote_image_ids(
+    topology: dict[str, Any],
+    image_tag: str,
+    image_id: str,
+    args: argparse.Namespace,
+) -> None:
+    mismatches: dict[str, str] = {}
+    for node in all_nodes(topology):
+        resolved = remote_image_id(node, image_tag, args)
+        if resolved != image_id:
+            mismatches[str(node["role"])] = resolved or "<missing>"
+    if mismatches:
+        raise RuntimeError(
+            f"image tag {image_tag} does not resolve to {image_id} on every node: "
+            f"{mismatches}"
+        )
+
+
+def ensure_image_archive_on_nodes(
+    topology: dict[str, Any],
+    image_tag: str,
+    image_id: str,
+    tar_path: Path,
+    args: argparse.Namespace,
+) -> None:
+    missing: list[dict[str, Any]] = []
+    conflicts: dict[str, str] = {}
+    for node in all_nodes(topology):
+        resolved = remote_image_id(node, image_tag, args)
+        if not resolved:
+            missing.append(node)
+        elif resolved != image_id:
+            conflicts[str(node["role"])] = resolved
+    if conflicts:
+        raise RuntimeError(
+            f"refusing to overwrite conflicting remote tag {image_tag}: {conflicts}"
+        )
+    for node in missing:
+        run_on_node(
+            node,
+            ["sudo", "-n", "docker", "load", "--input", str(tar_path)],
+            args,
+        )
+    verify_remote_image_ids(topology, image_tag, image_id, args)
+
+
+def inspect_image_transition_runtime(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    peer_premerge_mode: str,
+    peer_premerge_shards_per_rpc: str,
+    args: argparse.Namespace,
+) -> dict[str, dict[str, Any]]:
+    inspected_nodes: dict[str, dict[str, Any]] = {}
+    for node in all_nodes(topology):
+        role = str(node["role"])
+        inspected = inspect_container(node, container_name(run_id, role), args)
+        verify_peer_premerge_transition_identity(
+            topology,
+            inspected,
+            node,
+            run_id,
+            image_tag,
+            image_id,
+            current_mode=(peer_premerge_mode if role == "controller" else None),
+            current_shards_per_rpc=(
+                peer_premerge_shards_per_rpc if role == "controller" else None
+            ),
+            require_running=True,
+        )
+        assert inspected is not None
+        inspected_nodes[role] = inspected
+    return inspected_nodes
+
+
+def image_transition_container_proof(
+    topology: dict[str, Any],
+    run_id: str,
+    node: dict[str, Any],
+    inspected: dict[str, Any],
+) -> dict[str, Any]:
+    role = str(node["role"])
+    config = inspected.get("Config") or {}
+    host_config = inspected.get("HostConfig") or {}
+    mounts = json.loads(json.dumps(inspected.get("Mounts") or []))
+    mounts.sort(
+        key=lambda item: (
+            str((item or {}).get("Destination") or ""),
+            str((item or {}).get("Source") or ""),
+        )
+    )
+    return {
+        "role": role,
+        "container_id": str(inspected.get("Id") or ""),
+        "container_name": container_name(run_id, role),
+        "private_ip": str(node["private_ip"]),
+        "image_tag": str(config.get("Image") or ""),
+        "image_id": str(inspected.get("Image") or ""),
+        "command": [str(value) for value in config.get("Cmd") or []],
+        "environment": sorted(str(value) for value in config.get("Env") or []),
+        "labels": json.loads(json.dumps(config.get("Labels") or {})),
+        "cpuset": str(host_config.get("CpusetCpus") or ""),
+        "network_mode": str(host_config.get("NetworkMode") or ""),
+        "restart_policy": json.loads(
+            json.dumps(host_config.get("RestartPolicy") or {})
+        ),
+        "nofile": inspected_nofile_limits(inspected),
+        "mounts": mounts,
+    }
+
+
+def image_transition_container_proofs(
+    topology: dict[str, Any],
+    run_id: str,
+    inspected_nodes: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        image_transition_container_proof(
+            topology, run_id, node, inspected_nodes[str(node["role"])]
+        )
+        for node in all_nodes(topology)
+    ]
+
+
+def verify_image_transition_state_preserved(
+    before_snapshot: dict[str, Any],
+    before_collections: dict[str, Any],
+    after_snapshot: dict[str, Any],
+    after_collections: dict[str, Any],
+    *,
+    operation: str,
+) -> None:
+    before_cluster = transition_cluster_proof(before_snapshot) or {}
+    after_cluster = transition_cluster_proof(after_snapshot) or {}
+    before_identity = {
+        "peer_id": before_cluster.get("peer_id"),
+        "peers": before_cluster.get("peers"),
+    }
+    after_identity = {
+        "peer_id": after_cluster.get("peer_id"),
+        "peers": after_cluster.get("peers"),
+    }
+    if before_identity != after_identity:
+        raise RuntimeError(
+            f"{operation} changed cluster peer identity: "
+            f"before={before_identity}, after={after_identity}"
+        )
+    verify_transition_collections_unchanged(
+        before_collections, after_collections, operation=operation
+    )
+
+
+def image_transition_stop_order(topology: dict[str, Any]) -> list[dict[str, Any]]:
+    return [*topology["workers"], topology["controller"]]
+
+
+def image_transition_start_order(topology: dict[str, Any]) -> list[dict[str, Any]]:
+    return [topology["controller"], *topology["workers"]]
+
+
+def stop_and_remove_transition_containers(
+    topology: dict[str, Any], run_id: str, args: argparse.Namespace
+) -> None:
+    ordered = image_transition_stop_order(topology)
+    for node in ordered:
+        run_on_node(
+            node,
+            [
+                "sudo",
+                "-n",
+                "docker",
+                "stop",
+                container_name(run_id, str(node["role"])),
+            ],
+            args,
+        )
+    for node in ordered:
+        run_on_node(
+            node,
+            [
+                "sudo",
+                "-n",
+                "docker",
+                "rm",
+                container_name(run_id, str(node["role"])),
+            ],
+            args,
+        )
+
+
+def create_transition_containers(
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    image_id: str,
+    peer_premerge_mode: str,
+    peer_premerge_shards_per_rpc: str,
+    args: argparse.Namespace,
+) -> None:
+    for node in image_transition_start_order(topology):
+        run_on_node(
+            node,
+            docker_run_command(
+                topology,
+                node,
+                run_id,
+                image_tag,
+                image_id,
+                peer_premerge_disabled(peer_premerge_mode),
+                peer_premerge_shards_per_rpc,
+            ),
+            args,
+        )
+
+
+def remove_owned_transition_containers_for_rollback(
+    topology: dict[str, Any], run_id: str, args: argparse.Namespace
+) -> None:
+    existing: dict[str, dict[str, Any]] = {}
+    for node in all_nodes(topology):
+        role = str(node["role"])
+        inspected = inspect_container(node, container_name(run_id, role), args)
+        if inspected is not None:
+            verify_run_container_identity(inspected, node, run_id)
+            existing[role] = inspected
+    for node in image_transition_stop_order(topology):
+        role = str(node["role"])
+        if role in existing:
+            run_on_node(
+                node,
+                ["sudo", "-n", "docker", "stop", container_name(run_id, role)],
+                args,
+                check=False,
+            )
+    for node in image_transition_stop_order(topology):
+        role = str(node["role"])
+        if role in existing:
+            run_on_node(
+                node,
+                ["sudo", "-n", "docker", "rm", container_name(run_id, role)],
+                args,
+                check=False,
+            )
+
+
+def rollback_image_transition(
+    topology: dict[str, Any],
+    run_id: str,
+    active: dict[str, Any],
+    wait_timeout: float,
+    before_snapshot: dict[str, Any],
+    before_collections: dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    remove_owned_transition_containers_for_rollback(topology, run_id, args)
+    create_transition_containers(
+        topology,
+        run_id,
+        active["image_tag"],
+        active["image_id"],
+        active["peer_premerge_mode"],
+        active["peer_premerge_shards_per_rpc"],
+        args,
+    )
+    rollback_snapshot = wait_controller_and_cluster_healthy(
+        topology, wait_timeout, run_id
+    )
+    rollback_inspected = inspect_image_transition_runtime(
+        topology,
+        run_id,
+        active["image_tag"],
+        active["image_id"],
+        active["peer_premerge_mode"],
+        active["peer_premerge_shards_per_rpc"],
+        args,
+    )
+    verify_remote_image_ids(
+        topology, active["image_tag"], active["image_id"], args
+    )
+    rollback_collections = run_collection_placements(topology, run_id)
+    rollback_errors = peer_premerge_collection_validation_errors(
+        topology, rollback_snapshot, rollback_collections, run_id
+    )
+    if rollback_errors:
+        raise RuntimeError(
+            "rollback restored containers but not a healthy workload: "
+            + "; ".join(rollback_errors)
+        )
+    verify_image_transition_state_preserved(
+        before_snapshot,
+        before_collections,
+        rollback_snapshot,
+        rollback_collections,
+        operation="image transition rollback",
+    )
+    return {
+        "containers": image_transition_container_proofs(
+            topology, run_id, rollback_inspected
+        ),
+        "cluster": transition_cluster_proof(rollback_snapshot),
+        "collections": transition_collections_proof(rollback_collections),
+        "snapshot": rollback_snapshot,
+    }
+
+
+def update_image_transition_manifest(
+    topology: dict[str, Any],
+    run_id: str,
+    stored: dict[str, Any],
+    transition: dict[str, Any],
+    snapshot: dict[str, Any] | None,
+    inspected_nodes: dict[str, dict[str, Any]] | None,
+    candidate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    data = json.loads(json.dumps(stored))
+    transitions = list(data.get("image_transitions") or [])
+    transitions.append(transition)
+    data["image_transitions"] = transitions
+    data["last_image_transition"] = transition.get("transition_id")
+    data["generated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if snapshot is not None:
+        data["cluster_snapshot"] = snapshot
+        data.pop("cluster_snapshot_error", None)
+    if candidate is not None:
+        candidate_manifest = candidate["manifest"]
+        data["image"] = json.loads(json.dumps(candidate_manifest["image"]))
+        data["image"]["candidate_manifest_path"] = candidate["manifest_path"]
+        data["image"]["source_fingerprint"] = candidate["source_fingerprint"]
+        data["repository"] = json.loads(
+            json.dumps(candidate_manifest.get("repository") or {})
+        )
+    if inspected_nodes is not None:
+        nodes_by_role = {
+            str(node.get("role")): node
+            for node in data.get("nodes") or []
+            if isinstance(node, dict)
+        }
+        for node in all_nodes(topology):
+            role = str(node["role"])
+            inspected = inspected_nodes[role]
+            manifest_node = nodes_by_role.get(role)
+            if manifest_node is None:
+                raise RuntimeError(
+                    f"run manifest lost node role during image transition: {role}"
+                )
+            manifest_node["image_id"] = str(inspected.get("Image") or "")
+            manifest_node["storage_path"] = str(
+                local_role_root(topology, run_id, role) / "storage"
+            )
+            manifest_node["cpuset"] = str(
+                (inspected.get("HostConfig") or {}).get("CpusetCpus") or ""
+            )
+            manifest_node["nofile"] = inspected_nofile_limits(inspected)
+    return data
+
+
+def _command_transition_image_unlocked(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    run_id = validate_run_id(args.run_id)
+    wait_timeout = float(args.wait_timeout)
+    if not math.isfinite(wait_timeout) or wait_timeout <= 0:
+        raise ValueError("wait-timeout must be a positive finite number")
+    if args.strategy != "offline":
+        raise ValueError(f"unsupported image transition strategy: {args.strategy}")
+    stored = read_manifest(topology, run_id)
+    active = validate_image_transition_active_manifest(
+        topology,
+        run_id,
+        stored,
+        args.expected_current_image_id,
+        args.image_tag,
+    )
+    candidate = validate_image_candidate_manifest(
+        topology, run_id, args.candidate_manifest
+    )
+    if (
+        candidate["image_tag"] == active["image_tag"]
+        and candidate["image_id"] != active["image_id"]
+    ):
+        raise RuntimeError(
+            "candidate reuses the active image tag for a different image id; "
+            "rollback would not be safe"
+        )
+
+    if args.dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "run_id": run_id,
+                    "strategy": "offline",
+                    "active_image": {
+                        "tag": active["image_tag"],
+                        "id": active["image_id"],
+                    },
+                    "candidate_image": {
+                        "tag": candidate["image_tag"],
+                        "id": candidate["image_id"],
+                    },
+                    "action": (
+                        "reused"
+                        if candidate["image_id"] == active["image_id"]
+                        else "recreate-four-nodes"
+                    ),
+                    "stop_order": [
+                        str(node["role"])
+                        for node in image_transition_stop_order(topology)
+                    ],
+                    "start_order": [
+                        str(node["role"])
+                        for node in image_transition_start_order(topology)
+                    ],
+                    "storage_preserved": True,
+                    "manifest_written": False,
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
+    before_inspected = inspect_image_transition_runtime(
+        topology,
+        run_id,
+        active["image_tag"],
+        active["image_id"],
+        active["peer_premerge_mode"],
+        active["peer_premerge_shards_per_rpc"],
+        args,
+    )
+    before_snapshot = cluster_snapshot(topology)
+    before_collections = run_collection_placements(topology, run_id)
+    before_errors = cluster_validation_errors(topology, before_snapshot)
+    before_errors.extend(
+        peer_premerge_collection_validation_errors(
+            topology, before_snapshot, before_collections, run_id
+        )
+    )
+    if before_errors:
+        raise RuntimeError(
+            "refusing image transition from an unhealthy cluster: "
+            + "; ".join(before_errors)
+        )
+    verify_remote_image_ids(
+        topology, active["image_tag"], active["image_id"], args
+    )
+
+    if candidate["image_id"] == active["image_id"]:
+        print(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "strategy": "offline",
+                    "action": "reused",
+                    "image_id": active["image_id"],
+                    "storage_preserved": True,
+                    "manifest_written": False,
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
+    ensure_image_archive_on_nodes(
+        topology,
+        active["image_tag"],
+        active["image_id"],
+        Path(active["tar_path"]),
+        args,
+    )
+    ensure_image_archive_on_nodes(
+        topology,
+        candidate["image_tag"],
+        candidate["image_id"],
+        Path(candidate["tar_path"]),
+        args,
+    )
+
+    previous_transitions = list(stored.get("image_transitions") or [])
+    transition_id = f"{run_id}-image-{len(previous_transitions) + 1:04d}"
+    base_proof: dict[str, Any] = {
+        "schema_version": IMAGE_TRANSITION_SCHEMA_VERSION,
+        "transition_id": transition_id,
+        "run_id": run_id,
+        "strategy": "offline",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "storage_preserved": True,
+        "old_image": {
+            "tag": active["image_tag"],
+            "id": active["image_id"],
+            "tar_sha256": active["tar_sha256"],
+        },
+        "candidate_image": {
+            "tag": candidate["image_tag"],
+            "id": candidate["image_id"],
+            "tar_sha256": candidate["tar_sha256"],
+            "source_fingerprint": candidate["source_fingerprint"],
+            "manifest_path": candidate["manifest_path"],
+        },
+        "containers_before": image_transition_container_proofs(
+            topology, run_id, before_inspected
+        ),
+        "cluster_before": transition_cluster_proof(before_snapshot),
+        "collections_before": transition_collections_proof(before_collections),
+    }
+    mutation_started = False
+    try:
+        mutation_started = True
+        stop_and_remove_transition_containers(topology, run_id, args)
+        create_transition_containers(
+            topology,
+            run_id,
+            candidate["image_tag"],
+            candidate["image_id"],
+            active["peer_premerge_mode"],
+            active["peer_premerge_shards_per_rpc"],
+            args,
+        )
+        after_snapshot = wait_controller_and_cluster_healthy(
+            topology, wait_timeout, run_id
+        )
+        after_inspected = inspect_image_transition_runtime(
+            topology,
+            run_id,
+            candidate["image_tag"],
+            candidate["image_id"],
+            active["peer_premerge_mode"],
+            active["peer_premerge_shards_per_rpc"],
+            args,
+        )
+        verify_remote_image_ids(
+            topology, candidate["image_tag"], candidate["image_id"], args
+        )
+        after_collections = run_collection_placements(topology, run_id)
+        after_errors = peer_premerge_collection_validation_errors(
+            topology, after_snapshot, after_collections, run_id
+        )
+        if after_errors:
+            raise RuntimeError(
+                "candidate image left an unhealthy distributed workload: "
+                + "; ".join(after_errors)
+            )
+        verify_image_transition_state_preserved(
+            before_snapshot,
+            before_collections,
+            after_snapshot,
+            after_collections,
+            operation="image transition",
+        )
+        before_ids = {
+            proof["role"]: proof["container_id"]
+            for proof in base_proof["containers_before"]
+        }
+        after_container_proofs = image_transition_container_proofs(
+            topology, run_id, after_inspected
+        )
+        unchanged_container_ids = [
+            proof["role"]
+            for proof in after_container_proofs
+            if before_ids.get(proof["role"]) == proof["container_id"]
+        ]
+        if unchanged_container_ids:
+            raise RuntimeError(
+                "offline image transition did not recreate every run container: "
+                f"{unchanged_container_ids}"
+            )
+        proof = {
+            **base_proof,
+            "finished_at": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            ),
+            "outcome": "success",
+            "containers_after": after_container_proofs,
+            "cluster_after": transition_cluster_proof(after_snapshot),
+            "collections_after": transition_collections_proof(after_collections),
+            "rollback": {"attempted": False},
+        }
+        updated = update_image_transition_manifest(
+            topology,
+            run_id,
+            stored,
+            proof,
+            after_snapshot,
+            after_inspected,
+            candidate,
+        )
+        path = write_manifest(topology, run_id, updated)
+    except Exception as transition_error:
+        if not mutation_started:
+            raise
+        rollback_result: dict[str, Any] | None = None
+        rollback_error: Exception | None = None
+        try:
+            rollback_result = rollback_image_transition(
+                topology,
+                run_id,
+                active,
+                wait_timeout,
+                before_snapshot,
+                before_collections,
+                args,
+            )
+        except Exception as exc:
+            rollback_error = exc
+        proof = {
+            **base_proof,
+            "finished_at": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            ),
+            "outcome": "rolled_back" if rollback_error is None else "rollback_failed",
+            "forward_error": str(transition_error),
+            "rollback": {
+                "attempted": True,
+                "succeeded": rollback_error is None,
+                "error": str(rollback_error) if rollback_error else None,
+                "containers": (
+                    rollback_result.get("containers") if rollback_result else None
+                ),
+                "cluster": rollback_result.get("cluster") if rollback_result else None,
+                "collections": (
+                    rollback_result.get("collections") if rollback_result else None
+                ),
+            },
+        }
+        proof_write_error: Exception | None = None
+        try:
+            updated = update_image_transition_manifest(
+                topology,
+                run_id,
+                stored,
+                proof,
+                rollback_result.get("snapshot") if rollback_result else None,
+                None,
+                None,
+            )
+            write_manifest(topology, run_id, updated)
+        except Exception as exc:
+            proof_write_error = exc
+        details = [f"image transition failed: {transition_error}"]
+        if rollback_error is None:
+            details.append(f"cluster rolled back to {active['image_id']}")
+        else:
+            details.append(f"image rollback failed: {rollback_error}")
+        if proof_write_error is not None:
+            details.append(f"transition proof write failed: {proof_write_error}")
+        raise RuntimeError("; ".join(details)) from transition_error
+
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "strategy": "offline",
+                "action": "recreated",
+                "from_image_id": active["image_id"],
+                "image_id": candidate["image_id"],
+                "transition_id": transition_id,
+                "manifest": str(path),
+                "storage_preserved": True,
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
+    return 0
+
+
+def command_transition_image(
+    args: argparse.Namespace, topology: dict[str, Any]
+) -> int:
+    if bool(getattr(args, "dry_run", False)):
+        return _command_transition_image_unlocked(args, topology)
+    with run_lifecycle_lock(topology, args.run_id):
+        return _command_transition_image_unlocked(args, topology)
 
 
 def artifact_restart_nodes(
@@ -4294,6 +5551,7 @@ def main() -> int:
         "deploy": command_deploy,
         "status": command_status,
         "set-peer-premerge": command_set_peer_premerge,
+        "transition-image": command_transition_image,
         "install-orion-artifact": command_install_orion_artifact,
         "install-simple-kmeans-artifact": command_install_simple_kmeans_artifact,
         "down": command_down,

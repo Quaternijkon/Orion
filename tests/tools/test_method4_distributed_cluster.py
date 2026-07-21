@@ -98,8 +98,10 @@ def matching_node_inspect(
     disable_peer_premerge=False,
     shards_per_rpc="all",
     container_id=None,
+    image_tag="image:test",
+    image_id="sha256:abc",
+    running=True,
 ):
-    image_id = "sha256:abc"
     mode = module.expected_peer_premerge_mode(node, disable_peer_premerge)
     normalized_shards_per_rpc = (
         module.normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
@@ -158,7 +160,7 @@ def matching_node_inspect(
         "Name": f"/{module.container_name('run-1', node['role'])}",
         "Image": image_id,
         "Config": {
-            "Image": "image:test",
+            "Image": image_tag,
             "Labels": labels,
             "Env": env,
             "Cmd": module.expected_qdrant_command(value, node),
@@ -188,7 +190,7 @@ def matching_node_inspect(
                 "RW": True,
             }
         ],
-        "State": {"Running": True},
+        "State": {"Running": running},
     }
 
 
@@ -235,6 +237,201 @@ def peer_premerge_manifest(value, mode="enabled", shards_per_rpc=None):
         "orion_artifacts": [{"collection": "orion", "generation": 7}],
         "simple_kmeans_artifacts": [{"collection": "simple", "generation": 9}],
     }
+
+
+def image_transition_manifest(module, value, image_id="sha256:abc"):
+    stored = peer_premerge_manifest(value, "enabled", "all")
+    archive = module.shared_run_dir(value, "run-1") / "active-image.tar"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_bytes(b"active image archive")
+    stored["image"].update(
+        {
+            "id": image_id,
+            "tar_path": str(archive),
+            "tar_size_bytes": archive.stat().st_size,
+            "tar_sha256": module.sha256_file(archive),
+        }
+    )
+    stored["image_transitions"] = []
+    return stored
+
+
+def write_image_transition_candidate(
+    module,
+    value,
+    *,
+    image_tag="image:candidate",
+    image_id="sha256:def",
+    archive_bytes=b"candidate image archive",
+    dirty=False,
+):
+    fingerprint = "b" * 64
+    tar_path, manifest_path = module.image_candidate_paths(
+        value, "run-1", image_tag
+    )
+    tar_path.parent.mkdir(parents=True, exist_ok=True)
+    tar_path.write_bytes(archive_bytes)
+    payload = {
+        "schema_version": module.IMAGE_CANDIDATE_SCHEMA_VERSION,
+        "kind": "orion-image-transition-candidate",
+        "run_id": "run-1",
+        "generated_at": "2026-07-21T00:00:00Z",
+        "topology_runtime_identity": module.topology_runtime_identity(value),
+        "source_fingerprint": fingerprint,
+        "repository": {
+            "path": str(REPO_ROOT),
+            "commit": "commit-2",
+            "source_fingerprint": fingerprint,
+            "image_affecting_dirty_paths": ["src/main.rs"] if dirty else [],
+        },
+        "image": {
+            "tag": image_tag,
+            "id": image_id,
+            "tar_path": str(tar_path),
+            "tar_size_bytes": tar_path.stat().st_size,
+            "tar_sha256": module.sha256_file(tar_path),
+        },
+    }
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    return manifest_path, payload
+
+
+def transition_image_args(candidate_manifest, *, dry_run=False):
+    return SimpleNamespace(
+        run_id="run-1",
+        candidate_manifest=str(candidate_manifest),
+        expected_current_image_id="sha256:abc",
+        strategy="offline",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=dry_run,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+
+def install_transition_runtime_fakes(
+    monkeypatch,
+    module,
+    value,
+    stored,
+    candidate,
+    *,
+    collection_values=None,
+    wait_values=None,
+    inspect_mutator=None,
+):
+    snapshot = healthy_cluster_snapshot(module, value)
+    roles = [str(node["role"]) for node in module.all_nodes(value)]
+    state = {
+        role: {
+            "exists": True,
+            "running": True,
+            "image_tag": stored["image"]["tag"],
+            "image_id": stored["image"]["id"],
+            "generation": 0,
+        }
+        for role in roles
+    }
+    remote_images = {
+        role: {stored["image"]["tag"]: stored["image"]["id"]}
+        for role in roles
+    }
+    commands = []
+    writes = []
+    collections = list(collection_values or [healthy_run_collections()])
+    waits = list(wait_values or [snapshot])
+
+    def fake_inspect(node, _name, _args):
+        role = str(node["role"])
+        current = state[role]
+        if not current["exists"]:
+            return None
+        inspected = matching_node_inspect(
+            module,
+            value,
+            node,
+            False,
+            "all",
+            container_id=f"container-{role}-{current['generation']}",
+            image_tag=current["image_tag"],
+            image_id=current["image_id"],
+            running=current["running"],
+        )
+        if inspect_mutator is not None:
+            inspect_mutator(role, inspected)
+        return inspected
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        role = str(node["role"])
+        commands.append((role, command))
+        if isinstance(command, list) and command[3:5] == ["image", "inspect"]:
+            image_tag = command[5]
+            image_id = remote_images[role].get(image_tag, "")
+            return subprocess.CompletedProcess(
+                command, 0 if image_id else 1, f"{image_id}\n" if image_id else "", ""
+            )
+        if isinstance(command, list) and command[3:4] == ["load"]:
+            archive = str(command[-1])
+            if archive == str(candidate["image"]["tar_path"]):
+                remote_images[role][candidate["image"]["tag"]] = candidate["image"][
+                    "id"
+                ]
+            elif archive == str(stored["image"]["tar_path"]):
+                remote_images[role][stored["image"]["tag"]] = stored["image"]["id"]
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if isinstance(command, list) and command[3:4] == ["stop"]:
+            state[role]["running"] = False
+        elif isinstance(command, list) and command[3:4] == ["rm"]:
+            state[role]["exists"] = False
+        elif isinstance(command, list) and command[3:4] == ["run"]:
+            image_tag = command[command.index("./qdrant") - 1]
+            image_labels = [
+                item.partition("=")[2]
+                for item in option_values(command, "--label")
+                if item.startswith("orion.distributed.image_id=")
+            ]
+            assert len(image_labels) == 1
+            state[role].update(
+                {
+                    "exists": True,
+                    "running": True,
+                    "image_tag": image_tag,
+                    "image_id": image_labels[0],
+                    "generation": state[role]["generation"] + 1,
+                }
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def fake_collections(*_args):
+        if len(collections) > 1:
+            return copy.deepcopy(collections.pop(0))
+        return copy.deepcopy(collections[0])
+
+    def fake_wait(*_args):
+        if len(waits) > 1:
+            value_or_error = waits.pop(0)
+        else:
+            value_or_error = waits[0]
+        if isinstance(value_or_error, Exception):
+            raise value_or_error
+        return copy.deepcopy(value_or_error)
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: copy.deepcopy(stored))
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(module, "run_collection_placements", fake_collections)
+    monkeypatch.setattr(module, "wait_controller_and_cluster_healthy", fake_wait)
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or Path(value["shared_root"]) / "manifest.json",
+    )
+    return state, remote_images, commands, writes
 
 
 def write_orion_artifact(module, tmp_path, generation=7):
@@ -594,6 +791,58 @@ def test_set_peer_premerge_cli_accepts_mode_chunk_or_both(
     assert args.wait_timeout == 75.0
 
 
+def test_build_cli_accepts_stage_for_transition(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "build",
+            "--allow-dirty",
+            "--stage-for-transition",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.command == "build"
+    assert args.allow_dirty is True
+    assert args.stage_for_transition is True
+
+
+def test_transition_image_cli_accepts_offline_candidate(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "cluster",
+            "--run-id",
+            "run-1",
+            "transition-image",
+            "--candidate-manifest",
+            "/shared/candidate.json",
+            "--expected-current-image-id",
+            "sha256:abc",
+            "--strategy",
+            "offline",
+            "--wait-timeout",
+            "75",
+        ],
+    )
+
+    args = module.parse_args()
+
+    assert args.command == "transition-image"
+    assert args.candidate_manifest == "/shared/candidate.json"
+    assert args.expected_current_image_id == "sha256:abc"
+    assert args.strategy == "offline"
+    assert args.wait_timeout == 75.0
+
+
 def test_set_peer_premerge_rejects_invocation_without_mode_or_chunk():
     module = load_module()
     args = SimpleNamespace(run_id="run-1", mode=None, shards_per_rpc=None)
@@ -945,6 +1194,121 @@ def test_peer_premerge_transition_manifest_reads_bounded_chunk_setting(tmp_path)
         )
 
 
+def test_dirty_candidate_tag_uses_deterministic_image_source_fingerprint(tmp_path):
+    module = load_module()
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "docs").mkdir()
+    (repo / "src/main.rs").write_text("fn main() {}\n", encoding="utf-8")
+    (repo / "docs/note.md").write_text("baseline\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "orion-test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Orion Test"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "baseline"], cwd=repo, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    (repo / "src/main.rs").write_text("fn main() { work(); }\n", encoding="utf-8")
+
+    first = module.image_source_fingerprint(repo, commit)
+    second = module.image_source_fingerprint(repo, commit)
+    (repo / "docs/note.md").write_text("ignored documentation edit\n", encoding="utf-8")
+    after_docs = module.image_source_fingerprint(repo, commit)
+    tag = module.transition_candidate_image_tag(
+        module.image_tag_for_commit(commit), commit, first["sha256"], True
+    )
+
+    assert first == second == after_docs
+    assert first["dirty_paths"] == ["src/main.rs"]
+    assert tag.endswith(f"-dirty-{first['sha256'][:12]}")
+
+
+def test_staged_build_writes_candidate_without_replacing_active_manifest(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    active_path = module.manifest_path(value, "run-1")
+    active_path.parent.mkdir(parents=True)
+    active_path.write_text('{"active": true}\n', encoding="utf-8")
+    source = {
+        "sha256": "c" * 64,
+        "tracked_paths": [],
+        "untracked_paths": [],
+        "dirty_paths": [],
+    }
+    state = {
+        "commit": "commit-1",
+        "short_commit": "commit-1",
+        "dirty": False,
+        "dirty_paths": [],
+        "tracked_dirty": False,
+        "tracked_dirty_paths": [],
+        "untracked_entry_count": 0,
+    }
+    commands = []
+
+    def fake_run_command(command, **_kwargs):
+        commands.append(command)
+        if "save" in command:
+            output = Path(command[command.index("--output") + 1])
+            output.write_bytes(b"candidate archive")
+        elif command[2:3] == ["mv"]:
+            Path(command[-2]).replace(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "git_state", lambda _repo: copy.deepcopy(state))
+    monkeypatch.setattr(
+        module,
+        "image_source_fingerprint",
+        lambda *_args: copy.deepcopy(source),
+    )
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(
+        module, "image_id_local", lambda *_args, **_kwargs: "sha256:candidate"
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("staged build must not write active manifest"),
+    )
+    args = SimpleNamespace(
+        repo=str(tmp_path),
+        expected_commit="commit-1",
+        allow_dirty=False,
+        image_tag="image:base",
+        run_id="run-1",
+        force=False,
+        dry_run=False,
+        stage_for_transition=True,
+    )
+
+    assert module.command_build(args, value) == 0
+
+    candidate_tag = f"image:base-source-{source['sha256'][:12]}"
+    _tar_path, candidate_path = module.image_candidate_paths(
+        value, "run-1", candidate_tag
+    )
+    candidate = module.validate_image_candidate_manifest(
+        value, "run-1", candidate_path
+    )
+    assert candidate["image_id"] == "sha256:candidate"
+    assert candidate["source_fingerprint"] == source["sha256"]
+    assert active_path.read_text(encoding="utf-8") == '{"active": true}\n'
+    assert any("buildx" in command for command in commands)
+
+
 def test_build_reuses_tar_only_after_manifest_sha_and_tag_id_close_loop(
     monkeypatch, tmp_path
 ):
@@ -1032,6 +1396,377 @@ def test_existing_tar_reuse_rejects_current_tag_image_id_mismatch(tmp_path):
         module.validate_reusable_image_archive(
             tar_path, "image:test", manifest, "sha256:wrong"
         )
+
+
+def test_transition_image_rejects_candidate_archive_mismatch_before_stop(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    Path(candidate["image"]["tar_path"]).write_bytes(b"tampered archive")
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda *_args: pytest.fail("candidate mismatch must fail before inspection"),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("candidate mismatch must not write manifest"),
+    )
+
+    with pytest.raises(RuntimeError, match="tar SHA-256 mismatch"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+
+def test_transition_image_rejects_active_image_id_mismatch_before_stop(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, _candidate = write_image_transition_candidate(module, value)
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda *_args: pytest.fail("active id mismatch must fail before inspection"),
+    )
+    args = transition_image_args(candidate_path)
+    args.expected_current_image_id = "sha256:not-active"
+
+    with pytest.raises(RuntimeError, match="expected-current-image-id"):
+        module.command_transition_image(args, value)
+
+
+def test_transition_image_rejects_wrong_storage_mount_before_lifecycle(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+
+    def wrong_mount(role, inspected):
+        if role == "qdrant_shard_2":
+            inspected["Mounts"][0]["Source"] = "/tmp/not-this-run"
+
+    _state, _images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        value,
+        stored,
+        candidate,
+        inspect_mutator=wrong_mount,
+    )
+
+    with pytest.raises(RuntimeError, match="storage_mount"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+    lifecycle = [
+        command[3]
+        for _role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle == []
+    assert writes == []
+
+
+def test_transition_image_rejects_unhealthy_cluster_before_lifecycle(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    _state, _images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch, module, value, stored, candidate
+    )
+    unhealthy = healthy_cluster_snapshot(module, value)
+    unhealthy["result"]["raft_info"]["pending_operations"] = 2
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: unhealthy)
+
+    with pytest.raises(RuntimeError, match="unhealthy cluster"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+        for _role, command in commands
+    )
+    assert writes == []
+
+
+def test_transition_image_same_image_id_is_idempotent_noop(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(
+        module, value, image_id="sha256:abc"
+    )
+    _state, _images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch, module, value, stored, candidate
+    )
+
+    assert module.command_transition_image(
+        transition_image_args(candidate_path), value
+    ) == 0
+
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"load", "stop", "rm", "run", "start"}
+        for _role, command in commands
+    )
+    assert writes == []
+
+
+def test_transition_image_dry_run_has_no_live_or_manifest_mutation(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, _candidate = write_image_transition_candidate(module, value)
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda *_args: pytest.fail("dry-run must not inspect live containers"),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: pytest.fail("dry-run must not run node commands"),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("dry-run must not write the active manifest"),
+    )
+
+    assert module.command_transition_image(
+        transition_image_args(candidate_path, dry_run=True), value
+    ) == 0
+
+
+def test_transition_image_recreates_exact_four_nodes_and_preserves_storage(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    state, remote_images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        value,
+        stored,
+        candidate,
+        collection_values=[healthy_run_collections(), healthy_run_collections()],
+    )
+
+    assert module.command_transition_image(
+        transition_image_args(candidate_path), value
+    ) == 0
+
+    lifecycle = [
+        (role, command)
+        for role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    stop_order = [node["role"] for node in value["workers"]] + ["controller"]
+    start_order = ["controller"] + [node["role"] for node in value["workers"]]
+    assert [role for role, command in lifecycle if command[3] == "stop"] == stop_order
+    assert [role for role, command in lifecycle if command[3] == "rm"] == stop_order
+    assert [role for role, command in lifecycle if command[3] == "run"] == start_order
+    assert sum(command[3] == "stop" for _role, command in lifecycle) == 4
+    assert sum(command[3] == "rm" for _role, command in lifecycle) == 4
+    assert sum(command[3] == "run" for _role, command in lifecycle) == 4
+    assert all("rm -rf" not in " ".join(command) for _role, command in commands)
+    for role, command in lifecycle:
+        if command[3] != "run":
+            continue
+        storage = (
+            module.local_role_root(value, "run-1", role) / "storage"
+        ).resolve()
+        assert f"{storage}:/qdrant/storage" in option_values(command, "-v")
+    assert all(
+        current["image_id"] == candidate["image"]["id"]
+        and current["image_tag"] == candidate["image"]["tag"]
+        and current["generation"] == 1
+        for current in state.values()
+    )
+    assert all(
+        images[candidate["image"]["tag"]] == candidate["image"]["id"]
+        for images in remote_images.values()
+    )
+    assert len(writes) == 1
+    updated = writes[0]
+    assert updated["image"]["id"] == candidate["image"]["id"]
+    assert updated["orion_artifacts"] == stored["orion_artifacts"]
+    assert updated["simple_kmeans_artifacts"] == stored["simple_kmeans_artifacts"]
+    proof = updated["image_transitions"][-1]
+    assert proof["outcome"] == "success"
+    assert proof["storage_preserved"] is True
+    assert len(proof["containers_before"]) == 4
+    assert len(proof["containers_after"]) == 4
+    assert proof["cluster_before"] == proof["cluster_after"]
+    assert proof["collections_before"] == proof["collections_after"]
+
+
+def test_transition_image_failure_restores_old_image_and_records_rollback(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    snapshot = healthy_cluster_snapshot(module, value)
+    state, _remote_images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        value,
+        stored,
+        candidate,
+        collection_values=[healthy_run_collections(), healthy_run_collections()],
+        wait_values=[TimeoutError("injected candidate timeout"), snapshot],
+    )
+
+    with pytest.raises(RuntimeError, match="rolled back"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+    assert all(
+        current["image_tag"] == stored["image"]["tag"]
+        and current["image_id"] == stored["image"]["id"]
+        and current["running"] is True
+        for current in state.values()
+    )
+    lifecycle = [
+        command[3]
+        for _role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle.count("stop") == 8
+    assert lifecycle.count("rm") == 8
+    assert lifecycle.count("run") == 8
+    assert not any("rm -rf" in " ".join(command) for _role, command in commands)
+    assert writes[-1]["image"] == stored["image"]
+    proof = writes[-1]["image_transitions"][-1]
+    assert proof["outcome"] == "rolled_back"
+    assert proof["rollback"]["succeeded"] is True
+    assert len(proof["rollback"]["containers"]) == 4
+
+
+def test_transition_image_postflight_placement_mismatch_triggers_rollback(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    before = healthy_run_collections()
+    changed = healthy_run_collections()
+    changed["dist_run-1_orion_s3"]["cluster"]["remote_shards"][0][
+        "peer_id"
+    ] = 102
+    changed["dist_run-1_orion_s3"]["cluster"]["remote_shards"][1][
+        "peer_id"
+    ] = 101
+    state, _images, _commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        value,
+        stored,
+        candidate,
+        collection_values=[before, changed, before],
+        wait_values=[
+            healthy_cluster_snapshot(module, value),
+            healthy_cluster_snapshot(module, value),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="changed run-scoped collection"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+    assert all(current["image_id"] == "sha256:abc" for current in state.values())
+    assert writes[-1]["image"] == stored["image"]
+    assert writes[-1]["image_transitions"][-1]["outcome"] == "rolled_back"
+
+
+def test_transition_image_remote_candidate_conflict_fails_before_stop(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value)
+    candidate_path, candidate = write_image_transition_candidate(module, value)
+    _state, remote_images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch, module, value, stored, candidate
+    )
+    remote_images["qdrant_shard_3"][candidate["image"]["tag"]] = "sha256:wrong"
+
+    with pytest.raises(RuntimeError, match="conflicting remote tag"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+        for _role, command in commands
+    )
+    assert writes == []
+
+
+def test_image_and_peer_premerge_transitions_share_run_lifecycle_lock(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    monkeypatch.setattr(
+        module,
+        "_command_transition_image_unlocked",
+        lambda *_args: pytest.fail("locked image transition must not enter command"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_command_set_peer_premerge_unlocked",
+        lambda *_args: pytest.fail("locked peer transition must not enter command"),
+    )
+    image_args = SimpleNamespace(run_id="run-1", dry_run=False)
+    peer_args = SimpleNamespace(
+        run_id="run-1", dry_run=False, mode="enabled", shards_per_rpc=None
+    )
+
+    with module.run_lifecycle_lock(value, "run-1"):
+        with pytest.raises(RuntimeError, match="already holds the run lock"):
+            module.command_transition_image(image_args, value)
+        with pytest.raises(RuntimeError, match="already holds the run lock"):
+            module.command_set_peer_premerge(peer_args, value)
 
 
 def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
@@ -1581,6 +2316,172 @@ def test_set_peer_premerge_same_mode_reuses_controller_and_appends_proof(
         "container-qdrant_shard_2",
         "container-qdrant_shard_3",
     ]
+
+
+def test_set_peer_premerge_reuse_rejects_exact_collection_change(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    before = healthy_run_collections()
+    changed = healthy_run_collections()
+    changed["dist_run-1_orion_s3"]["info"]["points_count"] = 301
+    changed["dist_run-1_orion_s3"]["info"]["indexed_vectors_count"] = 301
+    collection_values = [before, changed]
+    commands = []
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda node, _name, _args: matching_node_inspect(
+            module, value, node, False
+        ),
+    )
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: copy.deepcopy(collection_values.pop(0)),
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_controller_and_cluster_healthy",
+        lambda *_args: snapshot,
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail("failed reuse equality must not write manifest"),
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="enabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    with pytest.raises(RuntimeError, match="peer-premerge reuse changed"):
+        module.command_set_peer_premerge(args, value)
+
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+        for _role, command in commands
+    )
+
+
+def test_set_peer_premerge_collection_change_after_recreate_rolls_back(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, "enabled")
+    snapshot = healthy_cluster_snapshot(module, value)
+    before = healthy_run_collections()
+    changed = healthy_run_collections()
+    changed["dist_run-1_orion_s3"]["cluster"]["remote_shards"][0][
+        "peer_id"
+    ] = 102
+    changed["dist_run-1_orion_s3"]["cluster"]["remote_shards"][1][
+        "peer_id"
+    ] = 101
+    collection_values = [before, changed]
+    state = {"mode": "enabled"}
+    commands = []
+    writes = []
+
+    def fake_inspect(node, _name, _args):
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            state["mode"] == "disabled" if node["role"] == "controller" else False,
+        )
+
+    def fake_run_on_node(node, command, _args, **_kwargs):
+        commands.append((node["role"], command))
+        if isinstance(command, list) and command[3:6] == [
+            "image",
+            "inspect",
+            "image:test",
+        ]:
+            return subprocess.CompletedProcess(command, 0, "sha256:abc\n", "")
+        if isinstance(command, list) and command[3:4] == ["run"]:
+            state["mode"] = (
+                "disabled"
+                if f"{module.PEER_PREMERGE_DISABLE_ENV}=1"
+                in option_values(command, "-e")
+                else "enabled"
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(module, "inspect_container", fake_inspect)
+    monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
+    monkeypatch.setattr(module, "cluster_snapshot", lambda _topology: snapshot)
+    monkeypatch.setattr(
+        module,
+        "run_collection_placements",
+        lambda *_args: copy.deepcopy(collection_values.pop(0)),
+    )
+    monkeypatch.setattr(
+        module,
+        "wait_controller_and_cluster_healthy",
+        lambda *_args: snapshot,
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda _topology, _run_id, data: writes.append(copy.deepcopy(data))
+        or tmp_path / "manifest.json",
+    )
+    args = SimpleNamespace(
+        run_id="run-1",
+        mode="disabled",
+        wait_timeout=10.0,
+        image_tag=None,
+        expected_commit="commit-1",
+        repo=str(REPO_ROOT),
+        dry_run=False,
+        ssh_user=None,
+        ssh_option=[],
+    )
+
+    with pytest.raises(RuntimeError, match="changed run-scoped collection"):
+        module.command_set_peer_premerge(args, value)
+
+    assert state["mode"] == "enabled"
+    lifecycle = [
+        command[3]
+        for _role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] in {"stop", "rm", "run", "start"}
+    ]
+    assert lifecycle == ["stop", "rm", "run", "stop", "rm", "run"]
+    assert writes[-1]["peer_premerge_transitions"][-1]["outcome"] == (
+        "failed_rolled_back"
+    )
 
 
 def test_set_peer_premerge_rejects_run_without_scoped_collections(

@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::cmp::Ordering;
 use std::time::Duration;
 
+use ahash::AHashSet;
 use api::rest::SearchGroupsRequestInternal;
 use collection::collection::distance_matrix::*;
 use collection::common::batching::batch_requests;
@@ -11,6 +12,7 @@ use collection::operations::types::*;
 use collection::operations::universal_query::collection_query::*;
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::future;
+use itertools::Itertools;
 use segment::types::{ExtendedPointId, ScoredPoint, ShardKey};
 use segment::utils::scored_point_ties::ScoredPointTies;
 use shard::retrieve::record_internal::RecordInternal;
@@ -133,23 +135,88 @@ fn infer_large_better(candidate_groups: &[Vec<ScoredPoint>]) -> bool {
     true
 }
 
+fn normalize_shard_major_tie_runs(candidate_groups: &mut [Vec<ScoredPoint>], large_better: bool) {
+    for group in candidate_groups {
+        let mut run_start = 0;
+        while run_start < group.len() {
+            let mut run_end = run_start + 1;
+            while run_end < group.len() && group[run_start].cmp(&group[run_end]) == Ordering::Equal
+            {
+                run_end += 1;
+            }
+
+            if run_end - run_start > 1 {
+                if large_better {
+                    group[run_start..run_end]
+                        .sort_by(|a, b| ScoredPointTies(b).cmp(&ScoredPointTies(a)));
+                } else {
+                    group[run_start..run_end]
+                        .sort_by(|a, b| ScoredPointTies(a).cmp(&ScoredPointTies(b)));
+                }
+            }
+            run_start = run_end;
+        }
+    }
+}
+
+fn shard_major_candidate_precedes(
+    left: &(usize, ScoredPoint),
+    right: &(usize, ScoredPoint),
+    large_better: bool,
+) -> bool {
+    match ScoredPointTies(&left.1).cmp(&ScoredPointTies(&right.1)) {
+        Ordering::Greater => large_better,
+        Ordering::Less => !large_better,
+        // `slice::sort_by` is stable, so the old flatten-and-sort implementation kept the
+        // flattened shard-row order for otherwise identical candidates. Preserve that final tie
+        // here as well; it matters if replicated copies temporarily disagree on attached metadata.
+        Ordering::Equal => left.0 < right.0,
+    }
+}
+
+/// Merge shard rows that already follow Qdrant's score/order-value ordering.
+///
+/// Ordinary shard search guarantees score/order-value ordering, but its priority queue does not
+/// order equal-score candidates by ID. Normalize only those contiguous tie runs before the lazy
+/// k-way merge so the result remains identical to the previous stable full sort without sorting
+/// every candidate again.
 pub(crate) fn merge_shard_major_candidates(
-    candidate_groups: Vec<Vec<ScoredPoint>>,
+    mut candidate_groups: Vec<Vec<ScoredPoint>>,
     limit: usize,
     offset: usize,
     source_id_dedup_block_size: Option<u64>,
 ) -> Vec<ScoredPoint> {
     let large_better = infer_large_better(&candidate_groups);
-    let mut candidates = candidate_groups.into_iter().flatten().collect::<Vec<_>>();
-    if large_better {
-        candidates.sort_by(|a, b| ScoredPointTies(b).cmp(&ScoredPointTies(a)));
-    } else {
-        candidates.sort_by(|a, b| ScoredPointTies(a).cmp(&ScoredPointTies(b)));
-    }
-
-    let mut seen_ids = HashSet::new();
-    candidates
+    debug_assert!(
+        candidate_groups
+            .iter()
+            .all(|group| group.windows(2).all(|pair| if large_better {
+                pair[0].cmp(&pair[1]) != Ordering::Less
+            } else {
+                pair[0].cmp(&pair[1]) != Ordering::Greater
+            })),
+        "shard-major candidate rows must already follow Qdrant score/order-value ordering"
+    );
+    normalize_shard_major_tie_runs(&mut candidate_groups, large_better);
+    debug_assert!(
+        candidate_groups
+            .iter()
+            .all(|group| group.windows(2).all(|pair| if large_better {
+                ScoredPointTies(&pair[0]) >= ScoredPointTies(&pair[1])
+            } else {
+                ScoredPointTies(&pair[0]) <= ScoredPointTies(&pair[1])
+            })),
+        "normalized shard-major candidate rows must follow Qdrant score/ID ordering"
+    );
+    let candidates = candidate_groups
         .into_iter()
+        .enumerate()
+        .map(|(group_index, group)| group.into_iter().map(move |point| (group_index, point)))
+        .kmerge_by(move |left, right| shard_major_candidate_precedes(left, right, large_better))
+        .map(|(_group_index, point)| point);
+
+    let mut seen_ids = AHashSet::new();
+    candidates
         .filter(|point| {
             seen_ids.insert(search_dedup_point_id(point.id, source_id_dedup_block_size))
         })
@@ -610,6 +677,31 @@ pub async fn do_search_points_matrix(
 mod tests {
     use super::*;
 
+    fn merge_shard_major_candidates_full_sort_reference(
+        candidate_groups: Vec<Vec<ScoredPoint>>,
+        limit: usize,
+        offset: usize,
+        source_id_dedup_block_size: Option<u64>,
+    ) -> Vec<ScoredPoint> {
+        let large_better = infer_large_better(&candidate_groups);
+        let mut candidates = candidate_groups.into_iter().flatten().collect::<Vec<_>>();
+        if large_better {
+            candidates.sort_by(|a, b| ScoredPointTies(b).cmp(&ScoredPointTies(a)));
+        } else {
+            candidates.sort_by(|a, b| ScoredPointTies(a).cmp(&ScoredPointTies(b)));
+        }
+
+        let mut seen_ids = AHashSet::new();
+        candidates
+            .into_iter()
+            .filter(|point| {
+                seen_ids.insert(search_dedup_point_id(point.id, source_id_dedup_block_size))
+            })
+            .skip(offset)
+            .take(limit)
+            .collect()
+    }
+
     fn scored(id: u64, score: f32) -> ScoredPoint {
         ScoredPoint {
             id: ExtendedPointId::NumId(id),
@@ -620,6 +712,12 @@ mod tests {
             shard_key: None,
             order_value: None,
         }
+    }
+
+    fn scored_with_order(id: u64, score: f32, order_value: i64) -> ScoredPoint {
+        let mut point = scored(id, score);
+        point.order_value = Some(order_value.into());
+        point
     }
 
     #[test]
@@ -840,7 +938,7 @@ mod tests {
             vec![scored(101, 0.9), scored(2, 0.9)],
             vec![scored(303, 0.9)],
         ];
-        let peer_b = vec![vec![scored(1, 0.9), scored(202, 0.9)], vec![scored(3, 0.9)]];
+        let peer_b = vec![vec![scored(202, 0.9), scored(1, 0.9)], vec![scored(3, 0.9)]];
 
         let baseline = merge_shard_major_candidates(
             peer_a.clone().into_iter().chain(peer_b.clone()).collect(),
@@ -871,5 +969,120 @@ mod tests {
                 ExtendedPointId::NumId(101),
             ],
         );
+    }
+
+    #[test]
+    fn shard_major_lazy_merge_matches_full_sort_reference() {
+        let cases = [
+            (
+                vec![
+                    vec![
+                        scored(301, 0.99),
+                        scored(101, 0.90),
+                        scored(201, 0.90),
+                        scored(4, 0.80),
+                    ],
+                    vec![
+                        scored(401, 0.97),
+                        scored(2, 0.90),
+                        scored(202, 0.90),
+                        scored(3, 0.70),
+                    ],
+                    vec![scored(501, 0.96), scored(102, 0.90), scored(1, 0.60)],
+                ],
+                Some(100),
+            ),
+            (
+                vec![
+                    vec![
+                        scored(1, 0.01),
+                        scored(301, 0.10),
+                        scored(201, 0.10),
+                        scored(601, 0.30),
+                    ],
+                    vec![
+                        scored(2, 0.02),
+                        scored(401, 0.10),
+                        scored(101, 0.10),
+                        scored(701, 0.40),
+                    ],
+                    vec![scored(3, 0.03), scored(4, 0.20), scored(501, 0.50)],
+                ],
+                Some(100),
+            ),
+            (
+                vec![
+                    Vec::new(),
+                    vec![scored(5, 0.75), scored(9, 0.75), scored(7, 0.75)],
+                    vec![scored(6, 0.75), scored(4, 0.75), scored(8, 0.75)],
+                ],
+                None,
+            ),
+            (
+                vec![
+                    vec![
+                        scored_with_order(50, 0.99, 20),
+                        scored_with_order(1, 0.90, 10),
+                        scored_with_order(3, 0.80, 10),
+                        scored_with_order(2, 0.70, 10),
+                        scored_with_order(40, 0.60, 0),
+                    ],
+                    vec![
+                        scored_with_order(60, 0.98, 19),
+                        scored_with_order(4, 0.89, 10),
+                        scored_with_order(6, 0.79, 10),
+                        scored_with_order(5, 0.69, 10),
+                        scored_with_order(30, 0.59, -1),
+                    ],
+                ],
+                None,
+            ),
+        ];
+
+        for (candidate_groups, dedup_block) in cases {
+            for offset in 0..=8 {
+                for limit in 1..=5 {
+                    let expected = merge_shard_major_candidates_full_sort_reference(
+                        candidate_groups.clone(),
+                        limit,
+                        offset,
+                        dedup_block,
+                    );
+                    let actual = merge_shard_major_candidates(
+                        candidate_groups.clone(),
+                        limit,
+                        offset,
+                        dedup_block,
+                    );
+                    assert_eq!(actual, expected);
+
+                    let mut reversed_groups = candidate_groups.clone();
+                    reversed_groups.reverse();
+                    assert_eq!(
+                        merge_shard_major_candidates(reversed_groups, limit, offset, dedup_block,),
+                        expected,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shard_major_lazy_merge_preserves_stable_full_sort_choice_for_exact_ties() {
+        let high = scored(99, 1.0);
+        let mut first_copy = scored(42, 0.9);
+        first_copy.version = 11;
+        let mut later_copy = scored(42, 0.9);
+        later_copy.version = 22;
+        let candidate_groups = vec![vec![high], vec![first_copy.clone()], vec![later_copy]];
+
+        let expected =
+            merge_shard_major_candidates_full_sort_reference(candidate_groups.clone(), 2, 0, None);
+        let actual = merge_shard_major_candidates(candidate_groups, 2, 0, None);
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual[1].id, first_copy.id);
+        assert_eq!(actual[1].score.to_bits(), first_copy.score.to_bits());
+        assert_eq!(actual[1].version, first_copy.version);
     }
 }

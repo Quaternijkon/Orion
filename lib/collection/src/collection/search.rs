@@ -289,6 +289,7 @@ impl PeerShardMajorGroup {
 struct CompactPeerShardMajorGroup {
     remote: RemoteShard,
     original_indices: Vec<usize>,
+    query_slot_by_original_index: AHashMap<usize, usize>,
     is_payload_required_by_query: Vec<bool>,
     query_templates: Vec<CoreSearchByShardQueryTemplate>,
     entries: Vec<CoreSearchByShardCompactEntry>,
@@ -306,6 +307,7 @@ impl CompactPeerShardMajorGroup {
         Self {
             remote,
             original_indices: Vec::new(),
+            query_slot_by_original_index: AHashMap::new(),
             is_payload_required_by_query: Vec::new(),
             query_templates: Vec::new(),
             entries: Vec::new(),
@@ -318,25 +320,43 @@ impl CompactPeerShardMajorGroup {
         original_index: usize,
         request: &CoreSearchRequest,
     ) -> usize {
-        if let Some(query_index) = self
-            .original_indices
-            .iter()
-            .position(|known_index| *known_index == original_index)
-        {
-            return query_index;
-        }
-
-        let query_index = peer_local_query_index(
-            &mut self.original_indices,
-            &mut self.is_payload_required_by_query,
+        compact_peer_local_query_index(
+            collection_id,
             original_index,
             request,
-        );
-        self.query_templates
-            .push(compact_peer_query_template(collection_id, request));
-        debug_assert_eq!(query_index + 1, self.query_templates.len());
-        query_index
+            &mut self.original_indices,
+            &mut self.query_slot_by_original_index,
+            &mut self.is_payload_required_by_query,
+            &mut self.query_templates,
+        )
     }
+}
+
+fn compact_peer_local_query_index(
+    collection_id: &str,
+    original_index: usize,
+    request: &CoreSearchRequest,
+    original_indices: &mut Vec<usize>,
+    query_slot_by_original_index: &mut AHashMap<usize, usize>,
+    is_payload_required_by_query: &mut Vec<bool>,
+    query_templates: &mut Vec<CoreSearchByShardQueryTemplate>,
+) -> usize {
+    if let Some(&query_index) = query_slot_by_original_index.get(&original_index) {
+        return query_index;
+    }
+
+    let query_index = original_indices.len();
+    original_indices.push(original_index);
+    query_slot_by_original_index.insert(original_index, query_index);
+    is_payload_required_by_query.push(
+        request
+            .with_payload
+            .as_ref()
+            .is_some_and(|with_payload| with_payload.is_required()),
+    );
+    query_templates.push(compact_peer_query_template(collection_id, request));
+    debug_assert_eq!(query_index + 1, query_templates.len());
+    query_index
 }
 
 const COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV: &str =
@@ -424,6 +444,7 @@ fn split_compact_peer_shard_major_rpcs(
         query_templates: Vec::new(),
         entries: Vec::new(),
     };
+    let mut current_query_slot_by_original_index = AHashMap::new();
     let mut current_shard_count = 0usize;
 
     for shard_entries in entries_by_shard.into_values() {
@@ -435,6 +456,7 @@ fn split_compact_peer_shard_major_rpcs(
                 query_templates: Vec::new(),
                 entries: Vec::new(),
             };
+            current_query_slot_by_original_index.clear();
             current_shard_count = 0;
         }
 
@@ -465,15 +487,14 @@ fn split_compact_peer_shard_major_rpcs(
                 )));
             };
 
-            let chunk_query_index = if let Some(query_index) = current_rpc
-                .original_indices
-                .iter()
-                .position(|known_index| *known_index == original_index)
+            let chunk_query_index = if let Some(&query_index) =
+                current_query_slot_by_original_index.get(&original_index)
             {
                 query_index
             } else {
                 let query_index = current_rpc.original_indices.len();
                 current_rpc.original_indices.push(original_index);
+                current_query_slot_by_original_index.insert(original_index, query_index);
                 current_rpc
                     .is_payload_required_by_query
                     .push(is_payload_required);
@@ -584,16 +605,14 @@ fn peer_premerge_entry(
 
 fn compact_peer_premerge_entry(
     local_query_index: usize,
-    shard_id: ShardId,
-    specialized: &CoreSearchRequest,
+    target: &OrionShardTarget,
 ) -> CollectionResult<CoreSearchByShardCompactEntry> {
-    let entry_points = specialized
-        .hnsw_entry_points
-        .as_ref()
-        .filter(|entry_points| !entry_points.is_empty())
+    let entry_points = (!target.entry_points.is_empty())
+        .then_some(target.entry_points.as_slice())
         .ok_or_else(|| {
             CollectionError::service_error(format!(
-                "Orion compact peer-premerge shard {shard_id} has no ordered HNSW entry points"
+                "Orion compact peer-premerge shard {} has no ordered HNSW entry points",
+                target.shard_id,
             ))
         })?;
     let mut seen_entry_points = AHashSet::with_capacity(entry_points.len());
@@ -602,23 +621,20 @@ fn compact_peer_premerge_entry(
         .find(|entry_point| !seen_entry_points.insert(**entry_point))
     {
         return Err(CollectionError::service_error(format!(
-            "Orion compact peer-premerge shard {shard_id} contains duplicate ordered HNSW entry point {duplicate}"
+            "Orion compact peer-premerge shard {} contains duplicate ordered HNSW entry point {duplicate}",
+            target.shard_id,
         )));
     }
-    let hnsw_ef = specialized
-        .params
-        .as_ref()
-        .and_then(|params| params.hnsw_ef)
-        .filter(|hnsw_ef| *hnsw_ef > 0)
-        .ok_or_else(|| {
-            CollectionError::service_error(format!(
-                "Orion compact peer-premerge shard {shard_id} has no positive per-shard HNSW EF"
-            ))
-        })?;
+    let hnsw_ef = (target.ef > 0).then_some(target.ef).ok_or_else(|| {
+        CollectionError::service_error(format!(
+            "Orion compact peer-premerge shard {} has no positive per-shard HNSW EF",
+            target.shard_id,
+        ))
+    })?;
 
     Ok(CoreSearchByShardCompactEntry {
         query_slot: local_query_index as u64,
-        shard_id,
+        shard_id: target.shard_id,
         hnsw_entry_points: entry_points.iter().cloned().map(Into::into).collect(),
         hnsw_ef: hnsw_ef as u64,
     })
@@ -632,7 +648,7 @@ impl Collection {
     /// LargeBetter or run the compact Orion protocol against a different auto-shard policy.
     pub async fn validate_orion_compact_peer_queries(
         &self,
-        requests: &[CoreSearchRequest],
+        requests: &[&CoreSearchRequest],
     ) -> CollectionResult<()> {
         if requests.is_empty() {
             return Err(CollectionError::bad_request(
@@ -646,7 +662,7 @@ impl Collection {
         })?;
 
         let mut vector_names = AHashSet::new();
-        for request in requests {
+        for &request in requests {
             let QueryEnum::Nearest(named_query) = &request.query else {
                 return Err(CollectionError::bad_request(
                     "Orion compact peer search requires nearest-neighbor query templates",
@@ -967,6 +983,7 @@ impl Collection {
                 is_payload_required_by_query,
                 query_templates,
                 entries,
+                ..
             } = group;
             let rpcs = split_compact_peer_shard_major_rpcs(
                 original_indices,
@@ -1039,13 +1056,13 @@ impl Collection {
     /// existing per-shard coordinator path before issuing a peer-batched request.
     async fn try_orion_numeric_peer_premerge(
         &self,
-        searches_by_shard: &BTreeMap<ShardId, Vec<(usize, CoreSearchRequest)>>,
+        search_plans_by_shard: &BTreeMap<ShardId, Vec<(usize, OrionShardTarget)>>,
         original_requests: Arc<CoreSearchRequestBatch>,
         read_consistency: Option<ReadConsistency>,
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
-        if searches_by_shard.is_empty() || peer_premerge_disabled() {
+        if search_plans_by_shard.is_empty() || peer_premerge_disabled() {
             return Ok(None);
         }
         let topology_check_started = Instant::now();
@@ -1073,7 +1090,7 @@ impl Collection {
         let mut peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup> = BTreeMap::new();
         {
             let shard_holder = self.shards_holder.read().await;
-            for (&shard_id, searches) in searches_by_shard {
+            for (&shard_id, search_plans) in search_plans_by_shard {
                 let Some(replica_set) = shard_holder.get_shard(shard_id) else {
                     return Ok(None);
                 };
@@ -1100,7 +1117,13 @@ impl Collection {
                 let group = peer_groups
                     .entry(peer_id)
                     .or_insert_with(|| CompactPeerShardMajorGroup::new(remote));
-                for (original_index, specialized) in searches {
+                for (original_index, target) in search_plans {
+                    if target.shard_id != shard_id {
+                        return Err(CollectionError::service_error(format!(
+                            "Orion numeric peer-premerge target shard {} does not match route-plan shard {shard_id}",
+                            target.shard_id,
+                        )));
+                    }
                     let Some(original) = original_requests.searches.get(*original_index) else {
                         return Err(CollectionError::service_error(format!(
                             "Orion numeric peer-premerge query index {original_index} is outside batch size {}",
@@ -1109,11 +1132,9 @@ impl Collection {
                     };
                     let local_query_index =
                         group.local_query_index(&self.id, *original_index, original);
-                    group.entries.push(compact_peer_premerge_entry(
-                        local_query_index,
-                        shard_id,
-                        specialized,
-                    )?);
+                    group
+                        .entries
+                        .push(compact_peer_premerge_entry(local_query_index, target)?);
                 }
             }
         }
@@ -1297,34 +1318,41 @@ impl Collection {
             return Ok(None);
         };
 
-        let mut routable_queries = Vec::with_capacity(request.searches.len());
-        for (query_index, original) in request.searches.iter().enumerate() {
-            let Some(query) = orion_eligible_dense_query(original, router.vector_name()) else {
+        for original in &request.searches {
+            if orion_eligible_dense_query(original, router.vector_name()).is_none() {
                 return Ok(None);
-            };
-            routable_queries.push((query_index, query.to_vec()));
+            }
+            original.limit.checked_add(original.offset).ok_or_else(|| {
+                CollectionError::bad_request("Orion lower-search limit + offset overflows usize")
+            })?;
         }
 
         // Upper routing is CPU-only and independent per query. Execute it on Qdrant's search
         // runtime so a normal search batch does not serialize every upper-HNSW traversal on the
-        // async coordinator thread.
+        // async coordinator thread. Keep the original request batch behind an Arc so routing does
+        // not copy every dense query vector before entering the blocking runtime.
         let chunk_size = routing_chunk_size(
-            routable_queries.len(),
+            request.searches.len(),
             self.shared_storage_config.search_thread_count,
         );
-        let route_tasks = routable_queries
-            .chunks(chunk_size)
-            .map(|chunk| {
-                let chunk = chunk.to_vec();
+        let route_tasks = (0..request.searches.len())
+            .step_by(chunk_size)
+            .map(|chunk_start| {
+                let chunk_end = (chunk_start + chunk_size).min(request.searches.len());
                 let router = Arc::clone(router);
+                let request = Arc::clone(&request);
                 let cpu_utilization = hw_measurement_acc.cpu_utilization();
                 AbortOnDropHandle::new(self.search_runtime.spawn_blocking(move || {
-                    chunk
-                        .into_iter()
-                        .map(|(query_index, query)| {
+                    (chunk_start..chunk_end)
+                        .map(|query_index| {
+                            let query = orion_eligible_dense_query(
+                                &request.searches[query_index],
+                                router.vector_name(),
+                            )
+                            .expect("Orion routing eligibility was checked before task dispatch");
                             (
                                 query_index,
-                                cpu_utilization.measure(|| router.route_query(&query)),
+                                cpu_utilization.measure(|| router.route_query(query)),
                             )
                         })
                         .collect::<Vec<_>>()
@@ -1342,7 +1370,7 @@ impl Collection {
             None => future::join_all(route_tasks).await,
         };
 
-        let mut searches_by_shard: BTreeMap<ShardId, Vec<(usize, CoreSearchRequest)>> =
+        let mut search_plans_by_shard: BTreeMap<ShardId, Vec<(usize, OrionShardTarget)>> =
             BTreeMap::new();
         for routed_query_chunk in routed_query_chunks {
             let routed_query_chunk = routed_query_chunk.map_err(|err| {
@@ -1367,18 +1395,16 @@ impl Collection {
                     )));
                 }
 
-                let original = &request.searches[query_index];
                 for target in targets {
-                    let specialized = specialize_core_search_for_orion_target(original, &target)?;
-                    searches_by_shard
+                    search_plans_by_shard
                         .entry(target.shard_id)
                         .or_default()
-                        .push((query_index, specialized));
+                        .push((query_index, target));
                 }
             }
         }
 
-        if searches_by_shard.is_empty() {
+        if search_plans_by_shard.is_empty() {
             return Err(CollectionError::service_error(format!(
                 "Orion routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
                 router.generation(),
@@ -1394,7 +1420,7 @@ impl Collection {
 
         if let Some(rows) = self
             .try_orion_numeric_peer_premerge(
-                &searches_by_shard,
+                &search_plans_by_shard,
                 request.clone(),
                 read_consistency,
                 lower_timeout,
@@ -1408,7 +1434,7 @@ impl Collection {
         let batch_size = request.searches.len();
         let all_shard_rows = {
             let shard_holder = self.shards_holder.read().await;
-            if let Some(missing_shard) = searches_by_shard
+            if let Some(missing_shard) = search_plans_by_shard
                 .keys()
                 .copied()
                 .find(|shard_id| shard_holder.get_shard(*shard_id).is_none())
@@ -1420,43 +1446,71 @@ impl Collection {
                 )));
             }
 
-            let shard_searches = searches_by_shard.into_iter().map(|(shard_id, searches)| {
-                let shard = shard_holder
-                    .get_shard(shard_id)
-                    .expect("Orion target shard existence was checked");
-                let original_indices = searches
-                    .iter()
-                    .map(|(query_index, _)| *query_index)
-                    .collect::<Vec<_>>();
-                let shard_request = Arc::new(CoreSearchRequestBatch {
-                    searches: searches.into_iter().map(|(_, search)| search).collect(),
-                });
-                let hw_measurement_acc = hw_measurement_acc.clone();
-                async move {
-                    let rows = shard
-                        .core_search(
-                            shard_request,
-                            read_consistency,
-                            false,
-                            lower_timeout,
-                            hw_measurement_acc,
-                        )
-                        .await?;
-                    if rows.len() != original_indices.len() {
-                        return Err(CollectionError::service_error(format!(
-                            "Orion shard {shard_id} returned {} rows for {} query slots",
-                            rows.len(),
-                            original_indices.len(),
-                        )));
+            let prepared_shard_searches = search_plans_by_shard
+                .into_iter()
+                .map(|(shard_id, search_plans)| {
+                    let shard = shard_holder
+                        .get_shard(shard_id)
+                        .expect("Orion target shard existence was checked");
+                    let mut original_indices = Vec::with_capacity(search_plans.len());
+                    let mut searches = Vec::with_capacity(search_plans.len());
+                    for (query_index, target) in search_plans {
+                        let original = request.searches.get(query_index).ok_or_else(|| {
+                            CollectionError::service_error(format!(
+                                "Orion fallback query index {query_index} is outside batch size {batch_size}",
+                            ))
+                        })?;
+                        if target.shard_id != shard_id {
+                            return Err(CollectionError::service_error(format!(
+                                "Orion fallback target shard {} does not match route-plan shard {shard_id}",
+                                target.shard_id,
+                            )));
+                        }
+                        original_indices.push(query_index);
+                        searches.push(specialize_core_search_for_orion_target(original, &target)?);
                     }
+                    let shard_request = Arc::new(CoreSearchRequestBatch { searches });
+                    Ok::<_, CollectionError>((shard_id, shard, original_indices, shard_request))
+                })
+                .collect::<CollectionResult<Vec<_>>>()?;
 
-                    let mut full_batch_rows = vec![Vec::new(); batch_size];
-                    for (query_index, row) in original_indices.into_iter().zip(rows) {
-                        full_batch_rows[query_index] = row;
+            // Compact topology checks and fallback-only request materialization are part of the
+            // caller's end-to-end timeout. Recompute the remaining budget immediately before the
+            // ordinary replica-set searches so a failed compact gate cannot extend the deadline.
+            let fallback_timeout = remaining_search_timeout(
+                timeout,
+                request_started.elapsed(),
+                "Orion distributed fallback search",
+            )?;
+            let shard_searches = prepared_shard_searches.into_iter().map(
+                |(shard_id, shard, original_indices, shard_request)| {
+                    let hw_measurement_acc = hw_measurement_acc.clone();
+                    async move {
+                        let rows = shard
+                            .core_search(
+                                shard_request,
+                                read_consistency,
+                                false,
+                                fallback_timeout,
+                                hw_measurement_acc,
+                            )
+                            .await?;
+                        if rows.len() != original_indices.len() {
+                            return Err(CollectionError::service_error(format!(
+                                "Orion shard {shard_id} returned {} rows for {} query slots",
+                                rows.len(),
+                                original_indices.len(),
+                            )));
+                        }
+
+                        let mut full_batch_rows = vec![Vec::new(); batch_size];
+                        for (query_index, row) in original_indices.into_iter().zip(rows) {
+                            full_batch_rows[query_index] = row;
+                        }
+                        Ok::<_, CollectionError>(full_batch_rows)
                     }
-                    Ok::<_, CollectionError>(full_batch_rows)
-                }
-            });
+                },
+            );
             future::try_join_all(shard_searches).await?
         };
 
@@ -2227,8 +2281,6 @@ mod tests {
             ],
             ef: 76,
         };
-        let specialized = specialize_core_search_for_orion_target(&original, &target).unwrap();
-
         let template = compact_peer_query_template("orion", &original);
         assert_eq!(
             template.source_id_dedup_block_size,
@@ -2251,7 +2303,7 @@ mod tests {
         assert!(roundtrip.hnsw_entry_points.is_none());
         assert_eq!(roundtrip.with_payload, original.with_payload);
 
-        let entry = compact_peer_premerge_entry(3, target.shard_id, &specialized).unwrap();
+        let entry = compact_peer_premerge_entry(3, &target).unwrap();
         assert_eq!(entry.query_slot, 3);
         assert_eq!(entry.shard_id, target.shard_id);
         assert_eq!(entry.hnsw_ef, 76);
@@ -2267,29 +2319,78 @@ mod tests {
     }
 
     #[test]
+    fn compact_peer_target_validation_fails_closed() {
+        let empty_entry_points = OrionShardTarget {
+            shard_id: 9,
+            entry_points: Vec::new(),
+            ef: 76,
+        };
+        assert!(
+            compact_peer_premerge_entry(0, &empty_entry_points)
+                .unwrap_err()
+                .to_string()
+                .contains("no ordered HNSW entry points")
+        );
+
+        let duplicate_entry_points = OrionShardTarget {
+            shard_id: 9,
+            entry_points: vec![PointIdType::from(31), PointIdType::from(31)],
+            ef: 76,
+        };
+        assert!(
+            compact_peer_premerge_entry(0, &duplicate_entry_points)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate ordered HNSW entry point 31")
+        );
+
+        let zero_ef = OrionShardTarget {
+            shard_id: 9,
+            entry_points: vec![PointIdType::from(31)],
+            ef: 0,
+        };
+        assert!(
+            compact_peer_premerge_entry(0, &zero_ef)
+                .unwrap_err()
+                .to_string()
+                .contains("no positive per-shard HNSW EF")
+        );
+    }
+
+    #[test]
     fn compact_peer_query_templates_are_dense_and_not_repeated_per_shard() {
         let mut original_indices = Vec::new();
+        let mut query_slots = AHashMap::new();
         let mut payload_required = Vec::new();
         let mut templates = Vec::new();
-        let request = default_dense_request();
+        let mut without_payload = default_dense_request();
+        without_payload.with_payload = Some(WithPayloadInterface::Bool(false));
+        let mut with_payload = default_dense_request();
+        with_payload.with_payload = Some(WithPayloadInterface::Bool(true));
 
-        for original_index in [5, 1, 5, 9, 1] {
-            let before = original_indices.len();
-            let query_index = peer_local_query_index(
-                &mut original_indices,
-                &mut payload_required,
+        for (original_index, request) in [
+            (5, &without_payload),
+            (1, &with_payload),
+            (5, &without_payload),
+            (9, &without_payload),
+            (1, &with_payload),
+        ] {
+            let query_index = compact_peer_local_query_index(
+                "orion",
                 original_index,
-                &request,
+                request,
+                &mut original_indices,
+                &mut query_slots,
+                &mut payload_required,
+                &mut templates,
             );
-            if original_indices.len() != before {
-                templates.push(compact_peer_query_template("orion", &request));
-            }
             assert!(query_index < templates.len());
         }
 
         assert_eq!(original_indices, vec![5, 1, 9]);
+        assert_eq!(query_slots, AHashMap::from_iter([(5, 0), (1, 1), (9, 2)]));
         assert_eq!(templates.len(), 3);
-        assert_eq!(payload_required, vec![false, false, false]);
+        assert_eq!(payload_required, vec![false, true, false]);
     }
 
     #[test]

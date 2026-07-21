@@ -172,10 +172,10 @@ impl TableOfContent {
     pub async fn validate_orion_compact_peer_search(
         &self,
         collection_name: &str,
-        requests: &[CoreSearchRequest],
+        requests: &[&CoreSearchRequest],
         auth: &Auth,
     ) -> StorageResult<()> {
-        let representative_request = requests.first().ok_or_else(|| {
+        let representative_request = requests.first().copied().ok_or_else(|| {
             StorageError::bad_request("Orion compact peer search has no query templates")
         })?;
         let collection_pass = auth.check_point_op(

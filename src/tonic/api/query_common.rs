@@ -553,26 +553,15 @@ fn validate_compact_orion_query_template(
     Ok(())
 }
 
-fn decode_compact_searches_by_shard(
+fn decode_compact_query_templates(
     collection_name: &str,
     query_templates: Vec<CoreSearchByShardQueryTemplate>,
-    searches: Vec<CoreSearchByShardCompactEntry>,
-) -> Result<
-    (
-        usize,
-        Vec<CoreSearchRequest>,
-        BTreeMap<ShardId, Vec<CompactSearchByShardWork>>,
-    ),
-    Status,
-> {
+) -> Result<Vec<CompactSearchTemplate>, Status> {
     if query_templates.is_empty() {
         return Err(Status::invalid_argument("query_templates is empty"));
     }
-    if searches.is_empty() {
-        return Err(Status::invalid_argument("compact searches is empty"));
-    }
 
-    let templates = query_templates
+    query_templates
         .into_iter()
         .enumerate()
         .map(|(query_slot, template)| {
@@ -612,13 +601,18 @@ fn decode_compact_searches_by_shard(
                 request,
             })
         })
-        .collect::<Result<Vec<_>, Status>>()?;
+        .collect()
+}
+
+fn decode_compact_search_entries(
+    templates: &[CompactSearchTemplate],
+    searches: Vec<CoreSearchByShardCompactEntry>,
+) -> Result<BTreeMap<ShardId, Vec<CompactSearchByShardWork>>, Status> {
+    if searches.is_empty() {
+        return Err(Status::invalid_argument("compact searches is empty"));
+    }
 
     let query_count = templates.len();
-    let template_requests = templates
-        .iter()
-        .map(|template| template.request.clone())
-        .collect::<Vec<_>>();
     let mut referenced_slots = vec![false; query_count];
     let mut seen_query_shards = HashSet::new();
     let mut by_shard: BTreeMap<ShardId, Vec<CompactSearchByShardWork>> = BTreeMap::new();
@@ -701,7 +695,29 @@ fn decode_compact_searches_by_shard(
         )));
     }
 
-    Ok((query_count, template_requests, by_shard))
+    Ok(by_shard)
+}
+
+#[cfg(test)]
+fn decode_compact_searches_by_shard(
+    collection_name: &str,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    searches: Vec<CoreSearchByShardCompactEntry>,
+) -> Result<
+    (
+        usize,
+        Vec<CoreSearchRequest>,
+        BTreeMap<ShardId, Vec<CompactSearchByShardWork>>,
+    ),
+    Status,
+> {
+    let templates = decode_compact_query_templates(collection_name, query_templates)?;
+    let template_requests = templates
+        .iter()
+        .map(|template| template.request.clone())
+        .collect::<Vec<_>>();
+    let by_shard = decode_compact_search_entries(&templates, searches)?;
+    Ok((templates.len(), template_requests, by_shard))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -720,8 +736,13 @@ pub async fn core_search_batch_by_shard_compact(
             "unsupported compact peer-search wire_version {wire_version}; expected 1"
         )));
     }
-    let (query_count, template_requests, by_shard) =
-        decode_compact_searches_by_shard(&collection_name, query_templates, searches)?;
+    let templates = decode_compact_query_templates(&collection_name, query_templates)?;
+    let query_count = templates.len();
+    let by_shard = decode_compact_search_entries(&templates, searches)?;
+    let template_requests = templates
+        .iter()
+        .map(|template| &template.request)
+        .collect::<Vec<_>>();
     toc.validate_orion_compact_peer_search(&collection_name, &template_requests, &auth)
         .await
         .map_err(Status::from)?;
