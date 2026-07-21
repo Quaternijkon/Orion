@@ -81,6 +81,10 @@ where
         // and notify the user that they better use the default IO implementation.
     }
 
+    fn score_points_preserves_scalar_usage(&self) -> bool {
+        false
+    }
+
     fn score_point(&self, point: PointOffsetType) -> ScoreType {
         self.query_scorer.score_stored(point)
     }

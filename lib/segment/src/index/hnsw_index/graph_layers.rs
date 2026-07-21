@@ -152,10 +152,12 @@ pub trait GraphLayersBase {
     ///
     /// This matches the lower-tier path used by hnswlib's
     /// `searchBaseLayerST_MultiEP`: all routed entry points are inserted into
-    /// the base-layer candidate queue before graph expansion starts.
+    /// the base-layer candidate queue before graph expansion starts. Entry IDs
+    /// must already be filtered; their order and duplicates are preserved while
+    /// scoring, before the visited list suppresses duplicate queue seeds.
     fn search_on_level_multi_ep(
         &self,
-        level_entries: &[ScoredPointOffset],
+        level_entry_ids: &[PointOffsetType],
         level: usize,
         ef: usize,
         points_scorer: &mut FilteredScorer,
@@ -164,10 +166,34 @@ pub trait GraphLayersBase {
         let mut visited_list = self.get_visited_list_from_pool();
 
         let mut search_context = SearchContext::new(ef);
-        for &level_entry in level_entries {
-            if !visited_list.check_and_update_visited(level_entry.idx) {
-                search_context.process_candidate(level_entry);
-            }
+        if points_scorer
+            .raw_scorer()
+            .score_points_preserves_scalar_usage()
+        {
+            points_scorer
+                .score_points_unfiltered(level_entry_ids)
+                .for_each(|level_entry| {
+                    if !visited_list.check_and_update_visited(level_entry.idx) {
+                        search_context.process_candidate(level_entry);
+                    }
+                });
+        } else {
+            // Preserve the old scalar access path for scorers whose batch method
+            // has observably different I/O accounting or failure behavior. Score
+            // every ordered entry (including duplicates) before seeding the queue.
+            let level_entries = level_entry_ids
+                .iter()
+                .copied()
+                .map(|idx| ScoredPointOffset {
+                    idx,
+                    score: points_scorer.score_point(idx),
+                })
+                .collect_vec();
+            level_entries.into_iter().for_each(|level_entry| {
+                if !visited_list.check_and_update_visited(level_entry.idx) {
+                    search_context.process_candidate(level_entry);
+                }
+            });
         }
 
         let limit = self.get_m(level);
@@ -588,28 +614,24 @@ impl GraphLayers {
         is_stopped: &AtomicBool,
     ) -> CancellableResult<Vec<ScoredPointOffset>> {
         if let Some(custom_entry_points) = custom_entry_points {
-            let level_entries = custom_entry_points
+            let level_entry_ids = custom_entry_points
                 .iter()
                 .copied()
                 .filter(|&point_id| points_scorer.filters().check_vector(point_id))
-                .map(|idx| ScoredPointOffset {
-                    idx,
-                    score: points_scorer.score_point(idx),
-                })
                 .collect_vec();
 
-            if !level_entries.is_empty() {
+            if !level_entry_ids.is_empty() {
                 let ef = max(ef, top);
                 let nearest = match algorithm {
                     SearchAlgorithm::Hnsw => self.search_on_level_multi_ep(
-                        &level_entries,
+                        &level_entry_ids,
                         0,
                         ef,
                         &mut points_scorer,
                         is_stopped,
                     ),
                     SearchAlgorithm::Acorn => self.search_on_level_multi_ep(
-                        &level_entries,
+                        &level_entry_ids,
                         0,
                         ef,
                         &mut points_scorer,
@@ -802,6 +824,7 @@ impl GraphLayers {
 mod tests {
     use common::bitvec::BitVec;
     use common::counter::hardware_counter::HardwareCounterCell;
+    use common::cow::BoxCow;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use rstest::rstest;
@@ -813,6 +836,7 @@ mod tests {
     use crate::index::hnsw_index::tests::{
         create_graph_layer_builder_fixture, create_graph_layer_fixture,
     };
+    use crate::payload_storage::FilterContext;
     use crate::spaces::metric::Metric;
     use crate::spaces::simple::CosineMetric;
     use crate::types::Distance;
@@ -841,6 +865,89 @@ mod tests {
     }
 
     const M: usize = 8;
+
+    #[test]
+    fn custom_entry_point_batch_scoring_matches_scalar_semantics() {
+        struct RejectPoint(PointOffsetType);
+
+        impl FilterContext for RejectPoint {
+            fn check(&self, point_id: PointOffsetType) -> bool {
+                point_id != self.0
+            }
+        }
+
+        let dim = 2;
+        let num_vectors = 6;
+        let mut vector_storage = new_volatile_dense_vector_storage(dim, Distance::Dot);
+        let hw_counter = HardwareCounterCell::new();
+        for idx in 0..num_vectors {
+            let vector = [idx as f32 + 1.0, 1.0 - idx as f32];
+            vector_storage
+                .insert_vector(
+                    idx as PointOffsetType,
+                    vector.as_slice().into(),
+                    &hw_counter,
+                )
+                .unwrap();
+        }
+        vector_storage.delete_vector(3).unwrap();
+
+        let mut deleted_points = BitVec::repeat(false, num_vectors);
+        deleted_points.set(4, true);
+        let query = vec![0.75, -0.25];
+        let custom_entry_points = [5, 2, 5, 3, 4, 1, 99, 2];
+
+        let scalar_filter: BoxCow<'_, dyn FilterContext> = BoxCow::Owned(Box::new(RejectPoint(1)));
+        let scalar_scorer = FilteredScorer::new(
+            query.as_slice().into(),
+            &vector_storage,
+            None,
+            Some(scalar_filter),
+            &deleted_points,
+            HardwareCounterCell::new(),
+        )
+        .unwrap();
+        assert!(
+            scalar_scorer
+                .raw_scorer()
+                .score_points_preserves_scalar_usage()
+        );
+        let scalar_entries = custom_entry_points
+            .iter()
+            .copied()
+            .filter(|&point_id| scalar_scorer.filters().check_vector(point_id))
+            .map(|idx| ScoredPointOffset {
+                idx,
+                score: scalar_scorer.score_point(idx),
+            })
+            .collect_vec();
+
+        let batch_filter: BoxCow<'_, dyn FilterContext> = BoxCow::Owned(Box::new(RejectPoint(1)));
+        let mut batch_scorer = FilteredScorer::new(
+            query.as_slice().into(),
+            &vector_storage,
+            None,
+            Some(batch_filter),
+            &deleted_points,
+            HardwareCounterCell::new(),
+        )
+        .unwrap();
+        let batch_entry_ids = custom_entry_points
+            .iter()
+            .copied()
+            .filter(|&point_id| batch_scorer.filters().check_vector(point_id))
+            .collect_vec();
+        let batch_entries = batch_scorer
+            .score_points_unfiltered(&batch_entry_ids)
+            .collect_vec();
+
+        assert_eq!(batch_entry_ids, [5, 2, 5, 2]);
+        assert_eq!(batch_entries.len(), scalar_entries.len());
+        for (batch, scalar) in batch_entries.iter().zip(&scalar_entries) {
+            assert_eq!(batch.idx, scalar.idx);
+            assert_eq!(batch.score.to_bits(), scalar.score.to_bits());
+        }
+    }
 
     #[test]
     fn custom_entry_points_seed_base_layer_search_from_all_points() {
@@ -898,7 +1005,7 @@ mod tests {
                 1,
                 SearchAlgorithm::Hnsw,
                 scorer,
-                Some(&[0, 3]),
+                Some(&[0, 3, 0]),
                 &DEFAULT_STOPPED,
             )
             .unwrap();

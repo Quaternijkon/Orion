@@ -32,6 +32,18 @@ use crate::vector_storage::sparse::volatile_sparse_vector_storage::VolatileSpars
 pub trait RawScorer {
     fn score_points(&self, points: &[PointOffsetType], scores: &mut [ScoreType]);
 
+    /// Whether [`RawScorer::score_points`] can replace repeated
+    /// [`RawScorer::score_point`] calls without changing scorer usage semantics.
+    ///
+    /// This requires equivalent observable scoring behavior, including score
+    /// bits and order, hardware-counter accounting, and failure behavior.
+    /// Optimized internal reads are allowed. Implementations must opt in
+    /// explicitly; the fail-closed default preserves scalar behavior for new
+    /// scorer types.
+    fn score_points_preserves_scalar_usage(&self) -> bool {
+        false
+    }
+
     /// Score stored vector with vector under the given index
     fn score_point(&self, point: PointOffsetType) -> ScoreType;
 
@@ -437,6 +449,10 @@ impl<TQueryScorer: QueryScorer> RawScorer for RawScorerImpl<TQueryScorer> {
         }
     }
 
+    fn score_points_preserves_scalar_usage(&self) -> bool {
+        true
+    }
+
     fn score_point(&self, point: PointOffsetType) -> ScoreType {
         self.query_scorer.score_stored(point)
     }
@@ -462,4 +478,38 @@ pub fn check_deleted_condition(
         // Additionally check point deletion for integrity if delete propagation to vector failed
         // Default to deleted if the point mapping was removed from the ID tracker
         && !point_deleted.get_bit(point as usize).unwrap_or(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DefaultCapabilityRawScorer;
+
+    impl RawScorer for DefaultCapabilityRawScorer {
+        fn score_points(&self, _points: &[PointOffsetType], _scores: &mut [ScoreType]) {
+            unreachable!()
+        }
+
+        fn score_point(&self, _point: PointOffsetType) -> ScoreType {
+            unreachable!()
+        }
+
+        fn score_internal(
+            &self,
+            _point_a: PointOffsetType,
+            _point_b: PointOffsetType,
+        ) -> ScoreType {
+            unreachable!()
+        }
+
+        fn scorer_bytes(&self) -> Option<&dyn QueryScorerBytes> {
+            None
+        }
+    }
+
+    #[test]
+    fn raw_scorer_batch_capability_defaults_to_fail_closed() {
+        assert!(!DefaultCapabilityRawScorer.score_points_preserves_scalar_usage());
+    }
 }
