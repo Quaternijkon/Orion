@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use collection::collection::Collection;
@@ -164,18 +165,21 @@ impl TableOfContent {
             .map_err(|err| err.into())
     }
 
-    /// Revalidate the collection-level safety contract for Orion's compact internal peer RPC.
+    /// Revalidate the collection-level safety contract for Orion's compact internal peer RPC and
+    /// return the exact collection instance that passed validation.
     ///
     /// The request is still authorized here even though the internal handler currently supplies
-    /// full peer credentials. Keeping the check next to the ordinary point-operation path avoids
-    /// exposing unchecked collection access outside the storage crate.
+    /// full peer credentials. Every compact template has the same read-only access requirements,
+    /// so one representative authorization check is sufficient. Returning the validated
+    /// collection lets the caller execute all shard-local batches without repeating authorization
+    /// and alias resolution for every shard in the same internal RPC.
     pub async fn validate_orion_compact_peer_search(
         &self,
         collection_name: &str,
-        requests: &[&CoreSearchRequest],
+        requests: &[CoreSearchRequest],
         auth: &Auth,
-    ) -> StorageResult<()> {
-        let representative_request = requests.first().copied().ok_or_else(|| {
+    ) -> StorageResult<Arc<Collection>> {
+        let representative_request = requests.first().ok_or_else(|| {
             StorageError::bad_request("Orion compact peer search has no query templates")
         })?;
         let collection_pass = auth.check_point_op(
@@ -187,7 +191,8 @@ impl TableOfContent {
         collection
             .validate_orion_compact_peer_queries(requests)
             .await
-            .map_err(Into::into)
+            .map_err(StorageError::from)?;
+        Ok(collection)
     }
 
     #[allow(clippy::too_many_arguments)]

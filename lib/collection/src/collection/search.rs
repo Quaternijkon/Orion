@@ -63,15 +63,10 @@ fn orion_eligible_dense_query<'a>(
     Some(vector)
 }
 
-fn validate_orion_compact_peer_query_vectors_config(
+fn validate_orion_compact_peer_query_vector_config(
     collection_config: &CollectionConfigInternal,
-    vector_names: &[String],
+    vector_name: &str,
 ) -> CollectionResult<()> {
-    if vector_names.is_empty() {
-        return Err(CollectionError::bad_request(
-            "Orion compact peer search has no query vectors",
-        ));
-    }
     if !matches!(
         collection_config.auto_shard_policy,
         Some(AutoShardPolicy::Orion { .. })
@@ -81,26 +76,24 @@ fn validate_orion_compact_peer_query_vectors_config(
         ));
     }
 
-    for vector_name in vector_names {
-        let vector_params = collection_config
-            .params
-            .vectors
-            .get_params(vector_name)
-            .ok_or_else(|| {
-                CollectionError::bad_request(format!(
-                    "Orion compact peer search vector {vector_name:?} is not configured"
-                ))
-            })?;
-        if vector_params.multivector_config.is_some() {
-            return Err(CollectionError::bad_request(format!(
-                "Orion compact peer search vector {vector_name:?} must be a dense single vector"
-            )));
-        }
-        if vector_params.distance.distance_order() != Order::LargeBetter {
-            return Err(CollectionError::bad_request(format!(
-                "Orion compact peer search vector {vector_name:?} must use a LargeBetter distance"
-            )));
-        }
+    let vector_params = collection_config
+        .params
+        .vectors
+        .get_params(vector_name)
+        .ok_or_else(|| {
+            CollectionError::bad_request(format!(
+                "Orion compact peer search vector {vector_name:?} is not configured"
+            ))
+        })?;
+    if vector_params.multivector_config.is_some() {
+        return Err(CollectionError::bad_request(format!(
+            "Orion compact peer search vector {vector_name:?} must be a dense single vector"
+        )));
+    }
+    if vector_params.distance.distance_order() != Order::LargeBetter {
+        return Err(CollectionError::bad_request(format!(
+            "Orion compact peer search vector {vector_name:?} must use a LargeBetter distance"
+        )));
     }
     Ok(())
 }
@@ -648,7 +641,7 @@ impl Collection {
     /// LargeBetter or run the compact Orion protocol against a different auto-shard policy.
     pub async fn validate_orion_compact_peer_queries(
         &self,
-        requests: &[&CoreSearchRequest],
+        requests: &[CoreSearchRequest],
     ) -> CollectionResult<()> {
         if requests.is_empty() {
             return Err(CollectionError::bad_request(
@@ -661,8 +654,7 @@ impl Collection {
             )
         })?;
 
-        let mut vector_names = AHashSet::new();
-        for &request in requests {
+        for request in requests {
             let QueryEnum::Nearest(named_query) = &request.query else {
                 return Err(CollectionError::bad_request(
                     "Orion compact peer search requires nearest-neighbor query templates",
@@ -685,12 +677,10 @@ impl Collection {
                     "Orion compact peer search query does not match the routing schema: {err}"
                 ))
             })?;
-            vector_names.insert(vector_name.to_owned());
         }
 
-        let vector_names = vector_names.into_iter().collect::<Vec<_>>();
         let collection_config = self.collection_config.read().await;
-        validate_orion_compact_peer_query_vectors_config(&collection_config, &vector_names)
+        validate_orion_compact_peer_query_vector_config(&collection_config, router.vector_name())
     }
 
     #[cfg(feature = "testing")]
@@ -1875,17 +1865,17 @@ mod tests {
     #[test]
     fn compact_peer_collection_contract_requires_orion_and_large_better() {
         let mut config = crate::tests::fixtures::create_collection_config();
-        let vector_names = vec![DEFAULT_VECTOR_NAME.to_owned()];
 
         let wrong_policy =
-            validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap_err();
+            validate_orion_compact_peer_query_vector_config(&config, DEFAULT_VECTOR_NAME)
+                .unwrap_err();
         assert!(wrong_policy.to_string().contains("Orion auto-shard"));
 
         config.auto_shard_policy = Some(AutoShardPolicy::Orion {
             generation: 1,
             artifact_sha256: "0".repeat(64),
         });
-        validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap();
+        validate_orion_compact_peer_query_vector_config(&config, DEFAULT_VECTOR_NAME).unwrap();
 
         let crate::operations::types::VectorsConfig::Single(vector_params) =
             &mut config.params.vectors
@@ -1894,7 +1884,8 @@ mod tests {
         };
         vector_params.distance = segment::types::Distance::Euclid;
         let small_better =
-            validate_orion_compact_peer_query_vectors_config(&config, &vector_names).unwrap_err();
+            validate_orion_compact_peer_query_vector_config(&config, DEFAULT_VECTOR_NAME)
+                .unwrap_err();
         assert!(small_better.to_string().contains("LargeBetter"));
     }
 
