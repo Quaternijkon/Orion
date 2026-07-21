@@ -252,6 +252,50 @@ fn search_dedup_point_id(
     ExtendedPointId::NumId((point_num_id - 1) % block_size)
 }
 
+/// Reuse the already ordered, point-ID-unique rows returned by a single replica set for an
+/// internal numeric-shard search.
+///
+/// `ShardReplicaSet`/`LocalShard` has already merged its local segments before these rows reach
+/// the collection layer. Running the generic collection merge again for one shard would only
+/// rebuild the same rows through a one-input k-way merge and another point-ID hash set. Internal
+/// merges must retain the full `limit + offset` window for the peer/coordinator merge, and Orion
+/// source-ID deduplication must remain in peer pre-merge, so requests carrying a local source-ID
+/// dedup block deliberately stay on the generic path.
+fn try_take_single_shard_internal_rows(
+    all_searches_res: &mut Vec<Vec<Vec<ScoredPoint>>>,
+    request: &CoreSearchRequestBatch,
+    is_client_request: bool,
+) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+    if is_client_request
+        || all_searches_res.len() != 1
+        || all_searches_res[0].len() != request.searches.len()
+        || request
+            .searches
+            .iter()
+            .any(|search| search.source_id_dedup_block_size.is_some())
+    {
+        return Ok(None);
+    }
+
+    let windows = request
+        .searches
+        .iter()
+        .map(|search| {
+            search.limit.checked_add(search.offset).ok_or_else(|| {
+                CollectionError::bad_request("search merge limit + offset overflows usize")
+            })
+        })
+        .collect::<CollectionResult<Vec<_>>>()?;
+
+    let mut rows = all_searches_res
+        .pop()
+        .expect("single-shard row count was checked above");
+    for (row, window) in rows.iter_mut().zip(windows) {
+        row.truncate(window);
+    }
+    Ok(Some(rows))
+}
+
 struct PeerShardMajorGroup {
     remote: RemoteShard,
     original_indices: Vec<usize>,
@@ -1752,6 +1796,14 @@ impl Collection {
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let batch_size = request.searches.len();
 
+        if let Some(rows) = try_take_single_shard_internal_rows(
+            &mut all_searches_res,
+            request.as_ref(),
+            is_client_request,
+        )? {
+            return Ok(rows);
+        }
+
         let collection_params = self.collection_config.read().await.params.clone();
 
         // Merge results from shards in order and deduplicate based on point ID
@@ -1860,6 +1912,151 @@ mod tests {
 
     fn default_dense_request() -> CoreSearchRequest {
         core_search_request(vec![1.0, 2.0, 3.0, 4.0].into())
+    }
+
+    fn scored_point(id: u64, score: f32) -> ScoredPoint {
+        ScoredPoint {
+            id: id.into(),
+            version: id,
+            score,
+            payload: None,
+            vector: None,
+            shard_key: Some(ShardKey::from(format!("shard-{id}"))),
+            order_value: None,
+        }
+    }
+
+    #[test]
+    fn single_internal_shard_reuses_rows_and_preserves_full_window() {
+        let mut first = default_dense_request();
+        first.limit = 2;
+        first.offset = 1;
+        let mut second = default_dense_request();
+        second.limit = 1;
+        second.offset = 0;
+        let batch = CoreSearchRequestBatch {
+            searches: vec![first, second],
+        };
+        let expected_first = vec![
+            scored_point(1, 0.9),
+            scored_point(2, 0.8),
+            scored_point(3, 0.7),
+        ];
+        let expected_second = vec![scored_point(5, 0.5)];
+        let mut all_rows = vec![vec![
+            [expected_first.clone(), vec![scored_point(4, 0.6)]].concat(),
+            [expected_second.clone(), vec![scored_point(6, 0.4)]].concat(),
+        ]];
+
+        let rows = try_take_single_shard_internal_rows(&mut all_rows, &batch, false)
+            .unwrap()
+            .unwrap();
+
+        assert!(all_rows.is_empty());
+        assert_eq!(rows[0].len(), 3);
+        assert_eq!(rows[1].len(), 1);
+        for (actual, expected) in rows[0].iter().zip(&expected_first) {
+            assert_eq!(actual.id, expected.id);
+            assert_eq!(actual.score, expected.score);
+            assert_eq!(actual.version, expected.version);
+            assert_eq!(actual.shard_key, expected.shard_key);
+        }
+        assert_eq!(rows[1][0].id, expected_second[0].id);
+    }
+
+    #[test]
+    fn single_internal_shard_falls_back_for_source_dedup() {
+        let mut request = default_dense_request();
+        request.source_id_dedup_block_size = Some(1_000_001);
+        let batch = CoreSearchRequestBatch {
+            searches: vec![request],
+        };
+        let mut all_rows = vec![vec![vec![scored_point(1, 0.9)]]];
+
+        assert!(
+            try_take_single_shard_internal_rows(&mut all_rows, &batch, false)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(all_rows.len(), 1);
+    }
+
+    #[test]
+    fn single_internal_shard_falls_back_for_client_or_multiple_sources() {
+        let batch = CoreSearchRequestBatch {
+            searches: vec![default_dense_request()],
+        };
+        let mut client_rows = vec![vec![vec![scored_point(1, 0.9)]]];
+        assert!(
+            try_take_single_shard_internal_rows(&mut client_rows, &batch, true)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(client_rows.len(), 1);
+
+        let mut multiple_sources = vec![
+            vec![vec![scored_point(1, 0.9)]],
+            vec![vec![scored_point(2, 0.8)]],
+        ];
+        assert!(
+            try_take_single_shard_internal_rows(&mut multiple_sources, &batch, false)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(multiple_sources.len(), 2);
+    }
+
+    #[test]
+    fn single_internal_shard_falls_back_for_row_count_mismatch() {
+        let batch = CoreSearchRequestBatch {
+            searches: vec![default_dense_request(), default_dense_request()],
+        };
+        for rows in [
+            vec![vec![scored_point(1, 0.9)]],
+            vec![
+                vec![scored_point(1, 0.9)],
+                vec![scored_point(2, 0.8)],
+                vec![scored_point(3, 0.7)],
+            ],
+        ] {
+            let expected_len = rows.len();
+            let mut all_rows = vec![rows];
+            assert!(
+                try_take_single_shard_internal_rows(&mut all_rows, &batch, false)
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(all_rows[0].len(), expected_len);
+        }
+    }
+
+    #[test]
+    fn single_internal_shard_preserves_empty_rows_and_overflow_error() {
+        let batch = CoreSearchRequestBatch {
+            searches: vec![default_dense_request(), default_dense_request()],
+        };
+        let mut empty_rows = vec![vec![Vec::new(), Vec::new()]];
+        let rows = try_take_single_shard_internal_rows(&mut empty_rows, &batch, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(Vec::is_empty));
+
+        let mut overflow = default_dense_request();
+        overflow.limit = usize::MAX;
+        overflow.offset = 1;
+        let overflow_batch = CoreSearchRequestBatch {
+            searches: vec![overflow],
+        };
+        let mut overflow_rows = vec![vec![vec![scored_point(1, 0.9)]]];
+        let error = try_take_single_shard_internal_rows(&mut overflow_rows, &overflow_batch, false)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("search merge limit + offset overflows usize")
+        );
+        assert_eq!(overflow_rows.len(), 1);
     }
 
     #[test]
