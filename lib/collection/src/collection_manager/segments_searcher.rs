@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -217,8 +218,44 @@ impl SegmentsSearcher {
         query_context: QueryContext,
         timeout: Duration,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let batch_range = 0..batch_request.searches.len();
+        Self::search_batch_range(
+            segments,
+            batch_request,
+            batch_range,
+            runtime_handle,
+            sampling_enabled,
+            Arc::new(query_context),
+            timeout,
+        )
+        .await
+    }
+
+    /// Search a contiguous range of a shared request batch.
+    ///
+    /// Local shards use this to retain the existing fixed-size parallel search
+    /// chunks without cloning every request into a separate owned batch. The
+    /// query context is shared across chunks because it contains immutable
+    /// per-batch statistics and internally forks hardware counters per search.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn search_batch_range(
+        segments: LockedSegmentHolder,
+        batch_request: Arc<CoreSearchRequestBatch>,
+        batch_range: Range<usize>,
+        runtime_handle: &Handle,
+        sampling_enabled: bool,
+        query_context_arc: Arc<QueryContext>,
+        timeout: Duration,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        if batch_request.searches.get(batch_range.clone()).is_none() {
+            return Err(CollectionError::service_error(format!(
+                "search batch range {:?} is outside request batch length {}",
+                batch_range,
+                batch_request.searches.len(),
+            )));
+        }
+
         let start = Instant::now();
-        let query_context_arc = Arc::new(query_context);
 
         // Using block to ensure `segments` variable is dropped in the end of it
         let (locked_segments, searches): (Vec<_>, Vec<_>) = {
@@ -250,6 +287,7 @@ impl SegmentsSearcher {
                 .into_iter()
                 .map(|segment| {
                     let query_context_arc_segment = query_context_arc.clone();
+                    let batch_range = batch_range.clone();
                     // update timeout
                     let timeout = timeout.saturating_sub(start.elapsed());
                     let search = runtime_handle.spawn_blocking({
@@ -265,6 +303,7 @@ impl SegmentsSearcher {
                                 search_in_segment(
                                     segment,
                                     batch_request,
+                                    batch_range,
                                     use_sampling,
                                     &segment_query_context,
                                     timeout,
@@ -295,6 +334,8 @@ impl SegmentsSearcher {
             all_search_results_per_segment,
             batch_request
                 .searches
+                .get(batch_range.clone())
+                .expect("search batch range was validated before execution")
                 .iter()
                 .map(|request| request.limit + request.offset)
                 .collect(),
@@ -310,15 +351,20 @@ impl SegmentsSearcher {
 
             let secondary_searches: Vec<_> = {
                 let mut res = vec![];
+                let batch_searches = batch_request
+                    .searches
+                    .get(batch_range.clone())
+                    .expect("search batch range was validated before execution");
                 for (segment_id, batch_ids) in searches_to_rerun.iter() {
                     let query_context_arc_segment = query_context_arc.clone();
                     let segment = locked_segments[*segment_id].clone();
                     let partial_batch_request = Arc::new(CoreSearchRequestBatch {
                         searches: batch_ids
                             .iter()
-                            .map(|batch_id| batch_request.searches[*batch_id].clone())
+                            .map(|batch_id| batch_searches[*batch_id].clone())
                             .collect(),
                     });
+                    let partial_batch_range = 0..partial_batch_request.searches.len();
                     // update timeout
                     let timeout = timeout.saturating_sub(start.elapsed());
                     let cpu_utilization = query_context_arc_segment
@@ -332,6 +378,7 @@ impl SegmentsSearcher {
                             search_in_segment(
                                 segment,
                                 partial_batch_request,
+                                partial_batch_range,
                                 false,
                                 &segment_query_context,
                                 timeout,
@@ -661,6 +708,7 @@ fn effective_limit(limit: usize, ef_limit: usize, poisson_sampling: usize) -> us
 fn search_in_segment(
     segment: LockedSegment,
     request: Arc<CoreSearchRequestBatch>,
+    request_range: Range<usize>,
     use_sampling: bool,
     segment_query_context: &SegmentQueryContext,
     timeout: Duration,
@@ -671,7 +719,14 @@ fn search_in_segment(
         ));
     }
 
-    let batch_size = request.searches.len();
+    let searches = request.searches.get(request_range.clone()).ok_or_else(|| {
+        CollectionError::service_error(format!(
+            "segment search batch range {:?} is outside request batch length {}",
+            request_range,
+            request.searches.len(),
+        ))
+    })?;
+    let batch_size = searches.len();
 
     let mut result: Vec<Vec<ScoredPoint>> = Vec::with_capacity(batch_size);
     let mut further_results: Vec<bool> = Vec::with_capacity(batch_size); // if segment have more points to return
@@ -679,7 +734,7 @@ fn search_in_segment(
     let mut hnsw_profiles_batch: Vec<HnswSearchProfile<'_>> = vec![];
     let mut prev_params = BatchSearchParams::default();
 
-    for search_query in &request.searches {
+    for search_query in searches {
         let with_payload_interface = search_query
             .with_payload
             .as_ref()
@@ -1053,12 +1108,23 @@ mod tests {
 
             assert!(!result_no_sampling.is_empty());
 
-            let result_sampling = SegmentsSearcher::search(
+            // Exercise a non-zero range over a shared batch. Padding requests
+            // must not affect row order, sampling, or rerun batch offsets.
+            let padded_batch_request = Arc::new(CoreSearchRequestBatch {
+                searches: vec![
+                    batch_request.searches[1].clone(),
+                    batch_request.searches[0].clone(),
+                    batch_request.searches[1].clone(),
+                    batch_request.searches[0].clone(),
+                ],
+            });
+            let result_sampling = SegmentsSearcher::search_batch_range(
                 segment_holder.clone(),
-                batch_request,
+                padded_batch_request,
+                1..3,
                 &Handle::current(),
                 true,
-                query_context,
+                Arc::new(query_context),
                 TEST_TIMEOUT,
             )
             .await
@@ -1263,13 +1329,36 @@ mod tests {
         let batch_hw = HwMeasurementAcc::new();
         let batch_query_context =
             QueryContext::new(DEFAULT_INDEXING_THRESHOLD_KB, batch_hw.clone());
+        let batch_request = Arc::new(CoreSearchRequestBatch {
+            searches: requests.clone(),
+        });
         let (batch_results, batch_further) = search_in_segment(
             segment.clone(),
-            Arc::new(CoreSearchRequestBatch {
-                searches: requests.clone(),
-            }),
+            batch_request.clone(),
+            0..batch_request.searches.len(),
             false,
             &batch_query_context.get_segment_query_context(),
+            TEST_TIMEOUT,
+        )
+        .unwrap();
+
+        let range_hw = HwMeasurementAcc::new();
+        let range_query_context =
+            QueryContext::new(DEFAULT_INDEXING_THRESHOLD_KB, range_hw.clone());
+        let padded_batch_request = Arc::new(CoreSearchRequestBatch {
+            searches: vec![
+                requests[1].clone(),
+                requests[0].clone(),
+                requests[1].clone(),
+                requests[0].clone(),
+            ],
+        });
+        let (range_results, range_further) = search_in_segment(
+            segment.clone(),
+            padded_batch_request,
+            1..3,
+            false,
+            &range_query_context.get_segment_query_context(),
             TEST_TIMEOUT,
         )
         .unwrap();
@@ -1285,6 +1374,7 @@ mod tests {
                 Arc::new(CoreSearchRequestBatch {
                     searches: vec![request],
                 }),
+                0..1,
                 false,
                 &query_context.get_segment_query_context(),
                 TEST_TIMEOUT,
@@ -1296,6 +1386,8 @@ mod tests {
         }
 
         assert_eq!(batch_results, individual_results);
+        assert_eq!(range_results, batch_results);
+        assert_eq!(range_further, batch_further);
         let batch_id_score_bits = batch_results
             .iter()
             .map(|row| {

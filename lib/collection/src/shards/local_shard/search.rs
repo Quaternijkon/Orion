@@ -1,7 +1,9 @@
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
 use common::counter::hardware_accumulator::HwMeasurementAcc;
+use segment::data_types::query_context::QueryContext;
 use segment::types::ScoredPoint;
 use shard::common::stopping_guard::StoppingGuard;
 use shard::query::query_enum::QueryEnum;
@@ -55,55 +57,6 @@ impl LocalShard {
         };
 
         let is_stopped_guard = StoppingGuard::new();
-
-        if skip_batching {
-            return self
-                .do_search_impl(
-                    core_request,
-                    search_runtime_handle,
-                    timeout,
-                    hw_counter_acc,
-                    &is_stopped_guard,
-                )
-                .await;
-        }
-
-        // Batch if we have many searches, allows for more parallelism
-        let CoreSearchRequestBatch { searches } = core_request.as_ref();
-
-        let chunk_futures = searches
-            .chunks(CHUNK_SIZE)
-            .map(|chunk| {
-                let core_request = CoreSearchRequestBatch {
-                    searches: chunk.to_vec(),
-                };
-                self.do_search_impl(
-                    Arc::new(core_request),
-                    search_runtime_handle,
-                    timeout,
-                    hw_counter_acc.clone(),
-                    &is_stopped_guard,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let results = futures::future::try_join_all(chunk_futures)
-            .await?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(results)
-    }
-
-    async fn do_search_impl(
-        &self,
-        core_request: Arc<CoreSearchRequestBatch>,
-        search_runtime_handle: &Handle,
-        timeout: Duration,
-        hw_counter_acc: HwMeasurementAcc,
-        is_stopped_guard: &StoppingGuard,
-    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let start = std::time::Instant::now();
         let (query_context, collection_params) = {
             let collection_config = self.collection_config.read().await;
@@ -113,8 +66,8 @@ impl LocalShard {
                 &collection_config,
                 timeout,
                 search_runtime_handle,
-                is_stopped_guard,
-                hw_counter_acc.clone(),
+                &is_stopped_guard,
+                hw_counter_acc,
             )
             .await?;
 
@@ -128,23 +81,46 @@ impl LocalShard {
 
         // update timeout
         let timeout = timeout.saturating_sub(start.elapsed());
+        let query_context = Arc::new(query_context);
 
-        let search_request = SegmentsSearcher::search(
-            self.segments.clone(),
-            core_request.clone(),
-            search_runtime_handle,
-            true,
-            query_context,
-            timeout,
-        );
+        // Retain the existing fixed-size parallelism while sharing the original
+        // request allocation and immutable query context across all chunks.
+        let chunk_size = if skip_batching {
+            core_request.searches.len()
+        } else {
+            CHUNK_SIZE
+        };
+        let search_ranges = (0..core_request.searches.len())
+            .step_by(chunk_size)
+            .map(|start| start..(start + chunk_size).min(core_request.searches.len()))
+            .collect::<Vec<_>>();
 
-        let res = tokio::time::timeout(timeout, search_request)
-            .await
-            .map_err(|_| {
-                log::debug!("Search timeout reached: {timeout:?}");
-                // StoppingGuard takes care of setting is_stopped to true
-                CollectionError::timeout(timeout, "Search")
-            })??;
+        let chunk_futures = search_ranges
+            .into_iter()
+            .map(|batch_range| {
+                self.do_search_batch_range(
+                    core_request.clone(),
+                    batch_range,
+                    search_runtime_handle,
+                    timeout,
+                    query_context.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let res = futures::future::try_join_all(chunk_futures)
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        if res.len() != core_request.searches.len() {
+            return Err(CollectionError::service_error(format!(
+                "search batch returned {} rows for {} requests",
+                res.len(),
+                core_request.searches.len(),
+            )));
+        }
 
         let top_results = res
             .into_iter()
@@ -179,5 +155,43 @@ impl LocalShard {
             })
             .collect();
         Ok(top_results)
+    }
+
+    async fn do_search_batch_range(
+        &self,
+        core_request: Arc<CoreSearchRequestBatch>,
+        batch_range: Range<usize>,
+        search_runtime_handle: &Handle,
+        timeout: Duration,
+        query_context: Arc<QueryContext>,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let range_for_log = batch_range.clone();
+
+        let search_request = SegmentsSearcher::search_batch_range(
+            self.segments.clone(),
+            core_request,
+            batch_range,
+            search_runtime_handle,
+            true,
+            query_context,
+            timeout,
+        );
+
+        let res = tokio::time::timeout(timeout, search_request)
+            .await
+            .map_err(|_| {
+                log::debug!(
+                    "Search timeout reached for batch range {range_for_log:?}: {timeout:?}"
+                );
+                // StoppingGuard takes care of setting is_stopped to true
+                CollectionError::timeout(timeout, "Search")
+            })??;
+        if res.len() != range_for_log.len() {
+            return Err(CollectionError::service_error(format!(
+                "search batch range {range_for_log:?} returned {} rows",
+                res.len(),
+            )));
+        }
+        Ok(res)
     }
 }
