@@ -507,20 +507,6 @@ impl DecodedCompactQueryTemplates {
     }
 }
 
-#[derive(Debug)]
-struct ValidatedCompactSearchEntry {
-    query_index: usize,
-    shard_id: ShardId,
-    hnsw_entry_points: Vec<PointIdType>,
-    hnsw_ef: usize,
-}
-
-#[derive(Debug)]
-struct ValidatedCompactSearchEntries {
-    entries: Vec<ValidatedCompactSearchEntry>,
-    template_use_counts: Vec<usize>,
-}
-
 type CompactSearchOriginalRow = (usize, usize, usize, Option<u64>);
 
 #[derive(Debug, Default)]
@@ -632,26 +618,36 @@ fn decode_compact_query_templates(
     Ok(DecodedCompactQueryTemplates { requests, metadata })
 }
 
-fn validate_compact_search_entries(
-    query_count: usize,
+fn materialize_compact_searches_by_shard(
+    templates: &DecodedCompactQueryTemplates,
     searches: Vec<CoreSearchByShardCompactEntry>,
-) -> Result<ValidatedCompactSearchEntries, Status> {
+) -> Result<BTreeMap<ShardId, MaterializedCompactShardSearch>, Status> {
     if searches.is_empty() {
         return Err(Status::invalid_argument("compact searches is empty"));
     }
+    if templates.requests.len() != templates.metadata.len() {
+        return Err(Status::internal(
+            "compact query template materialization metadata length mismatch",
+        ));
+    }
 
-    let mut template_use_counts = vec![0usize; query_count];
+    let query_count = templates.len();
+    let mut referenced_slots = vec![false; query_count];
     let mut seen_query_shards = HashSet::with_capacity(searches.len());
-    let mut entries = Vec::with_capacity(searches.len());
+    let mut seen_entry_points = HashSet::new();
+    let mut by_shard: BTreeMap<ShardId, MaterializedCompactShardSearch> = BTreeMap::new();
 
     for entry in searches {
         let query_index = usize::try_from(entry.query_slot)
             .map_err(|_| Status::invalid_argument("query_slot does not fit into usize"))?;
-        let Some(template_use_count) = template_use_counts.get_mut(query_index) else {
+        let Some(template_request) = templates.requests.get(query_index) else {
             return Err(Status::invalid_argument(format!(
                 "query_slot {query_index} is outside query_templates length {query_count}"
             )));
         };
+        let template = templates.metadata.get(query_index).ok_or_else(|| {
+            Status::internal("compact query template metadata is missing for a decoded request")
+        })?;
         if !seen_query_shards.insert((query_index, entry.shard_id)) {
             return Err(Status::invalid_argument(format!(
                 "duplicate compact search for query_slot {query_index} and shard {}",
@@ -674,7 +670,8 @@ fn validate_compact_search_entries(
             .into_iter()
             .map(PointIdType::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        let mut seen_entry_points = HashSet::with_capacity(hnsw_entry_points.len());
+        seen_entry_points.clear();
+        seen_entry_points.reserve(hnsw_entry_points.len());
         if let Some(duplicate) = hnsw_entry_points
             .iter()
             .find(|entry_point| !seen_entry_points.insert(**entry_point))
@@ -685,94 +682,21 @@ fn validate_compact_search_entries(
             )));
         }
 
-        *template_use_count += 1;
-        entries.push(ValidatedCompactSearchEntry {
-            query_index,
-            shard_id: entry.shard_id,
-            hnsw_entry_points,
-            hnsw_ef,
-        });
-    }
-
-    if let Some(unreferenced_slot) = template_use_counts.iter().position(|&uses| uses == 0) {
-        return Err(Status::invalid_argument(format!(
-            "query template slot {unreferenced_slot} has no compact shard search"
-        )));
-    }
-
-    Ok(ValidatedCompactSearchEntries {
-        entries,
-        template_use_counts,
-    })
-}
-
-fn materialize_compact_searches_by_shard(
-    templates: DecodedCompactQueryTemplates,
-    validated_entries: ValidatedCompactSearchEntries,
-) -> Result<BTreeMap<ShardId, MaterializedCompactShardSearch>, Status> {
-    let DecodedCompactQueryTemplates { requests, metadata } = templates;
-    let ValidatedCompactSearchEntries {
-        entries,
-        mut template_use_counts,
-    } = validated_entries;
-    if requests.len() != metadata.len() || requests.len() != template_use_counts.len() {
-        return Err(Status::internal(
-            "compact query template materialization metadata length mismatch",
-        ));
-    }
-
-    // Keep one owned template request available for each query. All but the final use clone it;
-    // the final use moves it into the shard batch. This preserves independent mutable per-shard
-    // overrides while avoiding one deep query-vector clone per template.
-    let mut requests = requests.into_iter().map(Some).collect::<Vec<_>>();
-    let mut by_shard: BTreeMap<ShardId, MaterializedCompactShardSearch> = BTreeMap::new();
-    for entry in entries {
-        let template = metadata.get(entry.query_index).ok_or_else(|| {
-            Status::internal("validated compact query index is outside template metadata")
-        })?;
-        let remaining_uses = template_use_counts
-            .get_mut(entry.query_index)
-            .ok_or_else(|| {
-                Status::internal("validated compact query index is outside template use counts")
-            })?;
-        if *remaining_uses == 0 {
-            return Err(Status::internal(
-                "validated compact query template has no remaining materialization use",
-            ));
-        }
-
-        let template_request = requests.get_mut(entry.query_index).ok_or_else(|| {
-            Status::internal("validated compact query index is outside template requests")
-        })?;
-        let mut request = if *remaining_uses == 1 {
-            template_request.take().ok_or_else(|| {
-                Status::internal("compact query template request was moved more than once")
-            })?
-        } else {
-            template_request
-                .as_ref()
-                .ok_or_else(|| {
-                    Status::internal(
-                        "compact query template request was moved before its final use",
-                    )
-                })?
-                .clone()
-        };
-        *remaining_uses -= 1;
-
+        let mut request = template_request.clone();
         request.limit = template.lower_limit;
         request.offset = 0;
-        request.hnsw_entry_points = Some(entry.hnsw_entry_points);
+        request.hnsw_entry_points = Some(hnsw_entry_points);
         request.hnsw_entry_points_by_shard = None;
         request.hnsw_ef_by_shard = None;
         request.source_id_dedup_block_size = None;
         let mut params = request.params.unwrap_or_default();
-        params.hnsw_ef = Some(entry.hnsw_ef);
+        params.hnsw_ef = Some(hnsw_ef);
         request.params = Some(params);
 
+        referenced_slots[query_index] = true;
         let shard_search = by_shard.entry(entry.shard_id).or_default();
         shard_search.original_rows.push((
-            entry.query_index,
+            query_index,
             template.final_limit,
             template.final_offset,
             template.source_id_dedup_block_size,
@@ -780,12 +704,10 @@ fn materialize_compact_searches_by_shard(
         shard_search.requests.push(request);
     }
 
-    if template_use_counts.iter().any(|&remaining| remaining != 0)
-        || requests.iter().any(Option::is_some)
-    {
-        return Err(Status::internal(
-            "compact query template materialization did not consume every validated use",
-        ));
+    if let Some(unreferenced_slot) = referenced_slots.iter().position(|referenced| !referenced) {
+        return Err(Status::invalid_argument(format!(
+            "query template slot {unreferenced_slot} has no compact shard search"
+        )));
     }
 
     Ok(by_shard)
@@ -807,8 +729,7 @@ fn decode_compact_searches_by_shard(
     let templates = decode_compact_query_templates(collection_name, query_templates)?;
     let query_count = templates.len();
     let template_requests = templates.requests.clone();
-    let validated_entries = validate_compact_search_entries(query_count, searches)?;
-    let by_shard = materialize_compact_searches_by_shard(templates, validated_entries)?;
+    let by_shard = materialize_compact_searches_by_shard(&templates, searches)?;
     Ok((query_count, template_requests, by_shard))
 }
 
@@ -830,12 +751,11 @@ pub async fn core_search_batch_by_shard_compact(
     }
     let templates = decode_compact_query_templates(&collection_name, query_templates)?;
     let query_count = templates.len();
-    let validated_entries = validate_compact_search_entries(query_count, searches)?;
+    let by_shard = materialize_compact_searches_by_shard(&templates, searches)?;
     let collection = toc
         .validate_orion_compact_peer_search(&collection_name, &templates.requests, &auth)
         .await
         .map_err(Status::from)?;
-    let by_shard = materialize_compact_searches_by_shard(templates, validated_entries)?;
 
     let timing = Instant::now();
     let shard_searches = by_shard.into_iter().map(|(shard_id, shard_search)| {
@@ -1836,7 +1756,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_materialization_moves_one_owned_request_per_query_template() {
+    fn compact_materialization_clones_independent_requests_per_entry() {
         let mut first_template = compact_template("orion", 10, 7, Some(1_000_001));
         first_template
             .search_points
@@ -1858,8 +1778,8 @@ mod tests {
             .map(dense_query_ptr)
             .collect::<Vec<_>>();
         let query_count = templates.len();
-        let validated_entries = validate_compact_search_entries(
-            query_count,
+        let by_shard = materialize_compact_searches_by_shard(
+            &templates,
             vec![
                 compact_entry(0, 10, &[5, 3], 88),
                 compact_entry(1, 9, &[17], 64),
@@ -1868,7 +1788,6 @@ mod tests {
             ],
         )
         .unwrap();
-        let by_shard = materialize_compact_searches_by_shard(templates, validated_entries).unwrap();
 
         assert_eq!(
             by_shard[&9].original_rows,
@@ -1955,7 +1874,7 @@ mod tests {
         );
 
         let mut request_counts = vec![0usize; query_count];
-        let mut moved_allocation_counts = vec![0usize; query_count];
+        let mut independent_allocation_counts = vec![0usize; query_count];
         for shard_search in by_shard.values() {
             assert_eq!(
                 shard_search.original_rows.len(),
@@ -1969,14 +1888,14 @@ mod tests {
                 let query_index = original_row.0;
                 request_counts[query_index] += 1;
                 assert!(request.source_id_dedup_block_size.is_none());
-                if dense_query_ptr(request) == original_query_ptrs[query_index] {
-                    moved_allocation_counts[query_index] += 1;
+                if dense_query_ptr(request) != original_query_ptrs[query_index] {
+                    independent_allocation_counts[query_index] += 1;
                 }
             }
         }
 
         assert_eq!(request_counts, vec![2, 2]);
-        assert_eq!(moved_allocation_counts, vec![1, 1]);
+        assert_eq!(independent_allocation_counts, vec![2, 2]);
     }
 
     #[test]
@@ -2137,6 +2056,34 @@ mod tests {
         )
         .unwrap_err();
         assert!(overflow.message().contains("limit + offset overflows"));
+    }
+
+    #[test]
+    fn compact_entry_point_duplicate_scratch_is_scoped_to_each_search() {
+        let templates =
+            decode_compact_query_templates("orion", vec![compact_template("orion", 10, 0, None)])
+                .unwrap();
+        let by_shard = materialize_compact_searches_by_shard(
+            &templates,
+            vec![
+                compact_entry(0, 9, &[31, 29, 11], 76),
+                compact_entry(0, 10, &[31, 17, 5], 64),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(by_shard.len(), 2);
+        assert_eq!(
+            by_shard[&9].requests[0].hnsw_entry_points.as_ref().unwrap()[0],
+            PointIdType::from(31)
+        );
+        assert_eq!(
+            by_shard[&10].requests[0]
+                .hnsw_entry_points
+                .as_ref()
+                .unwrap()[0],
+            PointIdType::from(31)
+        );
     }
 
     #[test]
