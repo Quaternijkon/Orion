@@ -525,6 +525,38 @@ fn split_compact_peer_shard_major_rpcs(
         }]);
     }
 
+    let mut remaining_chunk_uses = vec![0usize; original_indices.len()];
+    let mut seen_in_chunk = vec![false; original_indices.len()];
+    for (shard_position, shard_entries) in entries_by_shard.values().enumerate() {
+        if shard_position % shards_per_rpc == 0 {
+            seen_in_chunk.fill(false);
+        }
+        for entry in shard_entries {
+            let peer_query_index = usize::try_from(entry.query_slot).map_err(|_| {
+                CollectionError::service_error(format!(
+                    "Compact peer-local query slot {} does not fit into usize",
+                    entry.query_slot,
+                ))
+            })?;
+            let Some(seen) = seen_in_chunk.get_mut(peer_query_index) else {
+                return Err(CollectionError::service_error(format!(
+                    "Compact peer-local query slot {peer_query_index} is outside peer query slot count {}",
+                    original_indices.len(),
+                )));
+            };
+            if !*seen {
+                let remaining = &mut remaining_chunk_uses[peer_query_index];
+                *remaining = remaining.checked_add(1).ok_or_else(|| {
+                    CollectionError::service_error(format!(
+                        "Compact peer-local query slot {peer_query_index} chunk use count overflowed usize",
+                    ))
+                })?;
+                *seen = true;
+            }
+        }
+    }
+    let mut query_templates = query_templates.into_iter().map(Some).collect::<Vec<_>>();
+
     let distinct_shard_count = entries_by_shard.len();
     let mut rpcs = Vec::with_capacity(distinct_shard_count.div_ceil(shards_per_rpc));
     let mut current_rpc = CompactPeerShardMajorRpc {
@@ -569,13 +601,6 @@ fn split_compact_peer_shard_major_rpcs(
                     is_payload_required_by_query.len(),
                 )));
             };
-            let Some(query_template) = query_templates.get(peer_query_index) else {
-                return Err(CollectionError::service_error(format!(
-                    "Compact peer-local template slot {peer_query_index} is outside peer template slot count {}",
-                    query_templates.len(),
-                )));
-            };
-
             let chunk_query_index = if let Some(query_index) = current_query_slot_by_original_index
                 .get(original_index)
                 .and_then(|query_index| *query_index)
@@ -591,7 +616,35 @@ fn split_compact_peer_shard_major_rpcs(
                 current_rpc
                     .is_payload_required_by_query
                     .push(is_payload_required);
-                current_rpc.query_templates.push(query_template.clone());
+                let remaining = remaining_chunk_uses
+                    .get_mut(peer_query_index)
+                    .ok_or_else(|| {
+                        CollectionError::service_error(format!(
+                            "Compact peer-local query slot {peer_query_index} has no chunk use counter",
+                        ))
+                    })?;
+                *remaining = remaining.checked_sub(1).ok_or_else(|| {
+                    CollectionError::service_error(format!(
+                        "Compact peer-local query slot {peer_query_index} chunk use count underflowed",
+                    ))
+                })?;
+                let query_template = if *remaining == 0 {
+                    query_templates
+                        .get_mut(peer_query_index)
+                        .and_then(Option::take)
+                } else {
+                    query_templates
+                        .get(peer_query_index)
+                        .and_then(Option::as_ref)
+                        .cloned()
+                }
+                .ok_or_else(|| {
+                    CollectionError::service_error(format!(
+                        "Compact peer-local template slot {peer_query_index} is unavailable for chunk {}",
+                        rpcs.len(),
+                    ))
+                })?;
+                current_rpc.query_templates.push(query_template);
                 query_index
             };
             entry.query_slot = u64::try_from(chunk_query_index).map_err(|_| {
@@ -606,6 +659,20 @@ fn split_compact_peer_shard_major_rpcs(
 
     if !current_rpc.entries.is_empty() {
         rpcs.push(current_rpc);
+    }
+    if let Some(query_index) = remaining_chunk_uses
+        .iter()
+        .position(|remaining| *remaining != 0)
+    {
+        return Err(CollectionError::service_error(format!(
+            "Compact peer-local query slot {query_index} retained {} unmaterialized chunk uses",
+            remaining_chunk_uses[query_index],
+        )));
+    }
+    if let Some(query_index) = query_templates.iter().position(Option::is_some) {
+        return Err(CollectionError::service_error(format!(
+            "Compact peer-local template slot {query_index} was never referenced by any compact entry",
+        )));
     }
     Ok(rpcs)
 }
@@ -2096,6 +2163,27 @@ mod tests {
         core_search_request(vec![1.0, 2.0, 3.0, 4.0].into())
     }
 
+    #[allow(deprecated)]
+    fn compact_template_dense_query_ptr(template: &CoreSearchByShardQueryTemplate) -> *const f32 {
+        let search_points = template
+            .search_points
+            .as_ref()
+            .expect("compact test template must contain search_points");
+        let query = search_points
+            .query
+            .as_ref()
+            .and_then(|query| query.query.as_ref())
+            .expect("compact test template must contain a query");
+        let api::grpc::qdrant::query_enum::Query::NearestNeighbors(vector) = query else {
+            panic!("compact test template must contain a nearest-neighbor query");
+        };
+        match vector.vector.as_ref() {
+            Some(api::grpc::qdrant::vector::Vector::Dense(dense)) => dense.data.as_ptr(),
+            _ if !vector.data.is_empty() => vector.data.as_ptr(),
+            _ => panic!("compact test template must contain one dense vector"),
+        }
+    }
+
     fn explicit_local_fast_path_request() -> CoreSearchRequest {
         let mut request = default_dense_request();
         request.params = Some(SearchParams {
@@ -2932,17 +3020,34 @@ mod tests {
 
     #[test]
     fn compact_peer_chunks_keep_shards_whole_and_remap_dense_query_templates() {
-        let requests = [
-            default_dense_request(),
-            default_dense_request(),
-            default_dense_request(),
-        ];
+        let mut first_request = default_dense_request();
+        first_request.limit = 10;
+        first_request.offset = 7;
+        first_request.with_payload = Some(WithPayloadInterface::Bool(false));
+        first_request.score_threshold = Some(0.42);
+        first_request.source_id_dedup_block_size = Some(1_000_001);
+        let mut second_request = core_search_request(vec![5.0, 6.0, 7.0, 8.0].into());
+        second_request.limit = 8;
+        second_request.offset = 2;
+        second_request.with_payload = Some(WithPayloadInterface::Bool(true));
+        second_request.with_vector = Some(WithVector::Bool(false));
+        let mut third_request = core_search_request(vec![9.0, 10.0, 11.0, 12.0].into());
+        third_request.limit = 6;
+        third_request.offset = 1;
+        third_request.with_payload = Some(WithPayloadInterface::Bool(false));
+        third_request.source_id_dedup_block_size = Some(2_000_001);
+        let requests = [first_request, second_request, third_request];
         let original_indices = vec![5, 1, 9];
         let payload_required = vec![false, true, false];
         let templates = requests
             .iter()
             .map(|request| compact_peer_query_template("orion", request))
             .collect::<Vec<_>>();
+        let input_query_ptrs = templates
+            .iter()
+            .map(compact_template_dense_query_ptr)
+            .collect::<Vec<_>>();
+        let expected_templates = templates.clone();
         let entries = vec![
             CoreSearchByShardCompactEntry {
                 query_slot: 0,
@@ -2996,6 +3101,37 @@ mod tests {
         assert_eq!(rpcs[1].query_templates.len(), 2);
         assert_eq!(rpcs[1].is_payload_required_by_query, vec![false, false]);
 
+        let peer_slot_by_original_index = HashMap::from([(5usize, 0usize), (1, 1), (9, 2)]);
+        let mut output_query_ptrs = vec![Vec::new(); expected_templates.len()];
+        for rpc in &rpcs {
+            assert_eq!(rpc.original_indices.len(), rpc.query_templates.len());
+            assert_eq!(
+                rpc.original_indices.len(),
+                rpc.is_payload_required_by_query.len()
+            );
+            for (&original_index, query_template) in
+                rpc.original_indices.iter().zip(&rpc.query_templates)
+            {
+                let peer_slot = peer_slot_by_original_index[&original_index];
+                assert_eq!(query_template, &expected_templates[peer_slot]);
+                output_query_ptrs[peer_slot].push(compact_template_dense_query_ptr(query_template));
+            }
+        }
+        assert_eq!(
+            output_query_ptrs.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![2, 1, 2]
+        );
+        for (peer_slot, pointers) in output_query_ptrs.iter().enumerate() {
+            assert_eq!(
+                pointers
+                    .iter()
+                    .filter(|pointer| **pointer == input_query_ptrs[peer_slot])
+                    .count(),
+                1,
+                "each input query template must be moved into exactly its last RPC chunk",
+            );
+        }
+
         let shard_and_query_slots = rpcs
             .iter()
             .map(|rpc| {
@@ -3034,6 +3170,131 @@ mod tests {
             }
         }
         assert_eq!(shard_to_rpc.len(), 4);
+    }
+
+    #[test]
+    fn compact_peer_unsplit_rpcs_move_all_input_templates_without_cloning() {
+        for shards_per_rpc in [None, Some(4)] {
+            let mut first_request = default_dense_request();
+            first_request.with_payload = Some(WithPayloadInterface::Bool(false));
+            first_request.source_id_dedup_block_size = Some(1_000_001);
+            let mut second_request = core_search_request(vec![5.0, 6.0, 7.0, 8.0].into());
+            second_request.with_payload = Some(WithPayloadInterface::Bool(true));
+            second_request.score_threshold = Some(0.24);
+            let templates = [&first_request, &second_request]
+                .into_iter()
+                .map(|request| compact_peer_query_template("orion", request))
+                .collect::<Vec<_>>();
+            let input_query_ptrs = templates
+                .iter()
+                .map(compact_template_dense_query_ptr)
+                .collect::<Vec<_>>();
+            let expected_templates = templates.clone();
+
+            let rpcs = split_compact_peer_shard_major_rpcs(
+                vec![3, 7],
+                vec![false, true],
+                templates,
+                vec![
+                    CoreSearchByShardCompactEntry {
+                        query_slot: 0,
+                        shard_id: 10,
+                        hnsw_entry_points: vec![PointIdType::from(31).into()],
+                        hnsw_ef: 48,
+                    },
+                    CoreSearchByShardCompactEntry {
+                        query_slot: 1,
+                        shard_id: 12,
+                        hnsw_entry_points: vec![PointIdType::from(29).into()],
+                        hnsw_ef: 64,
+                    },
+                ],
+                shards_per_rpc,
+            )
+            .unwrap();
+
+            assert_eq!(rpcs.len(), 1);
+            assert_eq!(rpcs[0].original_indices, vec![3, 7]);
+            assert_eq!(rpcs[0].query_templates, expected_templates);
+            assert_eq!(
+                rpcs[0]
+                    .query_templates
+                    .iter()
+                    .map(compact_template_dense_query_ptr)
+                    .collect::<Vec<_>>(),
+                input_query_ptrs,
+            );
+        }
+    }
+
+    #[test]
+    fn compact_peer_chunking_rejects_out_of_range_query_slot_before_rpc() {
+        let request = default_dense_request();
+        let error = split_compact_peer_shard_major_rpcs(
+            vec![3],
+            vec![false],
+            vec![compact_peer_query_template("orion", &request)],
+            vec![
+                CoreSearchByShardCompactEntry {
+                    query_slot: 0,
+                    shard_id: 7,
+                    hnsw_entry_points: vec![PointIdType::from(11).into()],
+                    hnsw_ef: 48,
+                },
+                CoreSearchByShardCompactEntry {
+                    query_slot: 1,
+                    shard_id: 8,
+                    hnsw_entry_points: vec![PointIdType::from(13).into()],
+                    hnsw_ef: 52,
+                },
+            ],
+            Some(1),
+        )
+        .err()
+        .unwrap();
+
+        assert!(
+            error
+                .to_string()
+                .contains("outside peer query slot count 1")
+        );
+    }
+
+    #[test]
+    fn compact_peer_chunking_rejects_unreferenced_template_before_rpc() {
+        let first_request = default_dense_request();
+        let second_request = core_search_request(vec![5.0, 6.0, 7.0, 8.0].into());
+        let error = split_compact_peer_shard_major_rpcs(
+            vec![3, 7],
+            vec![false, true],
+            [&first_request, &second_request]
+                .into_iter()
+                .map(|request| compact_peer_query_template("orion", request))
+                .collect(),
+            vec![
+                CoreSearchByShardCompactEntry {
+                    query_slot: 0,
+                    shard_id: 7,
+                    hnsw_entry_points: vec![PointIdType::from(11).into()],
+                    hnsw_ef: 48,
+                },
+                CoreSearchByShardCompactEntry {
+                    query_slot: 0,
+                    shard_id: 8,
+                    hnsw_entry_points: vec![PointIdType::from(13).into()],
+                    hnsw_ef: 52,
+                },
+            ],
+            Some(1),
+        )
+        .err()
+        .unwrap();
+
+        assert!(
+            error
+                .to_string()
+                .contains("template slot 1 was never referenced by any compact entry")
+        );
     }
 
     #[test]
