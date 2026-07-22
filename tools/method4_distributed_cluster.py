@@ -1801,9 +1801,15 @@ def validate_image_candidate_manifest(
     image_id = str(image.get("id") or "")
     if not image_tag or not image_id:
         raise RuntimeError("candidate image manifest requires an exact tag and id")
-    capabilities = image.get("capabilities") or {}
+    capabilities = image.get("capabilities")
     if not isinstance(capabilities, dict):
-        raise RuntimeError("candidate image capability payload is malformed")
+        raise RuntimeError(
+            "candidate image compact-wire capability payload is missing or malformed"
+        )
+    if "orion_compact_wire_max_version" not in capabilities:
+        raise RuntimeError(
+            "candidate image has no explicit Orion compact-wire capability"
+        )
     try:
         image_wire_max_version = normalize_orion_compact_wire_version(
             capabilities.get("orion_compact_wire_max_version")
@@ -1812,12 +1818,11 @@ def validate_image_candidate_manifest(
         raise RuntimeError(
             "candidate image has an invalid Orion compact-wire capability"
         ) from exc
-    if image_wire_max_version != CURRENT_ORION_COMPACT_WIRE_MAX_VERSION:
+    if int(image_wire_max_version) < int(wire_version):
         raise RuntimeError(
-            "candidate image does not declare the current Orion compact-wire "
-            "capability: "
-            f"candidate={image_wire_max_version}, "
-            f"required={CURRENT_ORION_COMPACT_WIRE_MAX_VERSION}"
+            "candidate image does not support the requested Orion compact-wire "
+            "version: "
+            f"requested={wire_version}, image_max={image_wire_max_version}"
         )
     canonical_tar_path, canonical_manifest_path = image_candidate_paths(
         topology, run_id, image_tag, wire_version
@@ -3625,6 +3630,50 @@ def validate_peer_premerge_transition_manifest(
             "implicit-v1 or explicit at both top-level and node-level"
         )
     wire_version = manifest_current_orion_compact_wire_version(manifest)
+    if explicit_top_level_wire:
+        compact_wire = manifest.get("orion_compact_wire")
+        if not isinstance(compact_wire, dict):
+            raise RuntimeError("run manifest Orion compact wire payload is malformed")
+        requested_value = compact_wire.get("requested_version")
+        if (
+            requested_value not in ("1", "2", 1, 2)
+            or isinstance(requested_value, bool)
+        ):
+            raise RuntimeError(
+                "run manifest does not contain a definitive requested Orion "
+                "compact wire version"
+            )
+        try:
+            requested_wire_version = normalize_orion_compact_wire_version(
+                requested_value
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                "run manifest does not contain a definitive requested Orion "
+                "compact wire version"
+            ) from exc
+        stored_requested_wire_version = requested_orion_compact_wire_version(
+            stored_topology
+        )
+        if requested_wire_version != stored_requested_wire_version:
+            raise RuntimeError(
+                "run manifest Orion compact wire requested version disagrees "
+                "with the stored topology: "
+                f"manifest={requested_wire_version}, "
+                f"topology={stored_requested_wire_version}"
+            )
+        expected_matches_requested = requested_wire_version == wire_version
+        matches_requested = compact_wire.get("matches_requested")
+        if (
+            not isinstance(matches_requested, bool)
+            or matches_requested is not expected_matches_requested
+        ):
+            raise RuntimeError(
+                "run manifest Orion compact wire matches_requested is not "
+                "derived from requested_version == current_version: "
+                f"stored={matches_requested!r}, "
+                f"expected={expected_matches_requested}"
+            )
     image_wire_max_version = manifest_image_orion_compact_wire_max_version(
         manifest
     )
@@ -5477,6 +5526,7 @@ def rollback_image_transition(
         "containers": image_transition_container_proofs(
             topology, run_id, rollback_inspected
         ),
+        "inspected_nodes": rollback_inspected,
         "cluster": transition_cluster_proof(rollback_snapshot),
         "collections": transition_collections_proof(rollback_collections),
         "snapshot": rollback_snapshot,
@@ -5538,6 +5588,9 @@ def update_image_transition_manifest(
             manifest_node["nofile"] = inspected_nofile_limits(inspected)
             manifest_node["orion_compact_wire_version"] = (
                 inspected_orion_compact_wire_version(inspected, node)
+            )
+            manifest_node["orion_compact_wire_max_version"] = (
+                inspected_orion_compact_wire_max_version(inspected)
             )
     return data
 
@@ -5844,23 +5897,71 @@ def _command_transition_image_unlocked(
         }
         proof_write_error: Exception | None = None
         try:
-            updated = update_image_transition_manifest(
-                topology,
-                run_id,
-                stored,
-                proof,
-                rollback_result.get("snapshot") if rollback_result else None,
-                None,
-                None,
-            )
-            updated["orion_compact_wire"] = orion_compact_wire_summary(
-                requested_orion_compact_wire_version(topology),
+            if rollback_error is None and rollback_result is not None:
+                rollback_topology = stored.get("topology")
+                if not isinstance(rollback_topology, dict):
+                    raise RuntimeError(
+                        "active manifest lost its pre-transition topology during rollback"
+                    )
+                legacy_implicit_wire = "orion_compact_wire" not in stored
+                updated = update_image_transition_manifest(
+                    rollback_topology,
+                    run_id,
+                    stored,
+                    proof,
+                    rollback_result.get("snapshot"),
+                    (
+                        None
+                        if legacy_implicit_wire
+                        else rollback_result.get("inspected_nodes")
+                    ),
+                    None,
+                )
+                if legacy_implicit_wire:
+                    # Preserve the fully legacy implicit-v1 representation. Adding
+                    # only a top-level wire object (or only node-level fields) would
+                    # make the restored manifest impossible to validate or reuse.
+                    updated.pop("orion_compact_wire", None)
+                else:
+                    # A rollback restores the pre-transition phase, including its
+                    # requested/current wire identity. The attempted target topology
+                    # must not leak into the active manifest.
+                    updated["orion_compact_wire"] = json.loads(
+                        json.dumps(stored["orion_compact_wire"])
+                    )
                 (
-                    active["orion_compact_wire_version"]
-                    if rollback_error is None
-                    else None
-                ),
-            )
+                    _rollback_image_tag,
+                    _rollback_image_id,
+                    _rollback_mode,
+                    _rollback_shards_per_rpc,
+                    rollback_wire_version,
+                    _rollback_commit,
+                ) = validate_peer_premerge_transition_manifest(
+                    rollback_topology,
+                    run_id,
+                    updated,
+                )
+                if rollback_wire_version != active["orion_compact_wire_version"]:
+                    raise RuntimeError(
+                        "rollback manifest compact-wire identity does not match the "
+                        "restored active image: "
+                        f"manifest={rollback_wire_version}, "
+                        f"active={active['orion_compact_wire_version']}"
+                    )
+            else:
+                updated = update_image_transition_manifest(
+                    topology,
+                    run_id,
+                    stored,
+                    proof,
+                    rollback_result.get("snapshot") if rollback_result else None,
+                    None,
+                    None,
+                )
+                updated["orion_compact_wire"] = orion_compact_wire_summary(
+                    requested_orion_compact_wire_version(topology),
+                    None,
+                )
             write_manifest(topology, run_id, updated)
         except Exception as exc:
             proof_write_error = exc

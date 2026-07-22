@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import importlib.util
 import json
+import math
+import re
 import subprocess
 from pathlib import Path
 
@@ -72,6 +75,41 @@ def write_config(tmp_path: Path, value: dict | None = None) -> Path:
 
 
 def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
+    wire = {
+        "scope": "controller",
+        "requested_version": "2",
+        "current_version": "2",
+        "matches_requested": True,
+    }
+    peer_premerge = {
+        "scope": "controller",
+        "requested_mode": "enabled",
+        "current_mode": "enabled",
+        "requested_shards_per_rpc": "4",
+        "current_shards_per_rpc": "4",
+        "matches_requested": True,
+    }
+    transport_identity = {
+        "schema_version": 1,
+        "image": {
+            "id": image_id,
+            "tag": "native:test",
+            "source_fingerprint": "a" * 64,
+            "tar_sha256": "b" * 64,
+            "orion_compact_wire_max_version": "2",
+        },
+        "orion_compact_wire": wire,
+        "peer_premerge": peer_premerge,
+        "nodes": [],
+    }
+    transport_identity_sha256 = hashlib.sha256(
+        json.dumps(
+            transport_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
     return {
         "method": method,
         "api": "search",
@@ -82,8 +120,19 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
             "neighbors_shape": [100, 10],
         },
         "deployment": {
-            "image": {"id": image_id, "tag": "native:test"},
+            "manifest_sha256": "c" * 64,
+            "image": {
+                "id": image_id,
+                "tag": "native:test",
+                "source_fingerprint": "a" * 64,
+                "tar_sha256": "b" * 64,
+                "capabilities": {"orion_compact_wire_max_version": "2"},
+            },
             "repository": {"commit": "commit-1", "dirty": False},
+            "orion_compact_wire": wire,
+            "peer_premerge": peer_premerge,
+            "transport_identity": transport_identity,
+            "transport_identity_sha256": transport_identity_sha256,
         },
         "repository": {"commit": "commit-1", "dirty": False},
         "process_affinity": list(range(8, 20)),
@@ -156,6 +205,145 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
     }
 
 
+def write_orion_route_trace(
+    case_dir: Path,
+    *,
+    query_count: int,
+    shard_count: int,
+    visited_average: float,
+    ef_sum_average: float,
+    artifact_file_sha256: str,
+    artifact_canonical_sha256: str,
+    artifact_generation: int,
+    artifact_layout_sha256: str,
+    dimension: int,
+    query_sha256: str,
+) -> tuple[Path, dict, dict, dict]:
+    lower_visited = int(visited_average)
+    high_query_count = round((float(visited_average) - lower_visited) * query_count)
+    if not math.isclose(
+        lower_visited + high_query_count / query_count,
+        float(visited_average),
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError("test route trace visited average is not exactly representable")
+    visited_counts = [
+        lower_visited + (1 if query_index < high_query_count else 0)
+        for query_index in range(query_count)
+    ]
+    if not visited_counts or min(visited_counts) <= 0 or max(visited_counts) > shard_count:
+        raise ValueError("test route trace visited count is outside shard range")
+    if not float(ef_sum_average).is_integer() or ef_sum_average <= 0:
+        raise ValueError("test route trace EF sum must be a positive integer")
+    ef_sum = int(ef_sum_average)
+
+    per_query = []
+    for query_index, visited_shards in enumerate(visited_counts):
+        base_ef, remainder = divmod(ef_sum, visited_shards)
+        if base_ef <= 0:
+            raise ValueError("test route trace per-shard EF must be positive")
+        targets = [
+            {
+                "shard_id": shard_id,
+                "ef": base_ef + (1 if shard_id < remainder else 0),
+                "entry_points": [query_index * 10 + shard_id + 1],
+            }
+            for shard_id in range(visited_shards)
+        ]
+        per_query.append(
+            {
+                "query_index": query_index,
+                "visited_shards": visited_shards,
+                "entry_point_count": visited_shards,
+                "ef_sum": ef_sum,
+                "targets": targets,
+            }
+        )
+    route_sha256 = hashlib.sha256(
+        json.dumps(
+            per_query,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    aggregate = {
+        "query_count": query_count,
+        "visited_shards": {"average": float(visited_average)},
+        "entry_point_count": {"average": float(visited_average)},
+        "ef_sum_per_query": {"average": float(ef_sum_average)},
+    }
+    per_query_fields = [
+        "query_index",
+        "visited_shards",
+        "entry_point_count",
+        "ef_sum",
+        "targets[].shard_id",
+        "targets[].ef",
+        "targets[].entry_points",
+    ]
+    trace = {
+        "format_version": 1,
+        "artifact": {
+            "path": "/artifacts/orion.json",
+            "generation": artifact_generation,
+            "layout_sha256": artifact_layout_sha256,
+            "sha256": artifact_canonical_sha256,
+            "file_sha256": artifact_file_sha256,
+            "vector_schema": {
+                "vector_name": "",
+                "dimension": dimension,
+                "distance": "Cosine",
+                "datatype": "float32",
+            },
+            "shard_count": shard_count,
+        },
+        "queries": {
+            "path": "/queries.f32le",
+            "sha256": query_sha256,
+            "query_count": query_count,
+            "dimension": dimension,
+        },
+        "aggregate": aggregate,
+        "per_query": per_query,
+    }
+    trace_path = case_dir / "orion_route_trace.json"
+    trace_path.write_text(json.dumps(trace), encoding="utf-8")
+    per_query_metrics = {
+        "query_count": query_count,
+        "canonical_sha256": route_sha256,
+        "ordered_targets": True,
+        "fields": per_query_fields,
+        "visited_shards_average": float(visited_average),
+        "entry_point_count_average": float(visited_average),
+        "ef_sum_average": float(ef_sum_average),
+    }
+    metrics = {
+        "visited_shards": float(visited_average),
+        "ef_sum_per_query": float(ef_sum_average),
+        "query_count": query_count,
+        "dimension": dimension,
+        "query_sha256": query_sha256,
+        "artifact_generation": artifact_generation,
+        "artifact_layout_sha256": artifact_layout_sha256,
+        "artifact_file_sha256": artifact_file_sha256,
+        "artifact_canonical_sha256": artifact_canonical_sha256,
+        "per_query": per_query_metrics,
+        "per_query_canonical_sha256": route_sha256,
+    }
+    manifest_per_query = {
+        "included": True,
+        "query_count": query_count,
+        "canonical_sha256": route_sha256,
+        "ordered_targets": True,
+        "fields": per_query_fields,
+        "source": "orion_route_trace.json#per_query",
+    }
+    return trace_path, aggregate, metrics, manifest_per_query
+
+
 def write_case_result(
     matrix_dir: Path,
     case: dict,
@@ -179,6 +367,8 @@ def write_case_result(
         )
         manifest["artifact"] = {
             "status": "verified",
+            "sha256": "9" * 64,
+            "generation": 7,
             "layout_sha256": layout_sha256,
             "routing_structure_sha256": structure_sha256,
             "logical_point_count": 1000,
@@ -199,9 +389,31 @@ def write_case_result(
             "assignments_sha256": layout_sha256,
         }
     if case.get("orion_route_trace") is True:
+        artifact_canonical_sha256 = "8" * 64
+        query_sha256 = "7" * 64
+        manifest["live_policy"] = {
+            "artifact_sha256": artifact_canonical_sha256,
+        }
+        trace_path, aggregate, metrics, per_query_proof = write_orion_route_trace(
+            case_dir,
+            query_count=manifest["parameters"]["eval_query_count"],
+            shard_count=manifest["artifact"]["shard_count"],
+            visited_average=float(visited),
+            ef_sum_average=float(ef_sum),
+            artifact_file_sha256=manifest["artifact"]["sha256"],
+            artifact_canonical_sha256=artifact_canonical_sha256,
+            artifact_generation=manifest["artifact"]["generation"],
+            artifact_layout_sha256=manifest["artifact"]["layout_sha256"],
+            dimension=manifest["artifact"]["vector_schema"]["dimension"],
+            query_sha256=query_sha256,
+        )
         manifest["orion_route_trace"] = {
             "status": "verified",
             "source": "exact_offline_production_router_trace",
+            "trace_path": str(trace_path.resolve()),
+            "metrics": metrics,
+            "aggregate": aggregate,
+            "per_query": per_query_proof,
         }
     (case_dir / "run_manifest.json").write_text(
         json.dumps(manifest),
@@ -375,6 +587,172 @@ def test_collect_rejects_configured_orion_trace_without_exact_proof(tmp_path):
         module.load_case_result(matrix_dir, case)
 
 
+def test_collect_rejects_orion_trace_without_matching_per_query_fingerprint(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+    manifest_path = matrix_dir / "cases" / case["name"] / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["orion_route_trace"]["metrics"][
+        "per_query_canonical_sha256"
+    ] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="fingerprint mismatch"):
+        module.load_case_result(matrix_dir, case)
+
+
+def test_collect_revalidates_orion_route_trace_source_file(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+
+    result = module.load_case_result(matrix_dir, case)
+
+    trace_path = matrix_dir / "cases" / case["name"] / "orion_route_trace.json"
+    assert result["point"]["orion_route_trace_file_sha256"] == hashlib.sha256(
+        trace_path.read_bytes()
+    ).hexdigest()
+    assert result["point"]["orion_route_trace_per_query_sha256"] == result[
+        "manifest"
+    ]["orion_route_trace"]["per_query"]["canonical_sha256"]
+    assert re.fullmatch(
+        r"[0-9a-f]{64}",
+        result["point"]["orion_route_trace_aggregate_sha256"],
+    )
+
+
+def test_collect_rejects_missing_orion_route_trace_source_file(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+    trace_path = matrix_dir / "cases" / case["name"] / "orion_route_trace.json"
+    trace_path.unlink()
+
+    with pytest.raises(FileNotFoundError, match="route trace file is missing"):
+        module.load_case_result(matrix_dir, case)
+
+
+def test_collect_rejects_invalid_orion_route_trace_json(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+    trace_path = matrix_dir / "cases" / case["name"] / "orion_route_trace.json"
+    trace_path.write_text("{invalid", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        module.load_case_result(matrix_dir, case)
+
+
+@pytest.mark.parametrize("mutation", ["per_query", "aggregate"])
+def test_collect_rejects_tampered_orion_route_trace_source_file(
+    tmp_path, mutation
+):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+    trace_path = matrix_dir / "cases" / case["name"] / "orion_route_trace.json"
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    if mutation == "per_query":
+        trace["per_query"][0]["targets"][0]["entry_points"][0] += 10000
+        expected = "metrics do not match"
+    else:
+        trace["aggregate"]["tampered"] = True
+        expected = "aggregate does not match"
+    trace_path.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=expected):
+        module.load_case_result(matrix_dir, case)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("format", "unsupported Orion route trace format_version"),
+        ("artifact", "artifact provenance mismatch"),
+        ("query", "query provenance mismatch"),
+    ],
+)
+def test_collect_rejects_orion_route_trace_provenance_tampering(
+    tmp_path, mutation, expected
+):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    case = next(case for case in config["cases"] if case["method"] == "orion")
+    write_case_result(
+        matrix_dir,
+        case,
+        0.9,
+        100.0,
+        visited=1.5,
+        ef_sum=54,
+    )
+    trace_path = matrix_dir / "cases" / case["name"] / "orion_route_trace.json"
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    if mutation == "format":
+        trace["format_version"] = 2
+    elif mutation == "artifact":
+        trace["artifact"]["layout_sha256"] = "0" * 64
+    else:
+        trace["queries"]["sha256"] = "0" * 64
+    trace_path.write_text(json.dumps(trace), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=expected):
+        module.load_case_result(matrix_dir, case)
+
+
 def test_collect_aggregates_tables_and_preserves_null_orion_costs(monkeypatch, tmp_path):
     module = load_module()
     value = base_config()
@@ -427,6 +805,15 @@ def test_collect_aggregates_tables_and_preserves_null_orion_costs(monkeypatch, t
     )
 
     assert manifest["shared_provenance"]["image_identity"] == "sha256:same"
+    assert manifest["shared_provenance"]["deployment_manifest_sha256"] == "c" * 64
+    assert manifest["shared_provenance"]["orion_compact_wire_version"] == "2"
+    assert manifest["shared_provenance"]["image_compact_wire_max_version"] == "2"
+    assert manifest["shared_provenance"]["peer_premerge_mode"] == "enabled"
+    assert manifest["shared_provenance"]["peer_premerge_shards_per_rpc"] == "4"
+    assert re.fullmatch(
+        r"[0-9a-f]{64}",
+        manifest["shared_provenance"]["transport_identity_sha256"],
+    )
     assert manifest["shared_provenance"]["deployment_commit"] == "commit-1"
     assert manifest["shared_provenance"]["benchmark_commit"] == "commit-1"
     assert manifest["shared_provenance"]["deployment_tracked_dirty"] is False
@@ -549,6 +936,96 @@ def test_provenance_requires_same_clean_tracked_commit_with_dirty_fallback():
     )
 
 
+def test_provenance_binds_compact_wire_peer_premerge_and_transport_hash():
+    module = load_module()
+    manifest = shared_manifest("hash_all")
+
+    fingerprint = module.provenance_fingerprint(manifest)
+
+    assert fingerprint["orion_compact_wire_version"] == "2"
+    assert fingerprint["peer_premerge_mode"] == "enabled"
+    assert fingerprint["peer_premerge_shards_per_rpc"] == "4"
+    assert fingerprint["transport_identity_sha256"] == (
+        manifest["deployment"]["transport_identity_sha256"]
+    )
+
+    corrupted = json.loads(json.dumps(manifest))
+    corrupted["deployment"]["transport_identity_sha256"] = "0" * 64
+    with pytest.raises(RuntimeError, match="transport identity SHA-256 mismatch"):
+        module.provenance_fingerprint(corrupted)
+
+    wire_v1 = json.loads(json.dumps(manifest))
+    wire = wire_v1["deployment"]["transport_identity"]["orion_compact_wire"]
+    wire.update(
+        {
+            "requested_version": "1",
+            "current_version": "1",
+            "matches_requested": True,
+        }
+    )
+    wire_v1["deployment"]["orion_compact_wire"] = json.loads(json.dumps(wire))
+    wire_v1["deployment"]["transport_identity_sha256"] = module.canonical_sha256(
+        wire_v1["deployment"]["transport_identity"]
+    )
+    assert module.provenance_fingerprint(wire_v1)[
+        "transport_identity_sha256"
+    ] != fingerprint["transport_identity_sha256"]
+
+    peer_disabled = json.loads(json.dumps(manifest))
+    peer = peer_disabled["deployment"]["transport_identity"]["peer_premerge"]
+    peer.update(
+        {
+            "requested_mode": "disabled",
+            "current_mode": "disabled",
+            "matches_requested": True,
+        }
+    )
+    peer_disabled["deployment"]["peer_premerge"] = json.loads(json.dumps(peer))
+    peer_disabled["deployment"]["transport_identity_sha256"] = (
+        module.canonical_sha256(
+            peer_disabled["deployment"]["transport_identity"]
+        )
+    )
+    assert module.provenance_fingerprint(peer_disabled)[
+        "transport_identity_sha256"
+    ] != fingerprint["transport_identity_sha256"]
+
+
+def test_shared_provenance_rejects_same_image_with_mixed_compact_wire():
+    module = load_module()
+    results = []
+    for method in module.METHODS:
+        manifest = shared_manifest(method)
+        if method == "orion":
+            wire = manifest["deployment"]["transport_identity"][
+                "orion_compact_wire"
+            ]
+            wire.update(
+                {
+                    "requested_version": "1",
+                    "current_version": "1",
+                    "matches_requested": True,
+                }
+            )
+            manifest["deployment"]["orion_compact_wire"] = json.loads(
+                json.dumps(wire)
+            )
+            manifest["deployment"]["transport_identity_sha256"] = (
+                module.canonical_sha256(
+                    manifest["deployment"]["transport_identity"]
+                )
+            )
+        results.append(
+            {
+                "manifest": manifest,
+                "point": {"method": method, "case_name": method},
+            }
+        )
+
+    with pytest.raises(RuntimeError, match="shared provenance mismatch"):
+        module.validate_shared_provenance(results)
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
@@ -613,7 +1090,7 @@ def test_routed_profile_family_guard_rejects_offline_structure_drift(tmp_path):
         second_orion,
         recall=0.95,
         qps=80.0,
-        visited=4,
+        visited=3,
         ef_sum=160,
     )
     drifted = module.load_case_result(matrix_dir, second_orion)

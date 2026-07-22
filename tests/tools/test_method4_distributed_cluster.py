@@ -29,6 +29,20 @@ def topology(module):
     )
 
 
+def test_wire_v1_topology_only_changes_requested_wire_version():
+    v2_path = REPO_ROOT / "tools/distributed/cloudlab_orion_4node.json"
+    v1_path = (
+        REPO_ROOT / "tools/distributed/cloudlab_orion_4node_wire_v1.json"
+    )
+    v2 = json.loads(v2_path.read_text(encoding="utf-8"))
+    v1 = json.loads(v1_path.read_text(encoding="utf-8"))
+
+    assert v2["controller"]["orion_compact_wire_version"] == 2
+    assert v1["controller"]["orion_compact_wire_version"] == 1
+    v2["controller"]["orion_compact_wire_version"] = 1
+    assert v1 == v2
+
+
 def isolated_topology(module, tmp_path):
     value = copy.deepcopy(topology(module))
     value["shared_root"] = str(tmp_path / "shared")
@@ -314,10 +328,16 @@ def write_image_transition_candidate(
     archive_bytes=b"candidate image archive",
     dirty=False,
     wire_version=None,
+    wire_max_version=None,
 ):
     if wire_version is None:
         wire_version = module.requested_orion_compact_wire_version(value)
     wire_version = module.normalize_orion_compact_wire_version(wire_version)
+    if wire_max_version is None:
+        wire_max_version = module.CURRENT_ORION_COMPACT_WIRE_MAX_VERSION
+    wire_max_version = module.normalize_orion_compact_wire_version(
+        wire_max_version
+    )
     fingerprint = "b" * 64
     tar_path, manifest_path = module.image_candidate_paths(
         value, "run-1", image_tag, wire_version
@@ -345,9 +365,7 @@ def write_image_transition_candidate(
             "tar_size_bytes": tar_path.stat().st_size,
             "tar_sha256": module.sha256_file(tar_path),
             "capabilities": {
-                "orion_compact_wire_max_version": (
-                    module.CURRENT_ORION_COMPACT_WIRE_MAX_VERSION
-                )
+                "orion_compact_wire_max_version": wire_max_version
             },
         },
     }
@@ -385,6 +403,12 @@ def install_transition_runtime_fakes(
     snapshot = healthy_cluster_snapshot(module, value)
     roles = [str(node["role"]) for node in module.all_nodes(value)]
     active_wire_version = module.manifest_current_orion_compact_wire_version(stored)
+    active_wire_max_version = (
+        module.manifest_image_orion_compact_wire_max_version(stored)
+    )
+    candidate_wire_max_version = module.normalize_orion_compact_wire_version(
+        candidate["image"]["capabilities"]["orion_compact_wire_max_version"]
+    )
     state = {
         role: {
             "exists": True,
@@ -393,6 +417,7 @@ def install_transition_runtime_fakes(
             "image_id": stored["image"]["id"],
             "generation": 0,
             "wire_version": active_wire_version,
+            "wire_max_version": active_wire_max_version,
         }
         for role in roles
     }
@@ -421,6 +446,7 @@ def install_transition_runtime_fakes(
             image_id=current["image_id"],
             running=current["running"],
             wire_version=current["wire_version"],
+            wire_max_version=current["wire_max_version"],
         )
         if inspect_mutator is not None:
             inspect_mutator(role, inspected)
@@ -462,14 +488,30 @@ def install_transition_runtime_fakes(
                 if item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
             ]
             wire_version = "2" if wire_values == ["2"] else "1"
+            image_id = image_labels[0]
+            if (
+                image_tag == candidate["image"]["tag"]
+                and image_id == candidate["image"]["id"]
+            ):
+                wire_max_version = candidate_wire_max_version
+            elif (
+                image_tag == stored["image"]["tag"]
+                and image_id == stored["image"]["id"]
+            ):
+                wire_max_version = active_wire_max_version
+            else:
+                raise AssertionError(
+                    f"unexpected transition image identity: {image_tag} {image_id}"
+                )
             state[role].update(
                 {
                     "exists": True,
                     "running": True,
                     "image_tag": image_tag,
-                    "image_id": image_labels[0],
+                    "image_id": image_id,
                     "generation": state[role]["generation"] + 1,
                     "wire_version": wire_version,
+                    "wire_max_version": wire_max_version,
                 }
             )
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -1503,6 +1545,31 @@ def test_transition_manifest_cross_checks_top_level_and_node_wire_identity(
         value, "run-1", stored, None, "commit-1"
     )[4] == "2"
 
+    requested_mismatch = copy.deepcopy(stored)
+    requested_mismatch["orion_compact_wire"]["requested_version"] = "1"
+    requested_mismatch["orion_compact_wire"]["matches_requested"] = False
+    with pytest.raises(RuntimeError, match="requested version.*stored topology"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", requested_mismatch, None, "commit-1"
+        )
+
+    missing_requested = copy.deepcopy(stored)
+    del missing_requested["orion_compact_wire"]["requested_version"]
+    with pytest.raises(RuntimeError, match="definitive requested"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", missing_requested, None, "commit-1"
+        )
+
+    for invalid_matches_requested in (False, 1, None):
+        matches_mismatch = copy.deepcopy(stored)
+        matches_mismatch["orion_compact_wire"]["matches_requested"] = (
+            invalid_matches_requested
+        )
+        with pytest.raises(RuntimeError, match="matches_requested"):
+            module.validate_peer_premerge_transition_manifest(
+                value, "run-1", matches_mismatch, None, "commit-1"
+            )
+
     inconsistent = copy.deepcopy(stored)
     controller = next(
         node for node in inconsistent["nodes"] if node["role"] == "controller"
@@ -1698,6 +1765,94 @@ def test_candidate_manifest_and_archive_paths_are_canonical_for_wire_identity(
     candidate_path.write_text(json.dumps(mutated), encoding="utf-8")
     with pytest.raises(RuntimeError, match="archive path is not canonical"):
         module.validate_image_candidate_manifest(value, "run-1", candidate_path)
+
+
+@pytest.mark.parametrize(
+    ("requested_wire", "image_max"),
+    [("1", "1"), ("1", "2"), ("2", "2")],
+)
+def test_candidate_manifest_accepts_image_capability_at_or_above_requested(
+    tmp_path, requested_wire, image_max
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    value["controller"]["orion_compact_wire_version"] = int(requested_wire)
+    candidate_path, _payload = write_image_transition_candidate(
+        module,
+        value,
+        wire_version=requested_wire,
+        wire_max_version=image_max,
+    )
+
+    candidate = module.validate_image_candidate_manifest(
+        value, "run-1", candidate_path
+    )
+
+    assert candidate["orion_compact_wire_version"] == requested_wire
+    assert candidate["orion_compact_wire_max_version"] == image_max
+
+
+def test_candidate_manifest_rejects_image_capability_below_requested(tmp_path):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    candidate_path, _payload = write_image_transition_candidate(
+        module,
+        value,
+        wire_version="2",
+        wire_max_version="1",
+    )
+
+    with pytest.raises(RuntimeError, match="does not support the requested"):
+        module.validate_image_candidate_manifest(value, "run-1", candidate_path)
+
+
+def test_same_image_has_distinct_canonical_v1_and_v2_candidate_identities(
+    tmp_path,
+):
+    module = load_module()
+    v2_topology = isolated_topology(module, tmp_path)
+    v1_topology = copy.deepcopy(v2_topology)
+    v1_topology["controller"]["orion_compact_wire_version"] = 1
+    image_tag = "image:same"
+    image_id = "sha256:same"
+    archive_bytes = b"same image archive"
+
+    v1_path, v1_payload = write_image_transition_candidate(
+        module,
+        v1_topology,
+        image_tag=image_tag,
+        image_id=image_id,
+        archive_bytes=archive_bytes,
+        wire_version="1",
+        wire_max_version="2",
+    )
+    v2_path, v2_payload = write_image_transition_candidate(
+        module,
+        v2_topology,
+        image_tag=image_tag,
+        image_id=image_id,
+        archive_bytes=archive_bytes,
+        wire_version="2",
+        wire_max_version="2",
+    )
+
+    v1 = module.validate_image_candidate_manifest(
+        v1_topology, "run-1", v1_path
+    )
+    v2 = module.validate_image_candidate_manifest(
+        v2_topology, "run-1", v2_path
+    )
+
+    assert v1_path != v2_path
+    assert Path(v1_payload["image"]["tar_path"]) != Path(
+        v2_payload["image"]["tar_path"]
+    )
+    assert "wire-v1" in v1_path.name
+    assert "wire-v2" in v2_path.name
+    assert (v1["image_tag"], v1["image_id"]) == (image_tag, image_id)
+    assert (v2["image_tag"], v2["image_id"]) == (image_tag, image_id)
+    assert v1["orion_compact_wire_version"] == "1"
+    assert v2["orion_compact_wire_version"] == "2"
 
 
 def test_candidate_manifest_requires_image_compact_wire_capability(tmp_path):
@@ -1920,14 +2075,71 @@ def test_transition_image_rejects_unhealthy_cluster_before_lifecycle(
     assert writes == []
 
 
-def test_transition_image_same_image_id_is_idempotent_noop(
+def test_transition_image_rejects_under_capable_candidate_before_inspection(
     monkeypatch, tmp_path
 ):
     module = load_module()
     value = isolated_topology(module, tmp_path)
-    stored = image_transition_manifest(module, value, wire_version="2")
+    stored = image_transition_manifest(module, value)
+    candidate_path, _candidate = write_image_transition_candidate(
+        module,
+        value,
+        wire_version="2",
+        wire_max_version="1",
+    )
+    monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
+    monkeypatch.setattr(
+        module,
+        "inspect_container",
+        lambda *_args: pytest.fail(
+            "under-capable candidate must fail before runtime inspection"
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_on_node",
+        lambda *_args, **_kwargs: pytest.fail(
+            "under-capable candidate must not mutate the cluster"
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_manifest",
+        lambda *_args: pytest.fail(
+            "under-capable candidate must not write the active manifest"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="does not support the requested"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), value
+        )
+
+
+@pytest.mark.parametrize(
+    ("wire_version", "wire_max_version"),
+    [("1", "1"), ("1", "2"), ("2", "2")],
+)
+def test_transition_image_same_image_and_wire_is_idempotent_noop(
+    monkeypatch, tmp_path, wire_version, wire_max_version
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    value["controller"]["orion_compact_wire_version"] = int(wire_version)
+    stored = image_transition_manifest(
+        module, value, wire_version=wire_version
+    )
+    stored["image"]["capabilities"][
+        "orion_compact_wire_max_version"
+    ] = wire_max_version
     candidate_path, candidate = write_image_transition_candidate(
-        module, value, image_id="sha256:abc"
+        module,
+        value,
+        image_tag=stored["image"]["tag"],
+        image_id=stored["image"]["id"],
+        archive_bytes=Path(stored["image"]["tar_path"]).read_bytes(),
+        wire_version=wire_version,
+        wire_max_version=wire_max_version,
     )
     _state, _images, commands, writes = install_transition_runtime_fakes(
         monkeypatch, module, value, stored, candidate
@@ -1937,6 +2149,11 @@ def test_transition_image_same_image_id_is_idempotent_noop(
         transition_image_args(candidate_path), value
     ) == 0
 
+    assert all(
+        current["wire_version"] == wire_version
+        and current["wire_max_version"] == wire_max_version
+        for current in _state.values()
+    )
     assert not any(
         isinstance(command, list)
         and len(command) > 3
@@ -1953,7 +2170,13 @@ def test_transition_image_same_image_different_wire_is_not_a_noop(
     value = isolated_topology(module, tmp_path)
     stored = image_transition_manifest(module, value, wire_version="1")
     candidate_path, candidate = write_image_transition_candidate(
-        module, value, image_id="sha256:abc"
+        module,
+        value,
+        image_tag=stored["image"]["tag"],
+        image_id=stored["image"]["id"],
+        archive_bytes=Path(stored["image"]["tar_path"]).read_bytes(),
+        wire_version="2",
+        wire_max_version="2",
     )
     state, _images, commands, writes = install_transition_runtime_fakes(
         monkeypatch, module, value, stored, candidate
@@ -1978,6 +2201,13 @@ def test_transition_image_same_image_different_wire_is_not_a_noop(
         controller_run, "-e"
     )
     assert state["controller"]["wire_version"] == "2"
+    assert state["controller"]["wire_max_version"] == "2"
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] == "load"
+        for _role, command in commands
+    )
     assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
         "2", "2"
     )
@@ -2073,6 +2303,10 @@ def test_transition_image_recreates_exact_four_nodes_and_preserves_storage(
     assert updated["image"]["id"] == candidate["image"]["id"]
     assert updated["orion_artifacts"] == stored["orion_artifacts"]
     assert updated["simple_kmeans_artifacts"] == stored["simple_kmeans_artifacts"]
+    assert all(
+        node["orion_compact_wire_max_version"] == "2"
+        for node in updated["nodes"]
+    )
     proof = updated["image_transitions"][-1]
     assert proof["outcome"] == "success"
     assert proof["storage_preserved"] is True
@@ -2088,7 +2322,15 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
     module = load_module()
     value = isolated_topology(module, tmp_path)
     stored = image_transition_manifest(module, value)
-    candidate_path, candidate = write_image_transition_candidate(module, value)
+    candidate_path, candidate = write_image_transition_candidate(
+        module,
+        value,
+        image_tag=stored["image"]["tag"],
+        image_id=stored["image"]["id"],
+        archive_bytes=Path(stored["image"]["tar_path"]).read_bytes(),
+        wire_version="2",
+        wire_max_version="2",
+    )
     snapshot = healthy_cluster_snapshot(module, value)
     state, _remote_images, commands, writes = install_transition_runtime_fakes(
         monkeypatch,
@@ -2109,6 +2351,8 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
         current["image_tag"] == stored["image"]["tag"]
         and current["image_id"] == stored["image"]["id"]
         and current["running"] is True
+        and current["wire_version"] == "1"
+        and current["wire_max_version"] == "2"
         for current in state.values()
     )
     lifecycle = [
@@ -2121,6 +2365,12 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
     assert lifecycle.count("stop") == 8
     assert lifecycle.count("rm") == 8
     assert lifecycle.count("run") == 8
+    assert not any(
+        isinstance(command, list)
+        and len(command) > 3
+        and command[3] == "load"
+        for _role, command in commands
+    )
     assert not any("rm -rf" in " ".join(command) for _role, command in commands)
     assert writes[-1]["image"] == stored["image"]
     proof = writes[-1]["image_transitions"][-1]
@@ -2128,9 +2378,7 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
     assert proof["rollback"]["succeeded"] is True
     assert len(proof["rollback"]["containers"]) == 4
     assert proof["rollback"]["orion_compact_wire_version"] == "1"
-    assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
-        "2", "1"
-    )
+    assert writes[-1]["orion_compact_wire"] == stored["orion_compact_wire"]
     controller_runs = [
         command
         for role, command in commands
@@ -2147,6 +2395,122 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
         item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
         for item in option_values(controller_runs[1], "-e")
     )
+
+
+def test_transition_image_legacy_v1_rollback_remains_fully_legacy_and_reusable(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    target_v2_topology = isolated_topology(module, tmp_path)
+    legacy_topology = copy.deepcopy(target_v2_topology)
+    legacy_topology["controller"].pop("orion_compact_wire_version", None)
+    stored = image_transition_manifest(
+        module, legacy_topology, wire_version="1"
+    )
+    stored.pop("orion_compact_wire")
+    stored["image"].pop("capabilities")
+    for node in stored["nodes"]:
+        node.pop("orion_compact_wire_version")
+    candidate_path, candidate = write_image_transition_candidate(
+        module,
+        target_v2_topology,
+        wire_version="2",
+        wire_max_version="2",
+    )
+    snapshot = healthy_cluster_snapshot(module, target_v2_topology)
+    _state, _remote_images, _commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        target_v2_topology,
+        stored,
+        candidate,
+        collection_values=[healthy_run_collections(), healthy_run_collections()],
+        wait_values=[TimeoutError("injected candidate timeout"), snapshot],
+    )
+
+    with pytest.raises(RuntimeError, match="rolled back"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), target_v2_topology
+        )
+
+    written = writes[-1]
+    assert "orion_compact_wire" not in written
+    assert all(
+        "orion_compact_wire_version" not in node for node in written["nodes"]
+    )
+    assert written["topology"] == stored["topology"]
+    assert module.validate_peer_premerge_transition_manifest(
+        target_v2_topology,
+        "run-1",
+        written,
+    )[4] == "1"
+    active = module.validate_image_transition_active_manifest(
+        target_v2_topology,
+        "run-1",
+        written,
+        stored["image"]["id"],
+    )
+    assert active["orion_compact_wire_version"] == "1"
+
+
+def test_transition_image_cross_wire_rollback_restores_previous_phase_topology(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    v2_topology = isolated_topology(module, tmp_path)
+    v1_topology = copy.deepcopy(v2_topology)
+    v1_topology["controller"]["orion_compact_wire_version"] = 1
+    stored = image_transition_manifest(module, v2_topology, wire_version="2")
+    candidate_path, candidate = write_image_transition_candidate(
+        module,
+        v1_topology,
+        image_tag=stored["image"]["tag"],
+        image_id=stored["image"]["id"],
+        archive_bytes=Path(stored["image"]["tar_path"]).read_bytes(),
+        wire_version="1",
+        wire_max_version="2",
+    )
+    snapshot = healthy_cluster_snapshot(module, v1_topology)
+    _state, _remote_images, _commands, writes = install_transition_runtime_fakes(
+        monkeypatch,
+        module,
+        v1_topology,
+        stored,
+        candidate,
+        collection_values=[healthy_run_collections(), healthy_run_collections()],
+        wait_values=[TimeoutError("injected candidate timeout"), snapshot],
+    )
+
+    with pytest.raises(RuntimeError, match="rolled back"):
+        module.command_transition_image(
+            transition_image_args(candidate_path), v1_topology
+        )
+
+    written = writes[-1]
+    assert written["topology"] == stored["topology"]
+    assert written["orion_compact_wire"] == stored["orion_compact_wire"]
+    assert written["orion_compact_wire"]["requested_version"] == "2"
+    assert written["orion_compact_wire"]["current_version"] == "2"
+    assert written["orion_compact_wire"]["matches_requested"] is True
+    nodes_by_role = {node["role"]: node for node in written["nodes"]}
+    assert nodes_by_role["controller"]["orion_compact_wire_version"] == "2"
+    assert all(
+        nodes_by_role[node["role"]]["orion_compact_wire_version"]
+        == "not_applicable"
+        for node in v2_topology["workers"]
+    )
+    assert module.validate_peer_premerge_transition_manifest(
+        v2_topology,
+        "run-1",
+        written,
+    )[4] == "2"
+    active = module.validate_image_transition_active_manifest(
+        v2_topology,
+        "run-1",
+        written,
+        stored["image"]["id"],
+    )
+    assert active["orion_compact_wire_version"] == "2"
 
 
 def test_transition_image_postflight_placement_mismatch_triggers_rollback(

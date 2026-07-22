@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import importlib.util
 import json
@@ -191,6 +192,27 @@ def route_trace_payload(
             },
             "per_shard": [],
         },
+        "per_query": [
+            {
+                "query_index": 0,
+                "visited_shards": 1,
+                "entry_point_count": 1,
+                "ef_sum": 24,
+                "targets": [
+                    {"shard_id": 0, "ef": 24, "entry_points": [0]},
+                ],
+            },
+            {
+                "query_index": 1,
+                "visited_shards": 2,
+                "entry_point_count": 3,
+                "ef_sum": 84,
+                "targets": [
+                    {"shard_id": 1, "ef": 40, "entry_points": [1, 2]},
+                    {"shard_id": 2, "ef": 44, "entry_points": [2]},
+                ],
+            },
+        ],
     }
 
 
@@ -360,6 +382,158 @@ def test_repository_binding_requires_same_clean_tracked_commit():
         )
 
 
+def test_repository_end_proof_records_unchanged_clean_snapshot(monkeypatch):
+    module = load_module()
+    start = {
+        "commit": "abc123",
+        "dirty": True,
+        "tracked_dirty": False,
+        "untracked_entry_count": 2,
+    }
+    end = {
+        "commit": "abc123",
+        "dirty": True,
+        "tracked_dirty": False,
+        "untracked_entry_count": 5,
+    }
+    calls = []
+
+    def fake_repository_provenance(path):
+        calls.append(path)
+        return end
+
+    monkeypatch.setattr(
+        module.experiment, "repository_provenance", fake_repository_provenance
+    )
+
+    repository_end, proof = module.verify_repository_provenance_unchanged(start)
+
+    assert calls == [module.REPO_ROOT]
+    assert repository_end == end
+    assert proof == {
+        "start_commit": "abc123",
+        "end_commit": "abc123",
+        "head_unchanged": True,
+        "start_tracked_dirty": False,
+        "end_tracked_dirty": False,
+        "start_untracked_entry_count": 2,
+        "end_untracked_entry_count": 5,
+        "validation_scope": "start_and_end_snapshots",
+        "continuous_cleanliness_claimed": False,
+    }
+
+
+def test_repository_end_proof_rejects_mid_run_head_drift(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module.experiment,
+        "repository_provenance",
+        lambda *_args: {"commit": "def456", "tracked_dirty": False},
+    )
+
+    with pytest.raises(RuntimeError, match="HEAD changed during benchmark"):
+        module.verify_repository_provenance_unchanged(
+            {"commit": "abc123", "tracked_dirty": False}
+        )
+
+
+def test_repository_end_proof_rejects_mid_run_tracked_dirty_drift(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module.experiment,
+        "repository_provenance",
+        lambda *_args: {"commit": "abc123", "tracked_dirty": True},
+    )
+
+    with pytest.raises(RuntimeError, match="acquired tracked changes"):
+        module.verify_repository_provenance_unchanged(
+            {"commit": "abc123", "tracked_dirty": False}
+        )
+
+
+def test_deployment_transport_identity_distinguishes_same_image_wire_versions():
+    module = load_module()
+    common = {
+        "image": {
+            "id": "sha256:same-image",
+            "tag": "native:test",
+            "source_fingerprint": "a" * 64,
+            "tar_sha256": "b" * 64,
+            "capabilities": {"orion_compact_wire_max_version": "2"},
+        },
+        "peer_premerge": {
+            "requested_mode": "enabled",
+            "current_mode": "enabled",
+            "requested_shards_per_rpc": "4",
+            "current_shards_per_rpc": "4",
+            "matches_requested": True,
+        },
+        "nodes": [],
+    }
+    v1 = json.loads(json.dumps(common))
+    v1["orion_compact_wire"] = {
+        "requested_version": "1",
+        "current_version": "1",
+        "matches_requested": True,
+    }
+    v2 = json.loads(json.dumps(common))
+    v2["orion_compact_wire"] = {
+        "requested_version": "2",
+        "current_version": "2",
+        "matches_requested": True,
+    }
+
+    v1_identity = module.deployment_transport_identity(v1)
+    v2_identity = module.deployment_transport_identity(v2)
+
+    assert v1_identity["image"] == v2_identity["image"]
+    assert module.canonical_sha256(v1_identity) != module.canonical_sha256(v2_identity)
+
+    legacy_v1 = json.loads(json.dumps(common))
+    legacy_identity = module.deployment_transport_identity(legacy_v1)
+    assert legacy_identity["orion_compact_wire"] == {
+        "current_version": "1",
+        "legacy_implicit_v1": True,
+        "scope": "controller",
+    }
+
+
+def test_deployment_evidence_detects_manifest_change_during_benchmark(tmp_path):
+    module = load_module()
+    path = tmp_path / "deployment.json"
+    manifest = {
+        "image": {"id": "sha256:image"},
+        "orion_compact_wire": {
+            "requested_version": "1",
+            "current_version": "1",
+            "matches_requested": True,
+        },
+        "peer_premerge": {
+            "requested_mode": "enabled",
+            "current_mode": "enabled",
+            "requested_shards_per_rpc": "all",
+            "current_shards_per_rpc": "all",
+            "matches_requested": True,
+        },
+        "nodes": [],
+    }
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    evidence = module.build_deployment_evidence(str(path), manifest)
+
+    module.verify_deployment_evidence_unchanged(evidence)
+    path.write_text(json.dumps({**manifest, "generated_at": "later"}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="changed during benchmark"):
+        module.verify_deployment_evidence_unchanged(evidence)
+
+    module.validate_deployment_topology_transport_binding(
+        {"controller": {"orion_compact_wire_version": 1}}, evidence
+    )
+    with pytest.raises(RuntimeError, match="topology/deployment compact-wire mismatch"):
+        module.validate_deployment_topology_transport_binding(
+            {"controller": {"orion_compact_wire_version": 2}}, evidence
+        )
+
+
 def test_hash_all_scalar_hnsw_ef_uses_standard_request_field_only():
     module = load_module()
     request = module.experiment.standard_dense_vector_request(
@@ -472,6 +646,7 @@ def test_exact_orion_route_trace_exports_queries_validates_provenance_and_report
         "--example",
         "orion_route_trace",
     ]
+    assert captured["command"][-1] == "--per-query"
     assert captured["env"]["CARGO_TARGET_DIR"] == str(
         (tmp_path / "cargo-target").resolve()
     )
@@ -483,6 +658,30 @@ def test_exact_orion_route_trace_exports_queries_validates_provenance_and_report
     assert proof["included_in_timed_benchmark"] is False
     assert proof["metrics"]["visited_shards"] == 1.5
     assert proof["metrics"]["ef_sum_per_query"] == 54.0
+    expected_per_query = route_trace_payload(
+        artifact_sha256=artifact_sha256,
+        query_sha256=proof["metrics"]["query_sha256"],
+    )["per_query"]
+    assert proof["per_query"] == {
+        "included": True,
+        "query_count": 2,
+        "canonical_sha256": module.canonical_sha256(expected_per_query),
+        "ordered_targets": True,
+        "fields": [
+            "query_index",
+            "visited_shards",
+            "entry_point_count",
+            "ef_sum",
+            "targets[].shard_id",
+            "targets[].ef",
+            "targets[].entry_points",
+        ],
+        "source": "orion_route_trace.json#per_query",
+    }
+    assert (
+        proof["metrics"]["per_query_canonical_sha256"]
+        == proof["per_query"]["canonical_sha256"]
+    )
     assert (output_dir / "orion_route_trace.json").is_file()
     assert (output_dir / "orion_route_trace.stdout.log").read_text() == "trace stdout"
     report = module.route_reporting(
@@ -530,6 +729,64 @@ def test_orion_route_trace_rejects_checksum_or_count_mismatch(mutation, message)
         trace["queries"]["sha256"] = "c" * 64
     else:
         trace["queries"]["query_count"] = 1
+
+    with pytest.raises(RuntimeError, match=message):
+        module.validate_orion_route_trace_output(
+            trace,
+            artifact_proof={
+                "sha256": checksum,
+                "generation": 7,
+                "layout_sha256": "b" * 64,
+                "shard_count": 3,
+            },
+            expected_canonical_sha256=checksum,
+            expected_query_count=2,
+            expected_dimension=2,
+            expected_query_sha256=query_checksum,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "per_query must be an array"),
+        ("length", "per_query length mismatch"),
+        ("query_index", "query_index is not contiguous"),
+        ("visited_shards", "does not match target count"),
+        ("ef_sum", "ef_sum does not match ordered targets"),
+        ("target_order", "strict ascending shard order"),
+        ("duplicate_entry_point", "entry_points must be ordered-unique"),
+        ("invalid_uuid", "invalid UUID point ID"),
+    ],
+)
+def test_orion_route_trace_rejects_invalid_per_query_routes(mutation, message):
+    module = load_module()
+    checksum = "a" * 64
+    query_checksum = "b" * 64
+    trace = route_trace_payload(
+        artifact_sha256=checksum,
+        query_sha256=query_checksum,
+    )
+    if mutation == "missing":
+        trace.pop("per_query")
+    elif mutation == "length":
+        trace["per_query"].pop()
+    elif mutation == "query_index":
+        trace["per_query"][1]["query_index"] = 2
+    elif mutation == "visited_shards":
+        trace["per_query"][1]["visited_shards"] = 1
+    elif mutation == "ef_sum":
+        trace["per_query"][1]["ef_sum"] = 83
+    elif mutation == "target_order":
+        trace["per_query"][1]["targets"].reverse()
+    elif mutation == "duplicate_entry_point":
+        trace["per_query"][1]["targets"][0]["entry_points"] = [1, 1]
+        trace["per_query"][1]["entry_point_count"] = 3
+    else:
+        trace["per_query"][1]["targets"][0]["entry_points"] = [
+            "not-a-uuid",
+            2,
+        ]
 
     with pytest.raises(RuntimeError, match=message):
         module.validate_orion_route_trace_output(
@@ -723,8 +980,39 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
         json.dumps(
             {
                 "repository": {"commit": "current-commit"},
-                "image": {"tag": "image:tag", "id": "sha256:image"},
-                "nodes": [{"role": "controller", "cpuset": "0-7"}],
+                "image": {
+                    "tag": "image:tag",
+                    "id": "sha256:image",
+                    "source_fingerprint": "a" * 64,
+                    "tar_sha256": "b" * 64,
+                    "capabilities": {"orion_compact_wire_max_version": "2"},
+                },
+                "orion_compact_wire": {
+                    "scope": "controller",
+                    "requested_version": "2",
+                    "current_version": "2",
+                    "matches_requested": True,
+                },
+                "peer_premerge": {
+                    "scope": "controller",
+                    "requested_mode": "enabled",
+                    "current_mode": "enabled",
+                    "requested_shards_per_rpc": "4",
+                    "current_shards_per_rpc": "4",
+                    "matches_requested": True,
+                },
+                "nodes": [
+                    {
+                        "role": "controller",
+                        "private_ip": "10.10.1.1",
+                        "cpuset": "0-7",
+                        "image_id": "sha256:image",
+                        "peer_premerge_mode": "enabled",
+                        "peer_premerge_shards_per_rpc": "4",
+                        "orion_compact_wire_version": "2",
+                        "orion_compact_wire_max_version": "2",
+                    }
+                ],
             }
         ),
         encoding="utf-8",
@@ -876,7 +1164,287 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
     assert manifest["route_reporting"]["visited_shards"] == 3
     assert manifest["route_reporting"]["ef_sum_per_query"] == 120
     assert manifest["deployment"]["image"]["id"] == "sha256:image"
+    assert manifest["deployment"]["orion_compact_wire"]["current_version"] == "2"
+    assert manifest["deployment"]["peer_premerge"]["current_mode"] == "enabled"
+    assert manifest["deployment"]["manifest_sha256"] == module.experiment.sha256_path(
+        deployment
+    )
+    assert manifest["deployment"]["transport_identity_sha256"] == (
+        module.canonical_sha256(manifest["deployment"]["transport_identity"])
+    )
+    assert manifest["deployment"]["transport_identity"]["image"] == {
+        "id": "sha256:image",
+        "tag": "image:tag",
+        "source_fingerprint": "a" * 64,
+        "tar_sha256": "b" * 64,
+        "orion_compact_wire_max_version": "2",
+    }
     assert manifest["repository"]["commit"] == "current-commit"
+    assert manifest["repository_end"]["commit"] == "current-commit"
+    assert manifest["repository_binding"]["end_proof"] == {
+        "start_commit": "current-commit",
+        "end_commit": "current-commit",
+        "head_unchanged": True,
+        "start_tracked_dirty": False,
+        "end_tracked_dirty": False,
+        "start_untracked_entry_count": 4,
+        "end_untracked_entry_count": 4,
+        "validation_scope": "start_and_end_snapshots",
+        "continuous_cleanliness_claimed": False,
+    }
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["final_metrics"]["recall_at_k"] == 1.0
     assert summary["placement_valid"] is True
+    assert summary["deployment_transport"]["transport_identity_sha256"] == (
+        manifest["deployment"]["transport_identity_sha256"]
+    )
+
+
+def test_orion_mocked_run_times_queries_before_trace_and_backfills_route_metrics(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    artifact_path = tmp_path / "generation-7.json"
+    artifact, artifact_sha256 = write_orion_artifact(module, artifact_path)
+    deployment = tmp_path / "deployment.json"
+    deployment.write_text(
+        json.dumps(
+            {
+                "repository": {"commit": "current-commit"},
+                "image": {
+                    "tag": "image:tag",
+                    "id": "sha256:image",
+                    "source_fingerprint": "a" * 64,
+                    "tar_sha256": "b" * 64,
+                    "capabilities": {"orion_compact_wire_max_version": "2"},
+                },
+                "orion_compact_wire": {
+                    "scope": "controller",
+                    "requested_version": "2",
+                    "current_version": "2",
+                    "matches_requested": True,
+                },
+                "peer_premerge": {
+                    "scope": "controller",
+                    "requested_mode": "enabled",
+                    "current_mode": "enabled",
+                    "requested_shards_per_rpc": "4",
+                    "current_shards_per_rpc": "4",
+                    "matches_requested": True,
+                },
+                "nodes": [
+                    {
+                        "role": "controller",
+                        "private_ip": "10.10.1.1",
+                        "cpuset": "0-7",
+                        "image_id": "sha256:image",
+                        "peer_premerge_mode": "enabled",
+                        "peer_premerge_shards_per_rpc": "4",
+                        "orion_compact_wire_version": "2",
+                        "orion_compact_wire_max_version": "2",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = args_for(
+        module,
+        tmp_path,
+        "--deployment-manifest",
+        str(deployment),
+        "--warmup-query-count",
+        "1",
+        "--eval-query-count",
+        "2",
+        "--top-k",
+        "2",
+        "--batch-size",
+        "2",
+        "--stability-repeats",
+        "2",
+    )
+    args.method = "orion"
+    args.collection = "native_orion"
+    args.artifact = str(artifact_path)
+    args.hnsw_ef = None
+    args.orion_route_trace = True
+
+    collection_info = {
+        "status": "green",
+        "optimizer_status": "ok",
+        "points_count": 4,
+        "indexed_vectors_count": 4,
+        "config": {
+            "params": {
+                "vectors": {"size": 2, "distance": "Cosine"},
+                "sharding_method": "auto",
+                "shard_number": 3,
+                "replication_factor": 1,
+            },
+            "auto_shard_policy": {
+                "type": "orion",
+                "generation": 7,
+                "artifact_sha256": artifact_sha256,
+            },
+        },
+    }
+    collection_cluster = {
+        "peer_id": 101,
+        "shard_count": 3,
+        "local_shards": [],
+        "remote_shards": [],
+        "shard_transfers": [],
+    }
+    preflight = {
+        "worker_peer_ids": [202, 303, 404],
+        "raw": {"peer_id": 101, "peers": {}},
+    }
+    artifact_proof = {
+        "status": "verified",
+        "path": str(artifact_path),
+        "sha256": artifact_sha256,
+        "generation": 7,
+        "layout_sha256": artifact["layout_sha256"],
+        "logical_point_count": 3,
+        "physical_point_count": 4,
+        "shard_count": 3,
+        "vector_schema": artifact["vector_schema"],
+        "routing_structure_sha256": "c" * 64,
+    }
+    events = []
+
+    def fake_evaluate(
+        _base_url,
+        _collection,
+        queries,
+        _neighbors,
+        top_k,
+        _batch_size,
+        *,
+        api,
+        vector_name,
+        hnsw_ef,
+        include_per_query_metrics,
+    ):
+        events.append("evaluate")
+        assert api == "search"
+        assert vector_name == ""
+        assert hnsw_ef is None
+        assert include_per_query_metrics is False
+        return {
+            "query_count": len(queries),
+            "recall_at_k": 1.0,
+            "qps": 100.0 + len(events),
+            "wall_s": 0.02,
+            "latency_p50_ms": 2.0,
+            "latency_p95_ms": 3.0,
+            "latency_p99_ms": 4.0,
+            "per_query_rows": [],
+        }
+
+    def fake_route_trace(
+        _args,
+        *,
+        artifact_path,
+        artifact_proof,
+        policy,
+        eval_queries,
+        output_dir,
+    ):
+        events.append("route_trace")
+        assert artifact_path == Path(args.artifact).resolve()
+        assert artifact_proof["sha256"] == artifact_sha256
+        assert policy["artifact_sha256"] == artifact_sha256
+        assert len(eval_queries) == 2
+        (output_dir / "orion_route_trace.json").write_text("{}", encoding="utf-8")
+        (output_dir / "orion_route_trace.stdout.log").write_text(
+            "trace stdout", encoding="utf-8"
+        )
+        (output_dir / "orion_route_trace.stderr.log").write_text(
+            "", encoding="utf-8"
+        )
+        return {
+            "status": "verified",
+            "included_in_timed_benchmark": False,
+            "metrics": {
+                "visited_shards": 1.5,
+                "ef_sum_per_query": 54.0,
+            },
+        }
+
+    monkeypatch.setattr(
+        module.experiment, "validate_cluster_preflight", lambda *_args: preflight
+    )
+    monkeypatch.setattr(
+        module.experiment, "collection_info", lambda *_args: collection_info
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "collection_cluster_info",
+        lambda *_args: collection_cluster,
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "wait_collection_indexed",
+        lambda *_args, **_kwargs: collection_info,
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "validate_numeric_shard_round_robin_placement",
+        lambda *_args: {
+            "valid": True,
+            "shards_per_worker": {202: 1, 303: 1, 404: 1},
+        },
+    )
+    monkeypatch.setattr(
+        module.experiment, "evaluate_standard_dense_vector_batches", fake_evaluate
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "repository_provenance",
+        lambda *_args: {
+            "commit": "current-commit",
+            "tracked_dirty": False,
+            "untracked_entry_count": 4,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_artifact",
+        lambda *_args, **_kwargs: (artifact, artifact_proof),
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_artifact_bundle",
+        lambda *_args, **_kwargs: {
+            "status": "verified",
+            "formal_evidence_eligible": True,
+            "offline_layout_fingerprint": "d" * 64,
+        },
+    )
+    monkeypatch.setattr(module, "run_orion_route_trace", fake_route_trace)
+
+    output = module.run(args)
+
+    assert events == [
+        "evaluate",
+        "evaluate",
+        "evaluate",
+        "evaluate",
+        "route_trace",
+    ]
+    with (output / "stability_runs.csv").open(newline="", encoding="utf-8") as handle:
+        stability_rows = list(csv.DictReader(handle))
+    with (output / "final_metrics.csv").open(newline="", encoding="utf-8") as handle:
+        final_rows = list(csv.DictReader(handle))
+    assert len(stability_rows) == 2
+    assert {row["visited_shards"] for row in stability_rows} == {"1.5"}
+    assert {row["ef_sum_per_query"] for row in stability_rows} == {"54.0"}
+    assert final_rows[0]["visited_shards"] == "1.5"
+    assert final_rows[0]["ef_sum_per_query"] == "54.0"
+
+    manifest = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["route_reporting"]["visited_shards"] == 1.5
+    assert manifest["route_reporting"]["ef_sum_per_query"] == 54.0
+    assert manifest["orion_route_trace"]["included_in_timed_benchmark"] is False

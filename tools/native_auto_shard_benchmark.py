@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,191 @@ SIMPLE_RUNTIME_BUILD_PARAMETERS = {
     "lower_hnsw_ef",
     "cargo_target_dir",
 }
+
+
+def canonical_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def deployment_transport_identity(
+    deployment_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    image = deployment_manifest.get("image") or {}
+    if not isinstance(image, dict):
+        raise RuntimeError("deployment manifest image payload must be an object")
+    capabilities = image.get("capabilities") or {}
+    if not isinstance(capabilities, dict):
+        raise RuntimeError("deployment manifest image capabilities must be an object")
+
+    raw_wire = deployment_manifest.get("orion_compact_wire")
+    if raw_wire is None:
+        # Lifecycle manifests written before compact-wire v2 used implicit v1 and
+        # had no definitive top-level wire object. Preserve that distinction while
+        # still giving old evidence a stable, unambiguous v1 identity.
+        wire: dict[str, Any] = {
+            "current_version": "1",
+            "legacy_implicit_v1": True,
+            "scope": "controller",
+        }
+    elif isinstance(raw_wire, dict):
+        wire = json.loads(json.dumps(raw_wire))
+    else:
+        raise RuntimeError(
+            "deployment manifest orion_compact_wire payload must be an object or null"
+        )
+
+    peer_premerge = deployment_manifest.get("peer_premerge")
+    if peer_premerge is not None and not isinstance(peer_premerge, dict):
+        raise RuntimeError(
+            "deployment manifest peer_premerge payload must be an object or null"
+        )
+
+    node_identities: list[dict[str, Any]] = []
+    nodes = deployment_manifest.get("nodes") or []
+    if not isinstance(nodes, list):
+        raise RuntimeError("deployment manifest nodes payload must be an array")
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise RuntimeError(
+                f"deployment manifest node {index} must be an object"
+            )
+        node_identities.append(
+            {
+                "role": node.get("role"),
+                "private_ip": node.get("private_ip"),
+                "image_id": node.get("image_id"),
+                "peer_premerge_mode": node.get("peer_premerge_mode"),
+                "peer_premerge_shards_per_rpc": node.get(
+                    "peer_premerge_shards_per_rpc"
+                ),
+                "orion_compact_wire_version": node.get(
+                    "orion_compact_wire_version"
+                ),
+                "orion_compact_wire_max_version": node.get(
+                    "orion_compact_wire_max_version"
+                ),
+            }
+        )
+    node_identities.sort(key=lambda node: str(node.get("role") or ""))
+
+    return {
+        "schema_version": 1,
+        "image": {
+            "id": image.get("id") or image.get("digest"),
+            "tag": image.get("tag"),
+            "source_fingerprint": image.get("source_fingerprint"),
+            "tar_sha256": image.get("tar_sha256"),
+            "orion_compact_wire_max_version": capabilities.get(
+                "orion_compact_wire_max_version", "1"
+            ),
+        },
+        "orion_compact_wire": wire,
+        "peer_premerge": (
+            json.loads(json.dumps(peer_premerge))
+            if isinstance(peer_premerge, dict)
+            else None
+        ),
+        "nodes": node_identities,
+    }
+
+
+def build_deployment_evidence(
+    deployment_manifest_path: str | None,
+    deployment_manifest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if deployment_manifest is None:
+        return {
+            "path": deployment_manifest_path,
+            "manifest_sha256": None,
+            "image": None,
+            "repository": None,
+            "nodes": None,
+            "orion_compact_wire": None,
+            "peer_premerge": None,
+            "transport_identity": None,
+            "transport_identity_sha256": None,
+        }
+    if not isinstance(deployment_manifest, dict):
+        raise RuntimeError("deployment manifest root must be an object")
+    if not deployment_manifest_path:
+        raise RuntimeError("deployment manifest content is present without a source path")
+    path = Path(deployment_manifest_path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"deployment manifest not found: {path}")
+    source_bytes = path.read_bytes()
+    try:
+        source_manifest = json.loads(source_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"invalid deployment manifest JSON {path}: {exc}") from exc
+    if source_manifest != deployment_manifest:
+        raise RuntimeError(
+            "deployment manifest changed while benchmark provenance was being frozen"
+        )
+    transport_identity = deployment_transport_identity(source_manifest)
+    return {
+        "path": str(path),
+        "manifest_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "image": source_manifest.get("image"),
+        "repository": source_manifest.get("repository"),
+        "nodes": source_manifest.get("nodes"),
+        "orion_compact_wire": source_manifest.get("orion_compact_wire"),
+        "peer_premerge": source_manifest.get("peer_premerge"),
+        "transport_identity": transport_identity,
+        "transport_identity_sha256": canonical_sha256(transport_identity),
+    }
+
+
+def verify_deployment_evidence_unchanged(evidence: dict[str, Any]) -> None:
+    path_value = evidence.get("path")
+    expected_sha256 = evidence.get("manifest_sha256")
+    if path_value is None and expected_sha256 is None:
+        return
+    if not isinstance(path_value, str) or not isinstance(expected_sha256, str):
+        raise RuntimeError("deployment evidence is missing its frozen manifest identity")
+    path = Path(path_value)
+    if not path.is_file():
+        raise RuntimeError(f"deployment manifest disappeared during benchmark: {path}")
+    actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError(
+            "deployment manifest changed during benchmark: "
+            f"before={expected_sha256}, after={actual_sha256}"
+        )
+
+
+def validate_deployment_topology_transport_binding(
+    topology: dict[str, Any], evidence: dict[str, Any]
+) -> None:
+    transport_identity = evidence.get("transport_identity")
+    if transport_identity is None:
+        return
+    if not isinstance(transport_identity, dict):
+        raise RuntimeError("deployment transport identity must be an object")
+    controller = topology.get("controller") or {}
+    if not isinstance(controller, dict):
+        raise RuntimeError("topology controller must be an object")
+    requested_wire = controller.get("orion_compact_wire_version", 1)
+    if isinstance(requested_wire, bool) or str(requested_wire) not in {"1", "2"}:
+        raise RuntimeError(
+            "topology has an invalid Orion compact-wire version: "
+            f"{requested_wire!r}"
+        )
+    wire = transport_identity.get("orion_compact_wire") or {}
+    if not isinstance(wire, dict):
+        raise RuntimeError("deployment compact-wire identity must be an object")
+    active_wire = str(wire.get("current_version") or "")
+    if active_wire != str(requested_wire):
+        raise RuntimeError(
+            "topology/deployment compact-wire mismatch: "
+            f"topology={requested_wire}, deployment={active_wire!r}"
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -699,6 +885,7 @@ def orion_route_trace_command(
         str(query_count),
         str(dimension),
         str(output_path),
+        "--per-query",
     ]
 
 
@@ -725,6 +912,202 @@ def require_trace_average(value: Any, field: str) -> float:
             f"Orion route trace field {field} must be finite and positive; got {value!r}"
         )
     return average
+
+
+def require_trace_non_negative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(
+            f"Orion route trace field {field} must be a non-negative integer; "
+            f"got {value!r}"
+        )
+    return value
+
+
+def normalize_trace_entry_point(value: Any, field: str) -> int | str:
+    if isinstance(value, bool):
+        raise RuntimeError(
+            f"Orion route trace field {field} must be a numeric or UUID point ID"
+        )
+    if isinstance(value, int):
+        if value < 0 or value > (1 << 64) - 1:
+            raise RuntimeError(
+                f"Orion route trace field {field} has an out-of-range numeric point ID"
+            )
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = uuid.UUID(value)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Orion route trace field {field} has an invalid UUID point ID"
+            ) from exc
+        canonical = str(parsed)
+        if value.lower() != canonical:
+            raise RuntimeError(
+                f"Orion route trace field {field} UUID is not canonical: {value!r}"
+            )
+        return canonical
+    raise RuntimeError(
+        f"Orion route trace field {field} must be a numeric or UUID point ID"
+    )
+
+
+def validate_orion_per_query_route_trace(
+    value: Any,
+    *,
+    expected_query_count: int,
+    shard_count: int,
+) -> dict[str, Any]:
+    if not isinstance(value, list):
+        raise RuntimeError("Orion route trace field per_query must be an array")
+    if len(value) != expected_query_count:
+        raise RuntimeError(
+            "Orion route trace per_query length mismatch: "
+            f"actual={len(value)}, expected={expected_query_count}"
+        )
+
+    normalized: list[dict[str, Any]] = []
+    visited_values: list[int] = []
+    entry_point_values: list[int] = []
+    ef_sum_values: list[int] = []
+    for expected_index, raw_query in enumerate(value):
+        query = require_trace_object(raw_query, f"per_query[{expected_index}]")
+        query_index = require_trace_non_negative_int(
+            query.get("query_index"), f"per_query[{expected_index}].query_index"
+        )
+        if query_index != expected_index:
+            raise RuntimeError(
+                "Orion route trace per_query query_index is not contiguous and ordered: "
+                f"position={expected_index}, query_index={query_index}"
+            )
+        visited_shards = require_trace_positive_int(
+            query.get("visited_shards"),
+            f"per_query[{expected_index}].visited_shards",
+        )
+        entry_point_count = require_trace_positive_int(
+            query.get("entry_point_count"),
+            f"per_query[{expected_index}].entry_point_count",
+        )
+        ef_sum = require_trace_positive_int(
+            query.get("ef_sum"), f"per_query[{expected_index}].ef_sum"
+        )
+        raw_targets = query.get("targets")
+        if not isinstance(raw_targets, list):
+            raise RuntimeError(
+                f"Orion route trace field per_query[{expected_index}].targets "
+                "must be an array"
+            )
+        if len(raw_targets) != visited_shards:
+            raise RuntimeError(
+                f"Orion route trace per_query[{expected_index}] visited_shards "
+                f"does not match target count: {visited_shards} != {len(raw_targets)}"
+            )
+
+        targets: list[dict[str, Any]] = []
+        previous_shard_id = -1
+        computed_entry_point_count = 0
+        computed_ef_sum = 0
+        for target_index, raw_target in enumerate(raw_targets):
+            target = require_trace_object(
+                raw_target,
+                f"per_query[{expected_index}].targets[{target_index}]",
+            )
+            shard_id = require_trace_non_negative_int(
+                target.get("shard_id"),
+                f"per_query[{expected_index}].targets[{target_index}].shard_id",
+            )
+            if shard_id >= shard_count:
+                raise RuntimeError(
+                    f"Orion route trace target shard_id {shard_id} is outside "
+                    f"0..{shard_count - 1}"
+                )
+            if shard_id <= previous_shard_id:
+                raise RuntimeError(
+                    "Orion route trace targets must preserve strict ascending shard order: "
+                    f"query={expected_index}, previous={previous_shard_id}, "
+                    f"current={shard_id}"
+                )
+            previous_shard_id = shard_id
+            ef = require_trace_positive_int(
+                target.get("ef"),
+                f"per_query[{expected_index}].targets[{target_index}].ef",
+            )
+            raw_entry_points = target.get("entry_points")
+            if not isinstance(raw_entry_points, list) or not raw_entry_points:
+                raise RuntimeError(
+                    f"Orion route trace field per_query[{expected_index}].targets"
+                    f"[{target_index}].entry_points must be a non-empty array"
+                )
+            entry_points = [
+                normalize_trace_entry_point(
+                    entry_point,
+                    f"per_query[{expected_index}].targets[{target_index}]"
+                    f".entry_points[{entry_index}]",
+                )
+                for entry_index, entry_point in enumerate(raw_entry_points)
+            ]
+            typed_entry_points = [
+                ("num", entry_point)
+                if isinstance(entry_point, int)
+                else ("uuid", entry_point)
+                for entry_point in entry_points
+            ]
+            if len(set(typed_entry_points)) != len(typed_entry_points):
+                raise RuntimeError(
+                    "Orion route trace target entry_points must be ordered-unique: "
+                    f"query={expected_index}, shard={shard_id}"
+                )
+            computed_entry_point_count += len(entry_points)
+            computed_ef_sum += ef
+            targets.append(
+                {
+                    "shard_id": shard_id,
+                    "ef": ef,
+                    "entry_points": entry_points,
+                }
+            )
+
+        if computed_entry_point_count != entry_point_count:
+            raise RuntimeError(
+                f"Orion route trace per_query[{expected_index}] entry_point_count "
+                "does not match ordered targets: "
+                f"{entry_point_count} != {computed_entry_point_count}"
+            )
+        if computed_ef_sum != ef_sum:
+            raise RuntimeError(
+                f"Orion route trace per_query[{expected_index}] ef_sum does not "
+                f"match ordered targets: {ef_sum} != {computed_ef_sum}"
+            )
+        normalized.append(
+            {
+                "query_index": query_index,
+                "visited_shards": visited_shards,
+                "entry_point_count": entry_point_count,
+                "ef_sum": ef_sum,
+                "targets": targets,
+            }
+        )
+        visited_values.append(visited_shards)
+        entry_point_values.append(entry_point_count)
+        ef_sum_values.append(ef_sum)
+
+    return {
+        "query_count": len(normalized),
+        "canonical_sha256": canonical_sha256(normalized),
+        "ordered_targets": True,
+        "fields": [
+            "query_index",
+            "visited_shards",
+            "entry_point_count",
+            "ef_sum",
+            "targets[].shard_id",
+            "targets[].ef",
+            "targets[].entry_points",
+        ],
+        "visited_shards_average": statistics.fmean(visited_values),
+        "entry_point_count_average": statistics.fmean(entry_point_values),
+        "ef_sum_average": statistics.fmean(ef_sum_values),
+    }
 
 
 def validate_orion_route_trace_output(
@@ -826,6 +1209,9 @@ def validate_orion_route_trace_output(
     visited_distribution = require_trace_object(
         aggregate.get("visited_shards"), "aggregate.visited_shards"
     )
+    entry_point_distribution = require_trace_object(
+        aggregate.get("entry_point_count"), "aggregate.entry_point_count"
+    )
     ef_distribution = require_trace_object(
         aggregate.get("ef_sum_per_query"), "aggregate.ef_sum_per_query"
     )
@@ -835,6 +1221,43 @@ def validate_orion_route_trace_output(
     ef_sum_per_query = require_trace_average(
         ef_distribution.get("average"), "aggregate.ef_sum_per_query.average"
     )
+    per_query_proof = validate_orion_per_query_route_trace(
+        root.get("per_query"),
+        expected_query_count=expected_query_count,
+        shard_count=actual_shard_count,
+    )
+    aggregate_checks = {
+        "visited_shards.average": (
+            visited_shards,
+            per_query_proof["visited_shards_average"],
+        ),
+        "entry_point_count.average": (
+            require_trace_average(
+                entry_point_distribution.get("average"),
+                "aggregate.entry_point_count.average",
+            ),
+            per_query_proof["entry_point_count_average"],
+        ),
+        "ef_sum_per_query.average": (
+            ef_sum_per_query,
+            per_query_proof["ef_sum_average"],
+        ),
+    }
+    aggregate_mismatches = [
+        f"{field}: aggregate={aggregate_value!r}, per_query={per_query_value!r}"
+        for field, (aggregate_value, per_query_value) in aggregate_checks.items()
+        if not math.isclose(
+            float(aggregate_value),
+            float(per_query_value),
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    ]
+    if aggregate_mismatches:
+        raise RuntimeError(
+            "Orion route trace aggregate/per_query mismatch: "
+            + "; ".join(aggregate_mismatches)
+        )
     if visited_shards > actual_shard_count:
         raise RuntimeError(
             "Orion route trace average visited shards exceeds artifact shard_count: "
@@ -850,6 +1273,8 @@ def validate_orion_route_trace_output(
         "artifact_layout_sha256": artifact_proof["layout_sha256"],
         "artifact_file_sha256": expected_file_sha256,
         "artifact_canonical_sha256": expected_canonical_sha256,
+        "per_query": per_query_proof,
+        "per_query_canonical_sha256": per_query_proof["canonical_sha256"],
     }
 
 
@@ -948,6 +1373,14 @@ def run_orion_route_trace(
             "stderr_log": str(stderr_path),
             "metrics": metrics,
             "aggregate": trace["aggregate"],
+            "per_query": {
+                "included": True,
+                "query_count": metrics["per_query"]["query_count"],
+                "canonical_sha256": metrics["per_query_canonical_sha256"],
+                "ordered_targets": metrics["per_query"]["ordered_targets"],
+                "fields": metrics["per_query"]["fields"],
+                "source": "orion_route_trace.json#per_query",
+            },
         }
     finally:
         if query_path is not None:
@@ -1011,12 +1444,63 @@ def validate_repository_binding(
     }
 
 
+def verify_repository_provenance_unchanged(
+    start_repository: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    start_commit = start_repository.get("commit")
+    if not start_commit:
+        raise RuntimeError("benchmark repository start commit provenance is unavailable")
+    start_tracked_dirty = start_repository.get(
+        "tracked_dirty", start_repository.get("dirty")
+    )
+    if start_tracked_dirty is not False:
+        raise RuntimeError(
+            "benchmark repository start proof contains tracked changes"
+        )
+
+    end_repository = experiment.repository_provenance(REPO_ROOT)
+    end_commit = end_repository.get("commit")
+    if not end_commit:
+        raise RuntimeError("benchmark repository end commit provenance is unavailable")
+    if end_commit != start_commit:
+        raise RuntimeError(
+            "benchmark repository HEAD changed during benchmark: "
+            f"start={start_commit}, end={end_commit}"
+        )
+    end_tracked_dirty = end_repository.get(
+        "tracked_dirty", end_repository.get("dirty")
+    )
+    if end_tracked_dirty is not False:
+        raise RuntimeError(
+            "benchmark repository acquired tracked changes during benchmark"
+        )
+
+    return end_repository, {
+        "start_commit": start_commit,
+        "end_commit": end_commit,
+        "head_unchanged": True,
+        "start_tracked_dirty": False,
+        "end_tracked_dirty": False,
+        "start_untracked_entry_count": start_repository.get(
+            "untracked_entry_count"
+        ),
+        "end_untracked_entry_count": end_repository.get("untracked_entry_count"),
+        "validation_scope": "start_and_end_snapshots",
+        "continuous_cleanliness_claimed": False,
+    }
+
+
 def run(args: argparse.Namespace) -> Path:
     validate_args(args)
     distance = experiment.vector_distance_config(args.vector_distance)
     topology = experiment.load_cluster_topology(args.topology)
-    cluster_preflight = experiment.validate_cluster_preflight(args.base_url, topology)
     deployment_manifest = experiment.load_optional_json(args.deployment_manifest)
+    deployment_evidence = build_deployment_evidence(
+        args.deployment_manifest,
+        deployment_manifest,
+    )
+    validate_deployment_topology_transport_binding(topology, deployment_evidence)
+    cluster_preflight = experiment.validate_cluster_preflight(args.base_url, topology)
     repository = experiment.repository_provenance(REPO_ROOT)
     repository_binding = validate_repository_binding(repository, deployment_manifest)
     dataset = load_dataset(
@@ -1128,23 +1612,6 @@ def run(args: argparse.Namespace) -> Path:
     route = route_reporting(args.method, shard_count, artifact, args.hnsw_ef)
     output_dir = create_output_directory(args.output_dir)
     route_trace_proof: dict[str, Any] | None = None
-    if args.orion_route_trace:
-        assert artifact_path is not None and policy is not None
-        route_trace_proof = run_orion_route_trace(
-            args,
-            artifact_path=artifact_path,
-            artifact_proof=artifact_proof,
-            policy=policy,
-            eval_queries=dataset["eval_queries"],
-            output_dir=output_dir,
-        )
-        route = route_reporting(
-            args.method,
-            shard_count,
-            artifact,
-            args.hnsw_ef,
-            route_trace_proof["metrics"],
-        )
 
     stability_rows: list[dict[str, Any]] = []
     per_query_rows: list[dict[str, Any]] = []
@@ -1184,6 +1651,33 @@ def run(args: argparse.Namespace) -> Path:
         for per_query in result.get("per_query_rows") or []:
             per_query_rows.append({"run": repeat, **per_query})
 
+    # The production-router trace is intentionally outside and after the timed
+    # benchmark.  Running it before the live requests would warm Orion-only
+    # code, artifact pages, allocator state, and CPU caches, creating an
+    # asymmetric precondition relative to HashAll and Simple KMeans.
+    if args.orion_route_trace:
+        assert artifact_path is not None and policy is not None
+        route_trace_proof = run_orion_route_trace(
+            args,
+            artifact_path=artifact_path,
+            artifact_proof=artifact_proof,
+            policy=policy,
+            eval_queries=dataset["eval_queries"],
+            output_dir=output_dir,
+        )
+        route = route_reporting(
+            args.method,
+            shard_count,
+            artifact,
+            args.hnsw_ef,
+            route_trace_proof["metrics"],
+        )
+        for row in stability_rows:
+            row["visited_shards"] = route.get("visited_shards")
+            row["visited_shards_source"] = route.get("visited_shards_source")
+            row["ef_sum_per_query"] = route.get("ef_sum_per_query")
+            row["ef_sum_source"] = route.get("ef_sum_source")
+
     recall_mean, recall_stdev = mean_and_stdev(stability_rows, "recall_at_k")
     qps_mean, qps_stdev = mean_and_stdev(stability_rows, "qps")
     latency_p50_mean, latency_p50_stdev = mean_and_stdev(
@@ -1218,6 +1712,15 @@ def run(args: argparse.Namespace) -> Path:
         "ef_sum_source": route.get("ef_sum_source"),
     }
 
+    verify_deployment_evidence_unchanged(deployment_evidence)
+    repository_end, repository_end_proof = verify_repository_provenance_unchanged(
+        repository
+    )
+    repository_binding = {
+        **repository_binding,
+        "end_proof": repository_end_proof,
+    }
+
     experiment.write_csv(output_dir / "stability_runs.csv", stability_rows)
     experiment.write_csv(output_dir / "final_metrics.csv", [final_metrics])
     if args.write_per_query_metrics:
@@ -1230,12 +1733,6 @@ def run(args: argparse.Namespace) -> Path:
         "train_shape": dataset["train_shape"],
         "test_shape": dataset["test_shape"],
         "neighbors_shape": dataset["neighbors_shape"],
-    }
-    deployment_evidence = {
-        "path": args.deployment_manifest,
-        "image": (deployment_manifest or {}).get("image"),
-        "repository": (deployment_manifest or {}).get("repository"),
-        "nodes": (deployment_manifest or {}).get("nodes"),
     }
     run_manifest = {
         "schema_version": 1,
@@ -1255,6 +1752,7 @@ def run(args: argparse.Namespace) -> Path:
         },
         "dataset": dataset_manifest,
         "repository": repository,
+        "repository_end": repository_end,
         "repository_binding": repository_binding,
         "deployment": deployment_evidence,
         "process_affinity": (
@@ -1298,6 +1796,14 @@ def run(args: argparse.Namespace) -> Path:
         "route_reporting": route,
         "artifact_validation": artifact_proof["status"],
         "placement_valid": placement_proof["valid"],
+        "deployment_transport": {
+            "deployment_manifest_sha256": deployment_evidence["manifest_sha256"],
+            "transport_identity_sha256": deployment_evidence[
+                "transport_identity_sha256"
+            ],
+            "orion_compact_wire": deployment_evidence["orion_compact_wire"],
+            "peer_premerge": deployment_evidence["peer_premerge"],
+        },
         "limitations": (
             [
                 "Orion visited-shard and EF-sum values are unknown without an exact route "

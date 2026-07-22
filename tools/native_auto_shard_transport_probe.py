@@ -139,6 +139,127 @@ def runtime_container_proof(
     return proof
 
 
+def compact_wire_runtime_evidence(
+    topology: dict[str, Any],
+    inspected: dict[str, dict[str, Any]],
+    *,
+    active_version: Any,
+    image_max_version: Any,
+) -> dict[str, Any]:
+    """Return fail-closed evidence for controller-only compact-wire metadata."""
+    active = cluster.normalize_orion_compact_wire_version(active_version)
+    manifest_image_max = cluster.normalize_orion_compact_wire_version(
+        image_max_version
+    )
+    if int(manifest_image_max) < int(active):
+        raise RuntimeError(
+            "deployment image does not support the active Orion compact-wire "
+            f"version: active={active}, image_max={manifest_image_max}"
+        )
+
+    controller_evidence: dict[str, Any] | None = None
+    worker_evidence: dict[str, dict[str, Any]] = {}
+    for node in cluster.all_nodes(topology):
+        role = str(node["role"])
+        value = inspected.get(role)
+        if not isinstance(value, dict):
+            raise RuntimeError(
+                f"missing inspected container evidence for compact-wire role {role}"
+            )
+        labels = (value.get("Config") or {}).get("Labels") or {}
+        environment_values = cluster.inspected_environment_values(
+            value, cluster.ORION_COMPACT_WIRE_VERSION_ENV
+        )
+        label_present = cluster.ORION_COMPACT_WIRE_VERSION_LABEL in labels
+        label_value = labels.get(cluster.ORION_COMPACT_WIRE_VERSION_LABEL)
+        resolved_version = cluster.inspected_orion_compact_wire_version(value, node)
+        runtime_image_max = cluster.inspected_orion_compact_wire_max_version(value)
+        capability_label_present = (
+            cluster.ORION_COMPACT_WIRE_MAX_VERSION_LABEL in labels
+        )
+        capability_label_value = labels.get(
+            cluster.ORION_COMPACT_WIRE_MAX_VERSION_LABEL
+        )
+        if runtime_image_max != manifest_image_max:
+            raise RuntimeError(
+                "container compact-wire image capability disagrees with the run "
+                f"manifest for {role}: container={runtime_image_max!r}, "
+                f"manifest={manifest_image_max!r}"
+            )
+
+        common = {
+            "role": role,
+            "resolved_version": resolved_version,
+            "image_max_version": runtime_image_max,
+            "image_capability_label": {
+                "name": cluster.ORION_COMPACT_WIRE_MAX_VERSION_LABEL,
+                "present": capability_label_present,
+                "value": capability_label_value,
+            },
+            "controller_only_environment": {
+                "name": cluster.ORION_COMPACT_WIRE_VERSION_ENV,
+                "values": environment_values,
+            },
+            "controller_only_container_label": {
+                "name": cluster.ORION_COMPACT_WIRE_VERSION_LABEL,
+                "present": label_present,
+                "value": label_value,
+            },
+        }
+        if role == "controller":
+            if controller_evidence is not None:
+                raise RuntimeError(
+                    "topology contains multiple controllers in compact-wire evidence"
+                )
+            expected_environment_values = ["2"] if active == "2" else []
+            expected_label_present = active == "2"
+            expected_label_value = "2" if active == "2" else None
+            if (
+                resolved_version != active
+                or environment_values != expected_environment_values
+                or label_present != expected_label_present
+                or label_value != expected_label_value
+            ):
+                raise RuntimeError(
+                    "controller compact-wire env/label identity disagrees with the "
+                    f"active version {active}"
+                )
+            controller_evidence = {
+                **common,
+                "representation": "explicit-v2" if active == "2" else "implicit-v1",
+                "matches_active_version": True,
+            }
+            continue
+
+        controller_only_metadata_absent = not environment_values and not label_present
+        if (
+            resolved_version != "not_applicable"
+            or not controller_only_metadata_absent
+        ):
+            raise RuntimeError(
+                "worker contains controller-only Orion compact-wire metadata: "
+                f"role={role}, env={environment_values}, "
+                f"label_present={label_present}, label_value={label_value!r}"
+            )
+        worker_evidence[role] = {
+            **common,
+            "controller_only_metadata_absent": True,
+        }
+
+    if controller_evidence is None:
+        raise RuntimeError("topology has no controller compact-wire evidence")
+    return {
+        "active_version": active,
+        "image_max_version": manifest_image_max,
+        "controller": controller_evidence,
+        "workers": worker_evidence,
+        "workers_controller_only_metadata_absent": all(
+            item["controller_only_metadata_absent"]
+            for item in worker_evidence.values()
+        ),
+    }
+
+
 def validate_live_cluster(
     topology: dict[str, Any], run_id: str, collection_name: str
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -168,13 +289,29 @@ def load_deployment_context(args: argparse.Namespace) -> dict[str, Any]:
             "--deployment-manifest must be the run-scoped manifest: "
             f"expected {expected_manifest_path}, got {manifest_path}"
         )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    image_tag, image_id, mode, shards_per_rpc, deployment_commit = (
+    # Freeze one byte snapshot, then derive both the parsed manifest and its
+    # identity from those exact bytes.  Separate read/parse and hash passes can
+    # otherwise observe different versions if another lifecycle command
+    # replaces the manifest between the two operations.
+    manifest_bytes = manifest_path.read_bytes()
+    try:
+        manifest = json.loads(manifest_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"deployment manifest is invalid JSON: {manifest_path}: {exc}"
+        ) from exc
+    if not isinstance(manifest, dict):
+        raise RuntimeError("deployment manifest root must be an object")
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    image_tag, image_id, mode, shards_per_rpc, wire_version, deployment_commit = (
         cluster.validate_peer_premerge_transition_manifest(
             topology,
             run_id,
             manifest,
         )
+    )
+    image_max_version = cluster.manifest_image_orion_compact_wire_max_version(
+        manifest
     )
 
     expected_base_url = cluster.http_url(topology["controller"], topology).rstrip("/")
@@ -198,7 +335,7 @@ def load_deployment_context(args: argparse.Namespace) -> dict[str, Any]:
         ssh_user=None,
         ssh_option=[],
     )
-    inspected, actual_mode, actual_shards_per_rpc = (
+    inspected, actual_mode, actual_shards_per_rpc, actual_wire_version = (
         cluster.inspect_peer_premerge_transition_runtime(
             topology,
             run_id,
@@ -206,6 +343,7 @@ def load_deployment_context(args: argparse.Namespace) -> dict[str, Any]:
             image_id,
             mode,
             shards_per_rpc,
+            wire_version,
             runtime_args,
         )
     )
@@ -215,13 +353,15 @@ def load_deployment_context(args: argparse.Namespace) -> dict[str, Any]:
         "topology": topology,
         "run_id": run_id,
         "manifest_path": str(manifest_path),
-        "manifest_sha256": sha256_file(manifest_path),
+        "manifest_sha256": manifest_sha256,
         "manifest": manifest,
         "deployment_commit": deployment_commit,
         "image_tag": image_tag,
         "image_id": image_id,
         "peer_premerge_mode": actual_mode,
         "peer_premerge_shards_per_rpc": actual_shards_per_rpc,
+        "orion_compact_wire_version": actual_wire_version,
+        "orion_compact_wire_image_max_version": image_max_version,
         "runtime_args": runtime_args,
         "containers": inspected,
         "cluster": snapshot,
@@ -268,21 +408,32 @@ def capture_unchanged_deployment(
     context: dict[str, Any], collection_name: str
 ) -> dict[str, Any]:
     topology = context["topology"]
-    inspected, mode, shards_per_rpc = cluster.inspect_peer_premerge_transition_runtime(
-        topology,
-        context["run_id"],
-        context["image_tag"],
-        context["image_id"],
-        context["peer_premerge_mode"],
-        context["peer_premerge_shards_per_rpc"],
-        context["runtime_args"],
+    inspected, mode, shards_per_rpc, wire_version = (
+        cluster.inspect_peer_premerge_transition_runtime(
+            topology,
+            context["run_id"],
+            context["image_tag"],
+            context["image_id"],
+            context["peer_premerge_mode"],
+            context["peer_premerge_shards_per_rpc"],
+            context["orion_compact_wire_version"],
+            context["runtime_args"],
+        )
     )
     snapshot, collections = validate_live_cluster(
         topology, context["run_id"], collection_name
     )
+    manifest_path = Path(context["manifest_path"])
+    if not manifest_path.is_file():
+        raise RuntimeError(
+            "deployment manifest disappeared during transport probe: "
+            f"{manifest_path}"
+        )
     return {
+        "manifest_sha256": sha256_file(manifest_path),
         "peer_premerge_mode": mode,
         "peer_premerge_shards_per_rpc": shards_per_rpc,
+        "orion_compact_wire_version": wire_version,
         "containers": inspected,
         "cluster": snapshot,
         "collections": collections,
@@ -292,6 +443,18 @@ def capture_unchanged_deployment(
 def assert_deployment_unchanged(
     before: dict[str, Any], after: dict[str, Any]
 ) -> None:
+    before_manifest_sha256 = str(before.get("manifest_sha256") or "")
+    after_manifest_sha256 = str(after.get("manifest_sha256") or "")
+    if (
+        not before_manifest_sha256
+        or not after_manifest_sha256
+        or before_manifest_sha256 != after_manifest_sha256
+    ):
+        raise RuntimeError(
+            "deployment manifest changed during transport probe: "
+            f"before={before_manifest_sha256 or '<missing>'}, "
+            f"after={after_manifest_sha256 or '<missing>'}"
+        )
     before_containers = runtime_container_proof(before["topology"], before["containers"])
     after_containers = runtime_container_proof(before["topology"], after["containers"])
     if before_containers != after_containers:
@@ -546,6 +709,22 @@ def run_probe(args: argparse.Namespace) -> Path:
     after_container_proof = runtime_container_proof(
         context["topology"], after_context["containers"]
     )
+    before_compact_wire = compact_wire_runtime_evidence(
+        context["topology"],
+        context["containers"],
+        active_version=context["orion_compact_wire_version"],
+        image_max_version=context["orion_compact_wire_image_max_version"],
+    )
+    after_compact_wire = compact_wire_runtime_evidence(
+        context["topology"],
+        after_context["containers"],
+        active_version=after_context["orion_compact_wire_version"],
+        image_max_version=context["orion_compact_wire_image_max_version"],
+    )
+    if before_compact_wire != after_compact_wire:
+        raise RuntimeError(
+            "Orion compact-wire runtime evidence changed during transport probe"
+        )
     before_placement = collection_placement_signature(context["collections"])
     after_placement = collection_placement_signature(after_context["collections"])
     payload = {
@@ -560,6 +739,8 @@ def run_probe(args: argparse.Namespace) -> Path:
             "topology_path": context["topology_path"],
             "manifest_path": context["manifest_path"],
             "manifest_sha256": context["manifest_sha256"],
+            "manifest_sha256_after": after_context["manifest_sha256"],
+            "manifest_unchanged": True,
             "commit": context["deployment_commit"],
             "image_tag": context["image_tag"],
             "image_id": context["image_id"],
@@ -567,6 +748,14 @@ def run_probe(args: argparse.Namespace) -> Path:
             "peer_premerge_shards_per_rpc": context[
                 "peer_premerge_shards_per_rpc"
             ],
+            "orion_compact_wire": {
+                "active_version": context["orion_compact_wire_version"],
+                "image_max_version": context[
+                    "orion_compact_wire_image_max_version"
+                ],
+                "runtime_before": before_compact_wire,
+                "runtime_after": after_compact_wire,
+            },
             "containers_before": before_container_proof,
             "containers_after": after_container_proof,
             "controller_peer_id_before": (context["cluster"].get("result") or {}).get(

@@ -306,6 +306,129 @@ def parse_csv_value(value: str | None) -> Any:
     return int(number) if number.is_integer() and all(c not in text.lower() for c in ".e") else number
 
 
+def validate_orion_route_trace_file(
+    case_dir: Path,
+    case_name: str,
+    manifest: dict[str, Any],
+    trace_proof: dict[str, Any],
+) -> dict[str, Any]:
+    trace_path_value = trace_proof.get("trace_path")
+    if not isinstance(trace_path_value, str) or not trace_path_value:
+        raise RuntimeError(
+            f"case {case_name} Orion route trace proof has no source file path"
+        )
+    trace_path = Path(trace_path_value).expanduser().resolve()
+    expected_trace_path = (case_dir / "orion_route_trace.json").resolve()
+    if trace_path != expected_trace_path:
+        raise RuntimeError(
+            f"case {case_name} Orion route trace path mismatch: "
+            f"manifest={trace_path}, expected={expected_trace_path}"
+        )
+    if not trace_path.is_file():
+        raise FileNotFoundError(
+            f"case {case_name} Orion route trace file is missing: {trace_path}"
+        )
+    trace_bytes = trace_path.read_bytes()
+    try:
+        trace = json.loads(trace_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"case {case_name} Orion route trace file is invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(trace, dict):
+        raise RuntimeError(
+            f"case {case_name} Orion route trace file root must be an object"
+        )
+
+    parameters = manifest.get("parameters") or {}
+    artifact = manifest.get("artifact") or {}
+    live_policy = manifest.get("live_policy") or {}
+    manifest_metrics = trace_proof.get("metrics") or {}
+    expected_query_count = parameters.get("eval_query_count")
+    vector_schema = artifact.get("vector_schema") or {}
+    expected_dimension = vector_schema.get("dimension")
+    expected_canonical_sha256 = live_policy.get("artifact_sha256")
+    expected_query_sha256 = manifest_metrics.get("query_sha256")
+    if (
+        isinstance(expected_query_count, bool)
+        or not isinstance(expected_query_count, int)
+        or expected_query_count <= 0
+    ):
+        raise RuntimeError(
+            f"case {case_name} has no valid eval query count for route trace validation"
+        )
+    if (
+        isinstance(expected_dimension, bool)
+        or not isinstance(expected_dimension, int)
+        or expected_dimension <= 0
+    ):
+        raise RuntimeError(
+            f"case {case_name} has no valid artifact dimension for route trace validation"
+        )
+    try:
+        validated_metrics = benchmark.validate_orion_route_trace_output(
+            trace,
+            artifact_proof=artifact,
+            expected_canonical_sha256=str(expected_canonical_sha256 or ""),
+            expected_query_count=expected_query_count,
+            expected_dimension=expected_dimension,
+            expected_query_sha256=str(expected_query_sha256 or ""),
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            f"case {case_name} Orion route trace file failed full provenance "
+            f"validation: {exc}"
+        ) from exc
+
+    manifest_per_query = trace_proof.get("per_query") or {}
+    if not isinstance(manifest_metrics, dict) or manifest_metrics != validated_metrics:
+        raise RuntimeError(
+            f"case {case_name} Orion route-trace file metrics do not match "
+            "the run manifest proof"
+        )
+    validated_per_query = validated_metrics["per_query"]
+    expected_per_query_proof = {
+        "included": True,
+        "query_count": validated_per_query["query_count"],
+        "canonical_sha256": validated_metrics["per_query_canonical_sha256"],
+        "ordered_targets": validated_per_query["ordered_targets"],
+        "fields": validated_per_query["fields"],
+        "source": "orion_route_trace.json#per_query",
+    }
+    if manifest_per_query != expected_per_query_proof:
+        raise RuntimeError(
+            f"case {case_name} Orion route-trace per-query proof does not match "
+            "the revalidated source file"
+        )
+
+    file_aggregate = trace.get("aggregate")
+    manifest_aggregate = trace_proof.get("aggregate")
+    if not isinstance(file_aggregate, dict):
+        raise RuntimeError(
+            f"case {case_name} Orion route trace file aggregate must be an object"
+        )
+    if not isinstance(manifest_aggregate, dict):
+        raise RuntimeError(
+            f"case {case_name} Orion route trace proof aggregate must be an object"
+        )
+    if file_aggregate != manifest_aggregate:
+        raise RuntimeError(
+            f"case {case_name} Orion route-trace file aggregate does not match "
+            "the run manifest proof"
+        )
+
+    return {
+        "path": str(trace_path),
+        "file_sha256": hashlib.sha256(trace_bytes).hexdigest(),
+        "per_query_canonical_sha256": validated_metrics[
+            "per_query_canonical_sha256"
+        ],
+        "aggregate_sha256": canonical_sha256(file_aggregate),
+        "visited_shards": validated_metrics["visited_shards"],
+        "ef_sum_per_query": validated_metrics["ef_sum_per_query"],
+    }
+
+
 def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
     case_dir = matrix_dir / "cases" / str(case["name"])
     manifest_path = case_dir / "run_manifest.json"
@@ -335,11 +458,46 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
             f"case {case['name']} method mismatch: config={case['method']}, "
             f"metrics={metrics.get('method')}"
         )
+    route_trace_file_proof: dict[str, Any] | None = None
     if case.get("orion_route_trace") is True:
         trace = manifest.get("orion_route_trace")
         if not isinstance(trace, dict) or trace.get("status") != "verified":
             raise RuntimeError(
                 f"case {case['name']} requires a verified Orion route trace manifest"
+            )
+        per_query_trace = trace.get("per_query")
+        if (
+            not isinstance(per_query_trace, dict)
+            or per_query_trace.get("included") is not True
+            or per_query_trace.get("ordered_targets") is not True
+            or isinstance(per_query_trace.get("query_count"), bool)
+            or not isinstance(per_query_trace.get("query_count"), int)
+            or per_query_trace.get("query_count") <= 0
+            or not isinstance(per_query_trace.get("canonical_sha256"), str)
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", per_query_trace["canonical_sha256"]
+            )
+        ):
+            raise RuntimeError(
+                f"case {case['name']} requires a verified per-query Orion route trace"
+            )
+        expected_trace_query_count = (manifest.get("parameters") or {}).get(
+            "eval_query_count"
+        )
+        if per_query_trace["query_count"] != expected_trace_query_count:
+            raise RuntimeError(
+                f"case {case['name']} per-query Orion route-trace count mismatch: "
+                f"trace={per_query_trace['query_count']}, "
+                f"benchmark={expected_trace_query_count!r}"
+            )
+        trace_metrics = trace.get("metrics") or {}
+        if (
+            not isinstance(trace_metrics, dict)
+            or trace_metrics.get("per_query_canonical_sha256")
+            != per_query_trace["canonical_sha256"]
+        ):
+            raise RuntimeError(
+                f"case {case['name']} per-query Orion route-trace fingerprint mismatch"
             )
         expected_source = benchmark.ORION_ROUTE_TRACE_SOURCE
         if (
@@ -351,6 +509,23 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError(
                 f"case {case['name']} is missing exact Orion route-trace metrics"
             )
+        route_trace_file_proof = validate_orion_route_trace_file(
+            case_dir,
+            str(case["name"]),
+            manifest,
+            trace,
+        )
+        for field in ("visited_shards", "ef_sum_per_query"):
+            if not math.isclose(
+                float(metrics[field]),
+                float(route_trace_file_proof[field]),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
+                raise RuntimeError(
+                    f"case {case['name']} final metric {field} does not match "
+                    "the revalidated Orion route trace file"
+                )
     point = {
         "case_name": case["name"],
         "method": case["method"],
@@ -358,6 +533,23 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
         "artifact": case.get("artifact"),
         "hnsw_ef": case.get("hnsw_ef"),
         "orion_route_trace": case.get("orion_route_trace", False),
+        "orion_route_trace_per_query_sha256": (
+            ((manifest.get("orion_route_trace") or {}).get("per_query") or {}).get(
+                "canonical_sha256"
+            )
+            if case.get("orion_route_trace") is True
+            else None
+        ),
+        "orion_route_trace_file_sha256": (
+            route_trace_file_proof["file_sha256"]
+            if route_trace_file_proof is not None
+            else None
+        ),
+        "orion_route_trace_aggregate_sha256": (
+            route_trace_file_proof["aggregate_sha256"]
+            if route_trace_file_proof is not None
+            else None
+        ),
         **metrics,
         "raw_output_dir": str(case_dir),
         "run_manifest_path": str(manifest_path),
@@ -387,10 +579,154 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
     readiness = manifest.get("indexing_readiness")
     placement_proof = manifest.get("placement_proof")
     image_identity = image.get("id") or image.get("digest")
+    deployment_manifest_sha256 = deployment.get("manifest_sha256")
+    transport_identity = deployment.get("transport_identity")
+    transport_identity_sha256 = deployment.get("transport_identity_sha256")
     if not dataset.get("sha256"):
         raise RuntimeError("case manifest is missing dataset SHA-256 provenance")
     if not image_identity:
         raise RuntimeError("case manifest is missing deployment image identity")
+    if not isinstance(deployment_manifest_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", deployment_manifest_sha256
+    ):
+        raise RuntimeError(
+            "case manifest is missing deployment manifest SHA-256 provenance"
+        )
+    if not isinstance(transport_identity, dict):
+        raise RuntimeError(
+            "case manifest is missing deployment transport identity provenance"
+        )
+    if not isinstance(transport_identity_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", transport_identity_sha256
+    ):
+        raise RuntimeError(
+            "case manifest is missing deployment transport identity SHA-256"
+        )
+    actual_transport_identity_sha256 = canonical_sha256(transport_identity)
+    if actual_transport_identity_sha256 != transport_identity_sha256:
+        raise RuntimeError(
+            "case manifest deployment transport identity SHA-256 mismatch: "
+            f"declared={transport_identity_sha256}, "
+            f"actual={actual_transport_identity_sha256}"
+        )
+
+    transport_image = transport_identity.get("image") or {}
+    if not isinstance(transport_image, dict):
+        raise RuntimeError("deployment transport image identity must be an object")
+    if transport_image.get("id") != image_identity:
+        raise RuntimeError(
+            "deployment transport/image identity mismatch: "
+            f"transport={transport_image.get('id')!r}, deployment={image_identity!r}"
+        )
+    raw_capabilities = image.get("capabilities") or {}
+    if not isinstance(raw_capabilities, dict):
+        raise RuntimeError("deployment image capabilities must be an object")
+    raw_image_wire_max_version = str(
+        raw_capabilities.get("orion_compact_wire_max_version", "1")
+    )
+    for field, raw_value in (
+        ("tag", image.get("tag")),
+        ("source_fingerprint", image.get("source_fingerprint")),
+        ("tar_sha256", image.get("tar_sha256")),
+        ("orion_compact_wire_max_version", raw_image_wire_max_version),
+    ):
+        if transport_image.get(field) != raw_value:
+            raise RuntimeError(
+                "deployment transport/image provenance mismatch for "
+                f"{field}: transport={transport_image.get(field)!r}, "
+                f"deployment={raw_value!r}"
+            )
+    for field in ("source_fingerprint", "tar_sha256"):
+        value = transport_image.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise RuntimeError(
+                f"deployment image is missing valid {field} provenance"
+            )
+    wire = transport_identity.get("orion_compact_wire")
+    if not isinstance(wire, dict):
+        raise RuntimeError(
+            "deployment transport identity is missing Orion compact-wire provenance"
+        )
+    wire_version = str(wire.get("current_version") or "")
+    if wire_version not in {"1", "2"}:
+        raise RuntimeError(
+            "deployment transport identity has no definitive compact-wire version: "
+            f"{wire.get('current_version')!r}"
+        )
+    legacy_implicit_v1 = wire.get("legacy_implicit_v1") is True
+    if legacy_implicit_v1:
+        if wire_version != "1":
+            raise RuntimeError(
+                "legacy implicit compact-wire provenance can only identify wire v1"
+            )
+    else:
+        if str(wire.get("requested_version") or "") != wire_version:
+            raise RuntimeError(
+                "deployment compact-wire requested/current versions do not match"
+            )
+        if wire.get("matches_requested") is not True:
+            raise RuntimeError(
+                "deployment compact-wire identity is not verified against the request"
+            )
+    raw_wire = deployment.get("orion_compact_wire")
+    if legacy_implicit_v1:
+        if raw_wire is not None:
+            raise RuntimeError(
+                "legacy implicit compact-wire identity conflicts with explicit deployment data"
+            )
+    elif raw_wire != wire:
+        raise RuntimeError(
+            "deployment compact-wire provenance does not match transport identity"
+        )
+
+    peer_premerge = transport_identity.get("peer_premerge")
+    if not isinstance(peer_premerge, dict):
+        raise RuntimeError(
+            "deployment transport identity is missing peer-premerge provenance"
+        )
+    if deployment.get("peer_premerge") != peer_premerge:
+        raise RuntimeError(
+            "deployment peer-premerge provenance does not match transport identity"
+        )
+    peer_premerge_mode = str(peer_premerge.get("current_mode") or "")
+    if peer_premerge_mode not in {"enabled", "disabled"}:
+        raise RuntimeError(
+            "deployment peer-premerge identity has no definitive current mode"
+        )
+    peer_premerge_shards_per_rpc = str(
+        peer_premerge.get("current_shards_per_rpc") or ""
+    )
+    if not peer_premerge_shards_per_rpc or (
+        peer_premerge_shards_per_rpc != "all"
+        and (
+            not peer_premerge_shards_per_rpc.isdigit()
+            or int(peer_premerge_shards_per_rpc) <= 0
+        )
+    ):
+        raise RuntimeError(
+            "deployment peer-premerge identity has invalid shards-per-RPC: "
+            f"{peer_premerge.get('current_shards_per_rpc')!r}"
+        )
+    if (
+        peer_premerge.get("matches_requested") is not True
+        or str(peer_premerge.get("requested_mode") or "") != peer_premerge_mode
+        or str(peer_premerge.get("requested_shards_per_rpc") or "")
+        != peer_premerge_shards_per_rpc
+    ):
+        raise RuntimeError(
+            "deployment peer-premerge identity is not verified against the request"
+        )
+
+    image_wire_max_version = str(
+        transport_image.get("orion_compact_wire_max_version") or ""
+    )
+    if image_wire_max_version not in {"1", "2"} or int(
+        image_wire_max_version
+    ) < int(wire_version):
+        raise RuntimeError(
+            "deployment image does not prove the active compact-wire capability: "
+            f"wire={wire_version}, image_max={image_wire_max_version!r}"
+        )
     if not repository.get("commit"):
         raise RuntimeError("case manifest is missing deployment commit provenance")
     if not benchmark_repository.get("commit"):
@@ -577,6 +913,16 @@ def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
         },
         "image_identity": image_identity,
         "image_tag": image.get("tag"),
+        "image_source_fingerprint": image.get("source_fingerprint"),
+        "image_tar_sha256": image.get("tar_sha256"),
+        "image_compact_wire_max_version": image_wire_max_version,
+        "deployment_manifest_sha256": deployment_manifest_sha256,
+        "transport_identity_sha256": transport_identity_sha256,
+        "orion_compact_wire_version": wire_version,
+        "orion_compact_wire": wire,
+        "peer_premerge_mode": peer_premerge_mode,
+        "peer_premerge_shards_per_rpc": peer_premerge_shards_per_rpc,
+        "peer_premerge": peer_premerge,
         "deployment_commit": deployment_commit,
         "benchmark_commit": benchmark_commit,
         "deployment_tracked_dirty": deployment_tracked_dirty,
