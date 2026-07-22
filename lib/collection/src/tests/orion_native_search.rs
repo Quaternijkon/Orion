@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ahash::AHashMap;
 use common::budget::ResourceBudget;
@@ -211,6 +212,39 @@ fn compact_lower_request(vector: Vec<f32>, entry_point: u64) -> shard::search::C
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn prepared_local_read_ticket_retains_recovery_and_local_guards() {
+    let (collection, _collection_dir, _snapshots_path) = fixture().await;
+    let shard_holder = collection.shards_holder.read().await;
+    let shard = shard_holder.get_shard(0).unwrap();
+
+    assert!(shard.local_write_lock_available_for_test());
+    let ticket = shard.prepare_local_read_ticket().await.unwrap();
+    fn assert_send<T: Send>(_: &T) {}
+    assert_send(&ticket);
+
+    assert!(!shard.local_write_lock_available_for_test());
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            shard.partial_snapshot_meta.take_search_write_lock(),
+        )
+        .await
+        .is_err(),
+        "partial snapshot recovery must wait while a prepared read ticket exists",
+    );
+
+    drop(ticket);
+    assert!(shard.local_write_lock_available_for_test());
+    let recovery_guard = tokio::time::timeout(
+        Duration::from_secs(1),
+        shard.partial_snapshot_meta.take_search_write_lock(),
+    )
+    .await
+    .expect("dropping the ticket must release its recovery read guard");
+    drop(recovery_guard);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
     let (collection, _collection_dir, _snapshots_path) = fixture().await;
     let shard_requests = vec![
@@ -250,8 +284,9 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
         );
     }
 
+    let fast_path_hw = HwMeasurementAcc::new();
     let actual = collection
-        .core_search_batch_explicit_local_shards(&shard_requests, None, HwMeasurementAcc::new())
+        .core_search_batch_explicit_local_shards(&shard_requests, None, fast_path_hw.clone())
         .await
         .unwrap()
         .expect("compact lower requests must use the explicit-shard fast path");
@@ -265,6 +300,29 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
     assert_eq!(actual[1].0, 0);
     assert_eq!(actual[0].1[0][0].id, 200_u64.into());
     assert_eq!(actual[1].1[0][0].id, 100_u64.into());
+    assert!(
+        fast_path_hw.get_cpu() > 0,
+        "prepared local reads must retain hardware accounting",
+    );
+
+    let timed_out_hw = HwMeasurementAcc::new();
+    let timed_out = collection
+        .core_search_batch_explicit_local_shards(
+            &shard_requests,
+            Some(Duration::ZERO),
+            timed_out_hw.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        timed_out,
+        crate::operations::types::CollectionError::Timeout { .. }
+    ));
+    assert_eq!(
+        timed_out_hw.get_cpu(),
+        0,
+        "an exhausted preflight timeout must fail before shard search",
+    );
 
     let mut metadata_request = compact_lower_request(vec![1.0, 0.0], 100);
     metadata_request.with_payload = Some(WithPayloadInterface::Bool(true));
@@ -282,6 +340,16 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
         .await
         .unwrap();
     assert!(fallback.is_none());
+    {
+        let shard_holder = collection.shards_holder.read().await;
+        assert!(
+            shard_holder
+                .get_shard(0)
+                .unwrap()
+                .local_write_lock_available_for_test(),
+            "ineligible fallback must release its prepared local-read ticket",
+        );
+    }
 
     let missing_target = collection
         .core_search_batch_explicit_local_shards(
@@ -309,6 +377,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
         crate::operations::types::CollectionError::NotFound { .. }
     ));
 
+    let missing_target_hw = HwMeasurementAcc::new();
     let eligible_missing_target = collection
         .core_search_batch_explicit_local_shards(
             &[
@@ -326,7 +395,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
                 ),
             ],
             None,
-            HwMeasurementAcc::new(),
+            missing_target_hw.clone(),
         )
         .await
         .unwrap_err();
@@ -334,6 +403,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
         eligible_missing_target,
         crate::operations::types::CollectionError::NotFound { .. }
     ));
+    assert_eq!(missing_target_hw.get_cpu(), 0);
 
     let mut enormous_limit = compact_lower_request(vec![1.0, 0.0], 100);
     enormous_limit.limit = usize::MAX;
@@ -390,6 +460,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
         .partial_snapshot_meta
         .take_search_write_lock()
         .await;
+    let recovering_target_hw = HwMeasurementAcc::new();
     let recovering_target = collection
         .core_search_batch_explicit_local_shards(
             &[
@@ -407,7 +478,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
                 ),
             ],
             None,
-            HwMeasurementAcc::new(),
+            recovering_target_hw.clone(),
         )
         .await
         .unwrap_err();
@@ -416,6 +487,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
             .to_string()
             .contains("partial snapshot recovery is in progress")
     );
+    assert_eq!(recovering_target_hw.get_cpu(), 0);
     drop(recovery_guard);
     drop(recovering_shard_holder);
 
@@ -428,6 +500,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
             .await
             .unwrap();
     }
+    let non_local_target_hw = HwMeasurementAcc::new();
     let non_local_target = collection
         .core_search_batch_explicit_local_shards(
             &[
@@ -445,7 +518,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
                 ),
             ],
             None,
-            HwMeasurementAcc::new(),
+            non_local_target_hw.clone(),
         )
         .await
         .unwrap_err();
@@ -454,6 +527,7 @@ async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
             .to_string()
             .contains("Local shard 1 not found")
     );
+    assert_eq!(non_local_target_hw.get_cpu(), 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]

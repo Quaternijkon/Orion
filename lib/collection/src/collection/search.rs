@@ -924,16 +924,14 @@ impl Collection {
     /// Execute compact worker requests for several explicit numeric shards with one collection
     /// preflight.
     ///
-    /// This is deliberately not a new search implementation. After validating the currently
-    /// observed state of every target before scheduling searches, each batch still enters the ordinary
-    /// [`crate::shards::replica_set::ShardReplicaSet::core_search`] path with
-    /// `read_consistency = None` and `local_only = true`. That preserves Qdrant's local replica,
-    /// proxy, partial-snapshot, timeout, and segment-search behavior while avoiding repeated
-    /// collection routing and one-shard merge setup for every shard in the same compact RPC.
+    /// This is deliberately not a new search implementation. Every target first obtains a prepared
+    /// local-read ticket that retains the replica set's partial-snapshot and local-shard read guards.
+    /// Only after all tickets succeed are searches scheduled, and each ticket still dispatches
+    /// through the abstract `Shard`'s `ShardOperation::core_search`. That preserves Local/Proxy
+    /// behavior, rate limiting, timeout, hardware accounting, and segment-search semantics while
+    /// avoiding a second guard acquisition and the generic local-only resolve wrapper.
     ///
-    /// The replica-set read path rechecks local/recovery state when each search starts, so a
-    /// concurrent transition after preflight remains fail-closed rather than becoming a remote
-    /// fallback. After a successful all-target topology preflight, `Ok(None)` means the request shape is
+    /// After a successful all-target topology preflight, `Ok(None)` means the request shape is
     /// outside the strict fast-path contract and must be executed through
     /// [`Collection::core_search_batch`]. Missing or non-local targets are topology errors and
     /// fail closed before any shard search begins, including on the fallback path.
@@ -966,18 +964,31 @@ impl Collection {
                 })?;
         }
 
+        // Acquire cross-shard read tickets in one canonical order. Tokio's fair RwLock gives a
+        // queued writer priority over later readers, so two callers that retained tickets in
+        // opposite shard orders could otherwise deadlock behind writers for the next shard.
+        // Restore the caller's order before scheduling searches so result ordering is unchanged.
+        let mut ordered_shard_requests = shard_requests.iter().enumerate().collect::<Vec<_>>();
+        ordered_shard_requests.sort_unstable_by_key(|(_, (shard_id, _))| *shard_id);
+
         let shard_holder = self.shards_holder.read().await;
         let mut prepared = Vec::with_capacity(shard_requests.len());
-        for (shard_id, request) in shard_requests {
+        for (original_index, (shard_id, request)) in ordered_shard_requests {
             let shard = shard_holder
                 .get_shard(*shard_id)
                 .ok_or_else(|| shard_not_found_error(*shard_id))?;
-            shard.validate_local_read_target().await?;
+            let local_read_ticket = shard.prepare_local_read_ticket().await?;
             let shard_key = shard_holder
                 .get_shard_id_to_key_mapping()
                 .get(shard_id)
                 .cloned();
-            prepared.push((*shard_id, shard, shard_key, Arc::clone(request)));
+            prepared.push((
+                original_index,
+                *shard_id,
+                local_read_ticket,
+                shard_key,
+                Arc::clone(request),
+            ));
         }
 
         if shard_requests
@@ -992,20 +1003,14 @@ impl Collection {
             preflight_started.elapsed(),
             "compact explicit local-shard preflight",
         )?;
-        let shard_searches = prepared
-            .into_iter()
-            .map(|(shard_id, shard, shard_key, request)| {
+        prepared.sort_unstable_by_key(|(original_index, ..)| *original_index);
+        let shard_searches = prepared.into_iter().map(
+            |(_original_index, shard_id, local_read_ticket, shard_key, request)| {
                 let hw_measurement_acc = hw_measurement_acc.clone();
                 async move {
                     let instant = Instant::now();
-                    let mut rows = shard
-                        .core_search(
-                            Arc::clone(&request),
-                            None,
-                            true,
-                            shard_timeout,
-                            hw_measurement_acc,
-                        )
+                    let mut rows = local_read_ticket
+                        .core_search(Arc::clone(&request), shard_timeout, hw_measurement_acc)
                         .await?;
                     if rows.len() != request.searches.len() {
                         return Err(CollectionError::service_error(format!(
@@ -1031,7 +1036,8 @@ impl Collection {
                     self.post_process_if_slow_request(instant.elapsed(), filters_refs);
                     Ok::<_, CollectionError>((shard_id, rows))
                 }
-            });
+            },
+        );
 
         future::try_join_all(shard_searches).await.map(Some)
     }

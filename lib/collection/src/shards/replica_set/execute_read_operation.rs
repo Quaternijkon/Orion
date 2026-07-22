@@ -1,30 +1,71 @@
 use std::cmp;
 use std::fmt::Write as _;
 use std::ops::Deref as _;
+use std::sync::Arc;
+use std::time::Duration;
 
+use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::future::{self, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt as _, StreamExt as _};
 use rand::seq::SliceRandom as _;
+use segment::types::ScoredPoint;
+use shard::search::CoreSearchRequestBatch;
+use tokio::runtime::Handle;
+use tokio::sync::RwLockReadGuard;
 
 use super::ShardReplicaSet;
 use crate::operations::consistency_params::{ReadConsistency, ReadConsistencyType};
 use crate::operations::types::{CollectionError, CollectionResult};
 use crate::shards::remote_shard::RemoteShard;
 use crate::shards::resolve::{Resolve, ResolveCondition};
+use crate::shards::shard::Shard;
 use crate::shards::shard_trait::ShardOperation;
 
+/// A one-shot local read capability prepared by [`ShardReplicaSet`].
+///
+/// Both guards are retained for the complete operation, so a local shard cannot be removed or
+/// replaced and partial snapshot recovery cannot begin between compact-batch preflight and the
+/// lower search. The operation still goes through the abstract [`Shard`] and
+/// [`ShardOperation::core_search`], preserving Local/Proxy dispatch, rate limiting, timeout, and
+/// hardware accounting.
+pub(crate) struct PreparedLocalReadTicket<'a> {
+    _partial_snapshot_search_lock: RwLockReadGuard<'a, ()>,
+    local: RwLockReadGuard<'a, Option<Shard>>,
+    search_runtime: &'a Handle,
+}
+
+impl PreparedLocalReadTicket<'_> {
+    pub(crate) async fn core_search(
+        self,
+        request: Arc<CoreSearchRequestBatch>,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let Some(local) = self.local.deref().as_ref() else {
+            return Err(CollectionError::service_error(
+                "Prepared local read ticket lost its local shard",
+            ));
+        };
+        local
+            .get()
+            .core_search(request, self.search_runtime, timeout, hw_measurement_acc)
+            .await
+    }
+}
+
 impl ShardReplicaSet {
-    /// Validate that this replica set can enter the same local-only read path used by
-    /// [`Self::execute_local_read_operation`].
+    /// Prepare the same guarded local-only read target used by
+    /// [`Self::execute_local_read_operation`] without starting an operation.
     ///
-    /// Compact peer batches use this before starting any shard future so a target that is already
-    /// missing or recovering is rejected before lower searches are scheduled. The real read path
-    /// acquires both guards again, so a concurrent topology or recovery transition after this
-    /// preflight still fails closed there. The checks intentionally match the real execution path;
-    /// proxy shards remain valid local targets.
-    pub(crate) async fn validate_local_read_target(&self) -> CollectionResult<()> {
-        let _partial_snapshot_search_lock =
+    /// Compact peer batches prepare every target before starting any shard future. A target that is
+    /// missing or recovering therefore fails the whole batch before lower searches are scheduled.
+    /// Keeping both guards in the returned ticket closes the former validation-to-execution race;
+    /// proxy shards remain valid local targets because the ticket retains the abstract [`Shard`].
+    pub(crate) async fn prepare_local_read_ticket(
+        &self,
+    ) -> CollectionResult<PreparedLocalReadTicket<'_>> {
+        let partial_snapshot_search_lock =
             self.partial_snapshot_meta.try_take_search_read_lock()?;
         let local = self.local.read().await;
         if local.is_none() {
@@ -33,7 +74,16 @@ impl ShardReplicaSet {
                 self.shard_id
             )));
         }
-        Ok(())
+        Ok(PreparedLocalReadTicket {
+            _partial_snapshot_search_lock: partial_snapshot_search_lock,
+            local,
+            search_runtime: &self.search_runtime,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn local_write_lock_available_for_test(&self) -> bool {
+        self.local.try_write().is_ok()
     }
 
     /// Execute read op. on replica set:
