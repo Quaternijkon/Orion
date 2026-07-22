@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
+use ahash::AHashSet;
 use api::conversions::json::json_path_from_proto;
 use api::grpc::qdrant::{
     BatchResult, CoreSearchByShardCompactEntry, CoreSearchByShardEntry,
@@ -268,6 +269,88 @@ pub(crate) struct CoreSearchByShardRow {
 }
 
 type CoreSearchByShardMergeSpec = (usize, usize, usize, Option<u64>);
+type CoreSearchByQueryMergeSpec = (usize, usize, Option<u64>);
+
+struct CoreSearchByShardPremerge {
+    candidate_groups_by_query: Vec<Vec<Vec<ScoredPoint>>>,
+    merge_specs: Vec<Option<CoreSearchByQueryMergeSpec>>,
+}
+
+impl CoreSearchByShardPremerge {
+    fn new(query_count: usize) -> Self {
+        Self {
+            candidate_groups_by_query: vec![Vec::new(); query_count],
+            merge_specs: vec![None; query_count],
+        }
+    }
+
+    fn push_row(
+        &mut self,
+        query_index: usize,
+        limit: usize,
+        offset: usize,
+        source_id_dedup_block_size: Option<u64>,
+        points: Vec<ScoredPoint>,
+    ) -> Result<(), Status> {
+        let Some(candidate_groups) = self.candidate_groups_by_query.get_mut(query_index) else {
+            return Err(Status::internal(format!(
+                "peer-local shard row query_index {query_index} is outside query_count {}",
+                self.candidate_groups_by_query.len(),
+            )));
+        };
+
+        let merge_spec = (limit, offset, source_id_dedup_block_size);
+        let merge_spec_slot = self
+            .merge_specs
+            .get_mut(query_index)
+            .expect("candidate groups and merge specs have the same query count");
+        if let Some(existing_spec) = *merge_spec_slot {
+            if existing_spec != merge_spec {
+                return Err(Status::internal(format!(
+                    "peer-local shard rows disagree on merge metadata for query_index {query_index}",
+                )));
+            }
+        } else {
+            *merge_spec_slot = Some(merge_spec);
+        }
+
+        candidate_groups.push(points);
+        Ok(())
+    }
+
+    fn finish(self) -> Result<Vec<Vec<ScoredPoint>>, Status> {
+        let mut seen_ids = AHashSet::new();
+        let mut premerged_rows = Vec::with_capacity(self.candidate_groups_by_query.len());
+        for (query_index, (candidate_groups, merge_spec)) in self
+            .candidate_groups_by_query
+            .into_iter()
+            .zip(self.merge_specs)
+            .enumerate()
+        {
+            let (limit, offset, source_id_dedup_block_size) = merge_spec.ok_or_else(|| {
+                Status::internal(format!(
+                    "peer-local shard response has no rows for query_index {query_index}"
+                ))
+            })?;
+            let peer_limit = limit.checked_add(offset).ok_or_else(|| {
+                Status::invalid_argument(format!(
+                    "peer-local merge limit + offset overflows usize for query_index {query_index}"
+                ))
+            })?;
+
+            premerged_rows.push(
+                crate::common::query::merge_shard_major_candidates_with_seen_ids(
+                    candidate_groups,
+                    peer_limit,
+                    0,
+                    source_id_dedup_block_size,
+                    &mut seen_ids,
+                ),
+            );
+        }
+        Ok(premerged_rows)
+    }
+}
 
 fn attach_core_search_by_shard_results(
     shard_id: ShardId,
@@ -303,56 +386,57 @@ pub(crate) fn premerge_core_search_by_shard_rows(
     rows: Vec<CoreSearchByShardRow>,
     query_count: usize,
 ) -> Result<Vec<Vec<ScoredPoint>>, Status> {
-    let mut candidate_groups_by_query = vec![Vec::new(); query_count];
-    let mut merge_specs = vec![None; query_count];
+    let mut premerge = CoreSearchByShardPremerge::new(query_count);
 
     for row in rows {
-        if row.query_index >= query_count {
+        premerge.push_row(
+            row.query_index,
+            row.limit,
+            row.offset,
+            row.source_id_dedup_block_size,
+            row.points,
+        )?;
+    }
+
+    premerge.finish()
+}
+
+fn premerge_core_search_by_shard_results(
+    shard_results: Vec<(
+        ShardId,
+        Vec<CoreSearchByShardMergeSpec>,
+        Vec<Vec<ScoredPoint>>,
+    )>,
+    query_count: usize,
+) -> Result<Vec<Vec<ScoredPoint>>, Status> {
+    let mut premerge = CoreSearchByShardPremerge::new(query_count);
+
+    // `try_join_all` preserves the input future order. Consume shard results and their rows in that
+    // exact encounter order so otherwise identical candidates retain the same final stable tie as
+    // the previous attach-then-regroup implementation.
+    for (shard_id, original_rows, rows) in shard_results {
+        if rows.len() != original_rows.len() {
             return Err(Status::internal(format!(
-                "peer-local shard row query_index {} is outside query_count {query_count}",
-                row.query_index,
+                "Shard {shard_id} returned {} rows for {} peer-batched search slots",
+                rows.len(),
+                original_rows.len(),
             )));
         }
 
-        let merge_spec = (row.limit, row.offset, row.source_id_dedup_block_size);
-        if let Some(existing_spec) = merge_specs[row.query_index] {
-            if existing_spec != merge_spec {
-                return Err(Status::internal(format!(
-                    "peer-local shard rows disagree on merge metadata for query_index {}",
-                    row.query_index,
-                )));
-            }
-        } else {
-            merge_specs[row.query_index] = Some(merge_spec);
+        for ((query_index, limit, offset, source_id_dedup_block_size), points) in
+            original_rows.into_iter().zip(rows)
+        {
+            premerge.push_row(
+                query_index,
+                limit,
+                offset,
+                source_id_dedup_block_size,
+                points,
+            )?;
         }
-
-        candidate_groups_by_query[row.query_index].push(row.points);
     }
 
-    candidate_groups_by_query
-        .into_iter()
-        .enumerate()
-        .map(|(query_index, candidate_groups)| {
-            let (limit, offset, source_id_dedup_block_size) =
-                merge_specs[query_index].ok_or_else(|| {
-                    Status::internal(format!(
-                        "peer-local shard response has no rows for query_index {query_index}"
-                    ))
-                })?;
-            let peer_limit = limit.checked_add(offset).ok_or_else(|| {
-                Status::invalid_argument(format!(
-                    "peer-local merge limit + offset overflows usize for query_index {query_index}"
-                ))
-            })?;
-
-            Ok(crate::common::query::merge_shard_major_candidates(
-                candidate_groups,
-                peer_limit,
-                0,
-                source_id_dedup_block_size,
-            ))
-        })
-        .collect()
+    premerge.finish()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -784,16 +868,7 @@ pub async fn core_search_batch_by_shard_compact(
     });
 
     let shard_results = future::try_join_all(shard_searches).await?;
-    let mut shard_rows = Vec::new();
-    for (shard_id, original_rows, rows) in shard_results {
-        shard_rows.extend(attach_core_search_by_shard_results(
-            shard_id,
-            original_rows,
-            rows,
-        )?);
-    }
-
-    let premerged_rows = premerge_core_search_by_shard_rows(shard_rows, query_count)?;
+    let premerged_rows = premerge_core_search_by_shard_results(shard_results, query_count)?;
     let response = SearchBatchResponse {
         result: premerged_rows
             .into_iter()
@@ -2268,6 +2343,50 @@ mod tests {
     }
 
     #[test]
+    fn compact_fused_premerge_matches_attach_then_regroup_pipeline() {
+        let shard_results = vec![
+            (
+                7,
+                vec![(0, 2, 1, Some(100)), (1, 1, 0, None)],
+                vec![
+                    vec![scored(207, 0.99), scored(11, 0.90)],
+                    vec![scored(30, 0.70), scored(31, 0.60)],
+                ],
+            ),
+            (
+                9,
+                vec![(0, 2, 1, Some(100)), (1, 1, 0, None)],
+                vec![
+                    vec![scored(7, 0.98), scored(12, 0.89)],
+                    vec![scored(32, 0.70), scored(33, 0.50)],
+                ],
+            ),
+        ];
+
+        let mut attached_rows = Vec::new();
+        for (shard_id, specs, rows) in shard_results.clone() {
+            attached_rows
+                .extend(attach_core_search_by_shard_results(shard_id, specs, rows).unwrap());
+        }
+        let expected = premerge_core_search_by_shard_rows(attached_rows, 2).unwrap();
+        let actual = premerge_core_search_by_shard_results(shard_results, 2).unwrap();
+
+        assert_eq!(actual, expected);
+        assert_eq!(
+            actual[0].iter().map(|point| point.id).collect::<Vec<_>>(),
+            vec![
+                ExtendedPointId::NumId(207),
+                ExtendedPointId::NumId(11),
+                ExtendedPointId::NumId(12),
+            ],
+        );
+        assert_eq!(
+            actual[1].iter().map(|point| point.id).collect::<Vec<_>>(),
+            vec![ExtendedPointId::NumId(32)],
+        );
+    }
+
+    #[test]
     fn core_search_by_shard_premerge_rejects_invalid_row_contracts() {
         let out_of_range = premerge_core_search_by_shard_rows(
             vec![CoreSearchByShardRow {
@@ -2355,5 +2474,21 @@ mod tests {
         .unwrap();
         assert_eq!(extra.code(), tonic::Code::Internal);
         assert!(extra.message().contains("Shard 9 returned 3 rows for 2"));
+
+        let fused_missing = premerge_core_search_by_shard_results(
+            vec![(
+                7,
+                vec![(0, 10, 0, None), (1, 10, 0, None)],
+                vec![vec![scored(1, 1.0)]],
+            )],
+            2,
+        )
+        .unwrap_err();
+        assert_eq!(fused_missing.code(), tonic::Code::Internal);
+        assert!(
+            fused_missing
+                .message()
+                .contains("Shard 7 returned 1 rows for 2")
+        );
     }
 }

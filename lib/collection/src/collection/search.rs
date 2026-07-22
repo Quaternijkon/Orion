@@ -13,7 +13,8 @@ use futures::{TryFutureExt, future};
 use itertools::Itertools;
 use segment::data_types::vectors::VectorInternal;
 use segment::types::{
-    ExtendedPointId, Filter, Order, ScoredPoint, ShardKey, WithPayloadInterface, WithVector,
+    ExtendedPointId, Filter, Order, PointIdType, ScoredPoint, ShardKey, WithPayloadInterface,
+    WithVector,
 };
 use segment::utils::scored_point_ties::ScoredPointTies;
 use shard::query::query_enum::QueryEnum;
@@ -326,7 +327,7 @@ impl PeerShardMajorGroup {
 struct CompactPeerShardMajorGroup {
     remote: RemoteShard,
     original_indices: Vec<usize>,
-    query_slot_by_original_index: AHashMap<usize, usize>,
+    query_slot_by_original_index: Vec<Option<usize>>,
     is_payload_required_by_query: Vec<bool>,
     query_templates: Vec<CoreSearchByShardQueryTemplate>,
     entries: Vec<CoreSearchByShardCompactEntry>,
@@ -344,7 +345,7 @@ impl CompactPeerShardMajorGroup {
         Self {
             remote,
             original_indices: Vec::new(),
-            query_slot_by_original_index: AHashMap::new(),
+            query_slot_by_original_index: Vec::new(),
             is_payload_required_by_query: Vec::new(),
             query_templates: Vec::new(),
             entries: Vec::new(),
@@ -374,17 +375,23 @@ fn compact_peer_local_query_index(
     original_index: usize,
     request: &CoreSearchRequest,
     original_indices: &mut Vec<usize>,
-    query_slot_by_original_index: &mut AHashMap<usize, usize>,
+    query_slot_by_original_index: &mut Vec<Option<usize>>,
     is_payload_required_by_query: &mut Vec<bool>,
     query_templates: &mut Vec<CoreSearchByShardQueryTemplate>,
 ) -> usize {
-    if let Some(&query_index) = query_slot_by_original_index.get(&original_index) {
+    if let Some(query_index) = query_slot_by_original_index
+        .get(original_index)
+        .and_then(|query_index| *query_index)
+    {
         return query_index;
     }
 
     let query_index = original_indices.len();
     original_indices.push(original_index);
-    query_slot_by_original_index.insert(original_index, query_index);
+    if query_slot_by_original_index.len() <= original_index {
+        query_slot_by_original_index.resize(original_index + 1, None);
+    }
+    query_slot_by_original_index[original_index] = Some(query_index);
     is_payload_required_by_query.push(
         request
             .with_payload
@@ -481,7 +488,7 @@ fn split_compact_peer_shard_major_rpcs(
         query_templates: Vec::new(),
         entries: Vec::new(),
     };
-    let mut current_query_slot_by_original_index = AHashMap::new();
+    let mut current_query_slot_by_original_index = Vec::<Option<usize>>::new();
     let mut current_shard_count = 0usize;
 
     for shard_entries in entries_by_shard.into_values() {
@@ -493,7 +500,7 @@ fn split_compact_peer_shard_major_rpcs(
                 query_templates: Vec::new(),
                 entries: Vec::new(),
             };
-            current_query_slot_by_original_index.clear();
+            current_query_slot_by_original_index.fill(None);
             current_shard_count = 0;
         }
 
@@ -524,14 +531,18 @@ fn split_compact_peer_shard_major_rpcs(
                 )));
             };
 
-            let chunk_query_index = if let Some(&query_index) =
-                current_query_slot_by_original_index.get(&original_index)
+            let chunk_query_index = if let Some(query_index) = current_query_slot_by_original_index
+                .get(original_index)
+                .and_then(|query_index| *query_index)
             {
                 query_index
             } else {
                 let query_index = current_rpc.original_indices.len();
                 current_rpc.original_indices.push(original_index);
-                current_query_slot_by_original_index.insert(original_index, query_index);
+                if current_query_slot_by_original_index.len() <= original_index {
+                    current_query_slot_by_original_index.resize(original_index + 1, None);
+                }
+                current_query_slot_by_original_index[original_index] = Some(query_index);
                 current_rpc
                     .is_payload_required_by_query
                     .push(is_payload_required);
@@ -643,6 +654,7 @@ fn peer_premerge_entry(
 fn compact_peer_premerge_entry(
     local_query_index: usize,
     target: &OrionShardTarget,
+    seen_entry_points: &mut AHashSet<PointIdType>,
 ) -> CollectionResult<CoreSearchByShardCompactEntry> {
     let entry_points = (!target.entry_points.is_empty())
         .then_some(target.entry_points.as_slice())
@@ -652,7 +664,8 @@ fn compact_peer_premerge_entry(
                 target.shard_id,
             ))
         })?;
-    let mut seen_entry_points = AHashSet::with_capacity(entry_points.len());
+    seen_entry_points.clear();
+    seen_entry_points.reserve(entry_points.len());
     if let Some(duplicate) = entry_points
         .iter()
         .find(|entry_point| !seen_entry_points.insert(**entry_point))
@@ -1122,6 +1135,7 @@ impl Collection {
         }
 
         let mut peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup> = BTreeMap::new();
+        let mut seen_entry_points = AHashSet::new();
         {
             let shard_holder = self.shards_holder.read().await;
             for (&shard_id, search_plans) in search_plans_by_shard {
@@ -1166,9 +1180,11 @@ impl Collection {
                     };
                     let local_query_index =
                         group.local_query_index(&self.id, *original_index, original);
-                    group
-                        .entries
-                        .push(compact_peer_premerge_entry(local_query_index, target)?);
+                    group.entries.push(compact_peer_premerge_entry(
+                        local_query_index,
+                        target,
+                        &mut seen_entry_points,
+                    )?);
                 }
             }
         }
@@ -2491,7 +2507,8 @@ mod tests {
         assert!(roundtrip.hnsw_entry_points.is_none());
         assert_eq!(roundtrip.with_payload, original.with_payload);
 
-        let entry = compact_peer_premerge_entry(3, &target).unwrap();
+        let mut seen_entry_points = AHashSet::new();
+        let entry = compact_peer_premerge_entry(3, &target, &mut seen_entry_points).unwrap();
         assert_eq!(entry.query_slot, 3);
         assert_eq!(entry.shard_id, target.shard_id);
         assert_eq!(entry.hnsw_ef, 76);
@@ -2508,13 +2525,27 @@ mod tests {
 
     #[test]
     fn compact_peer_target_validation_fails_closed() {
+        let mut seen_entry_points = AHashSet::new();
+        let first_valid_target = OrionShardTarget {
+            shard_id: 8,
+            entry_points: vec![PointIdType::from(31), PointIdType::from(29)],
+            ef: 72,
+        };
+        let second_valid_target = OrionShardTarget {
+            shard_id: 9,
+            entry_points: vec![PointIdType::from(31), PointIdType::from(17)],
+            ef: 76,
+        };
+        compact_peer_premerge_entry(0, &first_valid_target, &mut seen_entry_points).unwrap();
+        compact_peer_premerge_entry(0, &second_valid_target, &mut seen_entry_points).unwrap();
+
         let empty_entry_points = OrionShardTarget {
             shard_id: 9,
             entry_points: Vec::new(),
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &empty_entry_points)
+            compact_peer_premerge_entry(0, &empty_entry_points, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("no ordered HNSW entry points")
@@ -2526,7 +2557,7 @@ mod tests {
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &duplicate_entry_points)
+            compact_peer_premerge_entry(0, &duplicate_entry_points, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("duplicate ordered HNSW entry point 31")
@@ -2538,7 +2569,7 @@ mod tests {
             ef: 0,
         };
         assert!(
-            compact_peer_premerge_entry(0, &zero_ef)
+            compact_peer_premerge_entry(0, &zero_ef, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("no positive per-shard HNSW EF")
@@ -2548,7 +2579,7 @@ mod tests {
     #[test]
     fn compact_peer_query_templates_are_dense_and_not_repeated_per_shard() {
         let mut original_indices = Vec::new();
-        let mut query_slots = AHashMap::new();
+        let mut query_slots = Vec::new();
         let mut payload_required = Vec::new();
         let mut templates = Vec::new();
         let mut without_payload = default_dense_request();
@@ -2576,7 +2607,21 @@ mod tests {
         }
 
         assert_eq!(original_indices, vec![5, 1, 9]);
-        assert_eq!(query_slots, AHashMap::from_iter([(5, 0), (1, 1), (9, 2)]));
+        assert_eq!(
+            query_slots,
+            vec![
+                None,
+                Some(1),
+                None,
+                None,
+                None,
+                Some(0),
+                None,
+                None,
+                None,
+                Some(2),
+            ]
+        );
         assert_eq!(templates.len(), 3);
         assert_eq!(payload_required, vec![false, true, false]);
     }

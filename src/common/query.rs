@@ -181,11 +181,36 @@ fn shard_major_candidate_precedes(
 /// k-way merge so the result remains identical to the previous stable full sort without sorting
 /// every candidate again.
 pub(crate) fn merge_shard_major_candidates(
-    mut candidate_groups: Vec<Vec<ScoredPoint>>,
+    candidate_groups: Vec<Vec<ScoredPoint>>,
     limit: usize,
     offset: usize,
     source_id_dedup_block_size: Option<u64>,
 ) -> Vec<ScoredPoint> {
+    let mut seen_ids = AHashSet::new();
+    merge_shard_major_candidates_with_seen_ids(
+        candidate_groups,
+        limit,
+        offset,
+        source_id_dedup_block_size,
+        &mut seen_ids,
+    )
+}
+
+/// Merge one query's shard rows while reusing the point-ID dedup allocation across a batch.
+///
+/// The caller-provided set is cleared before use, so only its allocation is retained between
+/// queries. Candidate ordering, tie normalization, source-ID decoding, offset, and limit are
+/// identical to [`merge_shard_major_candidates`].
+pub(crate) fn merge_shard_major_candidates_with_seen_ids(
+    mut candidate_groups: Vec<Vec<ScoredPoint>>,
+    limit: usize,
+    offset: usize,
+    source_id_dedup_block_size: Option<u64>,
+    seen_ids: &mut AHashSet<ExtendedPointId>,
+) -> Vec<ScoredPoint> {
+    let candidate_count = candidate_groups
+        .iter()
+        .fold(0usize, |count, group| count.saturating_add(group.len()));
     let large_better = infer_large_better(&candidate_groups);
     debug_assert!(
         candidate_groups
@@ -215,14 +240,28 @@ pub(crate) fn merge_shard_major_candidates(
         .kmerge_by(move |left, right| shard_major_candidate_precedes(left, right, large_better))
         .map(|(_group_index, point)| point);
 
-    let mut seen_ids = AHashSet::new();
-    candidates
-        .filter(|point| {
-            seen_ids.insert(search_dedup_point_id(point.id, source_id_dedup_block_size))
-        })
-        .skip(offset)
-        .take(limit)
-        .collect()
+    seen_ids.clear();
+    if limit == 0 {
+        return Vec::new();
+    }
+    seen_ids.reserve(limit.saturating_add(offset).min(candidate_count));
+
+    let mut skip_remaining = offset;
+    let mut merged = Vec::with_capacity(limit.min(candidate_count));
+    for point in candidates {
+        if !seen_ids.insert(search_dedup_point_id(point.id, source_id_dedup_block_size)) {
+            continue;
+        }
+        if skip_remaining > 0 {
+            skip_remaining -= 1;
+            continue;
+        }
+        merged.push(point);
+        if merged.len() == limit {
+            break;
+        }
+    }
+    merged
 }
 
 #[cfg(test)]
@@ -809,6 +848,60 @@ mod tests {
         assert_eq!(
             merged.into_iter().map(|point| point.id).collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(7), ExtendedPointId::NumId(42)]
+        );
+    }
+
+    #[test]
+    fn shard_major_merge_reuses_and_clears_seen_id_scratch() {
+        let candidate_groups = vec![
+            vec![scored(207, 0.99), scored(42, 0.80)],
+            vec![scored(7, 0.98), scored(43, 0.70)],
+        ];
+        let expected = merge_shard_major_candidates(candidate_groups.clone(), 2, 0, Some(100));
+
+        let mut seen_ids = AHashSet::from_iter([ExtendedPointId::NumId(7)]);
+        let actual = merge_shard_major_candidates_with_seen_ids(
+            candidate_groups,
+            2,
+            0,
+            Some(100),
+            &mut seen_ids,
+        );
+        assert_eq!(actual, expected);
+
+        // The second call must not treat IDs retained by the first call as duplicates.
+        let second = merge_shard_major_candidates_with_seen_ids(
+            vec![vec![scored(7, 1.0), scored(8, 0.9)]],
+            2,
+            0,
+            None,
+            &mut seen_ids,
+        );
+        assert_eq!(second, vec![scored(7, 1.0), scored(8, 0.9)]);
+
+        // A zero-limit call still clears the reusable scratch before returning.
+        assert!(
+            merge_shard_major_candidates_with_seen_ids(
+                vec![vec![scored(9, 1.0)]],
+                0,
+                0,
+                None,
+                &mut seen_ids,
+            )
+            .is_empty()
+        );
+        assert!(seen_ids.is_empty());
+
+        // Capacity hints are capped by the actual candidate count, even for an unbounded caller.
+        assert_eq!(
+            merge_shard_major_candidates_with_seen_ids(
+                vec![vec![scored(10, 1.0)]],
+                usize::MAX,
+                0,
+                None,
+                &mut seen_ids,
+            ),
+            vec![scored(10, 1.0)],
         );
     }
 
