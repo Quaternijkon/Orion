@@ -32,11 +32,56 @@ use crate::operations::types::*;
 use crate::orion::OrionShardTarget;
 use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
 use crate::shards::shard::{PeerId, ShardId};
+use crate::shards::shard_holder::shard_not_found_error;
 use crate::simple_kmeans::SimpleKmeansShardTarget;
 
 fn search_batch_requires_shard_specialization(request: &CoreSearchRequestBatch) -> bool {
     request.searches.iter().any(|search| {
         search.hnsw_entry_points_by_shard.is_some() || search.hnsw_ef_by_shard.is_some()
+    })
+}
+
+/// Check the narrow request contract for compact peer searches that can skip the ordinary
+/// collection routing wrapper on a worker.
+///
+/// The caller has already decoded and validated the compact Orion wire envelope. Keeping this
+/// additional gate at the collection boundary makes the optimization fail safe if that caller is
+/// ever widened: metadata retrieval, client offsets, source-ID deduplication, or shard-key
+/// specialization continue through [`Collection::core_search_batch`].
+fn explicit_local_shard_batch_is_fast_path_eligible(request: &CoreSearchRequestBatch) -> bool {
+    !request.searches.is_empty() && request.searches.iter().all(|search| {
+        let nearest_dense_query = matches!(
+            &search.query,
+            QueryEnum::Nearest(named_query)
+                if matches!(&named_query.query, VectorInternal::Dense(vector) if !vector.is_empty())
+        );
+        let positive_hnsw_ef = search
+            .params
+            .as_ref()
+            .and_then(|params| params.hnsw_ef)
+            .is_some_and(|hnsw_ef| hnsw_ef > 0);
+
+        nearest_dense_query
+            && search.filter.is_none()
+            && !search.params.as_ref().is_some_and(|params| params.exact)
+            && search.limit > 0
+            && search.offset == 0
+            && search
+                .hnsw_entry_points
+                .as_ref()
+                .is_some_and(|entry_points| !entry_points.is_empty())
+            && search.hnsw_entry_points_by_shard.is_none()
+            && search.hnsw_ef_by_shard.is_none()
+            && positive_hnsw_ef
+            && search.source_id_dedup_block_size.is_none()
+            && !search
+                .with_payload
+                .as_ref()
+                .is_some_and(|with_payload| with_payload.is_required())
+            && !search
+                .with_vector
+                .as_ref()
+                .is_some_and(|with_vector| with_vector.is_enabled())
     })
 }
 
@@ -874,6 +919,121 @@ impl Collection {
                 .await?;
             Ok(result)
         }
+    }
+
+    /// Execute compact worker requests for several explicit numeric shards with one collection
+    /// preflight.
+    ///
+    /// This is deliberately not a new search implementation. After validating the currently
+    /// observed state of every target before scheduling searches, each batch still enters the ordinary
+    /// [`crate::shards::replica_set::ShardReplicaSet::core_search`] path with
+    /// `read_consistency = None` and `local_only = true`. That preserves Qdrant's local replica,
+    /// proxy, partial-snapshot, timeout, and segment-search behavior while avoiding repeated
+    /// collection routing and one-shard merge setup for every shard in the same compact RPC.
+    ///
+    /// The replica-set read path rechecks local/recovery state when each search starts, so a
+    /// concurrent transition after preflight remains fail-closed rather than becoming a remote
+    /// fallback. After a successful all-target topology preflight, `Ok(None)` means the request shape is
+    /// outside the strict fast-path contract and must be executed through
+    /// [`Collection::core_search_batch`]. Missing or non-local targets are topology errors and
+    /// fail closed before any shard search begins, including on the fallback path.
+    pub async fn core_search_batch_explicit_local_shards(
+        &self,
+        shard_requests: &[(ShardId, Arc<CoreSearchRequestBatch>)],
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Option<Vec<(ShardId, Vec<Vec<ScoredPoint>>)>>> {
+        if shard_requests.is_empty() {
+            return Ok(None);
+        }
+
+        let preflight_started = Instant::now();
+        let mut seen_shards = AHashSet::with_capacity(shard_requests.len());
+        for (shard_id, _) in shard_requests {
+            if !seen_shards.insert(*shard_id) {
+                return Err(CollectionError::bad_request(format!(
+                    "duplicate explicit local shard batch for shard {shard_id}",
+                )));
+            }
+        }
+        for (_, request) in shard_requests {
+            request
+                .searches
+                .iter()
+                .try_fold(0usize, |sum, search| sum.checked_add(search.limit))
+                .ok_or_else(|| {
+                    CollectionError::bad_request("batch search limits overflow usize")
+                })?;
+        }
+
+        let shard_holder = self.shards_holder.read().await;
+        let mut prepared = Vec::with_capacity(shard_requests.len());
+        for (shard_id, request) in shard_requests {
+            let shard = shard_holder
+                .get_shard(*shard_id)
+                .ok_or_else(|| shard_not_found_error(*shard_id))?;
+            shard.validate_local_read_target().await?;
+            let shard_key = shard_holder
+                .get_shard_id_to_key_mapping()
+                .get(shard_id)
+                .cloned();
+            prepared.push((*shard_id, shard, shard_key, Arc::clone(request)));
+        }
+
+        if shard_requests
+            .iter()
+            .any(|(_, request)| !explicit_local_shard_batch_is_fast_path_eligible(request))
+        {
+            return Ok(None);
+        }
+
+        let shard_timeout = remaining_search_timeout(
+            timeout,
+            preflight_started.elapsed(),
+            "compact explicit local-shard preflight",
+        )?;
+        let shard_searches = prepared
+            .into_iter()
+            .map(|(shard_id, shard, shard_key, request)| {
+                let hw_measurement_acc = hw_measurement_acc.clone();
+                async move {
+                    let instant = Instant::now();
+                    let mut rows = shard
+                        .core_search(
+                            Arc::clone(&request),
+                            None,
+                            true,
+                            shard_timeout,
+                            hw_measurement_acc,
+                        )
+                        .await?;
+                    if rows.len() != request.searches.len() {
+                        return Err(CollectionError::service_error(format!(
+                            "Explicit local shard {shard_id} returned {} rows for {} query slots",
+                            rows.len(),
+                            request.searches.len(),
+                        )));
+                    }
+
+                    if let Some(shard_key) = shard_key {
+                        for row in &mut rows {
+                            for point in row {
+                                point.shard_key = Some(shard_key.clone());
+                            }
+                        }
+                    }
+
+                    for (row, search) in rows.iter_mut().zip(&request.searches) {
+                        row.truncate(search.limit);
+                    }
+
+                    let filters_refs = request.searches.iter().map(|search| search.filter.as_ref());
+                    self.post_process_if_slow_request(instant.elapsed(), filters_refs);
+                    Ok::<_, CollectionError>((shard_id, rows))
+                }
+            });
+
+        future::try_join_all(shard_searches).await.map(Some)
     }
 
     pub async fn core_search_batch_shard_major_peer_premerge(
@@ -1928,6 +2088,118 @@ mod tests {
 
     fn default_dense_request() -> CoreSearchRequest {
         core_search_request(vec![1.0, 2.0, 3.0, 4.0].into())
+    }
+
+    fn explicit_local_fast_path_request() -> CoreSearchRequest {
+        let mut request = default_dense_request();
+        request.params = Some(SearchParams {
+            hnsw_ef: Some(64),
+            ..Default::default()
+        });
+        request.hnsw_entry_points = Some(vec![PointIdType::from(7)]);
+        request.with_payload = Some(WithPayloadInterface::Bool(false));
+        request.with_vector = Some(WithVector::Bool(false));
+        request
+    }
+
+    #[test]
+    fn explicit_local_shard_fast_path_gate_is_narrow() {
+        assert!(!explicit_local_shard_batch_is_fast_path_eligible(
+            &CoreSearchRequestBatch {
+                searches: Vec::new()
+            }
+        ));
+
+        let eligible = explicit_local_fast_path_request();
+        assert!(explicit_local_shard_batch_is_fast_path_eligible(
+            &CoreSearchRequestBatch {
+                searches: vec![eligible.clone()]
+            }
+        ));
+        let mut implicit_metadata_disabled = eligible.clone();
+        implicit_metadata_disabled.with_payload = None;
+        implicit_metadata_disabled.with_vector = None;
+        assert!(explicit_local_shard_batch_is_fast_path_eligible(
+            &CoreSearchRequestBatch {
+                searches: vec![implicit_metadata_disabled]
+            }
+        ));
+
+        let mut ineligible = Vec::new();
+
+        let mut request = eligible.clone();
+        request.filter = Some(Filter::new());
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.params.as_mut().unwrap().exact = true;
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.limit = 0;
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.offset = 1;
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.hnsw_entry_points = None;
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.hnsw_entry_points = Some(Vec::new());
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.params.as_mut().unwrap().hnsw_ef = None;
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.params.as_mut().unwrap().hnsw_ef = Some(0);
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.hnsw_entry_points_by_shard = Some(Default::default());
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.hnsw_ef_by_shard = Some(Default::default());
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.source_id_dedup_block_size = Some(100);
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.with_payload = Some(WithPayloadInterface::Bool(true));
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.with_payload = Some(WithPayloadInterface::Fields(Vec::new()));
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.with_vector = Some(WithVector::Bool(true));
+        ineligible.push(request);
+
+        let mut request = eligible.clone();
+        request.with_vector = Some(WithVector::Selector(Vec::new()));
+        ineligible.push(request);
+
+        assert!(!explicit_local_shard_batch_is_fast_path_eligible(
+            &CoreSearchRequestBatch {
+                searches: vec![eligible.clone(), ineligible.last().unwrap().clone()]
+            }
+        ));
+
+        for request in ineligible {
+            assert!(!explicit_local_shard_batch_is_fast_path_eligible(
+                &CoreSearchRequestBatch {
+                    searches: vec![request]
+                }
+            ));
+        }
     }
 
     fn scored_point(id: u64, score: f32) -> ScoredPoint {

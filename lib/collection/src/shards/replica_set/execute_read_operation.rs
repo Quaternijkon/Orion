@@ -15,6 +15,27 @@ use crate::shards::resolve::{Resolve, ResolveCondition};
 use crate::shards::shard_trait::ShardOperation;
 
 impl ShardReplicaSet {
+    /// Validate that this replica set can enter the same local-only read path used by
+    /// [`Self::execute_local_read_operation`].
+    ///
+    /// Compact peer batches use this before starting any shard future so a target that is already
+    /// missing or recovering is rejected before lower searches are scheduled. The real read path
+    /// acquires both guards again, so a concurrent topology or recovery transition after this
+    /// preflight still fails closed there. The checks intentionally match the real execution path;
+    /// proxy shards remain valid local targets.
+    pub(crate) async fn validate_local_read_target(&self) -> CollectionResult<()> {
+        let _partial_snapshot_search_lock =
+            self.partial_snapshot_meta.try_take_search_read_lock()?;
+        let local = self.local.read().await;
+        if local.is_none() {
+            return Err(CollectionError::service_error(format!(
+                "Local shard {} not found",
+                self.shard_id
+            )));
+        }
+        Ok(())
+    }
+
     /// Execute read op. on replica set:
     /// 1 - Prefer local replica
     /// 2 - Otherwise uses `read_fan_out_ratio` to compute list of active remote shards.

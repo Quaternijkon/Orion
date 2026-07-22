@@ -592,11 +592,47 @@ impl DecodedCompactQueryTemplates {
 }
 
 type CompactSearchOriginalRow = (usize, usize, usize, Option<u64>);
+type PreparedCompactShardSearch = (
+    ShardId,
+    Vec<CompactSearchOriginalRow>,
+    std::sync::Arc<CoreSearchRequestBatch>,
+);
+type CompactShardSearchResult = (
+    ShardId,
+    Vec<CompactSearchOriginalRow>,
+    Vec<Vec<ScoredPoint>>,
+);
 
 #[derive(Debug, Default)]
 struct MaterializedCompactShardSearch {
     original_rows: Vec<CompactSearchOriginalRow>,
     requests: Vec<CoreSearchRequest>,
+}
+
+fn attach_explicit_local_shard_results(
+    prepared: Vec<PreparedCompactShardSearch>,
+    rows_by_shard: Vec<(ShardId, Vec<Vec<ScoredPoint>>)>,
+) -> Result<Vec<CompactShardSearchResult>, Status> {
+    if rows_by_shard.len() != prepared.len() {
+        return Err(Status::internal(format!(
+            "compact explicit-shard executor returned {} shard rows for {} shard batches",
+            rows_by_shard.len(),
+            prepared.len(),
+        )));
+    }
+
+    let mut shard_results = Vec::with_capacity(prepared.len());
+    for ((expected_shard_id, original_rows, _), (actual_shard_id, rows)) in
+        prepared.into_iter().zip(rows_by_shard)
+    {
+        if actual_shard_id != expected_shard_id {
+            return Err(Status::internal(format!(
+                "compact explicit-shard executor returned shard {actual_shard_id} in slot for shard {expected_shard_id}",
+            )));
+        }
+        shard_results.push((expected_shard_id, original_rows, rows));
+    }
+    Ok(shard_results)
 }
 
 fn validate_compact_orion_query_template(
@@ -842,32 +878,78 @@ pub async fn core_search_batch_by_shard_compact(
         .map_err(Status::from)?;
 
     let timing = Instant::now();
-    let shard_searches = by_shard.into_iter().map(|(shard_id, shard_search)| {
-        let MaterializedCompactShardSearch {
-            original_rows,
-            requests,
-        } = shard_search;
-        let request = CoreSearchRequestBatch { searches: requests };
-        let collection = collection.clone();
-        let request_hw_counter = request_hw_counter.clone();
+    let prepared = by_shard
+        .into_iter()
+        .map(|(shard_id, shard_search)| {
+            let MaterializedCompactShardSearch {
+                original_rows,
+                requests,
+            } = shard_search;
+            (
+                shard_id,
+                original_rows,
+                std::sync::Arc::new(CoreSearchRequestBatch { searches: requests }),
+            )
+        })
+        .collect::<Vec<PreparedCompactShardSearch>>();
+    let explicit_shard_requests = prepared
+        .iter()
+        .map(|(shard_id, _, request)| (*shard_id, std::sync::Arc::clone(request)))
+        .collect::<Vec<_>>();
 
-        async move {
-            let rows = collection
-                .core_search_batch(
-                    request,
-                    None,
-                    ShardSelectorInternal::ShardId(shard_id),
-                    timeout,
-                    request_hw_counter.get_counter(),
-                )
-                .await
-                .map_err(StorageError::from)
-                .map_err(Status::from)?;
-            Ok::<_, Status>((shard_id, original_rows, rows))
-        }
-    });
+    let explicit_executor_started = Instant::now();
+    let shard_results = if let Some(rows_by_shard) = collection
+        .core_search_batch_explicit_local_shards(
+            &explicit_shard_requests,
+            timeout,
+            request_hw_counter.get_counter(),
+        )
+        .await
+        .map_err(StorageError::from)
+        .map_err(Status::from)?
+    {
+        attach_explicit_local_shard_results(prepared, rows_by_shard)?
+    } else {
+        drop(explicit_shard_requests);
+        let fallback_timeout = match timeout {
+            Some(timeout) => {
+                let remaining = timeout
+                    .checked_sub(explicit_executor_started.elapsed())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| {
+                        Status::deadline_exceeded(
+                            "compact explicit-shard preflight exhausted the search timeout",
+                        )
+                    })?;
+                Some(remaining)
+            }
+            None => None,
+        };
+        let shard_searches = prepared
+            .into_iter()
+            .map(|(shard_id, original_rows, request)| {
+                let collection = collection.clone();
+                let request_hw_counter = request_hw_counter.clone();
 
-    let shard_results = future::try_join_all(shard_searches).await?;
+                async move {
+                    let request = std::sync::Arc::try_unwrap(request)
+                        .unwrap_or_else(|request| request.as_ref().clone());
+                    let rows = collection
+                        .core_search_batch(
+                            request,
+                            None,
+                            ShardSelectorInternal::ShardId(shard_id),
+                            fallback_timeout,
+                            request_hw_counter.get_counter(),
+                        )
+                        .await
+                        .map_err(StorageError::from)
+                        .map_err(Status::from)?;
+                    Ok::<_, Status>((shard_id, original_rows, rows))
+                }
+            });
+        future::try_join_all(shard_searches).await?
+    };
     let premerged_rows = premerge_core_search_by_shard_results(shard_results, query_count)?;
     let response = SearchBatchResponse {
         result: premerged_rows
@@ -2383,6 +2465,75 @@ mod tests {
         assert_eq!(
             actual[1].iter().map(|point| point.id).collect::<Vec<_>>(),
             vec![ExtendedPointId::NumId(32)],
+        );
+    }
+
+    #[test]
+    fn explicit_shard_result_attachment_preserves_source_dedup_metadata() {
+        let lower_request = CoreSearchRequest::try_from(
+            compact_template("orion", 2, 1, Some(100))
+                .search_points
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(lower_request.source_id_dedup_block_size, None);
+        let lower_batch = std::sync::Arc::new(CoreSearchRequestBatch {
+            searches: vec![lower_request],
+        });
+
+        let attached = attach_explicit_local_shard_results(
+            vec![
+                (
+                    7,
+                    vec![(0, 2, 1, Some(100))],
+                    std::sync::Arc::clone(&lower_batch),
+                ),
+                (9, vec![(0, 2, 1, Some(100))], lower_batch),
+            ],
+            vec![
+                (7, vec![vec![scored(207, 0.99), scored(11, 0.90)]]),
+                (9, vec![vec![scored(7, 0.98), scored(12, 0.89)]]),
+            ],
+        )
+        .unwrap();
+        assert_eq!(attached[0].1[0].3, Some(100));
+        assert_eq!(attached[1].1[0].3, Some(100));
+
+        let premerged = premerge_core_search_by_shard_results(attached, 1).unwrap();
+        assert_eq!(
+            premerged[0]
+                .iter()
+                .map(|point| point.id)
+                .collect::<Vec<_>>(),
+            vec![
+                ExtendedPointId::NumId(207),
+                ExtendedPointId::NumId(11),
+                ExtendedPointId::NumId(12),
+            ],
+        );
+    }
+
+    #[test]
+    fn explicit_shard_result_attachment_rejects_count_and_shard_mismatch() {
+        let request = std::sync::Arc::new(CoreSearchRequestBatch {
+            searches: Vec::new(),
+        });
+        let count_mismatch = attach_explicit_local_shard_results(
+            vec![(7, vec![(0, 1, 0, None)], std::sync::Arc::clone(&request))],
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert!(count_mismatch.message().contains("1 shard batches"));
+
+        let shard_mismatch = attach_explicit_local_shard_results(
+            vec![(7, vec![(0, 1, 0, None)], request)],
+            vec![(9, vec![vec![scored(1, 1.0)]])],
+        )
+        .unwrap_err();
+        assert!(
+            shard_mismatch
+                .message()
+                .contains("returned shard 9 in slot for shard 7")
         );
     }
 

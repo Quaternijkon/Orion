@@ -198,6 +198,264 @@ fn core_request_for_vector(vector: Vec<f32>, exact: bool) -> shard::search::Core
     }
 }
 
+fn compact_lower_request(vector: Vec<f32>, entry_point: u64) -> shard::search::CoreSearchRequest {
+    let mut request = core_request_for_vector(vector, false);
+    request.params = Some(SearchParams {
+        hnsw_ef: Some(32),
+        ..Default::default()
+    });
+    request.hnsw_entry_points = Some(vec![entry_point.into()]);
+    request.with_payload = Some(WithPayloadInterface::Bool(false));
+    request.with_vector = Some(WithVector::Bool(false));
+    request
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn explicit_local_shard_batches_match_ordinary_replica_set_searches() {
+    let (collection, _collection_dir, _snapshots_path) = fixture().await;
+    let shard_requests = vec![
+        (
+            1,
+            Arc::new(shard::search::CoreSearchRequestBatch {
+                searches: vec![
+                    compact_lower_request(vec![0.0, 1.0], 200),
+                    compact_lower_request(vec![1.0, 0.0], 200),
+                ],
+            }),
+        ),
+        (
+            0,
+            Arc::new(shard::search::CoreSearchRequestBatch {
+                searches: vec![
+                    compact_lower_request(vec![1.0, 0.0], 100),
+                    compact_lower_request(vec![0.0, 1.0], 100),
+                ],
+            }),
+        ),
+    ];
+
+    let mut expected = Vec::new();
+    for (shard_id, request) in &shard_requests {
+        expected.push(
+            collection
+                .core_search_batch(
+                    request.as_ref().clone(),
+                    None,
+                    ShardSelectorInternal::ShardId(*shard_id),
+                    None,
+                    HwMeasurementAcc::new(),
+                )
+                .await
+                .unwrap(),
+        );
+    }
+
+    let actual = collection
+        .core_search_batch_explicit_local_shards(&shard_requests, None, HwMeasurementAcc::new())
+        .await
+        .unwrap()
+        .expect("compact lower requests must use the explicit-shard fast path");
+
+    let actual_rows = actual
+        .iter()
+        .map(|(_, rows)| rows.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(actual_rows, expected);
+    assert_eq!(actual[0].0, 1);
+    assert_eq!(actual[1].0, 0);
+    assert_eq!(actual[0].1[0][0].id, 200_u64.into());
+    assert_eq!(actual[1].1[0][0].id, 100_u64.into());
+
+    let mut metadata_request = compact_lower_request(vec![1.0, 0.0], 100);
+    metadata_request.with_payload = Some(WithPayloadInterface::Bool(true));
+    let fallback = collection
+        .core_search_batch_explicit_local_shards(
+            &[(
+                0,
+                Arc::new(shard::search::CoreSearchRequestBatch {
+                    searches: vec![metadata_request.clone()],
+                }),
+            )],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap();
+    assert!(fallback.is_none());
+
+    let missing_target = collection
+        .core_search_batch_explicit_local_shards(
+            &[
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![metadata_request],
+                    }),
+                ),
+                (
+                    99,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+            ],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        missing_target,
+        crate::operations::types::CollectionError::NotFound { .. }
+    ));
+
+    let eligible_missing_target = collection
+        .core_search_batch_explicit_local_shards(
+            &[
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+                (
+                    99,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+            ],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        eligible_missing_target,
+        crate::operations::types::CollectionError::NotFound { .. }
+    ));
+
+    let mut enormous_limit = compact_lower_request(vec![1.0, 0.0], 100);
+    enormous_limit.limit = usize::MAX;
+    let overflow = collection
+        .core_search_batch_explicit_local_shards(
+            &[(
+                0,
+                Arc::new(shard::search::CoreSearchRequestBatch {
+                    searches: vec![enormous_limit, compact_lower_request(vec![1.0, 0.0], 100)],
+                }),
+            )],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        overflow
+            .to_string()
+            .contains("batch search limits overflow usize")
+    );
+
+    let duplicate_target = collection
+        .core_search_batch_explicit_local_shards(
+            &[
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![0.0, 1.0], 100)],
+                    }),
+                ),
+            ],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        duplicate_target
+            .to_string()
+            .contains("duplicate explicit local shard batch for shard 0")
+    );
+
+    let recovering_shard_holder = collection.shards_holder.read().await;
+    let recovery_guard = recovering_shard_holder
+        .get_shard(1)
+        .unwrap()
+        .partial_snapshot_meta
+        .take_search_write_lock()
+        .await;
+    let recovering_target = collection
+        .core_search_batch_explicit_local_shards(
+            &[
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+                (
+                    1,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![0.0, 1.0], 200)],
+                    }),
+                ),
+            ],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        recovering_target
+            .to_string()
+            .contains("partial snapshot recovery is in progress")
+    );
+    drop(recovery_guard);
+    drop(recovering_shard_holder);
+
+    {
+        let shard_holder = collection.shards_holder.read().await;
+        shard_holder
+            .get_shard(1)
+            .unwrap()
+            .remove_local()
+            .await
+            .unwrap();
+    }
+    let non_local_target = collection
+        .core_search_batch_explicit_local_shards(
+            &[
+                (
+                    0,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![1.0, 0.0], 100)],
+                    }),
+                ),
+                (
+                    1,
+                    Arc::new(shard::search::CoreSearchRequestBatch {
+                        searches: vec![compact_lower_request(vec![0.0, 1.0], 200)],
+                    }),
+                ),
+            ],
+            None,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        non_local_target
+            .to_string()
+            .contains("Local shard 1 not found")
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn native_orion_routes_standard_search_and_query_through_numeric_replica_sets() {
     let (collection, _collection_dir, _snapshots_path) = fixture().await;
