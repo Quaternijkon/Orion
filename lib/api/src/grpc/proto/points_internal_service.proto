@@ -301,8 +301,13 @@ message CoreSearchBatchByShardInternal {
 // `search_points.limit + search_points.offset` and uses the original values for
 // its peer-local final merge.
 message CoreSearchByShardQueryTemplate {
+  // Legacy wire-version 1 representation.
   CoreSearchPoints search_points = 1;
   optional uint64 source_id_dedup_block_size = 2;
+  // Wire-version 2 representation. The nested message is encoded once into a
+  // reference-counted byte buffer so controller RPC chunking and channel
+  // retries can clone the template payload without copying the dense vector.
+  bytes encoded_search_points = 3;
 }
 
 // The shard-specific part of an Orion lower search. Entry-point order is
@@ -310,8 +315,14 @@ message CoreSearchByShardQueryTemplate {
 message CoreSearchByShardCompactEntry {
   uint64 query_slot = 1;
   uint32 shard_id = 2;
+  // Legacy wire-version 1 representation. Each generic PointId is encoded as
+  // a separate protobuf submessage.
   repeated PointId hnsw_entry_points = 3;
   uint64 hnsw_ef = 4;
+  // Wire-version 2 representation for Orion numeric auto-shard collections.
+  // Numeric IDs are packed directly, preserving their exact order while
+  // avoiding one PointId/oneof allocation and submessage per entry point.
+  repeated uint64 hnsw_entry_point_num_ids = 5 [packed = true];
 }
 
 message CoreSearchBatchByShardCompactInternal {

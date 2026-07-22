@@ -42,7 +42,6 @@ staging = ["collection/staging", "storage/staging", "shard/staging"]
 [dev-dependencies]
 serde_urlencoded = "0.7"
 sealed_test = "1.1.0"
-prost = { workspace = true }
 
 mockito = { workspace = true }
 tempfile = { workspace = true }
@@ -89,6 +88,7 @@ actix-web = { workspace = true }
 actix-files = { workspace = true }
 tonic = { workspace = true }
 tonic-reflection = { workspace = true }
+prost = { workspace = true }
 tower = { version = "0.5.3", features = ["util"] }
 tower-layer = "0.3.3"
 reqwest = { workspace = true }
@@ -217,7 +217,7 @@ bytemuck = { version = "1.25.0", features = [
     "must_cast",
     "transparentwrapper_extra",
 ] }
-bytes = "1.11.1"
+bytes = { version = "1.11.1", features = ["serde"] }
 cc = "1.2"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.0", features = ["derive", "env"] }

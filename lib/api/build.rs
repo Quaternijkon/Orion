@@ -22,6 +22,7 @@ fn main() -> std::io::Result<()> {
         // `Validation` for all these types and seems to be the best approach. The line below
         // configures all attributes.
         .configure_validation()
+        .bytes([".qdrant.CoreSearchByShardQueryTemplate.encoded_search_points"])
         .file_descriptor_set_path(build_out_dir.join("qdrant_descriptor.bin"))
         .out_dir("src/grpc/") // saves generated structures at this location
         .compile(
@@ -394,7 +395,7 @@ fn configure_validation(builder: Builder) -> Builder {
             ("CoreSearchBatchByShardCompactInternal.collection_name", "length(min = 1, max = 255), custom(function = \"common::validation::validate_collection_name_legacy\")"),
             ("CoreSearchBatchByShardCompactInternal.query_templates", ""),
             ("CoreSearchBatchByShardCompactInternal.searches", ""),
-            ("CoreSearchBatchByShardCompactInternal.wire_version", "range(min = 1, max = 1)"),
+            ("CoreSearchBatchByShardCompactInternal.wire_version", "range(min = 1, max = 2)"),
             ("RecoQuery.positives", ""),
             ("RecoQuery.negatives", ""),
             ("ContextPair.positive", ""),

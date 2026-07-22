@@ -481,6 +481,7 @@ name = "api"
 version = "1.17.1"
 dependencies = [
  "ahash",
+ "bytes",
  "chrono",
  "common",
  "itertools 0.14.0",
@@ -1095,6 +1096,9 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bytestring"
@@ -1382,6 +1386,7 @@ dependencies = [
  "parking_lot",
  "pprof",
  "proptest",
+ "prost 0.12.6",
  "rand 0.10.0",
  "ringbuffer",
  "rmp-serde",

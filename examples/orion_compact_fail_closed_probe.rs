@@ -29,7 +29,7 @@ struct Args {
     collection: String,
 
     /// Deliberately unsupported compact protocol version.
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = 3)]
     wire_version: u32,
 
     /// Connection and request timeout in seconds.
@@ -43,8 +43,8 @@ async fn main() -> Result<()> {
     if args.collection.is_empty() {
         bail!("--collection must not be empty");
     }
-    if args.wire_version == 1 {
-        bail!("wire version 1 is supported; choose an unsupported version for this probe");
+    if matches!(args.wire_version, 1 | 2) {
+        bail!("wire versions 1 and 2 are supported; choose an unsupported version for this probe");
     }
     if args.timeout_secs == 0 {
         bail!("--timeout-secs must be positive");

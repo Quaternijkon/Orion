@@ -11,6 +11,7 @@ use api::grpc::qdrant::{
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use futures::{TryFutureExt, future};
 use itertools::Itertools;
+use prost::Message as _;
 use segment::data_types::vectors::VectorInternal;
 use segment::types::{
     ExtendedPointId, Filter, Order, PointIdType, ScoredPoint, ShardKey, WithPayloadInterface,
@@ -402,11 +403,15 @@ impl CompactPeerShardMajorGroup {
         collection_id: &str,
         original_index: usize,
         request: &CoreSearchRequest,
+        wire_version: u32,
+        prepared_template: Option<&CoreSearchByShardQueryTemplate>,
     ) -> usize {
         compact_peer_local_query_index(
             collection_id,
             original_index,
             request,
+            wire_version,
+            prepared_template,
             &mut self.original_indices,
             &mut self.query_slot_by_original_index,
             &mut self.is_payload_required_by_query,
@@ -419,6 +424,8 @@ fn compact_peer_local_query_index(
     collection_id: &str,
     original_index: usize,
     request: &CoreSearchRequest,
+    wire_version: u32,
+    prepared_template: Option<&CoreSearchByShardQueryTemplate>,
     original_indices: &mut Vec<usize>,
     query_slot_by_original_index: &mut Vec<Option<usize>>,
     is_payload_required_by_query: &mut Vec<bool>,
@@ -443,14 +450,44 @@ fn compact_peer_local_query_index(
             .as_ref()
             .is_some_and(|with_payload| with_payload.is_required()),
     );
-    query_templates.push(compact_peer_query_template(collection_id, request));
+    query_templates.push(
+        prepared_template
+            .cloned()
+            .unwrap_or_else(|| compact_peer_query_template(collection_id, request, wire_version)),
+    );
     debug_assert_eq!(query_index + 1, query_templates.len());
     query_index
 }
 
 const COMPACT_ORION_PEER_PREMERGE_SHARDS_PER_RPC_ENV: &str =
     "QDRANT_ORION_PEER_PREMERGE_SHARDS_PER_RPC";
-const COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION: u32 = 1;
+const COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION_ENV: &str = "QDRANT_ORION_COMPACT_WIRE_VERSION";
+const DEFAULT_COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION: u32 = 1;
+
+fn parse_compact_orion_peer_premerge_wire_version(value: &str) -> Result<u32, String> {
+    match value.trim() {
+        "1" => Ok(1),
+        "2" => Ok(2),
+        _ => Err(format!(
+            "{COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION_ENV} must be 1 or 2"
+        )),
+    }
+}
+
+fn compact_orion_peer_premerge_wire_version() -> CollectionResult<u32> {
+    let value = match std::env::var(COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION_ENV) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => {
+            return Ok(DEFAULT_COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION);
+        }
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(CollectionError::service_error(format!(
+                "{COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION_ENV} is not valid Unicode"
+            )));
+        }
+    };
+    parse_compact_orion_peer_premerge_wire_version(&value).map_err(CollectionError::service_error)
+}
 
 fn parse_compact_orion_peer_premerge_shards_per_rpc(value: &str) -> Result<Option<usize>, String> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -613,11 +650,23 @@ fn split_compact_peer_shard_major_rpcs(
 fn compact_peer_query_template(
     collection_id: &str,
     request: &CoreSearchRequest,
+    wire_version: u32,
 ) -> CoreSearchByShardQueryTemplate {
     let search_points = CollectionCoreSearchRequest((collection_id.to_owned(), request)).into();
-    CoreSearchByShardQueryTemplate {
-        search_points: Some(search_points),
-        source_id_dedup_block_size: request.source_id_dedup_block_size,
+    match wire_version {
+        1 => CoreSearchByShardQueryTemplate {
+            search_points: Some(search_points),
+            source_id_dedup_block_size: request.source_id_dedup_block_size,
+            encoded_search_points: Default::default(),
+        },
+        2 => CoreSearchByShardQueryTemplate {
+            search_points: None,
+            source_id_dedup_block_size: request.source_id_dedup_block_size,
+            encoded_search_points: search_points.encode_to_vec().into(),
+        },
+        unsupported => unreachable!(
+            "compact peer-premerge wire version {unsupported} must be validated before template materialization"
+        ),
     }
 }
 
@@ -699,6 +748,7 @@ fn peer_premerge_entry(
 fn compact_peer_premerge_entry(
     local_query_index: usize,
     target: &OrionShardTarget,
+    wire_version: u32,
     seen_entry_points: &mut AHashSet<PointIdType>,
 ) -> CollectionResult<CoreSearchByShardCompactEntry> {
     let entry_points = (!target.entry_points.is_empty())
@@ -727,11 +777,44 @@ fn compact_peer_premerge_entry(
         ))
     })?;
 
+    let all_numeric = entry_points
+        .iter()
+        .all(|entry_point| matches!(entry_point, PointIdType::NumId(_)));
+    let use_packed_numeric = match wire_version {
+        1 => false,
+        2 => all_numeric,
+        unsupported => {
+            return Err(CollectionError::service_error(format!(
+                "unsupported Orion compact peer-premerge wire version {unsupported}"
+            )));
+        }
+    };
+    let (hnsw_entry_points, hnsw_entry_point_num_ids) = if use_packed_numeric {
+        (
+            Vec::new(),
+            entry_points
+                .iter()
+                .map(|entry_point| match entry_point {
+                    PointIdType::NumId(num_id) => *num_id,
+                    PointIdType::Uuid(_) => {
+                        unreachable!("all entry points were checked as numeric")
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        (
+            entry_points.iter().cloned().map(Into::into).collect(),
+            Vec::new(),
+        )
+    };
+
     Ok(CoreSearchByShardCompactEntry {
         query_slot: local_query_index as u64,
         shard_id: target.shard_id,
-        hnsw_entry_points: entry_points.iter().cloned().map(Into::into).collect(),
+        hnsw_entry_points,
         hnsw_ef: hnsw_ef as u64,
+        hnsw_entry_point_num_ids,
     })
 }
 
@@ -1183,6 +1266,7 @@ impl Collection {
         &self,
         peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup>,
         original_requests: Arc<CoreSearchRequestBatch>,
+        wire_version: u32,
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
@@ -1219,7 +1303,7 @@ impl Collection {
                     query_templates: rpc.query_templates,
                     searches: rpc.entries,
                     timeout: processed_timeout.map(|timeout| timeout.as_secs()),
-                    wire_version: COMPACT_ORION_PEER_PREMERGE_WIRE_VERSION,
+                    wire_version,
                 };
                 let rows = remote
                     .core_search_batch_by_shard_compact(
@@ -1302,6 +1386,14 @@ impl Collection {
 
         let mut peer_groups: BTreeMap<PeerId, CompactPeerShardMajorGroup> = BTreeMap::new();
         let mut seen_entry_points = AHashSet::new();
+        let wire_version = compact_orion_peer_premerge_wire_version()?;
+        let preencoded_query_templates = (wire_version == 2).then(|| {
+            original_requests
+                .searches
+                .iter()
+                .map(|request| compact_peer_query_template(&self.id, request, wire_version))
+                .collect::<Vec<_>>()
+        });
         {
             let shard_holder = self.shards_holder.read().await;
             for (&shard_id, search_plans) in search_plans_by_shard {
@@ -1344,11 +1436,20 @@ impl Collection {
                             original_requests.searches.len(),
                         )));
                     };
-                    let local_query_index =
-                        group.local_query_index(&self.id, *original_index, original);
+                    let prepared_template = preencoded_query_templates
+                        .as_ref()
+                        .and_then(|templates| templates.get(*original_index));
+                    let local_query_index = group.local_query_index(
+                        &self.id,
+                        *original_index,
+                        original,
+                        wire_version,
+                        prepared_template,
+                    );
                     group.entries.push(compact_peer_premerge_entry(
                         local_query_index,
                         target,
+                        wire_version,
                         &mut seen_entry_points,
                     )?);
                 }
@@ -1368,6 +1469,7 @@ impl Collection {
         self.execute_peer_shard_major_premerge_compact(
             peer_groups,
             original_requests,
+            wire_version,
             peer_timeout,
             hw_measurement_acc,
         )
@@ -2763,7 +2865,7 @@ mod tests {
             ],
             ef: 76,
         };
-        let template = compact_peer_query_template("orion", &original);
+        let template = compact_peer_query_template("orion", &original, 1);
         assert_eq!(
             template.source_id_dedup_block_size,
             original.source_id_dedup_block_size
@@ -2786,19 +2888,12 @@ mod tests {
         assert_eq!(roundtrip.with_payload, original.with_payload);
 
         let mut seen_entry_points = AHashSet::new();
-        let entry = compact_peer_premerge_entry(3, &target, &mut seen_entry_points).unwrap();
+        let entry = compact_peer_premerge_entry(3, &target, 2, &mut seen_entry_points).unwrap();
         assert_eq!(entry.query_slot, 3);
         assert_eq!(entry.shard_id, target.shard_id);
         assert_eq!(entry.hnsw_ef, 76);
-        assert_eq!(
-            entry
-                .hnsw_entry_points
-                .into_iter()
-                .map(PointIdType::try_from)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
-            target.entry_points
-        );
+        assert_eq!(entry.hnsw_entry_point_num_ids, vec![31, 29, 11]);
+        assert!(entry.hnsw_entry_points.is_empty());
     }
 
     #[test]
@@ -2814,8 +2909,34 @@ mod tests {
             entry_points: vec![PointIdType::from(31), PointIdType::from(17)],
             ef: 76,
         };
-        compact_peer_premerge_entry(0, &first_valid_target, &mut seen_entry_points).unwrap();
-        compact_peer_premerge_entry(0, &second_valid_target, &mut seen_entry_points).unwrap();
+        compact_peer_premerge_entry(0, &first_valid_target, 2, &mut seen_entry_points).unwrap();
+        compact_peer_premerge_entry(0, &second_valid_target, 2, &mut seen_entry_points).unwrap();
+
+        let legacy_numeric =
+            compact_peer_premerge_entry(0, &first_valid_target, 1, &mut seen_entry_points).unwrap();
+        assert!(legacy_numeric.hnsw_entry_point_num_ids.is_empty());
+        assert_eq!(legacy_numeric.hnsw_entry_points.len(), 2);
+
+        let uuid_entry_point = "550e8400-e29b-41d4-a716-446655440000"
+            .parse::<PointIdType>()
+            .unwrap();
+        let uuid_target = OrionShardTarget {
+            shard_id: 10,
+            entry_points: vec![uuid_entry_point, PointIdType::from(17)],
+            ef: 80,
+        };
+        let uuid_fallback =
+            compact_peer_premerge_entry(0, &uuid_target, 2, &mut seen_entry_points).unwrap();
+        assert!(uuid_fallback.hnsw_entry_point_num_ids.is_empty());
+        assert_eq!(
+            uuid_fallback
+                .hnsw_entry_points
+                .into_iter()
+                .map(PointIdType::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            uuid_target.entry_points
+        );
 
         let empty_entry_points = OrionShardTarget {
             shard_id: 9,
@@ -2823,7 +2944,7 @@ mod tests {
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &empty_entry_points, &mut seen_entry_points)
+            compact_peer_premerge_entry(0, &empty_entry_points, 2, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("no ordered HNSW entry points")
@@ -2835,7 +2956,7 @@ mod tests {
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &duplicate_entry_points, &mut seen_entry_points)
+            compact_peer_premerge_entry(0, &duplicate_entry_points, 2, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("duplicate ordered HNSW entry point 31")
@@ -2847,7 +2968,7 @@ mod tests {
             ef: 0,
         };
         assert!(
-            compact_peer_premerge_entry(0, &zero_ef, &mut seen_entry_points)
+            compact_peer_premerge_entry(0, &zero_ef, 2, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("no positive per-shard HNSW EF")
@@ -2876,6 +2997,8 @@ mod tests {
                 "orion",
                 original_index,
                 request,
+                2,
+                None,
                 &mut original_indices,
                 &mut query_slots,
                 &mut payload_required,
@@ -2905,6 +3028,50 @@ mod tests {
     }
 
     #[test]
+    fn compact_peer_wire_v2_preencodes_once_and_shares_payload_across_peers() {
+        fn add_to_peer(
+            request: &CoreSearchRequest,
+            prepared: &CoreSearchByShardQueryTemplate,
+        ) -> CoreSearchByShardQueryTemplate {
+            let mut original_indices = Vec::new();
+            let mut query_slots = Vec::new();
+            let mut payload_required = Vec::new();
+            let mut templates = Vec::new();
+            let query_index = compact_peer_local_query_index(
+                "orion",
+                0,
+                request,
+                2,
+                Some(prepared),
+                &mut original_indices,
+                &mut query_slots,
+                &mut payload_required,
+                &mut templates,
+            );
+            assert_eq!(query_index, 0);
+            assert_eq!(original_indices, vec![0]);
+            assert_eq!(query_slots, vec![Some(0)]);
+            templates.pop().unwrap()
+        }
+
+        let request = default_dense_request();
+        let prepared = compact_peer_query_template("orion", &request, 2);
+        let first_peer = add_to_peer(&request, &prepared);
+        let second_peer = add_to_peer(&request, &prepared);
+
+        assert!(prepared.search_points.is_none());
+        assert!(!prepared.encoded_search_points.is_empty());
+        assert_eq!(
+            prepared.encoded_search_points.as_ptr(),
+            first_peer.encoded_search_points.as_ptr(),
+        );
+        assert_eq!(
+            prepared.encoded_search_points.as_ptr(),
+            second_peer.encoded_search_points.as_ptr(),
+        );
+    }
+
+    #[test]
     fn compact_peer_chunk_config_is_bounded_and_invalid_values_fail_closed() {
         assert_eq!(
             parse_compact_orion_peer_premerge_shards_per_rpc("1"),
@@ -2931,6 +3098,16 @@ mod tests {
     }
 
     #[test]
+    fn compact_peer_wire_version_config_is_explicit_and_fail_closed() {
+        assert_eq!(parse_compact_orion_peer_premerge_wire_version("1"), Ok(1));
+        assert_eq!(parse_compact_orion_peer_premerge_wire_version(" 2 "), Ok(2));
+        assert!(parse_compact_orion_peer_premerge_wire_version("").is_err());
+        assert!(parse_compact_orion_peer_premerge_wire_version("0").is_err());
+        assert!(parse_compact_orion_peer_premerge_wire_version("3").is_err());
+        assert!(parse_compact_orion_peer_premerge_wire_version("v2").is_err());
+    }
+
+    #[test]
     fn compact_peer_chunks_keep_shards_whole_and_remap_dense_query_templates() {
         let requests = [
             default_dense_request(),
@@ -2941,38 +3118,43 @@ mod tests {
         let payload_required = vec![false, true, false];
         let templates = requests
             .iter()
-            .map(|request| compact_peer_query_template("orion", request))
+            .map(|request| compact_peer_query_template("orion", request, 2))
             .collect::<Vec<_>>();
         let entries = vec![
             CoreSearchByShardCompactEntry {
                 query_slot: 0,
                 shard_id: 10,
-                hnsw_entry_points: vec![PointIdType::from(31).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 48,
+                hnsw_entry_point_num_ids: vec![31],
             },
             CoreSearchByShardCompactEntry {
                 query_slot: 2,
                 shard_id: 12,
-                hnsw_entry_points: vec![PointIdType::from(29).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 76,
+                hnsw_entry_point_num_ids: vec![29],
             },
             CoreSearchByShardCompactEntry {
                 query_slot: 2,
                 shard_id: 10,
-                hnsw_entry_points: vec![PointIdType::from(17).into(), PointIdType::from(11).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 64,
+                hnsw_entry_point_num_ids: vec![17, 11],
             },
             CoreSearchByShardCompactEntry {
                 query_slot: 1,
                 shard_id: 11,
-                hnsw_entry_points: vec![PointIdType::from(7).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 56,
+                hnsw_entry_point_num_ids: vec![7],
             },
             CoreSearchByShardCompactEntry {
                 query_slot: 0,
                 shard_id: 13,
-                hnsw_entry_points: vec![PointIdType::from(5).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 52,
+                hnsw_entry_point_num_ids: vec![5],
             },
         ];
 
@@ -2995,6 +3177,22 @@ mod tests {
         assert_eq!(rpcs[1].original_indices, vec![9, 5]);
         assert_eq!(rpcs[1].query_templates.len(), 2);
         assert_eq!(rpcs[1].is_payload_required_by_query, vec![false, false]);
+        assert!(
+            rpcs.iter()
+                .flat_map(|rpc| &rpc.query_templates)
+                .all(|template| template.search_points.is_none()
+                    && !template.encoded_search_points.is_empty())
+        );
+        assert_eq!(
+            rpcs[0].query_templates[1].encoded_search_points.as_ptr(),
+            rpcs[1].query_templates[0].encoded_search_points.as_ptr(),
+            "the query at original index 9 must share one reference-counted encoded payload across RPC chunks",
+        );
+        assert_eq!(
+            rpcs[0].query_templates[0].encoded_search_points.as_ptr(),
+            rpcs[1].query_templates[1].encoded_search_points.as_ptr(),
+            "the query at original index 5 must share one reference-counted encoded payload across RPC chunks",
+        );
 
         let shard_and_query_slots = rpcs
             .iter()
@@ -3010,16 +3208,7 @@ mod tests {
             vec![vec![(10, 0), (10, 1), (11, 2)], vec![(12, 0), (13, 1)]]
         );
         assert_eq!(rpcs[0].entries[1].hnsw_ef, 64);
-        assert_eq!(
-            rpcs[0].entries[1]
-                .hnsw_entry_points
-                .iter()
-                .cloned()
-                .map(PointIdType::try_from)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
-            vec![PointIdType::from(17), PointIdType::from(11)]
-        );
+        assert_eq!(rpcs[0].entries[1].hnsw_entry_point_num_ids, vec![17, 11]);
 
         let mut shard_to_rpc = HashMap::new();
         for (rpc_index, rpc) in rpcs.iter().enumerate() {
@@ -3042,12 +3231,13 @@ mod tests {
         let error = split_compact_peer_shard_major_rpcs(
             vec![3],
             Vec::new(),
-            vec![compact_peer_query_template("orion", &request)],
+            vec![compact_peer_query_template("orion", &request, 2)],
             vec![CoreSearchByShardCompactEntry {
                 query_slot: 0,
                 shard_id: 7,
-                hnsw_entry_points: vec![PointIdType::from(11).into()],
+                hnsw_entry_points: Vec::new(),
                 hnsw_ef: 48,
+                hnsw_entry_point_num_ids: vec![11],
             }],
             Some(1),
         )

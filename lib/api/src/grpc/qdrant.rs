@@ -10840,11 +10840,17 @@ pub struct CoreSearchBatchByShardInternal {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CoreSearchByShardQueryTemplate {
+    /// Legacy wire-version 1 representation.
     #[prost(message, optional, tag = "1")]
     #[validate(nested)]
     pub search_points: ::core::option::Option<CoreSearchPoints>,
     #[prost(uint64, optional, tag = "2")]
     pub source_id_dedup_block_size: ::core::option::Option<u64>,
+    /// Wire-version 2 representation. The nested message is encoded once into a
+    /// reference-counted byte buffer so controller RPC chunking and channel
+    /// retries can clone the template payload without copying the dense vector.
+    #[prost(bytes = "bytes", tag = "3")]
+    pub encoded_search_points: ::prost::bytes::Bytes,
 }
 /// The shard-specific part of an Orion lower search. Entry-point order is
 /// significant and must be preserved by the worker.
@@ -10857,11 +10863,18 @@ pub struct CoreSearchByShardCompactEntry {
     pub query_slot: u64,
     #[prost(uint32, tag = "2")]
     pub shard_id: u32,
+    /// Legacy wire-version 1 representation. Each generic PointId is encoded as
+    /// a separate protobuf submessage.
     #[prost(message, repeated, tag = "3")]
     pub hnsw_entry_points: ::prost::alloc::vec::Vec<PointId>,
     #[prost(uint64, tag = "4")]
     #[validate(range(min = 1))]
     pub hnsw_ef: u64,
+    /// Wire-version 2 representation for Orion numeric auto-shard collections.
+    /// Numeric IDs are packed directly, preserving their exact order while
+    /// avoiding one PointId/oneof allocation and submessage per entry point.
+    #[prost(uint64, repeated, tag = "5")]
+    pub hnsw_entry_point_num_ids: ::prost::alloc::vec::Vec<u64>,
 }
 #[derive(serde::Serialize)]
 #[derive(validator::Validate)]
@@ -10883,7 +10896,7 @@ pub struct CoreSearchBatchByShardCompactInternal {
     #[prost(uint64, optional, tag = "4")]
     pub timeout: ::core::option::Option<u64>,
     #[prost(uint32, tag = "5")]
-    #[validate(range(min = 1, max = 1))]
+    #[validate(range(min = 1, max = 2))]
     pub wire_version: u32,
 }
 #[derive(serde::Serialize)]
