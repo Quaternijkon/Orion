@@ -101,12 +101,17 @@ def matching_node_inspect(
     image_tag="image:test",
     image_id="sha256:abc",
     running=True,
+    wire_version="1",
+    wire_max_version="2",
 ):
     mode = module.expected_peer_premerge_mode(node, disable_peer_premerge)
     normalized_shards_per_rpc = (
         module.normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
         if node["role"] == "controller"
         else "all"
+    )
+    normalized_wire_version = module.normalize_orion_compact_wire_version(
+        wire_version
     )
     labels = {
         "orion.distributed.run_id": "run-1",
@@ -115,6 +120,10 @@ def matching_node_inspect(
         "orion.distributed.image_id": image_id,
         module.NOFILE_LABEL: module.expected_nofile_label(),
     }
+    if wire_max_version is not None:
+        labels[module.ORION_COMPACT_WIRE_MAX_VERSION_LABEL] = str(
+            wire_max_version
+        )
     if node["role"] == "controller":
         labels.update(
             {
@@ -126,6 +135,7 @@ def matching_node_inspect(
                         image_id,
                         disable_peer_premerge,
                         normalized_shards_per_rpc,
+                        normalized_wire_version,
                     )
                 ),
             }
@@ -134,6 +144,8 @@ def matching_node_inspect(
             labels[module.PEER_PREMERGE_SHARDS_PER_RPC_LABEL] = (
                 normalized_shards_per_rpc
             )
+        if normalized_wire_version == "2":
+            labels[module.ORION_COMPACT_WIRE_VERSION_LABEL] = "2"
     env = [
         "QDRANT__CLUSTER__ENABLED=true",
         f"QDRANT__CLUSTER__P2P__PORT={value['ports']['p2p']}",
@@ -155,6 +167,8 @@ def matching_node_inspect(
             f"{module.PEER_PREMERGE_SHARDS_PER_RPC_ENV}="
             f"{normalized_shards_per_rpc}"
         )
+    if node["role"] == "controller" and normalized_wire_version == "2":
+        env.append(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=2")
     return {
         "Id": container_id or f"container-{node['role']}",
         "Name": f"/{module.container_name('run-1', node['role'])}",
@@ -195,7 +209,11 @@ def matching_node_inspect(
 
 
 def matching_controller_inspect(
-    module, value, disable_peer_premerge, shards_per_rpc="all"
+    module,
+    value,
+    disable_peer_premerge,
+    shards_per_rpc="all",
+    wire_version="1",
 ):
     return matching_node_inspect(
         module,
@@ -203,10 +221,16 @@ def matching_controller_inspect(
         value["controller"],
         disable_peer_premerge,
         shards_per_rpc,
+        wire_version=wire_version,
     )
 
 
-def peer_premerge_manifest(value, mode="enabled", shards_per_rpc=None):
+def peer_premerge_manifest(
+    value,
+    mode="enabled",
+    shards_per_rpc=None,
+    wire_version="1",
+):
     peer_premerge = {
         "requested_mode": mode,
         "current_mode": mode,
@@ -229,18 +253,43 @@ def peer_premerge_manifest(value, mode="enabled", shards_per_rpc=None):
             "id": "sha256:abc",
             "tar_path": "/shared/image.tar",
             "tar_sha256": "a" * 64,
+            "capabilities": {
+                "orion_compact_wire_max_version": "2",
+            },
         },
         "repository": {"commit": "commit-1"},
         "topology": copy.deepcopy(value),
-        "nodes": [copy.deepcopy(node) for node in [value["controller"], *value["workers"]]],
+        "nodes": [
+            {
+                **copy.deepcopy(node),
+                "orion_compact_wire_version": (
+                    str(wire_version)
+                    if node["role"] == "controller"
+                    else "not_applicable"
+                ),
+            }
+            for node in [value["controller"], *value["workers"]]
+        ],
         "peer_premerge": peer_premerge,
+        "orion_compact_wire": {
+            "requested_version": str(
+                value["controller"].get("orion_compact_wire_version", 1)
+            ),
+            "current_version": str(wire_version),
+            "matches_requested": str(wire_version)
+            == str(value["controller"].get("orion_compact_wire_version", 1)),
+        },
         "orion_artifacts": [{"collection": "orion", "generation": 7}],
         "simple_kmeans_artifacts": [{"collection": "simple", "generation": 9}],
     }
 
 
-def image_transition_manifest(module, value, image_id="sha256:abc"):
-    stored = peer_premerge_manifest(value, "enabled", "all")
+def image_transition_manifest(
+    module, value, image_id="sha256:abc", wire_version="1"
+):
+    stored = peer_premerge_manifest(
+        value, "enabled", "all", wire_version=wire_version
+    )
     archive = module.shared_run_dir(value, "run-1") / "active-image.tar"
     archive.parent.mkdir(parents=True, exist_ok=True)
     archive.write_bytes(b"active image archive")
@@ -264,10 +313,14 @@ def write_image_transition_candidate(
     image_id="sha256:def",
     archive_bytes=b"candidate image archive",
     dirty=False,
+    wire_version=None,
 ):
+    if wire_version is None:
+        wire_version = module.requested_orion_compact_wire_version(value)
+    wire_version = module.normalize_orion_compact_wire_version(wire_version)
     fingerprint = "b" * 64
     tar_path, manifest_path = module.image_candidate_paths(
-        value, "run-1", image_tag
+        value, "run-1", image_tag, wire_version
     )
     tar_path.parent.mkdir(parents=True, exist_ok=True)
     tar_path.write_bytes(archive_bytes)
@@ -275,6 +328,7 @@ def write_image_transition_candidate(
         "schema_version": module.IMAGE_CANDIDATE_SCHEMA_VERSION,
         "kind": "orion-image-transition-candidate",
         "run_id": "run-1",
+        "orion_compact_wire_version": wire_version,
         "generated_at": "2026-07-21T00:00:00Z",
         "topology_runtime_identity": module.topology_runtime_identity(value),
         "source_fingerprint": fingerprint,
@@ -290,6 +344,11 @@ def write_image_transition_candidate(
             "tar_path": str(tar_path),
             "tar_size_bytes": tar_path.stat().st_size,
             "tar_sha256": module.sha256_file(tar_path),
+            "capabilities": {
+                "orion_compact_wire_max_version": (
+                    module.CURRENT_ORION_COMPACT_WIRE_MAX_VERSION
+                )
+            },
         },
     }
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -325,6 +384,7 @@ def install_transition_runtime_fakes(
 ):
     snapshot = healthy_cluster_snapshot(module, value)
     roles = [str(node["role"]) for node in module.all_nodes(value)]
+    active_wire_version = module.manifest_current_orion_compact_wire_version(stored)
     state = {
         role: {
             "exists": True,
@@ -332,6 +392,7 @@ def install_transition_runtime_fakes(
             "image_tag": stored["image"]["tag"],
             "image_id": stored["image"]["id"],
             "generation": 0,
+            "wire_version": active_wire_version,
         }
         for role in roles
     }
@@ -359,6 +420,7 @@ def install_transition_runtime_fakes(
             image_tag=current["image_tag"],
             image_id=current["image_id"],
             running=current["running"],
+            wire_version=current["wire_version"],
         )
         if inspect_mutator is not None:
             inspect_mutator(role, inspected)
@@ -394,6 +456,12 @@ def install_transition_runtime_fakes(
                 if item.startswith("orion.distributed.image_id=")
             ]
             assert len(image_labels) == 1
+            wire_values = [
+                item.partition("=")[2]
+                for item in option_values(command, "-e")
+                if item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
+            ]
+            wire_version = "2" if wire_values == ["2"] else "1"
             state[role].update(
                 {
                     "exists": True,
@@ -401,6 +469,7 @@ def install_transition_runtime_fakes(
                     "image_tag": image_tag,
                     "image_id": image_labels[0],
                     "generation": state[role]["generation"] + 1,
+                    "wire_version": wire_version,
                 }
             )
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -512,6 +581,37 @@ def test_cloudlab_topology_has_one_controller_three_unique_workers():
         "10.10.1.3",
         "10.10.1.4",
     ]
+    assert value["controller"]["orion_compact_wire_version"] == 2
+    assert all(
+        "orion_compact_wire_version" not in node for node in value["workers"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, "1"), (1, "1"), ("1", "1"), (2, "2"), ("2", "2")],
+)
+def test_orion_compact_wire_version_normalization(value, expected):
+    module = load_module()
+
+    assert module.normalize_orion_compact_wire_version(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", 0, 3, "02", True, False, "v2"])
+def test_orion_compact_wire_version_rejects_unsupported_values(value):
+    module = load_module()
+
+    with pytest.raises(ValueError, match="wire version"):
+        module.normalize_orion_compact_wire_version(value)
+
+
+def test_topology_rejects_worker_compact_wire_metadata():
+    module = load_module()
+    value = topology(module)
+    value["workers"][0]["orion_compact_wire_version"] = 2
+
+    with pytest.raises(ValueError, match="controller-only"):
+        module.validate_topology(value)
 
 
 @pytest.mark.parametrize(
@@ -653,6 +753,204 @@ def test_controller_fingerprint_preserves_v3_all_compatibility():
     assert module.controller_config_fingerprint(
         controller, "run-1", "sha256:abc", False, 4
     ) != legacy_enabled
+    assert module.controller_config_fingerprint(
+        controller, "run-1", "sha256:abc", False, "all", "2"
+    ) != legacy_enabled
+
+
+def test_compact_wire_v1_is_implicit_and_v2_is_controller_only():
+    module = load_module()
+    value = topology(module)
+    controller_v1 = module.docker_run_command(
+        value,
+        value["controller"],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        "all",
+        "1",
+    )
+    controller_v2 = module.docker_run_command(
+        value,
+        value["controller"],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        "all",
+        "2",
+    )
+    worker_v2 = module.docker_run_command(
+        value,
+        value["workers"][0],
+        "run-1",
+        "image:test",
+        "sha256:abc",
+        False,
+        "all",
+        "2",
+    )
+    prefix_env = f"{module.ORION_COMPACT_WIRE_VERSION_ENV}="
+    prefix_label = f"{module.ORION_COMPACT_WIRE_VERSION_LABEL}="
+
+    assert not any(
+        item.startswith(prefix_env) for item in option_values(controller_v1, "-e")
+    )
+    assert not any(
+        item.startswith(prefix_label)
+        for item in option_values(controller_v1, "--label")
+    )
+    assert f"{prefix_env}2" in option_values(controller_v2, "-e")
+    assert f"{prefix_label}2" in option_values(controller_v2, "--label")
+    assert not any(
+        item.startswith(prefix_env) for item in option_values(worker_v2, "-e")
+    )
+    assert not any(
+        item.startswith(prefix_label)
+        for item in option_values(worker_v2, "--label")
+    )
+
+
+def test_compact_wire_inspection_and_reuse_are_fail_closed():
+    module = load_module()
+    value = topology(module)
+    controller = value["controller"]
+    worker = value["workers"][0]
+    v1 = matching_controller_inspect(module, value, False, wire_version="1")
+    v2 = matching_controller_inspect(module, value, False, wire_version="2")
+
+    assert module.inspected_orion_compact_wire_version(v1, controller) == "1"
+    assert module.inspected_orion_compact_wire_version(v2, controller) == "2"
+    assert module.verify_container_reusable(
+        v2, controller, "run-1", "sha256:abc", False, "all", "2"
+    )
+    with pytest.raises(RuntimeError, match="compact_wire"):
+        module.verify_container_reusable(
+            v1, controller, "run-1", "sha256:abc", False, "all", "2"
+        )
+
+    malformed = []
+    missing_env = copy.deepcopy(v2)
+    missing_env["Config"]["Env"] = [
+        item
+        for item in missing_env["Config"]["Env"]
+        if not item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
+    ]
+    malformed.append(missing_env)
+    missing_label = copy.deepcopy(v2)
+    del missing_label["Config"]["Labels"][module.ORION_COMPACT_WIRE_VERSION_LABEL]
+    malformed.append(missing_label)
+    mismatched = copy.deepcopy(v2)
+    mismatched["Config"]["Env"][-1] = (
+        f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=1"
+    )
+    malformed.append(mismatched)
+    duplicate = copy.deepcopy(v2)
+    duplicate["Config"]["Env"].append(
+        f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=2"
+    )
+    malformed.append(duplicate)
+    invalid = copy.deepcopy(v2)
+    invalid["Config"]["Labels"][module.ORION_COMPACT_WIRE_VERSION_LABEL] = "3"
+    malformed.append(invalid)
+    for inspected in malformed:
+        assert (
+            module.inspected_orion_compact_wire_version(inspected, controller)
+            == "inconsistent"
+        )
+
+    worker_leak = matching_node_inspect(module, value, worker)
+    worker_leak["Config"]["Env"].append(
+        f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=2"
+    )
+    assert (
+        module.inspected_orion_compact_wire_version(worker_leak, worker)
+        == "inconsistent"
+    )
+    with pytest.raises(RuntimeError, match="compact_wire"):
+        module.verify_container_reusable(
+            worker_leak, worker, "run-1", "sha256:abc", False, "all", "2"
+        )
+
+
+def test_compact_wire_v2_requires_image_bound_capability_on_every_role():
+    module = load_module()
+    value = topology(module)
+    for node in module.all_nodes(value):
+        missing = matching_node_inspect(
+            module,
+            value,
+            node,
+            wire_version="2",
+            wire_max_version=None,
+        )
+        with pytest.raises(RuntimeError, match="max_version"):
+            module.verify_container_reusable(
+                missing,
+                node,
+                "run-1",
+                "sha256:abc",
+                False,
+                "all",
+                "2",
+            )
+        implicit_v1 = matching_node_inspect(
+            module,
+            value,
+            node,
+            wire_version="1",
+            wire_max_version=None,
+        )
+        assert module.verify_container_reusable(
+            implicit_v1,
+            node,
+            "run-1",
+            "sha256:abc",
+            False,
+            "all",
+            "1",
+        )
+
+
+def test_docker_image_declares_compact_wire_v2_capability():
+    module = load_module()
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert (
+        f'LABEL {module.ORION_COMPACT_WIRE_MAX_VERSION_LABEL}="2"'
+        in dockerfile
+    )
+
+
+@pytest.mark.parametrize(
+    ("labels", "required", "expected", "error"),
+    [
+        ({"org.qdrant.orion.compact_wire.max_version": "2"}, "2", "2", None),
+        ({}, "1", "1", None),
+        (None, "1", "1", None),
+        ({}, "2", None, "does not support requested"),
+        ({"org.qdrant.orion.compact_wire.max_version": "3"}, "2", None, "invalid"),
+    ],
+)
+def test_local_image_compact_wire_capability_is_verified(
+    monkeypatch, labels, required, expected, error
+):
+    module = load_module()
+    monkeypatch.setattr(
+        module,
+        "run_command",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            [], 0, json.dumps(labels), ""
+        ),
+    )
+    if error is None:
+        assert (
+            module.image_compact_wire_max_version_local("image:test", required)
+            == expected
+        )
+    else:
+        with pytest.raises(RuntimeError, match=error):
+            module.image_compact_wire_max_version_local("image:test", required)
 
 
 def test_peer_premerge_rpc_chunking_is_controller_only_and_all_is_implicit():
@@ -1171,7 +1469,7 @@ def test_peer_premerge_transition_manifest_binds_deployment_commit(tmp_path):
 
     assert module.validate_peer_premerge_transition_manifest(
         value, "run-1", stored, None, "commit-1"
-    ) == ("image:test", "sha256:abc", "enabled", "all", "commit-1")
+    ) == ("image:test", "sha256:abc", "enabled", "all", "1", "commit-1")
     with pytest.raises(RuntimeError, match="deployment commit"):
         module.validate_peer_premerge_transition_manifest(
             value, "run-1", stored, None, "other-commit"
@@ -1185,13 +1483,57 @@ def test_peer_premerge_transition_manifest_reads_bounded_chunk_setting(tmp_path)
 
     assert module.validate_peer_premerge_transition_manifest(
         value, "run-1", stored, None, "commit-1"
-    ) == ("image:test", "sha256:abc", "disabled", "8", "commit-1")
+    ) == ("image:test", "sha256:abc", "disabled", "8", "1", "commit-1")
 
     stored["peer_premerge"]["current_shards_per_rpc"] = "bad"
     with pytest.raises(RuntimeError, match="invalid.*shards-per-rpc"):
         module.validate_peer_premerge_transition_manifest(
             value, "run-1", stored, None, "commit-1"
         )
+
+
+def test_transition_manifest_cross_checks_top_level_and_node_wire_identity(
+    tmp_path,
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = peer_premerge_manifest(value, wire_version="2")
+
+    assert module.validate_peer_premerge_transition_manifest(
+        value, "run-1", stored, None, "commit-1"
+    )[4] == "2"
+
+    inconsistent = copy.deepcopy(stored)
+    controller = next(
+        node for node in inconsistent["nodes"] if node["role"] == "controller"
+    )
+    controller["orion_compact_wire_version"] = "1"
+    with pytest.raises(RuntimeError, match="disagrees between top-level and node"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", inconsistent, None, "commit-1"
+        )
+
+    partial = copy.deepcopy(stored)
+    del partial["orion_compact_wire"]
+    with pytest.raises(RuntimeError, match="fully legacy"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", partial, None, "commit-1"
+        )
+
+    unsupported = copy.deepcopy(stored)
+    del unsupported["image"]["capabilities"]
+    with pytest.raises(RuntimeError, match="does not support its active"):
+        module.validate_peer_premerge_transition_manifest(
+            value, "run-1", unsupported, None, "commit-1"
+        )
+
+    legacy = copy.deepcopy(stored)
+    del legacy["orion_compact_wire"]
+    for node in legacy["nodes"]:
+        del node["orion_compact_wire_version"]
+    assert module.validate_peer_premerge_transition_manifest(
+        value, "run-1", legacy, None, "commit-1"
+    )[4] == "1"
 
 
 def test_dirty_candidate_tag_uses_deterministic_image_source_fingerprint(tmp_path):
@@ -1280,6 +1622,11 @@ def test_staged_build_writes_candidate_without_replacing_active_manifest(
     )
     monkeypatch.setattr(
         module,
+        "image_compact_wire_max_version_local",
+        lambda *_args, **_kwargs: "2",
+    )
+    monkeypatch.setattr(
+        module,
         "write_manifest",
         lambda *_args: pytest.fail("staged build must not write active manifest"),
     )
@@ -1305,8 +1652,64 @@ def test_staged_build_writes_candidate_without_replacing_active_manifest(
     )
     assert candidate["image_id"] == "sha256:candidate"
     assert candidate["source_fingerprint"] == source["sha256"]
+    assert candidate["orion_compact_wire_version"] == "2"
     assert active_path.read_text(encoding="utf-8") == '{"active": true}\n'
     assert any("buildx" in command for command in commands)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "invalid", "mismatch"])
+def test_candidate_manifest_requires_exact_requested_compact_wire_version(
+    tmp_path, mutation
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    candidate_path, payload = write_image_transition_candidate(module, value)
+    mutated = copy.deepcopy(payload)
+    if mutation == "missing":
+        del mutated["orion_compact_wire_version"]
+    elif mutation == "invalid":
+        mutated["orion_compact_wire_version"] = "3"
+    else:
+        mutated["orion_compact_wire_version"] = "1"
+    candidate_path.write_text(json.dumps(mutated), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="compact wire version"):
+        module.validate_image_candidate_manifest(value, "run-1", candidate_path)
+
+
+def test_candidate_manifest_and_archive_paths_are_canonical_for_wire_identity(
+    tmp_path,
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    candidate_path, payload = write_image_transition_candidate(module, value)
+
+    moved_manifest = candidate_path.with_name("copied-candidate.json")
+    moved_manifest.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="manifest path is not canonical"):
+        module.validate_image_candidate_manifest(value, "run-1", moved_manifest)
+
+    moved_archive = candidate_path.with_name("copied-candidate.tar")
+    moved_archive.write_bytes(Path(payload["image"]["tar_path"]).read_bytes())
+    mutated = copy.deepcopy(payload)
+    mutated["image"]["tar_path"] = str(moved_archive)
+    mutated["image"]["tar_sha256"] = module.sha256_file(moved_archive)
+    mutated["image"]["tar_size_bytes"] = moved_archive.stat().st_size
+    candidate_path.write_text(json.dumps(mutated), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="archive path is not canonical"):
+        module.validate_image_candidate_manifest(value, "run-1", candidate_path)
+
+
+def test_candidate_manifest_requires_image_compact_wire_capability(tmp_path):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    candidate_path, payload = write_image_transition_candidate(module, value)
+    mutated = copy.deepcopy(payload)
+    del mutated["image"]["capabilities"]
+    candidate_path.write_text(json.dumps(mutated), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="compact-wire capability"):
+        module.validate_image_candidate_manifest(value, "run-1", candidate_path)
 
 
 def test_build_reuses_tar_only_after_manifest_sha_and_tag_id_close_loop(
@@ -1325,6 +1728,9 @@ def test_build_reuses_tar_only_after_manifest_sha_and_tag_id_close_loop(
             "id": image_id,
             "tar_path": str(tar_path),
             "tar_sha256": module.sha256_file(tar_path),
+            "capabilities": {
+                "orion_compact_wire_max_version": "2",
+            },
         }
     }
     commands = []
@@ -1335,6 +1741,11 @@ def test_build_reuses_tar_only_after_manifest_sha_and_tag_id_close_loop(
     )
     monkeypatch.setattr(module, "read_manifest", lambda *_args: stored)
     monkeypatch.setattr(module, "image_id_local", lambda *_args, **_kwargs: image_id)
+    monkeypatch.setattr(
+        module,
+        "image_compact_wire_max_version_local",
+        lambda *_args, **_kwargs: "2",
+    )
     monkeypatch.setattr(
         module,
         "run_command",
@@ -1514,7 +1925,7 @@ def test_transition_image_same_image_id_is_idempotent_noop(
 ):
     module = load_module()
     value = isolated_topology(module, tmp_path)
-    stored = image_transition_manifest(module, value)
+    stored = image_transition_manifest(module, value, wire_version="2")
     candidate_path, candidate = write_image_transition_candidate(
         module, value, image_id="sha256:abc"
     )
@@ -1533,6 +1944,46 @@ def test_transition_image_same_image_id_is_idempotent_noop(
         for _role, command in commands
     )
     assert writes == []
+
+
+def test_transition_image_same_image_different_wire_is_not_a_noop(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    value = isolated_topology(module, tmp_path)
+    stored = image_transition_manifest(module, value, wire_version="1")
+    candidate_path, candidate = write_image_transition_candidate(
+        module, value, image_id="sha256:abc"
+    )
+    state, _images, commands, writes = install_transition_runtime_fakes(
+        monkeypatch, module, value, stored, candidate
+    )
+
+    assert module.command_transition_image(
+        transition_image_args(candidate_path), value
+    ) == 0
+
+    run_commands = [
+        (role, command)
+        for role, command in commands
+        if isinstance(command, list)
+        and len(command) > 3
+        and command[3] == "run"
+    ]
+    assert len(run_commands) == 4
+    controller_run = next(
+        command for role, command in run_commands if role == "controller"
+    )
+    assert f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=2" in option_values(
+        controller_run, "-e"
+    )
+    assert state["controller"]["wire_version"] == "2"
+    assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
+        "2", "2"
+    )
+    proof = writes[-1]["image_transitions"][-1]
+    assert proof["old_image"]["orion_compact_wire_version"] == "1"
+    assert proof["candidate_image"]["orion_compact_wire_version"] == "2"
 
 
 def test_transition_image_dry_run_has_no_live_or_manifest_mutation(
@@ -1676,6 +2127,26 @@ def test_transition_image_failure_restores_old_image_and_records_rollback(
     assert proof["outcome"] == "rolled_back"
     assert proof["rollback"]["succeeded"] is True
     assert len(proof["rollback"]["containers"]) == 4
+    assert proof["rollback"]["orion_compact_wire_version"] == "1"
+    assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
+        "2", "1"
+    )
+    controller_runs = [
+        command
+        for role, command in commands
+        if role == "controller"
+        and isinstance(command, list)
+        and len(command) > 3
+        and command[3] == "run"
+    ]
+    assert len(controller_runs) == 2
+    assert f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=2" in option_values(
+        controller_runs[0], "-e"
+    )
+    assert not any(
+        item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
+        for item in option_values(controller_runs[1], "-e")
+    )
 
 
 def test_transition_image_postflight_placement_mismatch_triggers_rollback(
@@ -1788,6 +2259,7 @@ def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
         }
     }
     image_inspects = 0
+    container_inspects = 0
     commands = []
 
     def fake_run_on_node(_node, command, _args, **_kwargs):
@@ -1809,7 +2281,23 @@ def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
         lambda _repo: {"commit": "commit-1", "dirty_paths": []},
     )
     monkeypatch.setattr(module, "run_on_node", fake_run_on_node)
-    monkeypatch.setattr(module, "inspect_container", lambda *_args: None)
+    def fake_inspect_container(_node, _name, _args):
+        nonlocal container_inspects
+        container_inspects += 1
+        if container_inspects == 1:
+            return None
+        return matching_node_inspect(
+            module,
+            value,
+            node,
+            False,
+            "4",
+            image_tag=image_tag,
+            image_id=image_id,
+            wire_version="2",
+        )
+
+    monkeypatch.setattr(module, "inspect_container", fake_inspect_container)
     monkeypatch.setattr(module, "wait_http_ready", lambda *_args: None)
     monkeypatch.setattr(module, "node_facts", lambda *_args: {})
     monkeypatch.setattr(module.time, "sleep", lambda *_args: None)
@@ -1847,9 +2335,12 @@ def test_deploy_reinspects_loaded_tag_and_records_actual_image_id(
 
     assert module.command_deploy(args, value) == 0
     assert image_inspects == 2
+    assert container_inspects == 2
     assert ["sudo", "-n", "docker", "load", "--input", str(tar_path)] in commands
     assert written["nodes"][0]["image_id"] == image_id
     assert written["nodes"][0]["peer_premerge_shards_per_rpc"] == "4"
+    assert written["nodes"][0]["orion_compact_wire_version"] == "2"
+    assert written["nodes"][0]["orion_compact_wire_max_version"] == "2"
     run_command = next(
         command
         for command in commands
@@ -1930,6 +2421,10 @@ def test_status_requires_cluster_peer_uris_premerge_and_active_worker_placement(
             "peer_premerge_shards_per_rpc": (
                 "all" if node["role"] == "controller" else "not_applicable"
             ),
+            "orion_compact_wire_version": (
+                "2" if node["role"] == "controller" else "not_applicable"
+            ),
+            "orion_compact_wire_max_version": "2",
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -1984,6 +2479,10 @@ def test_status_reports_and_validates_peer_premerge_chunk_setting(
             "peer_premerge_shards_per_rpc": (
                 current if node["role"] == "controller" else "not_applicable"
             ),
+            "orion_compact_wire_version": (
+                "2" if node["role"] == "controller" else "not_applicable"
+            ),
+            "orion_compact_wire_max_version": "2",
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -2055,6 +2554,10 @@ def test_status_returns_nonzero_for_cluster_or_placement_mismatch(
             "peer_premerge_shards_per_rpc": (
                 "all" if node["role"] == "controller" else "not_applicable"
             ),
+            "orion_compact_wire_version": (
+                "2" if node["role"] == "controller" else "not_applicable"
+            ),
+            "orion_compact_wire_max_version": "2",
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -2089,6 +2592,10 @@ def test_status_returns_nonzero_when_cluster_endpoint_is_unreachable(
             "peer_premerge_shards_per_rpc": (
                 "all" if node["role"] == "controller" else "not_applicable"
             ),
+            "orion_compact_wire_version": (
+                "2" if node["role"] == "controller" else "not_applicable"
+            ),
+            "orion_compact_wire_max_version": "2",
         }
 
     monkeypatch.setattr(module, "status_for_node", fake_node_status)
@@ -2235,6 +2742,9 @@ def test_manifest_preserves_deployment_commit_and_records_current_tooling_repo(
         "path": str(tmp_path.resolve()),
         **tooling_state,
     }
+    assert payload["orion_compact_wire"] == module.orion_compact_wire_summary(
+        "2", "1"
+    )
 
 
 def test_manifest_recovers_last_transition_markers_from_preserved_history(
@@ -2691,13 +3201,21 @@ def test_set_peer_premerge_recreates_only_controller_and_preserves_storage(
     assert f"{module.PEER_PREMERGE_DISABLE_ENV}=1" in option_values(
         run_command, "-e"
     )
+    assert not any(
+        item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
+        for item in option_values(run_command, "-e")
+    )
     assert not any("rm" == item and str(storage) in run_command for item in run_command)
     assert writes[-1]["orion_artifacts"] == stored["orion_artifacts"]
     assert writes[-1]["peer_premerge"]["current_mode"] == "disabled"
+    assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
+        "2", "1"
+    )
     proof = writes[-1]["peer_premerge_transitions"][-1]
     assert proof["outcome"] == "success"
     assert proof["from_mode"] == "enabled"
     assert proof["final_mode"] == "disabled"
+    assert proof["final_orion_compact_wire_version"] == "1"
     assert proof["controller_before"]["container_id"] == "container-controller-0"
     assert proof["controller_after"]["container_id"] == "container-controller-1"
 
@@ -2968,7 +3486,26 @@ def test_set_peer_premerge_failure_rolls_controller_back_and_records_proof(
         "error": None,
     }
     assert writes[-1]["peer_premerge"]["current_mode"] == "enabled"
+    assert writes[-1]["orion_compact_wire"] == module.orion_compact_wire_summary(
+        "2", "1"
+    )
     assert writes[-1]["orion_artifacts"] == stored["orion_artifacts"]
+    controller_runs = [
+        command
+        for role, command in commands
+        if role == "controller"
+        and isinstance(command, list)
+        and len(command) > 3
+        and command[3] == "run"
+    ]
+    assert len(controller_runs) == 2
+    assert all(
+        not any(
+            item.startswith(f"{module.ORION_COMPACT_WIRE_VERSION_ENV}=")
+            for item in option_values(command, "-e")
+        )
+        for command in controller_runs
+    )
 
 
 def test_set_peer_premerge_chunk_failure_rolls_back_exact_original_chunk(

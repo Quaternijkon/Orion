@@ -462,10 +462,52 @@ collection contract 的第二套查询协议。
 重排 EP、裁剪 membership 或改变 Dynamic EF。worker 对每个 RPC 返回 per-query partial
 rows，controller 对所有 peers/chunks 再执行同一最终 merge。
 
+compact request envelope 的 `wire_version` 目前有两个明确定义的版本：
+
+| 项目 | wire v1 | wire v2 |
+|---|---|---|
+| controller 选择 | env 未设置或显式 `1` | `QDRANT_ORION_COMPACT_WIRE_VERSION=2` |
+| query template | nested `search_points` | controller 只生产 `encoded_search_points`；worker 接受 nested/encoded 二选一 |
+| numeric EP | 通用 `repeated PointId` | packed `repeated uint64 hnsw_entry_point_num_ids` |
+| UUID EP | 通用 `PointId` | 只要该 shard 的 ordered EP 中有 UUID，整组回退通用 `PointId` |
+
+v2 worker 保留 nested query template 是受控兼容输入，不代表 v2 controller 会生产 nested
+表示。v1 出现 encoded/packed 字段、v2 同时出现 nested+encoded 或 generic+packed、两种 EP
+都为空、encoded bytes 为空/损坏/超过每 template 16 MiB，或 wire version 不是 `1/2` 时，
+worker 都返回 `INVALID_ARGUMENT`。numeric packed 与 UUID fallback 都保持 ordered-unique
+EP 的精确顺序；不允许 transport 根据 ID 类型或 payload 大小删减 EP。encoded 表示只是同一
+`CoreSearchPoints` protobuf 的 bytes 形态，vector name、limit/offset、score threshold、
+payload/vector selector 和 envelope 中独立携带的 source-ID dedup metadata 均保持原语义。
+
+v2 controller 在 physical-peer grouping 前为每个原始 query 只构造并 encode 一次
+`CoreSearchPoints`。`encoded_search_points` 使用引用计数 `Bytes`，随后跨不同 peers、同一
+peer 的 whole-shard RPC chunks，以及 `RemoteShard` outer retry request clone 共享同一
+controller 内存 payload。这个共享避免重复 protobuf construction 和大 vector heap copy，
+不表示网络上只发送一次：每个 gRPC 仍独立序列化和传输，因此必须由 fresh-image A/B 实测
+QPS、latency、CPU 和 network bytes，不能从实现直接推导性能收益。
+
 mixed-version compact RPC 也 fail closed。旧 worker 不认识 wire method/version、或任一
 worker 不能满足上述合同，controller 会把请求作为错误返回，不会在已经开始 compact fan-out
 后透明重试普通 per-shard RPC。正式部署因此要求四节点使用完全相同的 image；disabled A/B
 必须在同一 image 上显式切换 controller mode，而不能依赖混合版本 fallback。
+
+版本选择是 controller-only container identity。隐式 v1 没有 wire env/label；显式 v2
+controller 必须同时带 `QDRANT_ORION_COMPACT_WIRE_VERSION=2` 和
+`orion.distributed.compact_wire_version=2`，三个 workers 则必须都不带。manifest/status
+分别记录 requested/current/match，非法、缺一、重复、不一致或 worker 泄漏都 fail closed。
+candidate image manifest 将 wire identity 与 image ID、archive SHA、source fingerprint 和
+topology identity 绑定；只有 image ID 与 wire version 同时相同才允许 no-op。
+
+runtime producer identity 不能替代 binary capability 证明。实现 v2 的 image 必须带
+`org.qdrant.orion.compact_wire.max_version=2`，controller 和三个 workers 在启动后都从
+container inspect 验证该继承 image label；没有 capability label 的旧 image 按 v1-only
+处理，不能通过只给 controller 注入 v2 env/label 来伪装协议升级。
+
+当前只支持 offline four-node image transition，不支持逐节点 rolling upgrade，也没有
+runtime capability negotiation。v2 必须在四节点同 digest 后一次性启用；forward 失败时
+rollback 恢复 active image 和 active wire identity，旧 active v1 恢复成无 env/label 的隐式
+v1。`set-peer-premerge` 或 shards-per-RPC A/B 只能改变对应 controller 设置，不能顺便把
+active v1 偷换成 topology requested v2。
 
 ### 6. 保留的 Qdrant 分布式语义
 

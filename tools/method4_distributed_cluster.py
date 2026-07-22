@@ -35,13 +35,20 @@ PEER_PREMERGE_SHARDS_PER_RPC_ENV = "QDRANT_ORION_PEER_PREMERGE_SHARDS_PER_RPC"
 PEER_PREMERGE_SHARDS_PER_RPC_LABEL = (
     "orion.distributed.peer_premerge_shards_per_rpc"
 )
+ORION_COMPACT_WIRE_VERSION_ENV = "QDRANT_ORION_COMPACT_WIRE_VERSION"
+ORION_COMPACT_WIRE_VERSION_LABEL = "orion.distributed.compact_wire_version"
+ORION_COMPACT_WIRE_MAX_VERSION_LABEL = (
+    "org.qdrant.orion.compact_wire.max_version"
+)
+DEFAULT_ORION_COMPACT_WIRE_VERSION = "1"
+CURRENT_ORION_COMPACT_WIRE_MAX_VERSION = "2"
 CONTROLLER_FINGERPRINT_LABEL = "orion.distributed.controller_fingerprint"
 NOFILE_LABEL = "orion.distributed.nofile"
 CONTAINER_NOFILE_SOFT = 65536
 CONTAINER_NOFILE_HARD = 65536
 ORION_ARTIFACT_FORMAT_VERSION = 1
 SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
-IMAGE_CANDIDATE_SCHEMA_VERSION = 1
+IMAGE_CANDIDATE_SCHEMA_VERSION = 2
 IMAGE_TRANSITION_SCHEMA_VERSION = 1
 NON_IMAGE_SOURCE_PREFIXES = ("tools/", "tests/", "docs/", "results/")
 
@@ -67,6 +74,18 @@ def normalize_peer_premerge_shards_per_rpc(value: Any) -> str:
     if parsed > (2**63 - 1):
         raise ValueError("peer-premerge shards-per-rpc is too large for the runtime")
     return str(parsed)
+
+
+def normalize_orion_compact_wire_version(value: Any) -> str:
+    """Return the only supported compact-wire versions as canonical strings."""
+    if value is None:
+        return DEFAULT_ORION_COMPACT_WIRE_VERSION
+    if isinstance(value, bool):
+        raise ValueError("Orion compact wire version must be exactly 1 or 2")
+    normalized = str(value).strip()
+    if normalized not in {"1", "2"}:
+        raise ValueError("Orion compact wire version must be exactly 1 or 2")
+    return normalized
 
 
 def add_peer_premerge_chunk_argument(
@@ -255,6 +274,21 @@ def validate_topology(topology: dict[str, Any]) -> None:
         raise ValueError("every node requires an explicit cpuset")
     if topology.get("benchmark_client_cpuset") == controller.get("cpuset"):
         raise ValueError("benchmark client and controller cpusets must differ")
+    normalize_orion_compact_wire_version(
+        controller.get(
+            "orion_compact_wire_version", DEFAULT_ORION_COMPACT_WIRE_VERSION
+        )
+    )
+    leaking_workers = [
+        str(node.get("role") or "")
+        for node in workers
+        if "orion_compact_wire_version" in node
+    ]
+    if leaking_workers:
+        raise ValueError(
+            "orion_compact_wire_version is controller-only; remove it from workers: "
+            f"{leaking_workers}"
+        )
 
 
 def validate_run_id(run_id: str) -> str:
@@ -340,6 +374,23 @@ def expected_peer_premerge_shards_per_rpc(
     return normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
 
 
+def requested_orion_compact_wire_version(topology: dict[str, Any]) -> str:
+    return normalize_orion_compact_wire_version(
+        topology["controller"].get(
+            "orion_compact_wire_version", DEFAULT_ORION_COMPACT_WIRE_VERSION
+        )
+    )
+
+
+def expected_orion_compact_wire_version(
+    node: dict[str, Any], wire_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION
+) -> str:
+    normalized = normalize_orion_compact_wire_version(wire_version)
+    if str(node.get("role")) != "controller":
+        return "not_applicable"
+    return normalized
+
+
 def peer_premerge_shards_per_rpc_env_value(shards_per_rpc: Any) -> str | None:
     normalized = normalize_peer_premerge_shards_per_rpc(shards_per_rpc)
     return None if normalized == "all" else normalized
@@ -351,6 +402,7 @@ def controller_config_fingerprint(
     image_id: str,
     disable_peer_premerge: bool = False,
     peer_premerge_shards_per_rpc: Any = "all",
+    orion_compact_wire_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION,
 ) -> str:
     """Fingerprint controller settings that must not drift across an A/B run."""
     if str(node.get("role")) != "controller":
@@ -373,6 +425,11 @@ def controller_config_fingerprint(
     )
     if normalized_shards_per_rpc != "all":
         payload["peer_premerge_shards_per_rpc"] = normalized_shards_per_rpc
+    normalized_wire_version = normalize_orion_compact_wire_version(
+        orion_compact_wire_version
+    )
+    if normalized_wire_version != DEFAULT_ORION_COMPACT_WIRE_VERSION:
+        payload["orion_compact_wire_version"] = normalized_wire_version
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
@@ -452,6 +509,141 @@ def inspected_peer_premerge_shards_per_rpc(
     ):
         return "inconsistent"
     return label_normalized
+
+
+def inspected_environment_values(
+    inspected: dict[str, Any] | None, key: str
+) -> list[str]:
+    if not inspected:
+        return []
+    return [
+        str(item).partition("=")[2]
+        for item in (inspected.get("Config") or {}).get("Env") or []
+        if str(item).partition("=")[:2] == (key, "=")
+    ]
+
+
+def inspected_orion_compact_wire_version(
+    inspected: dict[str, Any] | None, node: dict[str, Any]
+) -> str | None:
+    role = str(node.get("role"))
+    if not inspected:
+        return "not_applicable" if role != "controller" else None
+    config = inspected.get("Config") or {}
+    labels = config.get("Labels") or {}
+    label_present = ORION_COMPACT_WIRE_VERSION_LABEL in labels
+    label_value = labels.get(ORION_COMPACT_WIRE_VERSION_LABEL)
+    env_values = inspected_environment_values(
+        inspected, ORION_COMPACT_WIRE_VERSION_ENV
+    )
+    if role != "controller":
+        if label_present or env_values:
+            return "inconsistent"
+        return "not_applicable"
+    if not label_present and not env_values:
+        return DEFAULT_ORION_COMPACT_WIRE_VERSION
+    if label_value != "2" or env_values != ["2"]:
+        return "inconsistent"
+    return "2"
+
+
+def inspected_orion_compact_wire_max_version(
+    inspected: dict[str, Any] | None,
+) -> str | None:
+    """Return the image-bound compact-wire capability inherited by a container.
+
+    Images predating the capability label are treated as v1-only. Invalid or
+    duplicated runtime claims are not accepted as capability evidence.
+    """
+    if not inspected:
+        return None
+    labels = ((inspected.get("Config") or {}).get("Labels") or {})
+    value = labels.get(ORION_COMPACT_WIRE_MAX_VERSION_LABEL)
+    if value is None:
+        return DEFAULT_ORION_COMPACT_WIRE_VERSION
+    try:
+        return normalize_orion_compact_wire_version(value)
+    except ValueError:
+        return "inconsistent"
+
+
+def require_orion_compact_wire_capability(
+    inspected: dict[str, Any] | None,
+    requested_version: Any,
+) -> str:
+    requested = normalize_orion_compact_wire_version(requested_version)
+    maximum = inspected_orion_compact_wire_max_version(inspected)
+    if maximum not in {"1", "2"} or int(maximum) < int(requested):
+        raise RuntimeError(
+            "container image does not prove the requested Orion compact-wire "
+            f"capability: requested={requested}, image_max={maximum!r}"
+        )
+    return maximum
+
+
+def orion_compact_wire_summary(
+    requested_version: Any,
+    current_version: str | None = None,
+) -> dict[str, Any]:
+    requested = normalize_orion_compact_wire_version(requested_version)
+    current = current_version
+    if current in {"1", "2"}:
+        current = normalize_orion_compact_wire_version(current)
+        matches_requested: bool | None = current == requested
+    else:
+        matches_requested = None if current is None else False
+    return {
+        "scope": "controller",
+        "requested_version": requested,
+        "current_version": current,
+        "matches_requested": matches_requested,
+        "environment_variable": ORION_COMPACT_WIRE_VERSION_ENV,
+        "container_label": ORION_COMPACT_WIRE_VERSION_LABEL,
+        "v1_representation": "implicit",
+    }
+
+
+def manifest_current_orion_compact_wire_version(
+    manifest: dict[str, Any],
+) -> str:
+    """Read active wire identity, treating pre-v2 manifests as implicit v1."""
+    if "orion_compact_wire" not in manifest:
+        return DEFAULT_ORION_COMPACT_WIRE_VERSION
+    payload = manifest.get("orion_compact_wire")
+    if not isinstance(payload, dict):
+        raise RuntimeError("run manifest Orion compact wire payload is malformed")
+    current = payload.get("current_version")
+    if current not in {"1", "2", 1, 2} or isinstance(current, bool):
+        raise RuntimeError(
+            "run manifest does not contain a definitive Orion compact wire version"
+        )
+    try:
+        return normalize_orion_compact_wire_version(current)
+    except ValueError as exc:
+        raise RuntimeError(
+            "run manifest does not contain a definitive Orion compact wire version"
+        ) from exc
+
+
+def manifest_image_orion_compact_wire_max_version(
+    manifest: dict[str, Any],
+) -> str:
+    """Read image capability, treating pre-capability manifests as v1-only."""
+    image = manifest.get("image") or {}
+    if not isinstance(image, dict):
+        raise RuntimeError("run manifest image payload is malformed")
+    capabilities = image.get("capabilities") or {}
+    if not isinstance(capabilities, dict):
+        raise RuntimeError("run manifest image capability payload is malformed")
+    value = capabilities.get("orion_compact_wire_max_version")
+    if value is None:
+        return DEFAULT_ORION_COMPACT_WIRE_VERSION
+    try:
+        return normalize_orion_compact_wire_version(value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "run manifest image has an invalid Orion compact-wire capability"
+        ) from exc
 
 
 def peer_premerge_summary(
@@ -861,7 +1053,11 @@ def docker_run_command(
     image_id: str,
     disable_peer_premerge: bool = False,
     peer_premerge_shards_per_rpc: Any = "all",
+    orion_compact_wire_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION,
 ) -> list[str]:
+    normalized_wire_version = normalize_orion_compact_wire_version(
+        orion_compact_wire_version
+    )
     role = str(node["role"])
     name = container_name(run_id, role)
     storage = local_role_root(topology, run_id, role) / "storage"
@@ -902,6 +1098,7 @@ def docker_run_command(
             image_id,
             disable_peer_premerge,
             normalized_shards_per_rpc,
+            normalized_wire_version,
         )
         command.extend(
             [
@@ -917,6 +1114,13 @@ def docker_run_command(
                 [
                     "--label",
                     f"{PEER_PREMERGE_SHARDS_PER_RPC_LABEL}={normalized_shards_per_rpc}",
+                ]
+            )
+        if normalized_wire_version == "2":
+            command.extend(
+                [
+                    "--label",
+                    f"{ORION_COMPACT_WIRE_VERSION_LABEL}=2",
                 ]
             )
     command.extend(
@@ -945,6 +1149,8 @@ def docker_run_command(
             command.extend(
                 ["-e", f"{PEER_PREMERGE_SHARDS_PER_RPC_ENV}={shards_per_rpc_env}"]
             )
+        if normalized_wire_version == "2":
+            command.extend(["-e", f"{ORION_COMPACT_WIRE_VERSION_ENV}=2"])
     command.extend(
         [
             "-v",
@@ -1309,6 +1515,7 @@ def validate_reusable_image_archive(
     image_tag: str,
     manifest: dict[str, Any],
     current_image_id: str,
+    required_compact_wire_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION,
 ) -> dict[str, str]:
     """Close the tar -> manifest -> local tag identity loop before reuse."""
     verified = validate_manifest_image_archive(tar_path, image_tag, manifest)
@@ -1316,6 +1523,32 @@ def validate_reusable_image_archive(
         raise RuntimeError(
             "existing image tar manifest id does not match current tag id: "
             f"manifest={verified['image_id']}, current={current_image_id or '<missing>'}; "
+            "rerun build --force"
+        )
+    required_wire = normalize_orion_compact_wire_version(
+        required_compact_wire_version
+    )
+    capabilities = (manifest.get("image") or {}).get("capabilities") or {}
+    if not isinstance(capabilities, dict):
+        raise RuntimeError(
+            "existing image manifest capability payload is malformed; "
+            "rerun build --force"
+        )
+    declared_max = capabilities.get("orion_compact_wire_max_version")
+    if declared_max is None:
+        declared_max = DEFAULT_ORION_COMPACT_WIRE_VERSION
+    try:
+        declared_max = normalize_orion_compact_wire_version(declared_max)
+    except ValueError as exc:
+        raise RuntimeError(
+            "existing image manifest has an invalid Orion compact-wire "
+            "capability; rerun build --force"
+        ) from exc
+    if int(declared_max) < int(required_wire):
+        raise RuntimeError(
+            "existing image archive does not prove the requested Orion "
+            "compact-wire capability: "
+            f"requested={required_wire}, image_max={declared_max}; "
             "rerun build --force"
         )
     return verified
@@ -1445,13 +1678,24 @@ def image_candidate_dir(topology: dict[str, Any], run_id: str) -> Path:
 
 
 def image_candidate_paths(
-    topology: dict[str, Any], run_id: str, image_tag: str
+    topology: dict[str, Any],
+    run_id: str,
+    image_tag: str,
+    orion_compact_wire_version: Any | None = None,
 ) -> tuple[Path, Path]:
+    wire_version = normalize_orion_compact_wire_version(
+        requested_orion_compact_wire_version(topology)
+        if orion_compact_wire_version is None
+        else orion_compact_wire_version
+    )
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", image_tag).strip("._")
     if not slug:
         raise ValueError(f"cannot derive a safe candidate filename from {image_tag!r}")
-    digest = hashlib.sha256(image_tag.encode("utf-8")).hexdigest()[:12]
-    base = image_candidate_dir(topology, run_id) / f"{slug}-{digest}"
+    identity = f"{image_tag}\0wire-v{wire_version}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+    base = image_candidate_dir(topology, run_id) / (
+        f"{slug}-wire-v{wire_version}-{digest}"
+    )
     return base.with_suffix(".tar"), base.with_suffix(".json")
 
 
@@ -1510,6 +1754,25 @@ def validate_image_candidate_manifest(
         )
     if payload.get("kind") != "orion-image-transition-candidate":
         raise RuntimeError("candidate image manifest has an unexpected kind")
+    if "orion_compact_wire_version" not in payload:
+        raise RuntimeError(
+            "candidate image manifest has no Orion compact wire version"
+        )
+    try:
+        wire_version = normalize_orion_compact_wire_version(
+            payload.get("orion_compact_wire_version")
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            "candidate image manifest has an invalid Orion compact wire version"
+        ) from exc
+    requested_wire_version = requested_orion_compact_wire_version(topology)
+    if wire_version != requested_wire_version:
+        raise RuntimeError(
+            "candidate image manifest Orion compact wire version does not match "
+            f"the requested topology: candidate={wire_version}, "
+            f"requested={requested_wire_version}"
+        )
     if str(payload.get("run_id") or "") != run_id:
         raise RuntimeError(
             "candidate image manifest run-id mismatch: "
@@ -1538,6 +1801,33 @@ def validate_image_candidate_manifest(
     image_id = str(image.get("id") or "")
     if not image_tag or not image_id:
         raise RuntimeError("candidate image manifest requires an exact tag and id")
+    capabilities = image.get("capabilities") or {}
+    if not isinstance(capabilities, dict):
+        raise RuntimeError("candidate image capability payload is malformed")
+    try:
+        image_wire_max_version = normalize_orion_compact_wire_version(
+            capabilities.get("orion_compact_wire_max_version")
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            "candidate image has an invalid Orion compact-wire capability"
+        ) from exc
+    if image_wire_max_version != CURRENT_ORION_COMPACT_WIRE_MAX_VERSION:
+        raise RuntimeError(
+            "candidate image does not declare the current Orion compact-wire "
+            "capability: "
+            f"candidate={image_wire_max_version}, "
+            f"required={CURRENT_ORION_COMPACT_WIRE_MAX_VERSION}"
+        )
+    canonical_tar_path, canonical_manifest_path = image_candidate_paths(
+        topology, run_id, image_tag, wire_version
+    )
+    if candidate_path != canonical_manifest_path.resolve():
+        raise RuntimeError(
+            "candidate image manifest path is not canonical for its tag and "
+            f"wire identity: expected={canonical_manifest_path}, "
+            f"actual={candidate_path}"
+        )
     dirty_paths = repository.get("image_affecting_dirty_paths") or []
     if not isinstance(dirty_paths, list) or any(
         not isinstance(path, str) for path in dirty_paths
@@ -1557,6 +1847,11 @@ def validate_image_candidate_manifest(
         raise RuntimeError(
             "candidate image archive is outside this run's image-candidates directory"
         )
+    if tar_path != canonical_tar_path.resolve():
+        raise RuntimeError(
+            "candidate image archive path is not canonical for its tag and "
+            f"wire identity: expected={canonical_tar_path}, actual={tar_path}"
+        )
     verified = validate_manifest_image_archive(tar_path, image_tag, payload)
     expected_size = image.get("tar_size_bytes")
     if isinstance(expected_size, bool) or not isinstance(expected_size, int):
@@ -1575,6 +1870,8 @@ def validate_image_candidate_manifest(
         "tar_sha256": verified["tar_sha256"],
         "tar_size_bytes": expected_size,
         "source_fingerprint": source_fingerprint,
+        "orion_compact_wire_version": wire_version,
+        "orion_compact_wire_max_version": image_wire_max_version,
     }
 
 
@@ -1604,6 +1901,17 @@ def preserve_run_manifest_metadata(
         transition_id = transitions[-1].get("transition_id")
         if transition_id:
             data[last_transition_key] = transition_id
+    compact_wire = data.get("orion_compact_wire") or {}
+    if compact_wire.get("current_version") is None and (
+        isinstance(stored.get("orion_compact_wire"), dict)
+        or bool(stored.get("nodes"))
+    ):
+        data["orion_compact_wire"] = orion_compact_wire_summary(
+            compact_wire.get(
+                "requested_version", DEFAULT_ORION_COMPACT_WIRE_VERSION
+            ),
+            manifest_current_orion_compact_wire_version(stored),
+        )
     return data
 
 
@@ -1767,8 +2075,15 @@ def build_manifest_data(
     current_peer_premerge_mode: str | None = None,
     peer_premerge_shards_per_rpc: Any = "all",
     current_peer_premerge_shards_per_rpc: str | None = None,
+    requested_compact_wire_version: Any | None = None,
+    current_compact_wire_version: str | None = None,
 ) -> dict[str, Any]:
     state = git_state(repo)
+    requested_wire_version = normalize_orion_compact_wire_version(
+        requested_orion_compact_wire_version(topology)
+        if requested_compact_wire_version is None
+        else requested_compact_wire_version
+    )
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -1784,6 +2099,10 @@ def build_manifest_data(
             current_peer_premerge_mode,
             peer_premerge_shards_per_rpc,
             current_peer_premerge_shards_per_rpc,
+        ),
+        "orion_compact_wire": orion_compact_wire_summary(
+            requested_wire_version,
+            current_compact_wire_version,
         ),
         "container_ulimits": {
             "nofile": {
@@ -1803,6 +2122,56 @@ def image_id_local(image_tag: str, dry_run: bool = False) -> str:
         capture=True,
     )
     return result.stdout.strip() if not dry_run else "dry-run-image-id"
+
+
+def image_compact_wire_max_version_local(
+    image_tag: str,
+    required_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION,
+    dry_run: bool = False,
+) -> str:
+    """Verify the image-bound compact-wire capability before publishing an archive."""
+    required = normalize_orion_compact_wire_version(required_version)
+    if dry_run:
+        return CURRENT_ORION_COMPACT_WIRE_MAX_VERSION
+    result = run_command(
+        [
+            "sudo",
+            "-n",
+            "docker",
+            "image",
+            "inspect",
+            image_tag,
+            "--format",
+            "{{json .Config.Labels}}",
+        ],
+        capture=True,
+    )
+    try:
+        labels = json.loads(result.stdout.strip() or "{}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"image {image_tag} returned malformed Docker labels"
+        ) from exc
+    if labels is None:
+        labels = {}
+    if not isinstance(labels, dict):
+        raise RuntimeError(f"image {image_tag} Docker labels are malformed")
+    value = labels.get(ORION_COMPACT_WIRE_MAX_VERSION_LABEL)
+    if value is None:
+        maximum = DEFAULT_ORION_COMPACT_WIRE_VERSION
+    else:
+        try:
+            maximum = normalize_orion_compact_wire_version(value)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"image {image_tag} has an invalid Orion compact-wire capability"
+            ) from exc
+    if int(maximum) < int(required):
+        raise RuntimeError(
+            f"image {image_tag} does not support requested Orion compact wire "
+            f"version {required}: image_max={maximum}"
+        )
+    return maximum
 
 
 def command_bootstrap(args: argparse.Namespace, topology: dict[str, Any]) -> int:
@@ -1850,6 +2219,7 @@ def command_build_transition_candidate(
     source: dict[str, Any],
 ) -> int:
     dirty_paths = list(source["dirty_paths"])
+    wire_version = requested_orion_compact_wire_version(topology)
     base_tag = args.image_tag or image_tag_for_commit(state["commit"])
     image_tag = transition_candidate_image_tag(
         base_tag,
@@ -1858,7 +2228,7 @@ def command_build_transition_candidate(
         bool(dirty_paths),
     )
     tar_path, candidate_manifest_path = image_candidate_paths(
-        topology, args.run_id, image_tag
+        topology, args.run_id, image_tag, wire_version
     )
     if args.dry_run:
         print(
@@ -1868,6 +2238,7 @@ def command_build_transition_candidate(
                     "run_id": args.run_id,
                     "image_tag": image_tag,
                     "source_fingerprint": source["sha256"],
+                    "orion_compact_wire_version": wire_version,
                     "tar_path": str(tar_path),
                     "candidate_manifest": str(candidate_manifest_path),
                     "active_manifest_written": False,
@@ -1890,6 +2261,17 @@ def command_build_transition_candidate(
                 raise RuntimeError(
                     "candidate tag id does not match its immutable manifest: "
                     f"manifest={candidate['image_id']}, current={current_image_id}"
+                )
+            current_wire_capability = image_compact_wire_max_version_local(
+                image_tag, wire_version
+            )
+            if current_wire_capability != candidate[
+                "orion_compact_wire_max_version"
+            ]:
+                raise RuntimeError(
+                    "candidate image capability disagrees with its immutable "
+                    f"manifest: manifest={candidate['orion_compact_wire_max_version']}, "
+                    f"current={current_wire_capability}"
                 )
         except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:
             if not args.force:
@@ -1929,6 +2311,9 @@ def command_build_transition_candidate(
     run_command(
         ["sudo", "-n", "docker", "run", "--rm", image_tag, "./qdrant", "--version"]
     )
+    image_wire_max_version = image_compact_wire_max_version_local(
+        image_tag, wire_version
+    )
     source_after_build = image_source_fingerprint(repo, state["commit"])
     if source_after_build != source:
         raise RuntimeError(
@@ -1953,6 +2338,7 @@ def command_build_transition_candidate(
         "schema_version": IMAGE_CANDIDATE_SCHEMA_VERSION,
         "kind": "orion-image-transition-candidate",
         "run_id": validate_run_id(args.run_id),
+        "orion_compact_wire_version": wire_version,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "topology_runtime_identity": topology_runtime_identity(topology),
         "source_fingerprint": source["sha256"],
@@ -1970,6 +2356,9 @@ def command_build_transition_candidate(
             "tar_path": str(tar_path),
             "tar_size_bytes": tar_path.stat().st_size,
             "tar_sha256": sha256_file(tar_path),
+            "capabilities": {
+                "orion_compact_wire_max_version": image_wire_max_version
+            },
         },
     }
     path = write_image_candidate_manifest(candidate_manifest_path, candidate_data)
@@ -1980,6 +2369,7 @@ def command_build_transition_candidate(
                 "image_tag": image_tag,
                 "image_id": image_id,
                 "source_fingerprint": source["sha256"],
+                "orion_compact_wire_version": wire_version,
                 "tar_path": str(tar_path),
                 "candidate_manifest": str(path),
                 "active_manifest_written": False,
@@ -2037,6 +2427,11 @@ def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             image_tag,
             stored,
             current_image_id,
+            requested_orion_compact_wire_version(topology),
+        )
+        image_compact_wire_max_version_local(
+            image_tag,
+            requested_orion_compact_wire_version(topology),
         )
         run_command(["sudo", "-n", "chmod", "0644", str(tar_path)])
         print(
@@ -2070,6 +2465,11 @@ def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             ["sudo", "-n", "docker", "save", "--output", str(tar_path), image_tag],
             dry_run=args.dry_run,
         )
+    image_wire_max_version = image_compact_wire_max_version_local(
+        image_tag,
+        requested_orion_compact_wire_version(topology),
+        args.dry_run,
+    )
     if tar_path.exists() or args.dry_run:
         run_command(
             ["sudo", "-n", "chmod", "0644", str(tar_path)],
@@ -2079,6 +2479,9 @@ def command_build(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     data = build_manifest_data(topology, args.run_id, repo, image_tag, image_id)
     preserve_run_manifest_metadata(data, stored)
     data["image"]["tar_path"] = str(tar_path)
+    data["image"]["capabilities"] = {
+        "orion_compact_wire_max_version": image_wire_max_version
+    }
     if tar_path.exists():
         data["image"]["tar_size_bytes"] = tar_path.stat().st_size
         data["image"]["tar_sha256"] = sha256_file(tar_path)
@@ -2109,7 +2512,11 @@ def verify_container_reusable(
     image_id: str,
     disable_peer_premerge: bool = False,
     peer_premerge_shards_per_rpc: Any = "all",
+    orion_compact_wire_version: Any = DEFAULT_ORION_COMPACT_WIRE_VERSION,
 ) -> bool:
+    expected_wire_version = normalize_orion_compact_wire_version(
+        orion_compact_wire_version
+    )
     labels = (inspected.get("Config") or {}).get("Labels") or {}
     expected = {
         "orion.distributed.run_id": run_id,
@@ -2119,6 +2526,15 @@ def verify_container_reusable(
         NOFILE_LABEL: expected_nofile_label(),
     }
     mismatches = {key: (labels.get(key), value) for key, value in expected.items() if labels.get(key) != value}
+    actual_wire_capability = inspected_orion_compact_wire_max_version(inspected)
+    if (
+        actual_wire_capability not in {"1", "2"}
+        or int(actual_wire_capability) < int(expected_wire_version)
+    ):
+        mismatches[ORION_COMPACT_WIRE_MAX_VERSION_LABEL] = (
+            actual_wire_capability,
+            f">={expected_wire_version}",
+        )
     host_config = inspected.get("HostConfig") or {}
     if str(host_config.get("CpusetCpus") or "") != str(node["cpuset"]):
         mismatches["cpuset"] = (host_config.get("CpusetCpus"), node["cpuset"])
@@ -2142,6 +2558,7 @@ def verify_container_reusable(
             image_id,
             disable_peer_premerge,
             expected_shards_per_rpc,
+            expected_wire_version,
         )
         if labels.get(PEER_PREMERGE_MODE_LABEL) != expected_mode:
             mismatches[PEER_PREMERGE_MODE_LABEL] = (
@@ -2187,6 +2604,30 @@ def verify_container_reusable(
                 chunk_values,
                 expected_chunk_values,
             )
+        actual_wire_version = inspected_orion_compact_wire_version(
+            inspected, node
+        )
+        if actual_wire_version != expected_wire_version:
+            mismatches["orion_compact_wire_version"] = (
+                actual_wire_version,
+                expected_wire_version,
+            )
+        wire_label = labels.get(ORION_COMPACT_WIRE_VERSION_LABEL)
+        expected_wire_label = "2" if expected_wire_version == "2" else None
+        if wire_label != expected_wire_label:
+            mismatches[ORION_COMPACT_WIRE_VERSION_LABEL] = (
+                wire_label,
+                expected_wire_label,
+            )
+        wire_values = inspected_environment_values(
+            inspected, ORION_COMPACT_WIRE_VERSION_ENV
+        )
+        expected_wire_values = ["2"] if expected_wire_version == "2" else []
+        if wire_values != expected_wire_values:
+            mismatches[ORION_COMPACT_WIRE_VERSION_ENV] = (
+                wire_values,
+                expected_wire_values,
+            )
     else:
         env = inspected_environment(inspected)
         if PEER_PREMERGE_SHARDS_PER_RPC_ENV in env:
@@ -2197,6 +2638,24 @@ def verify_container_reusable(
         if PEER_PREMERGE_SHARDS_PER_RPC_LABEL in labels:
             mismatches[PEER_PREMERGE_SHARDS_PER_RPC_LABEL] = (
                 labels[PEER_PREMERGE_SHARDS_PER_RPC_LABEL],
+                None,
+            )
+        actual_wire_version = inspected_orion_compact_wire_version(
+            inspected, node
+        )
+        if actual_wire_version != "not_applicable":
+            mismatches["orion_compact_wire_version"] = (
+                actual_wire_version,
+                "not_applicable",
+            )
+        if ORION_COMPACT_WIRE_VERSION_ENV in env:
+            mismatches[ORION_COMPACT_WIRE_VERSION_ENV] = (
+                env[ORION_COMPACT_WIRE_VERSION_ENV],
+                None,
+            )
+        if ORION_COMPACT_WIRE_VERSION_LABEL in labels:
+            mismatches[ORION_COMPACT_WIRE_VERSION_LABEL] = (
+                labels[ORION_COMPACT_WIRE_VERSION_LABEL],
                 None,
             )
     if mismatches:
@@ -2261,6 +2720,7 @@ def verify_peer_premerge_transition_identity(
     *,
     current_mode: str | None = None,
     current_shards_per_rpc: str | None = None,
+    current_compact_wire_version: str | None = None,
     require_running: bool = True,
 ) -> bool:
     """Fail closed before a run-scoped controller replacement.
@@ -2297,9 +2757,26 @@ def verify_peer_premerge_transition_identity(
         current_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
             current_shards_per_rpc
         )
+        if current_compact_wire_version is None:
+            current_compact_wire_version = inspected_orion_compact_wire_version(
+                inspected, node
+            )
+        if current_compact_wire_version not in {"1", "2"}:
+            raise RuntimeError(
+                "controller Orion compact wire version is not internally "
+                f"consistent: {current_compact_wire_version!r}"
+            )
+        current_compact_wire_version = normalize_orion_compact_wire_version(
+            current_compact_wire_version
+        )
     else:
         disable_peer_premerge = False
         current_shards_per_rpc = "all"
+        current_compact_wire_version = normalize_orion_compact_wire_version(
+            current_compact_wire_version
+            if current_compact_wire_version is not None
+            else DEFAULT_ORION_COMPACT_WIRE_VERSION
+        )
 
     running = verify_container_reusable(
         inspected,
@@ -2308,6 +2785,7 @@ def verify_peer_premerge_transition_identity(
         image_id,
         disable_peer_premerge,
         current_shards_per_rpc,
+        current_compact_wire_version,
     )
     mismatches: dict[str, tuple[Any, Any]] = {}
     expected_name = container_name(run_id, role)
@@ -2353,6 +2831,11 @@ def verify_peer_premerge_transition_identity(
     ):
         mismatches[f"environment:{PEER_PREMERGE_SHARDS_PER_RPC_ENV}"] = (
             actual_environment[PEER_PREMERGE_SHARDS_PER_RPC_ENV],
+            None,
+        )
+    if role != "controller" and ORION_COMPACT_WIRE_VERSION_ENV in actual_environment:
+        mismatches[f"environment:{ORION_COMPACT_WIRE_VERSION_ENV}"] = (
+            actual_environment[ORION_COMPACT_WIRE_VERSION_ENV],
             None,
         )
 
@@ -3045,7 +3528,7 @@ def validate_peer_premerge_transition_manifest(
     manifest: dict[str, Any],
     image_tag_override: str | None = None,
     expected_deployment_commit: str | None = None,
-) -> tuple[str, str, str, str, str]:
+) -> tuple[str, str, str, str, str, str]:
     run_id = validate_run_id(run_id)
     if not manifest:
         raise RuntimeError(
@@ -3131,11 +3614,46 @@ def validate_peer_premerge_transition_manifest(
         raise RuntimeError(
             "run manifest must contain exactly one deployed controller node"
         )
+    explicit_top_level_wire = "orion_compact_wire" in manifest
+    explicit_node_wire = any(
+        isinstance(node, dict) and "orion_compact_wire_version" in node
+        for node in nodes
+    )
+    if explicit_top_level_wire != explicit_node_wire:
+        raise RuntimeError(
+            "run manifest compact-wire identity must be either fully legacy "
+            "implicit-v1 or explicit at both top-level and node-level"
+        )
+    wire_version = manifest_current_orion_compact_wire_version(manifest)
+    image_wire_max_version = manifest_image_orion_compact_wire_max_version(
+        manifest
+    )
+    if int(image_wire_max_version) < int(wire_version):
+        raise RuntimeError(
+            "run manifest image does not support its active Orion compact-wire "
+            f"identity: active={wire_version}, image_max={image_wire_max_version}"
+        )
+    if explicit_top_level_wire:
+        for node in nodes:
+            if not isinstance(node, dict):
+                raise RuntimeError("run manifest nodes payload is malformed")
+            role = str(node.get("role") or "")
+            node_wire = node.get("orion_compact_wire_version")
+            expected_node_wire = (
+                wire_version if role == "controller" else "not_applicable"
+            )
+            if str(node_wire) != expected_node_wire:
+                raise RuntimeError(
+                    "run manifest compact-wire identity disagrees between "
+                    f"top-level and node {role or '<missing>'}: "
+                    f"node={node_wire!r}, expected={expected_node_wire!r}"
+                )
     return (
         image_tag,
         image_id,
         str(manifest_mode),
         manifest_shards_per_rpc,
+        wire_version,
         deployment_commit,
     )
 
@@ -3209,6 +3727,9 @@ def transition_controller_proof(
         "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
             inspected, controller
         ),
+        "orion_compact_wire_version": inspected_orion_compact_wire_version(
+            inspected, controller
+        ),
         "controller_fingerprint": labels.get(CONTROLLER_FINGERPRINT_LABEL),
     }
 
@@ -3239,6 +3760,12 @@ def transition_worker_proof(
         "nofile": inspected_nofile_limits(inspected),
         "network_mode": str(
             (inspected.get("HostConfig") or {}).get("NetworkMode") or ""
+        ),
+        "orion_compact_wire_version": inspected_orion_compact_wire_version(
+            inspected, node
+        ),
+        "orion_compact_wire_max_version": (
+            inspected_orion_compact_wire_max_version(inspected)
         ),
         "storage": {
             "type": storage_mount.get("Type"),
@@ -3297,6 +3824,7 @@ def inspect_peer_premerge_transition_workers(
     run_id: str,
     image_tag: str,
     image_id: str,
+    compact_wire_version: str,
     args: argparse.Namespace,
 ) -> dict[str, dict[str, Any]]:
     inspected_workers: dict[str, dict[str, Any]] = {}
@@ -3310,6 +3838,7 @@ def inspect_peer_premerge_transition_workers(
             run_id,
             image_tag,
             image_id,
+            current_compact_wire_version=compact_wire_version,
             require_running=True,
         )
         inspected_workers[role] = inspected
@@ -3336,6 +3865,13 @@ def verify_peer_premerge_transition_proof_identity(
         raise RuntimeError("worker runtime identity changed during controller transition")
     if cluster_before.get("peer_id") != cluster_after.get("peer_id"):
         raise RuntimeError("controller peer ID changed during controller transition")
+    if before_controller.get("orion_compact_wire_version") != after_controller.get(
+        "orion_compact_wire_version"
+    ):
+        raise RuntimeError(
+            "controller Orion compact wire version changed during peer-premerge "
+            "transition"
+        )
 
 
 def update_peer_premerge_transition_manifest(
@@ -3346,6 +3882,7 @@ def update_peer_premerge_transition_manifest(
     final_mode: str | None,
     requested_shards_per_rpc: Any,
     final_shards_per_rpc: str | None,
+    current_compact_wire_version: str,
     transition: dict[str, Any],
     cluster_snapshot_value: dict[str, Any] | None,
     controller_inspected: dict[str, Any] | None,
@@ -3362,6 +3899,7 @@ def update_peer_premerge_transition_manifest(
             final_shards_per_rpc
         )
     data = json.loads(json.dumps(stored))
+    data["topology"] = json.loads(json.dumps(topology))
     transitions = list(data.get("peer_premerge_transitions") or [])
     transitions.append(transition)
     data["peer_premerge_transitions"] = transitions
@@ -3370,6 +3908,10 @@ def update_peer_premerge_transition_manifest(
         final_mode,
         requested_shards_per_rpc,
         final_shards_per_rpc,
+    )
+    data["orion_compact_wire"] = orion_compact_wire_summary(
+        requested_orion_compact_wire_version(topology),
+        normalize_orion_compact_wire_version(current_compact_wire_version),
     )
     data["generated_at"] = time.strftime(
         "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
@@ -3383,6 +3925,11 @@ def update_peer_premerge_transition_manifest(
             if isinstance(node, dict) and str(node.get("role")) == "controller":
                 node["peer_premerge_mode"] = final_mode
                 node["peer_premerge_shards_per_rpc"] = final_shards_per_rpc
+                node["orion_compact_wire_version"] = (
+                    inspected_orion_compact_wire_version(
+                        controller_inspected, topology["controller"]
+                    )
+                )
                 node["image_id"] = str(controller_inspected.get("Image") or "")
                 node["cpuset"] = str(
                     (controller_inspected.get("HostConfig") or {}).get(
@@ -3399,6 +3946,7 @@ def update_peer_premerge_transition_manifest(
 
 def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     repo = Path(args.repo).resolve()
+    requested_wire_version = requested_orion_compact_wire_version(topology)
     requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
         getattr(args, "peer_premerge_shards_per_rpc", "all")
     )
@@ -3420,6 +3968,7 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         desired_image_id = "dry-run-image-id"
 
     deployment_nodes: list[dict[str, Any]] = []
+    deployed_controller_wire_version: str | None = None
     for index, node in enumerate(all_nodes(topology)):
         remote_id_result = run_on_node(
             node,
@@ -3473,6 +4022,7 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                     desired_image_id,
                     args.disable_peer_premerge,
                     requested_shards_per_rpc,
+                    requested_wire_version,
                 ),
                 args,
             )
@@ -3483,10 +4033,48 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             desired_image_id,
             args.disable_peer_premerge,
             requested_shards_per_rpc,
+            requested_wire_version,
         ):
             run_on_node(node, ["sudo", "-n", "docker", "start", name], args)
         if not args.dry_run:
             wait_http_ready(http_url(node, topology), args.wait_timeout)
+            post_inspected = inspect_container(node, name, args)
+            if post_inspected is None:
+                raise RuntimeError(
+                    f"container {name} disappeared after startup on {node['ssh_host']}"
+                )
+            if not verify_container_reusable(
+                post_inspected,
+                node,
+                args.run_id,
+                desired_image_id,
+                args.disable_peer_premerge,
+                requested_shards_per_rpc,
+                requested_wire_version,
+            ):
+                raise RuntimeError(
+                    f"container {name} is not running after startup on {node['ssh_host']}"
+                )
+            post_image_id = str(post_inspected.get("Image") or "")
+            post_wire_version = inspected_orion_compact_wire_version(
+                post_inspected, node
+            )
+            post_wire_max_version = require_orion_compact_wire_capability(
+                post_inspected, requested_wire_version
+            )
+        else:
+            post_image_id = actual_image_id
+            post_wire_version = expected_orion_compact_wire_version(
+                node, requested_wire_version
+            )
+            post_wire_max_version = CURRENT_ORION_COMPACT_WIRE_MAX_VERSION
+        if str(node.get("role")) == "controller":
+            if post_wire_version not in {"1", "2"}:
+                raise RuntimeError(
+                    "controller compact-wire identity is not definitive after deploy: "
+                    f"{post_wire_version!r}"
+                )
+            deployed_controller_wire_version = str(post_wire_version)
         deployment_nodes.append(
             {
                 **node,
@@ -3494,13 +4082,15 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                 "advertised_uri": advertised_uri(node, topology),
                 "http_url": http_url(node, topology),
                 "storage_path": str(role_root / "storage"),
-                "image_id": actual_image_id,
+                "image_id": post_image_id,
                 "peer_premerge_mode": expected_peer_premerge_mode(
                     node, args.disable_peer_premerge
                 ),
                 "peer_premerge_shards_per_rpc": expected_peer_premerge_shards_per_rpc(
                     node, requested_shards_per_rpc
                 ),
+                "orion_compact_wire_version": post_wire_version,
+                "orion_compact_wire_max_version": post_wire_max_version,
                 "nofile": {
                     "soft": CONTAINER_NOFILE_SOFT,
                     "hard": CONTAINER_NOFILE_HARD,
@@ -3512,6 +4102,8 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             time.sleep(2.0)
 
     if not args.dry_run:
+        if deployed_controller_wire_version is None:
+            raise RuntimeError("deploy did not inspect a controller compact-wire identity")
         snapshot = cluster_snapshot(topology)
         cluster_errors = cluster_validation_errors(topology, snapshot)
         if cluster_errors:
@@ -3531,9 +4123,19 @@ def command_deploy(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             expected_peer_premerge_shards_per_rpc(
                 topology["controller"], requested_shards_per_rpc
             ),
+            requested_wire_version,
+            deployed_controller_wire_version,
         )
         preserve_run_manifest_metadata(data, stored)
         data["image"].update(stored.get("image") or {})
+        data["image"]["capabilities"] = {
+            "orion_compact_wire_max_version": (
+                min(
+                    str(node["orion_compact_wire_max_version"])
+                    for node in deployment_nodes
+                )
+            )
+        }
         data["cluster_snapshot"] = snapshot
         path = write_manifest(topology, args.run_id, data)
         print(f"Cluster ready; manifest: {path}")
@@ -3558,6 +4160,12 @@ def status_for_node(
         "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
             inspected, node
         ),
+        "orion_compact_wire_version": inspected_orion_compact_wire_version(
+            inspected, node
+        ),
+        "orion_compact_wire_max_version": (
+            inspected_orion_compact_wire_max_version(inspected)
+        ),
     }
     if inspected:
         status.update(
@@ -3574,6 +4182,7 @@ def status_for_node(
 
 
 def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
+    requested_wire_version = requested_orion_compact_wire_version(topology)
     requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
         getattr(args, "peer_premerge_shards_per_rpc", "all")
     )
@@ -3596,6 +4205,14 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         ),
         None,
     )
+    controller_wire_version = next(
+        (
+            node.get("orion_compact_wire_version")
+            for node in node_statuses
+            if node.get("role") == "controller"
+        ),
+        None,
+    )
     status = {
         "run_id": args.run_id,
         "peer_premerge": peer_premerge_summary(
@@ -3603,6 +4220,10 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             controller_mode,
             requested_shards_per_rpc,
             controller_shards_per_rpc,
+        ),
+        "orion_compact_wire": orion_compact_wire_summary(
+            requested_wire_version,
+            controller_wire_version,
         ),
         "nodes": node_statuses,
     }
@@ -3622,6 +4243,39 @@ def command_status(args: argparse.Namespace, topology: dict[str, Any]) -> int:
             "controller peer-premerge shards-per-rpc mismatch: "
             f"requested={status['peer_premerge']['requested_shards_per_rpc']}, "
             f"current={status['peer_premerge']['current_shards_per_rpc']}"
+        )
+    if status["orion_compact_wire"]["matches_requested"] is not True:
+        validation_errors.append(
+            "controller Orion compact wire version mismatch: "
+            f"requested={status['orion_compact_wire']['requested_version']}, "
+            f"current={status['orion_compact_wire']['current_version']}"
+        )
+    leaking_workers = [
+        str(node.get("role"))
+        for node in node_statuses
+        if node.get("role") != "controller"
+        and node.get("orion_compact_wire_version") != "not_applicable"
+    ]
+    if leaking_workers:
+        validation_errors.append(
+            "worker Orion compact wire metadata is not allowed: "
+            f"{leaking_workers}"
+        )
+    insufficient_capabilities = [
+        {
+            "role": str(node.get("role")),
+            "image_max": node.get("orion_compact_wire_max_version"),
+        }
+        for node in node_statuses
+        if node.get("orion_compact_wire_max_version") not in {"1", "2"}
+        or int(str(node.get("orion_compact_wire_max_version")))
+        < int(requested_wire_version)
+    ]
+    if insufficient_capabilities:
+        validation_errors.append(
+            "cluster images do not prove the requested Orion compact-wire "
+            f"capability: requested={requested_wire_version}, "
+            f"nodes={insufficient_capabilities}"
         )
     if not args.dry_run:
         try:
@@ -3702,11 +4356,13 @@ def inspect_peer_premerge_transition_runtime(
     image_id: str,
     manifest_mode: str,
     manifest_shards_per_rpc: str,
+    manifest_compact_wire_version: str,
     args: argparse.Namespace,
-) -> tuple[dict[str, dict[str, Any]], str, str]:
+) -> tuple[dict[str, dict[str, Any]], str, str, str]:
     inspected_nodes: dict[str, dict[str, Any]] = {}
     controller_mode: str | None = None
     controller_shards_per_rpc: str | None = None
+    controller_compact_wire_version: str | None = None
     for node in all_nodes(topology):
         role = str(node["role"])
         inspected = inspect_container(node, container_name(run_id, role), args)
@@ -3719,6 +4375,9 @@ def inspect_peer_premerge_transition_runtime(
             controller_shards_per_rpc = inspected_peer_premerge_shards_per_rpc(
                 inspected, node
             )
+            controller_compact_wire_version = (
+                inspected_orion_compact_wire_version(inspected, node)
+            )
         verify_peer_premerge_transition_identity(
             topology,
             inspected,
@@ -3729,6 +4388,11 @@ def inspect_peer_premerge_transition_runtime(
             current_mode=controller_mode if role == "controller" else None,
             current_shards_per_rpc=(
                 controller_shards_per_rpc if role == "controller" else None
+            ),
+            current_compact_wire_version=(
+                controller_compact_wire_version
+                if role == "controller"
+                else manifest_compact_wire_version
             ),
             require_running=True,
         )
@@ -3744,6 +4408,13 @@ def inspect_peer_premerge_transition_runtime(
             "manifest: "
             f"container={controller_shards_per_rpc!r}, "
             f"manifest={manifest_shards_per_rpc!r}"
+        )
+    if controller_compact_wire_version != manifest_compact_wire_version:
+        raise RuntimeError(
+            "controller Orion compact wire version disagrees with the run "
+            "manifest: "
+            f"container={controller_compact_wire_version!r}, "
+            f"manifest={manifest_compact_wire_version!r}"
         )
 
     image_result = run_on_node(
@@ -3769,7 +4440,12 @@ def inspect_peer_premerge_transition_runtime(
             f"tag={image_tag}, expected={image_id}, "
             f"actual={resolved_image_id or '<missing>'}"
         )
-    return inspected_nodes, str(controller_mode), str(controller_shards_per_rpc)
+    return (
+        inspected_nodes,
+        str(controller_mode),
+        str(controller_shards_per_rpc),
+        str(controller_compact_wire_version),
+    )
 
 
 def replace_peer_premerge_controller(
@@ -3779,6 +4455,7 @@ def replace_peer_premerge_controller(
     image_id: str,
     mode: str,
     shards_per_rpc: Any,
+    compact_wire_version: str,
     args: argparse.Namespace,
 ) -> None:
     controller = topology["controller"]
@@ -3803,6 +4480,7 @@ def replace_peer_premerge_controller(
             image_id,
             peer_premerge_disabled(mode),
             shards_per_rpc,
+            compact_wire_version,
         ),
         args,
     )
@@ -3815,6 +4493,7 @@ def rollback_peer_premerge_controller(
     image_id: str,
     original_mode: str,
     original_shards_per_rpc: str,
+    original_compact_wire_version: str,
     wait_timeout: float,
     args: argparse.Namespace,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -3827,6 +4506,9 @@ def rollback_peer_premerge_controller(
         candidate_shards_per_rpc = inspected_peer_premerge_shards_per_rpc(
             inspected, controller
         )
+        candidate_compact_wire_version = inspected_orion_compact_wire_version(
+            inspected, controller
+        )
         verify_peer_premerge_transition_identity(
             topology,
             inspected,
@@ -3836,11 +4518,15 @@ def rollback_peer_premerge_controller(
             image_id,
             current_mode=candidate_mode,
             current_shards_per_rpc=candidate_shards_per_rpc,
+            current_compact_wire_version=(
+                candidate_compact_wire_version
+            ),
             require_running=False,
         )
         if (
             candidate_mode == original_mode
             and candidate_shards_per_rpc == original_shards_per_rpc
+            and candidate_compact_wire_version == original_compact_wire_version
         ):
             if not bool((inspected.get("State") or {}).get("Running")):
                 run_on_node(
@@ -3872,6 +4558,7 @@ def rollback_peer_premerge_controller(
                 image_id,
                 peer_premerge_disabled(original_mode),
                 original_shards_per_rpc,
+                original_compact_wire_version,
             ),
             args,
         )
@@ -3887,6 +4574,7 @@ def rollback_peer_premerge_controller(
         image_id,
         current_mode=original_mode,
         current_shards_per_rpc=original_shards_per_rpc,
+        current_compact_wire_version=original_compact_wire_version,
         require_running=True,
     )
     return snapshot, restored
@@ -3912,6 +4600,7 @@ def _command_set_peer_premerge_unlocked(
         image_id,
         manifest_mode,
         manifest_shards_per_rpc,
+        manifest_compact_wire_version,
         deployment_commit,
     ) = (
         validate_peer_premerge_transition_manifest(
@@ -3952,6 +4641,7 @@ def _command_set_peer_premerge_unlocked(
                 image_id,
                 requested_mode,
                 requested_shards_per_rpc,
+                manifest_compact_wire_version,
                 args,
             )
         print(
@@ -3962,6 +4652,7 @@ def _command_set_peer_premerge_unlocked(
                     "controller": name,
                     "from_mode": manifest_mode,
                     "from_shards_per_rpc": manifest_shards_per_rpc,
+                    "orion_compact_wire_version": manifest_compact_wire_version,
                     "requested_mode": requested_mode,
                     "requested_shards_per_rpc": requested_shards_per_rpc,
                     "action": action,
@@ -3975,7 +4666,12 @@ def _command_set_peer_premerge_unlocked(
         )
         return 0
 
-    inspected_nodes, current_mode, current_shards_per_rpc = (
+    (
+        inspected_nodes,
+        current_mode,
+        current_shards_per_rpc,
+        current_compact_wire_version,
+    ) = (
         inspect_peer_premerge_transition_runtime(
             topology,
             run_id,
@@ -3983,6 +4679,7 @@ def _command_set_peer_premerge_unlocked(
             image_id,
             manifest_mode,
             manifest_shards_per_rpc,
+            manifest_compact_wire_version,
             args,
         )
     )
@@ -4029,6 +4726,7 @@ def _command_set_peer_premerge_unlocked(
         },
         "from_mode": current_mode,
         "from_shards_per_rpc": current_shards_per_rpc,
+        "orion_compact_wire_version": current_compact_wire_version,
         "requested_mode": requested_mode,
         "requested_shards_per_rpc": requested_shards_per_rpc,
         "workers_restarted": False,
@@ -4059,10 +4757,16 @@ def _command_set_peer_premerge_unlocked(
             image_id,
             current_mode=requested_mode,
             current_shards_per_rpc=requested_shards_per_rpc,
+            current_compact_wire_version=current_compact_wire_version,
             require_running=True,
         )
         inspected_workers_after = inspect_peer_premerge_transition_workers(
-            topology, run_id, image_tag, image_id, args
+            topology,
+            run_id,
+            image_tag,
+            image_id,
+            current_compact_wire_version,
+            args,
         )
         workers_after = [
             transition_worker_proof(
@@ -4109,6 +4813,7 @@ def _command_set_peer_premerge_unlocked(
             "outcome": "success",
             "final_mode": requested_mode,
             "final_shards_per_rpc": requested_shards_per_rpc,
+            "final_orion_compact_wire_version": current_compact_wire_version,
             "rollback": {"attempted": False},
             "controller_after": controller_after_proof,
             "workers_after": workers_after,
@@ -4123,6 +4828,7 @@ def _command_set_peer_premerge_unlocked(
             requested_mode,
             requested_shards_per_rpc,
             requested_shards_per_rpc,
+            current_compact_wire_version,
             proof,
             after_snapshot,
             after_controller,
@@ -4154,6 +4860,7 @@ def _command_set_peer_premerge_unlocked(
             image_id,
             requested_mode,
             requested_shards_per_rpc,
+            current_compact_wire_version,
             args,
         )
         after_controller = inspect_container(controller, name, args)
@@ -4166,6 +4873,7 @@ def _command_set_peer_premerge_unlocked(
             image_id,
             current_mode=requested_mode,
             current_shards_per_rpc=requested_shards_per_rpc,
+            current_compact_wire_version=current_compact_wire_version,
             require_running=True,
         )
         after_snapshot = wait_controller_and_cluster_healthy(
@@ -4181,10 +4889,16 @@ def _command_set_peer_premerge_unlocked(
             image_id,
             current_mode=requested_mode,
             current_shards_per_rpc=requested_shards_per_rpc,
+            current_compact_wire_version=current_compact_wire_version,
             require_running=True,
         )
         inspected_workers_after = inspect_peer_premerge_transition_workers(
-            topology, run_id, image_tag, image_id, args
+            topology,
+            run_id,
+            image_tag,
+            image_id,
+            current_compact_wire_version,
+            args,
         )
         workers_after = [
             transition_worker_proof(
@@ -4231,6 +4945,7 @@ def _command_set_peer_premerge_unlocked(
             "outcome": "success",
             "final_mode": requested_mode,
             "final_shards_per_rpc": requested_shards_per_rpc,
+            "final_orion_compact_wire_version": current_compact_wire_version,
             "rollback": {"attempted": False},
             "controller_after": controller_after_proof,
             "workers_after": workers_after,
@@ -4245,6 +4960,7 @@ def _command_set_peer_premerge_unlocked(
             requested_mode,
             requested_shards_per_rpc,
             requested_shards_per_rpc,
+            current_compact_wire_version,
             proof,
             after_snapshot,
             after_controller,
@@ -4264,6 +4980,7 @@ def _command_set_peer_premerge_unlocked(
                 image_id,
                 current_mode,
                 current_shards_per_rpc,
+                current_compact_wire_version,
                 wait_timeout,
                 args,
             )
@@ -4284,6 +5001,9 @@ def _command_set_peer_premerge_unlocked(
             "final_mode": current_mode if rollback_error is None else None,
             "final_shards_per_rpc": (
                 current_shards_per_rpc if rollback_error is None else None
+            ),
+            "final_orion_compact_wire_version": (
+                current_compact_wire_version if rollback_error is None else None
             ),
             "forward_error": str(transition_error),
             "rollback": {
@@ -4308,6 +5028,7 @@ def _command_set_peer_premerge_unlocked(
                 current_mode if rollback_error is None else None,
                 requested_shards_per_rpc,
                 current_shards_per_rpc if rollback_error is None else None,
+                current_compact_wire_version,
                 proof,
                 rollback_snapshot,
                 rollback_controller,
@@ -4370,6 +5091,7 @@ def validate_image_transition_active_manifest(
         image_id,
         peer_premerge_mode,
         peer_premerge_shards_per_rpc,
+        compact_wire_version,
         deployment_commit,
     ) = validate_peer_premerge_transition_manifest(
         topology,
@@ -4419,6 +5141,7 @@ def validate_image_transition_active_manifest(
         "tar_sha256": archive["tar_sha256"],
         "peer_premerge_mode": peer_premerge_mode,
         "peer_premerge_shards_per_rpc": peer_premerge_shards_per_rpc,
+        "orion_compact_wire_version": compact_wire_version,
         "deployment_commit": deployment_commit,
     }
 
@@ -4498,6 +5221,7 @@ def inspect_image_transition_runtime(
     image_id: str,
     peer_premerge_mode: str,
     peer_premerge_shards_per_rpc: str,
+    compact_wire_version: str,
     args: argparse.Namespace,
 ) -> dict[str, dict[str, Any]]:
     inspected_nodes: dict[str, dict[str, Any]] = {}
@@ -4514,6 +5238,9 @@ def inspect_image_transition_runtime(
             current_mode=(peer_premerge_mode if role == "controller" else None),
             current_shards_per_rpc=(
                 peer_premerge_shards_per_rpc if role == "controller" else None
+            ),
+            current_compact_wire_version=(
+                compact_wire_version
             ),
             require_running=True,
         )
@@ -4644,6 +5371,7 @@ def create_transition_containers(
     image_id: str,
     peer_premerge_mode: str,
     peer_premerge_shards_per_rpc: str,
+    compact_wire_version: str,
     args: argparse.Namespace,
 ) -> None:
     for node in image_transition_start_order(topology):
@@ -4657,6 +5385,7 @@ def create_transition_containers(
                 image_id,
                 peer_premerge_disabled(peer_premerge_mode),
                 peer_premerge_shards_per_rpc,
+                compact_wire_version,
             ),
             args,
         )
@@ -4709,6 +5438,7 @@ def rollback_image_transition(
         active["image_id"],
         active["peer_premerge_mode"],
         active["peer_premerge_shards_per_rpc"],
+        active["orion_compact_wire_version"],
         args,
     )
     rollback_snapshot = wait_controller_and_cluster_healthy(
@@ -4721,6 +5451,7 @@ def rollback_image_transition(
         active["image_id"],
         active["peer_premerge_mode"],
         active["peer_premerge_shards_per_rpc"],
+        active["orion_compact_wire_version"],
         args,
     )
     verify_remote_image_ids(
@@ -4762,6 +5493,7 @@ def update_image_transition_manifest(
     candidate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     data = json.loads(json.dumps(stored))
+    data["topology"] = json.loads(json.dumps(topology))
     transitions = list(data.get("image_transitions") or [])
     transitions.append(transition)
     data["image_transitions"] = transitions
@@ -4777,6 +5509,10 @@ def update_image_transition_manifest(
         data["image"]["source_fingerprint"] = candidate["source_fingerprint"]
         data["repository"] = json.loads(
             json.dumps(candidate_manifest.get("repository") or {})
+        )
+        data["orion_compact_wire"] = orion_compact_wire_summary(
+            requested_orion_compact_wire_version(topology),
+            candidate["orion_compact_wire_version"],
         )
     if inspected_nodes is not None:
         nodes_by_role = {
@@ -4800,6 +5536,9 @@ def update_image_transition_manifest(
                 (inspected.get("HostConfig") or {}).get("CpusetCpus") or ""
             )
             manifest_node["nofile"] = inspected_nofile_limits(inspected)
+            manifest_node["orion_compact_wire_version"] = (
+                inspected_orion_compact_wire_version(inspected, node)
+            )
     return data
 
 
@@ -4833,6 +5572,11 @@ def _command_transition_image_unlocked(
         )
 
     if args.dry_run:
+        is_noop = (
+            candidate["image_id"] == active["image_id"]
+            and candidate["orion_compact_wire_version"]
+            == active["orion_compact_wire_version"]
+        )
         print(
             json.dumps(
                 {
@@ -4847,10 +5591,14 @@ def _command_transition_image_unlocked(
                         "tag": candidate["image_tag"],
                         "id": candidate["image_id"],
                     },
+                    "active_orion_compact_wire_version": active[
+                        "orion_compact_wire_version"
+                    ],
+                    "candidate_orion_compact_wire_version": candidate[
+                        "orion_compact_wire_version"
+                    ],
                     "action": (
-                        "reused"
-                        if candidate["image_id"] == active["image_id"]
-                        else "recreate-four-nodes"
+                        "reused" if is_noop else "recreate-four-nodes"
                     ),
                     "stop_order": [
                         str(node["role"])
@@ -4876,6 +5624,7 @@ def _command_transition_image_unlocked(
         active["image_id"],
         active["peer_premerge_mode"],
         active["peer_premerge_shards_per_rpc"],
+        active["orion_compact_wire_version"],
         args,
     )
     before_snapshot = cluster_snapshot(topology)
@@ -4895,7 +5644,11 @@ def _command_transition_image_unlocked(
         topology, active["image_tag"], active["image_id"], args
     )
 
-    if candidate["image_id"] == active["image_id"]:
+    if (
+        candidate["image_id"] == active["image_id"]
+        and candidate["orion_compact_wire_version"]
+        == active["orion_compact_wire_version"]
+    ):
         print(
             json.dumps(
                 {
@@ -4903,6 +5656,9 @@ def _command_transition_image_unlocked(
                     "strategy": "offline",
                     "action": "reused",
                     "image_id": active["image_id"],
+                    "orion_compact_wire_version": active[
+                        "orion_compact_wire_version"
+                    ],
                     "storage_preserved": True,
                     "manifest_written": False,
                 },
@@ -4940,6 +5696,9 @@ def _command_transition_image_unlocked(
             "tag": active["image_tag"],
             "id": active["image_id"],
             "tar_sha256": active["tar_sha256"],
+            "orion_compact_wire_version": active[
+                "orion_compact_wire_version"
+            ],
         },
         "candidate_image": {
             "tag": candidate["image_tag"],
@@ -4947,6 +5706,9 @@ def _command_transition_image_unlocked(
             "tar_sha256": candidate["tar_sha256"],
             "source_fingerprint": candidate["source_fingerprint"],
             "manifest_path": candidate["manifest_path"],
+            "orion_compact_wire_version": candidate[
+                "orion_compact_wire_version"
+            ],
         },
         "containers_before": image_transition_container_proofs(
             topology, run_id, before_inspected
@@ -4965,6 +5727,7 @@ def _command_transition_image_unlocked(
             candidate["image_id"],
             active["peer_premerge_mode"],
             active["peer_premerge_shards_per_rpc"],
+            candidate["orion_compact_wire_version"],
             args,
         )
         after_snapshot = wait_controller_and_cluster_healthy(
@@ -4977,6 +5740,7 @@ def _command_transition_image_unlocked(
             candidate["image_id"],
             active["peer_premerge_mode"],
             active["peer_premerge_shards_per_rpc"],
+            candidate["orion_compact_wire_version"],
             args,
         )
         verify_remote_image_ids(
@@ -5071,6 +5835,11 @@ def _command_transition_image_unlocked(
                 "collections": (
                     rollback_result.get("collections") if rollback_result else None
                 ),
+                "orion_compact_wire_version": (
+                    active["orion_compact_wire_version"]
+                    if rollback_error is None
+                    else None
+                ),
             },
         }
         proof_write_error: Exception | None = None
@@ -5083,6 +5852,14 @@ def _command_transition_image_unlocked(
                 rollback_result.get("snapshot") if rollback_result else None,
                 None,
                 None,
+            )
+            updated["orion_compact_wire"] = orion_compact_wire_summary(
+                requested_orion_compact_wire_version(topology),
+                (
+                    active["orion_compact_wire_version"]
+                    if rollback_error is None
+                    else None
+                ),
             )
             write_manifest(topology, run_id, updated)
         except Exception as exc:
@@ -5104,6 +5881,12 @@ def _command_transition_image_unlocked(
                 "action": "recreated",
                 "from_image_id": active["image_id"],
                 "image_id": candidate["image_id"],
+                "from_orion_compact_wire_version": active[
+                    "orion_compact_wire_version"
+                ],
+                "orion_compact_wire_version": candidate[
+                    "orion_compact_wire_version"
+                ],
                 "transition_id": transition_id,
                 "manifest": str(path),
                 "storage_preserved": True,
@@ -5480,6 +6263,7 @@ def command_clean(args: argparse.Namespace, topology: dict[str, Any]) -> int:
 
 def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
     repo = Path(args.repo).resolve()
+    requested_wire_version = requested_orion_compact_wire_version(topology)
     requested_shards_per_rpc = normalize_peer_premerge_shards_per_rpc(
         getattr(args, "peer_premerge_shards_per_rpc", "all")
     )
@@ -5503,6 +6287,12 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
                 "peer_premerge_shards_per_rpc": inspected_peer_premerge_shards_per_rpc(
                     inspected, node
                 ),
+                "orion_compact_wire_version": inspected_orion_compact_wire_version(
+                    inspected, node
+                ),
+                "orion_compact_wire_max_version": (
+                    inspected_orion_compact_wire_max_version(inspected)
+                ),
                 "nofile": inspected_nofile_limits(inspected),
                 "facts": node_facts(node, args),
             }
@@ -5523,6 +6313,14 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         ),
         None,
     )
+    controller_wire_version = next(
+        (
+            node.get("orion_compact_wire_version")
+            for node in nodes
+            if node.get("role") == "controller"
+        ),
+        None,
+    )
     data = build_manifest_data(
         topology,
         args.run_id,
@@ -5534,6 +6332,8 @@ def command_manifest(args: argparse.Namespace, topology: dict[str, Any]) -> int:
         controller_mode,
         requested_shards_per_rpc,
         controller_shards_per_rpc,
+        requested_wire_version,
+        controller_wire_version,
     )
     preserve_run_manifest_metadata(data, stored)
     if isinstance(stored.get("repository"), dict) and stored["repository"].get(

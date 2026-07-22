@@ -69,6 +69,81 @@ load, `deploy` inspects the actual tag again and rejects any digest mismatch.
 An existing container is reused only when its run-id, role, private IP, image ID,
 CPU set, nofile limit, and controller peer-premerge fingerprint match exactly.
 
+### Compact wire identity and image transition
+
+This subsection documents the current native cluster lifecycle only. It does not
+retroactively turn the historical custom-shard results elsewhere in this runbook
+into native compact-wire results.
+
+`tools/distributed/cloudlab_orion_4node.json` declares the requested compact wire
+under the controller only:
+
+```json
+"orion_compact_wire_version": 2
+```
+
+The runtime identity is intentionally asymmetric. An implicit v1 controller has
+neither `QDRANT_ORION_COMPACT_WIRE_VERSION` nor
+`orion.distributed.compact_wire_version`. A v2 controller must have the env and
+label exactly once with value `2`. Workers must have neither: they decode the
+version carried by the internal request, while the controller alone chooses what
+it produces. `status` and `manifest` report requested/current/match at
+`orion_compact_wire`; controller node entries report `1` or `2`, and worker
+entries report `not_applicable`. Missing, duplicated, illegal, inconsistent, or
+worker-leaked metadata is a hard validation error.
+
+The producer env/label is not accepted as binary capability evidence. Images
+that implement v2 carry
+`org.qdrant.orion.compact_wire.max_version=2`; the inherited image label is
+re-inspected on the controller and all three workers after container start. An
+older image without this label is treated as v1-only, even if someone adds the
+controller v2 env/label. The active and candidate manifests also record the
+image capability.
+
+Wire v2 is not negotiated during an RPC. All four nodes must first have the same
+image digest containing the v2 encoder/decoder. Do not change an existing v1 run
+by invoking ordinary `deploy` against a topology requesting v2; reuse validation
+must reject that configuration. Stage an immutable candidate and perform the
+offline four-node transition instead:
+
+```bash
+python3 tools/method4_distributed_cluster.py \
+  --topology tools/distributed/cloudlab_orion_4node.json \
+  --run-id "$RUN_ID" \
+  --expected-commit "$(git rev-parse HEAD)" \
+  build --stage-for-transition
+
+export CANDIDATE_MANIFEST=/proj/intelisys-PG0/exp/orion-distributed/$RUN_ID/image-candidates/<candidate>.json
+export ACTIVE_IMAGE_ID=<exact-image-id-from-current-manifest>
+
+python3 tools/method4_distributed_cluster.py \
+  --topology tools/distributed/cloudlab_orion_4node.json \
+  --run-id "$RUN_ID" \
+  transition-image \
+  --candidate-manifest "$CANDIDATE_MANIFEST" \
+  --expected-current-image-id "$ACTIVE_IMAGE_ID"
+```
+
+The candidate manifest binds schema v2, run id, topology runtime identity,
+source fingerprint, image ID, archive SHA-256, and requested compact wire
+version. Its path also includes `wire-v1` or `wire-v2`. Only equal image ID **and**
+equal wire identity is a no-op; equal image ID with a different wire identity
+still recreates all four containers. The transition stops/recreates only this
+run's four containers, preserves their storage, validates cluster and collection
+placement after restart, and records old/candidate/final wire identities. On a
+forward failure it restores both the active image and the active wire identity;
+an implicit-v1 rollback restores the absence of env/label rather than writing an
+explicit v1 marker.
+
+There is no supported rolling v1-to-v2 upgrade or automatic downgrade. A v2
+controller must never be measured against an old worker image. After transition,
+require `status` to show four healthy same-digest peers,
+`matches_requested=true`, worker wire metadata `not_applicable`, no transfers,
+image max wire capability `2` on all four nodes, and the unchanged lower-shard
+placement before running smoke or timed queries.
+This lifecycle is a safety/capability boundary; it does not claim that v2 is
+faster than v1.
+
 Qdrant storage is always local:
 
 ```text

@@ -242,5 +242,6 @@ LABEL org.opencontainers.image.url="https://qdrant.com/"
 LABEL org.opencontainers.image.documentation="https://qdrant.com/docs"
 LABEL org.opencontainers.image.source="https://github.com/qdrant/qdrant"
 LABEL org.opencontainers.image.vendor="Qdrant"
+LABEL org.qdrant.orion.compact_wire.max_version="2"
 
 CMD ["./entrypoint.sh"]

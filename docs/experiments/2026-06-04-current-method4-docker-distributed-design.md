@@ -223,6 +223,63 @@ controller 侧最终仍然使用原有全局 merge 逻辑。worker 本地 `limit
 QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE=1
 ```
 
+## Native Compact Peer Wire v1/v2
+
+当前 native numeric auto-shard 路径在上述 peer-local pre-merge 语义之上增加了
+`PointsInternal/CoreSearchBatchByShardCompact`。这是 controller 到 worker 的内部
+transport 表示，不是新的客户端 API，也不改变每个 logical shard 的搜索计划。outer
+request 的 `wire_version` 目前只允许 `1` 或 `2`，其他值在 worker 端直接
+`INVALID_ARGUMENT`，不会静默降级。
+
+| 项目 | wire v1 | wire v2 |
+|---|---|---|
+| controller 默认 | 是；未设置版本变量即为 v1 | 必须在 controller 显式启用 |
+| query template | nested `search_points` | controller 生产 `encoded_search_points`；worker 为兼容受控调用，接受 nested 或 encoded 二选一 |
+| numeric entry points | 通用 `repeated PointId` | packed `repeated uint64 hnsw_entry_point_num_ids` |
+| UUID entry points | 通用 `PointId` | 只要该 shard 的 EP 中出现 UUID，整组回退通用 `PointId` |
+| 混合表示 | v1 携带 v2 字段会被拒绝 | nested+encoded 或 generic+packed 同时出现会被拒绝 |
+
+v2 encoded query template 必须非空、可解码，并且每个 template 最大为 16 MiB。
+空/损坏/超限 payload、空 EP、重复 EP、`EF=0`、重复 `(query_slot, shard)` 或
+collection/template 不匹配都 fail closed。packed numeric IDs 和 UUID fallback 都严格
+保留原始 ordered-unique MultiEP 顺序；wire v2 不允许借传输压缩裁剪 membership、EP 或
+Dynamic EF。
+
+controller v2 会先为 batch 中每个原始 query 构造并 protobuf-encode 一次
+`CoreSearchPoints`，再用 `prost::bytes::Bytes` 的引用计数 clone 共享到不同 physical
+peers、同一 peer 的 shard chunks，以及 `RemoteShard` 的 outer retry request clone。
+这避免 controller 内重复构造和复制同一 200D query payload；每个实际 gRPC 仍会正常
+序列化并发送自己的 on-wire message，因此该实现细节本身不构成 QPS 提升结论。
+
+版本开关是 controller-only：
+
+```text
+QDRANT_ORION_COMPACT_WIRE_VERSION
+unset -> v1
+1     -> v1
+2     -> v2
+other -> fail closed
+```
+
+worker 不应设置该环境变量；worker 按 internal RPC envelope 的 `wire_version` 解码。
+部署层把未设置 env/label 的 controller 定义为隐式 v1；显式 v2 必须同时具有
+`QDRANT_ORION_COMPACT_WIRE_VERSION=2` 和
+`orion.distributed.compact_wire_version=2`。缺失其一、重复、非法、不一致，或 worker
+泄漏上述 env/label 都视为错误配置。
+
+env/label 只表示 controller 的 producer 选择，并不能单独证明 binary 支持 v2。当前
+image 还必须携带 image-bound capability label
+`org.qdrant.orion.compact_wire.max_version=2`；四个容器启动后都重新 inspect 该继承自
+image 的 capability。旧 image 没有该 label 时只按 v1-capable 处理，不能通过给容器补写
+runtime env/label 冒充 v2。
+
+v2 没有 RPC runtime capability negotiation 或自动降级。启用前必须让 controller 和三个
+workers 运行完全相同、包含 v2 decoder 的 image digest，再通过离线四容器 transition
+切换 controller producer。candidate manifest 将 image ID、tar SHA、source fingerprint、
+四节点 topology identity 和 compact wire version 绑定在一起；失败回滚必须同时恢复旧
+image 和旧 wire identity。该边界意味着 v1/v2 不能做逐节点 rolling upgrade，也不能把
+新 controller v2 与旧 worker 混跑。
+
 ## 语义不变边界
 
 当前 Docker 分布式实现刻意保持以下 method4 核心不变：
