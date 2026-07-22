@@ -57,6 +57,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--topology", required=True)
     parser.add_argument("--deployment-manifest")
     parser.add_argument("--artifact")
+    parser.add_argument(
+        "--expected-placement-map",
+        help=(
+            "Optional JSON file containing the exact numeric shard-to-worker owner map. "
+            "Without this flag the benchmark continues to require strict round-robin "
+            "placement. The file may be a raw mapping or contain target_placement, "
+            "expected_placement, placement, or final_placement."
+        ),
+    )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--warmup-query-count", type=int, default=100)
     parser.add_argument("--eval-query-count", type=int, default=10000)
@@ -134,6 +143,128 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+def load_expected_placement_map(
+    path: str | Path,
+    expected_shard_count: int,
+) -> tuple[dict[int, int], dict[str, Any]]:
+    source_path = Path(path).expanduser().resolve()
+    if not source_path.is_file():
+        raise FileNotFoundError(f"expected placement map not found: {source_path}")
+    source_bytes = source_path.read_bytes()
+    payload = json.loads(source_bytes)
+    if not isinstance(payload, dict):
+        raise ValueError("expected placement map JSON must be an object")
+
+    wrapper_keys = (
+        "expected_placement",
+        "target_placement",
+        "placement",
+        "final_placement",
+    )
+
+    def normalize_mapping(mapping_payload: Any, *, source: str) -> dict[int, int]:
+        if not isinstance(mapping_payload, dict):
+            raise ValueError(f"{source} must be a JSON object")
+
+        normalized: dict[int, int] = {}
+        for raw_shard_id, raw_peer_id in mapping_payload.items():
+            if isinstance(raw_shard_id, bool):
+                raise ValueError(f"invalid expected shard ID: {raw_shard_id!r}")
+            try:
+                shard_id = int(raw_shard_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"invalid expected shard ID: {raw_shard_id!r}"
+                ) from exc
+            if str(shard_id) != str(raw_shard_id) or shard_id < 0:
+                raise ValueError(f"invalid expected shard ID: {raw_shard_id!r}")
+            if shard_id in normalized:
+                raise ValueError(
+                    f"duplicate expected shard ID after normalization: {shard_id}"
+                )
+            if (
+                isinstance(raw_peer_id, bool)
+                or not isinstance(raw_peer_id, int)
+                or raw_peer_id < 0
+            ):
+                raise ValueError(
+                    f"expected owner for shard {shard_id} must be a non-negative integer"
+                )
+            normalized[shard_id] = raw_peer_id
+
+        expected_ids = set(range(expected_shard_count))
+        if set(normalized) != expected_ids:
+            raise ValueError(
+                "expected placement map must cover the contiguous shard range: "
+                f"expected={sorted(expected_ids)}, actual={sorted(normalized)}"
+            )
+        return normalized
+
+    wrapped_fields = [(key, payload[key]) for key in wrapper_keys if key in payload]
+    if wrapped_fields:
+        normalized_fields = [
+            (key, normalize_mapping(value, source=f"placement field {key!r}"))
+            for key, value in wrapped_fields
+        ]
+        selected_key, placement = normalized_fields[0]
+        conflicting_keys = [
+            key for key, candidate in normalized_fields[1:] if candidate != placement
+        ]
+        if conflicting_keys:
+            raise ValueError(
+                "expected placement map contains conflicting wrapped placement fields: "
+                f"selected={selected_key}, conflicting={conflicting_keys}"
+            )
+        matching_keys = [key for key, _candidate in normalized_fields]
+    else:
+        selected_key = None
+        matching_keys = []
+        placement = normalize_mapping(payload, source="expected placement map")
+
+    canonical = json.dumps(
+        placement,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return placement, {
+        "path": str(source_path),
+        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "selected_key": selected_key,
+        "matching_keys": matching_keys,
+        "placement_sha256": hashlib.sha256(canonical).hexdigest(),
+    }
+
+
+def validate_live_numeric_placement(
+    args: argparse.Namespace,
+    collection_info: dict[str, Any],
+    collection_cluster: dict[str, Any],
+    worker_peer_ids: list[int],
+    shard_count: int,
+) -> dict[str, Any]:
+    if not args.expected_placement_map:
+        return experiment.validate_numeric_shard_round_robin_placement(
+            collection_info,
+            collection_cluster,
+            worker_peer_ids,
+            shard_count,
+        )
+
+    expected, source = load_expected_placement_map(
+        args.expected_placement_map,
+        shard_count,
+    )
+    proof = experiment.validate_numeric_shard_explicit_placement(
+        collection_info,
+        collection_cluster,
+        worker_peer_ids,
+        shard_count,
+        expected,
+    )
+    proof["expected_placement_source"] = source
+    return proof
 
 
 def load_dataset(
@@ -987,7 +1118,8 @@ def run(args: argparse.Namespace) -> Path:
         "update_queue": collection_info.get("update_queue"),
         "shard_transfers": collection_cluster.get("shard_transfers") or [],
     }
-    placement_proof = experiment.validate_numeric_shard_round_robin_placement(
+    placement_proof = validate_live_numeric_placement(
+        args,
         collection_info,
         collection_cluster,
         cluster_preflight["worker_peer_ids"],

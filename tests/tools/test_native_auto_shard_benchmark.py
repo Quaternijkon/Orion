@@ -222,6 +222,113 @@ def test_argument_guards_restrict_hnsw_ef_and_repository_output(tmp_path):
         module.create_output_directory(output)
 
 
+def test_expected_placement_map_accepts_raw_and_transition_wrapped_json(tmp_path):
+    module = load_module()
+    expected = {0: 303, 1: 202, 2: 404}
+
+    raw_path = tmp_path / "raw-placement.json"
+    raw_path.write_text(json.dumps(expected), encoding="utf-8")
+    raw, raw_proof = module.load_expected_placement_map(raw_path, 3)
+    assert raw == expected
+    assert raw_proof["selected_key"] is None
+    assert raw_proof["sha256"] == module.experiment.sha256_path(raw_path)
+
+    wrapped_path = tmp_path / "weighted-move.json"
+    wrapped_path.write_text(
+        json.dumps(
+            {
+                "baseline_placement": {0: 202, 1: 303, 2: 404},
+                "target_placement": expected,
+                "final_placement": expected,
+            }
+        ),
+        encoding="utf-8",
+    )
+    wrapped, wrapped_proof = module.load_expected_placement_map(wrapped_path, 3)
+    assert wrapped == expected
+    assert wrapped_proof["selected_key"] == "target_placement"
+    assert wrapped_proof["matching_keys"] == [
+        "target_placement",
+        "final_placement",
+    ]
+    assert wrapped_proof["placement_sha256"] == raw_proof["placement_sha256"]
+
+    conflicting_path = tmp_path / "conflicting-move.json"
+    conflicting_path.write_text(
+        json.dumps(
+            {
+                "target_placement": expected,
+                "final_placement": {0: 202, 1: 303, 2: 404},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="conflicting wrapped placement fields"):
+        module.load_expected_placement_map(conflicting_path, 3)
+
+    incomplete_path = tmp_path / "incomplete.json"
+    incomplete_path.write_text(json.dumps({0: 303, 1: 202}), encoding="utf-8")
+    with pytest.raises(ValueError, match="contiguous shard range"):
+        module.load_expected_placement_map(incomplete_path, 3)
+
+
+def test_live_placement_defaults_to_round_robin_and_explicit_map_is_opt_in(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    args = args_for(module, tmp_path, "--hnsw-ef", "40")
+    calls = []
+
+    def fake_round_robin(*call_args):
+        calls.append(("round_robin", call_args))
+        return {"valid": True, "placement_mode": "round_robin"}
+
+    def fake_explicit(*call_args):
+        calls.append(("explicit", call_args))
+        return {"valid": True, "placement_mode": "explicit"}
+
+    monkeypatch.setattr(
+        module.experiment,
+        "validate_numeric_shard_round_robin_placement",
+        fake_round_robin,
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "validate_numeric_shard_explicit_placement",
+        fake_explicit,
+    )
+
+    default_proof = module.validate_live_numeric_placement(
+        args,
+        {"info": True},
+        {"cluster": True},
+        [202, 303, 404],
+        3,
+    )
+    assert default_proof["placement_mode"] == "round_robin"
+    assert [call[0] for call in calls] == ["round_robin"]
+
+    placement_path = tmp_path / "placement.json"
+    placement_path.write_text(
+        json.dumps({"target_placement": {0: 303, 1: 202, 2: 404}}),
+        encoding="utf-8",
+    )
+    args.expected_placement_map = str(placement_path)
+    explicit_proof = module.validate_live_numeric_placement(
+        args,
+        {"info": True},
+        {"cluster": True},
+        [202, 303, 404],
+        3,
+    )
+    assert explicit_proof["placement_mode"] == "explicit"
+    assert explicit_proof["expected_placement_source"]["selected_key"] == (
+        "target_placement"
+    )
+    assert [call[0] for call in calls] == ["round_robin", "explicit"]
+    assert calls[-1][1][-1] == {0: 303, 1: 202, 2: 404}
+
+
 def test_repository_binding_requires_same_clean_tracked_commit():
     module = load_module()
     deployment = {"repository": {"commit": "abc123"}}

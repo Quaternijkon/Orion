@@ -3032,23 +3032,100 @@ def validate_numeric_shard_round_robin_placement(
     expected_shard_count: int,
 ) -> dict[str, Any]:
     """Strictly validate the final native RF=1 worker-only placement."""
+    workers = list(worker_peer_ids)
+    expected = round_robin_numeric_shard_targets(
+        list(range(expected_shard_count)), workers
+    )
+    return _validate_numeric_shard_expected_placement(
+        info,
+        cluster_info,
+        workers,
+        expected_shard_count,
+        expected,
+        placement_mode="round_robin",
+        mismatch_label="round-robin",
+    )
+
+
+def validate_numeric_shard_explicit_placement(
+    info: dict[str, Any],
+    cluster_info: dict[str, Any],
+    worker_peer_ids: list[int] | tuple[int, ...],
+    expected_shard_count: int,
+    expected_placement: dict[int, int],
+) -> dict[str, Any]:
+    """Strictly validate one explicit native RF=1 worker-only placement."""
+    return _validate_numeric_shard_expected_placement(
+        info,
+        cluster_info,
+        list(worker_peer_ids),
+        expected_shard_count,
+        expected_placement,
+        placement_mode="explicit",
+        mismatch_label="explicit",
+    )
+
+
+def _validate_numeric_shard_expected_placement(
+    info: dict[str, Any],
+    cluster_info: dict[str, Any],
+    workers: list[int],
+    expected_shard_count: int,
+    expected_placement: dict[int, int],
+    *,
+    placement_mode: str,
+    mismatch_label: str,
+) -> dict[str, Any]:
     _validate_numeric_auto_rf1_config(info, expected_shard_count)
     controller_peer_id = cluster_info.get("peer_id")
-    workers = list(worker_peer_ids)
+    if not workers:
+        raise ValueError("at least one worker peer ID is required")
+    if any(
+        isinstance(peer_id, bool) or not isinstance(peer_id, int) or peer_id < 0
+        for peer_id in workers
+    ):
+        raise ValueError("worker peer IDs must be non-negative integers")
+    if len(set(workers)) != len(workers):
+        raise ValueError("worker peer IDs must be unique")
     if controller_peer_id in workers:
         raise RuntimeError("worker peer IDs must not include the coordinator/controller peer")
+
+    if not isinstance(expected_placement, dict):
+        raise TypeError("expected numeric shard placement must be a dictionary")
+    expected_ids = set(range(expected_shard_count))
+    if set(expected_placement) != expected_ids:
+        raise ValueError(
+            "expected numeric shard placement must cover the contiguous shard range: "
+            f"expected={sorted(expected_ids)}, actual={sorted(expected_placement)}"
+        )
+    for shard_id, peer_id in expected_placement.items():
+        if isinstance(shard_id, bool) or not isinstance(shard_id, int) or shard_id < 0:
+            raise ValueError(f"invalid expected numeric shard ID: {shard_id!r}")
+        if isinstance(peer_id, bool) or not isinstance(peer_id, int) or peer_id < 0:
+            raise ValueError(
+                f"expected owner for numeric shard {shard_id} must be a non-negative integer"
+            )
+        if peer_id not in workers:
+            raise ValueError(
+                f"expected owner for numeric shard {shard_id} is not a worker peer: {peer_id}"
+            )
+
     placement = numeric_shard_placement_from_cluster(
         cluster_info,
         expected_shard_count=expected_shard_count,
     )
-    expected = round_robin_numeric_shard_targets(list(placement), workers)
     mismatches = {
-        shard_id: {"actual": placement[shard_id], "expected": expected[shard_id]}
+        shard_id: {
+            "actual": placement[shard_id],
+            "expected": expected_placement[shard_id],
+        }
         for shard_id in sorted(placement)
-        if placement[shard_id] != expected[shard_id]
+        if placement[shard_id] != expected_placement[shard_id]
     }
     if mismatches:
-        raise RuntimeError(f"numeric shard round-robin placement mismatch: {mismatches}")
+        raise RuntimeError(
+            f"numeric shard {mismatch_label} placement mismatch: {mismatches}"
+        )
 
     counts = Counter(placement.values())
     unexpected_peers = sorted(set(counts) - set(workers))
@@ -3061,11 +3138,12 @@ def validate_numeric_shard_round_robin_placement(
         raise RuntimeError("controller still owns one or more lower numeric shards")
     return {
         "valid": True,
+        "placement_mode": placement_mode,
         "controller_peer_id": controller_peer_id,
         "shard_count": expected_shard_count,
         "replication_factor": 1,
         "placement": placement,
-        "expected_placement": expected,
+        "expected_placement": dict(expected_placement),
         "shards_per_worker": counts_by_worker,
         "shard_transfers": [],
     }

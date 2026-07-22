@@ -1149,6 +1149,51 @@ def test_validate_numeric_shard_round_robin_rejects_controller_or_wrong_peer():
         )
 
 
+def test_validate_numeric_shard_explicit_placement_requires_exact_balanced_workers():
+    module = load_module()
+    info = {
+        "config": {
+            "params": {
+                "sharding_method": "auto",
+                "shard_number": 3,
+                "replication_factor": 1,
+            }
+        }
+    }
+    cluster = {
+        "peer_id": 101,
+        "shard_count": 3,
+        "local_shards": [],
+        "remote_shards": [
+            {"shard_id": 0, "peer_id": 303, "state": "Active"},
+            {"shard_id": 1, "peer_id": 202, "state": "Active"},
+            {"shard_id": 2, "peer_id": 404, "state": "Active"},
+        ],
+        "shard_transfers": [],
+    }
+    expected = {0: 303, 1: 202, 2: 404}
+
+    proof = module.validate_numeric_shard_explicit_placement(
+        info, cluster, [202, 303, 404], 3, expected
+    )
+
+    assert proof["valid"] is True
+    assert proof["placement_mode"] == "explicit"
+    assert proof["placement"] == expected
+    assert proof["expected_placement"] == expected
+    assert proof["shards_per_worker"] == {202: 1, 303: 1, 404: 1}
+
+    with pytest.raises(RuntimeError, match="explicit placement mismatch"):
+        module.validate_numeric_shard_explicit_placement(
+            info, cluster, [202, 303, 404], 3, {0: 202, 1: 303, 2: 404}
+        )
+
+    with pytest.raises(ValueError, match="not a worker peer"):
+        module.validate_numeric_shard_explicit_placement(
+            info, cluster, [202, 303, 404], 3, {0: 303, 1: 202, 2: 999}
+        )
+
+
 def test_runtime_health_audit_rejects_fd_and_peer_transport_failures():
     module = load_module()
     logs = {
