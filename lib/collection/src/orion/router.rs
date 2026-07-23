@@ -92,7 +92,6 @@ impl OrionRouteScratch {
 #[derive(Debug)]
 struct RuntimeUpperNode {
     label: ExtendedPointId,
-    vector: Vec<f32>,
     shard_membership: Vec<ShardId>,
 }
 
@@ -126,6 +125,12 @@ pub struct OrionRouter {
     dynamic_ef_base: usize,
     dynamic_ef_factor: usize,
     nodes: Vec<RuntimeUpperNode>,
+    /// Preprocessed upper vectors in immutable node-index-major order.
+    ///
+    /// Keeping all `node_count * dimension` elements in one allocation removes one vector-pointer
+    /// chase and one independently allocated `Vec` per upper node from the distance hot path. Node
+    /// indices, vector element order, and per-node preprocessing remain identical to the artifact.
+    upper_vectors: Box<[VectorElementType]>,
     node_by_label: AHashMap<ExtendedPointId, usize>,
     search_backend: UpperSearchBackend,
 }
@@ -163,26 +168,40 @@ impl OrionRouter {
             UpperSearchBackend::Hnsw(compile_graph(graph, &node_by_label)?)
         };
         let distance = artifact.vector_schema.distance;
+        let dimension = artifact.vector_schema.dimension;
+        let upper_vector_element_count =
+            checked_upper_vector_element_count(artifact.upper_nodes.len(), dimension)?;
+        let mut upper_vectors = Vec::new();
+        upper_vectors
+            .try_reserve_exact(upper_vector_element_count)
+            .map_err(|source| OrionRoutingError::UpperVectorStorageAllocation {
+                element_count: upper_vector_element_count,
+                reason: source.to_string(),
+            })?;
+        let mut nodes = Vec::with_capacity(artifact.upper_nodes.len());
+        for node in artifact.upper_nodes {
+            let preprocessed_vector = preprocess_vector(distance, node.vector);
+            debug_assert_eq!(preprocessed_vector.len(), dimension);
+            upper_vectors.extend(preprocessed_vector);
+            nodes.push(RuntimeUpperNode {
+                label: node.label,
+                shard_membership: node.shard_membership,
+            });
+        }
+        debug_assert_eq!(upper_vectors.len(), upper_vector_element_count);
 
         Ok(Self {
             generation: artifact.generation,
             vector_name: artifact.vector_schema.vector_name,
-            dimension: artifact.vector_schema.dimension,
+            dimension,
             distance,
             shard_count: artifact.shard_count,
             upper_k: artifact.upper_k,
             upper_ef_search: artifact.upper_ef_search,
             dynamic_ef_base: artifact.dynamic_ef_base,
             dynamic_ef_factor: artifact.dynamic_ef_factor,
-            nodes: artifact
-                .upper_nodes
-                .into_iter()
-                .map(|node| RuntimeUpperNode {
-                    label: node.label,
-                    vector: preprocess_vector(distance, node.vector),
-                    shard_membership: node.shard_membership,
-                })
-                .collect(),
+            nodes,
+            upper_vectors: upper_vectors.into_boxed_slice(),
             node_by_label,
             search_backend,
         })
@@ -583,15 +602,31 @@ impl OrionRouter {
     }
 
     fn distance_to(&self, query: &[f32], node_index: usize) -> OrionRoutingResult<f32> {
-        let node = &self.nodes[node_index];
+        let vector_start = node_index * self.dimension;
+        let vector_end = vector_start + self.dimension;
+        let node_vector = &self.upper_vectors[vector_start..vector_end];
         // Qdrant metrics return a larger-is-better similarity. Negation gives the router's
         // lower-is-better ordering without changing the production SIMD scorer semantics.
-        let distance = -similarity(self.distance, query, &node.vector);
+        let distance = -similarity(self.distance, query, node_vector);
         if !distance.is_finite() {
-            return Err(OrionRoutingError::NonFiniteDistance { label: node.label });
+            return Err(OrionRoutingError::NonFiniteDistance {
+                label: self.nodes[node_index].label,
+            });
         }
         Ok(distance)
     }
+}
+
+fn checked_upper_vector_element_count(
+    node_count: usize,
+    dimension: usize,
+) -> OrionRoutingResult<usize> {
+    node_count
+        .checked_mul(dimension)
+        .ok_or(OrionRoutingError::UpperVectorStorageSizeOverflow {
+            node_count,
+            dimension,
+        })
 }
 
 fn preprocess_vector(distance: Distance, vector: Vec<VectorElementType>) -> Vec<VectorElementType> {
@@ -645,6 +680,137 @@ fn compile_graph(
         max_level: graph.max_level,
         neighbors_by_node_and_level,
     })
+}
+
+#[cfg(test)]
+mod flat_upper_vector_tests {
+    use super::*;
+    use crate::orion::{
+        ORION_ROUTING_ARTIFACT_FORMAT_VERSION, OrionUpperGraphNode, OrionUpperNode,
+        OrionVectorDatatype, OrionVectorSchemaFingerprint,
+    };
+
+    fn id(value: u64) -> ExtendedPointId {
+        ExtendedPointId::NumId(value)
+    }
+
+    fn cosine_artifact() -> OrionRoutingArtifact {
+        OrionRoutingArtifact {
+            format_version: ORION_ROUTING_ARTIFACT_FORMAT_VERSION,
+            generation: 1,
+            vector_schema: OrionVectorSchemaFingerprint {
+                vector_name: String::new(),
+                dimension: 2,
+                distance: Distance::Cosine,
+                datatype: OrionVectorDatatype::Float32,
+            },
+            shard_count: 2,
+            layout_sha256: "a".repeat(64),
+            logical_point_count: 3,
+            physical_point_count: 3,
+            upper_k: 3,
+            upper_ef_search: 3,
+            dynamic_ef_base: 4,
+            dynamic_ef_factor: 2,
+            upper_nodes: vec![
+                OrionUpperNode {
+                    label: id(10),
+                    vector: vec![3.0, 4.0],
+                    shard_membership: vec![1, 0],
+                },
+                OrionUpperNode {
+                    label: id(20),
+                    vector: vec![0.0, -2.0],
+                    shard_membership: vec![0],
+                },
+                OrionUpperNode {
+                    label: id(30),
+                    vector: vec![-5.0, 0.0],
+                    shard_membership: vec![1],
+                },
+            ],
+            upper_graph: Some(OrionUpperHnswGraph {
+                entry_point: id(30),
+                max_level: 0,
+                nodes: vec![
+                    OrionUpperGraphNode {
+                        label: id(10),
+                        neighbors_by_level: vec![vec![id(20), id(30)]],
+                    },
+                    OrionUpperGraphNode {
+                        label: id(20),
+                        neighbors_by_level: vec![vec![id(10), id(30)]],
+                    },
+                    OrionUpperGraphNode {
+                        label: id(30),
+                        neighbors_by_level: vec![vec![id(10), id(20)]],
+                    },
+                ],
+            }),
+        }
+    }
+
+    #[test]
+    fn flat_upper_vectors_preserve_node_order_preprocessing_and_backend_scores() {
+        let artifact = cosine_artifact();
+        let expected_vectors = artifact
+            .upper_nodes
+            .iter()
+            .flat_map(|node| {
+                preprocess_vector(artifact.vector_schema.distance, node.vector.clone())
+            })
+            .collect::<Vec<_>>();
+        let expected_metadata = artifact
+            .upper_nodes
+            .iter()
+            .map(|node| (node.label, node.shard_membership.clone()))
+            .collect::<Vec<_>>();
+
+        let brute_force = OrionRouter::new_brute_force_testing(artifact.clone()).unwrap();
+        let hnsw = OrionRouter::new(artifact).unwrap();
+
+        for router in [&brute_force, &hnsw] {
+            assert_eq!(router.upper_vectors.as_ref(), expected_vectors.as_slice());
+            assert_eq!(
+                router
+                    .nodes
+                    .iter()
+                    .map(|node| (node.label, node.shard_membership.clone()))
+                    .collect::<Vec<_>>(),
+                expected_metadata,
+            );
+            assert_eq!(
+                router.upper_vectors.len(),
+                router.nodes.len() * router.dimension,
+            );
+        }
+
+        let query = [1.0, -0.5];
+        let brute_force_hits = brute_force.search_upper(&query).unwrap();
+        let hnsw_hits = hnsw.search_upper(&query).unwrap();
+        assert_eq!(
+            hnsw_hits
+                .iter()
+                .map(|hit| (hit.label, hit.distance.to_bits()))
+                .collect::<Vec<_>>(),
+            brute_force_hits
+                .iter()
+                .map(|hit| (hit.label, hit.distance.to_bits()))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn flat_upper_vector_element_count_fails_closed_on_overflow() {
+        assert_eq!(checked_upper_vector_element_count(37, 200).unwrap(), 7_400);
+        assert!(matches!(
+            checked_upper_vector_element_count(usize::MAX, 2),
+            Err(OrionRoutingError::UpperVectorStorageSizeOverflow {
+                node_count: usize::MAX,
+                dimension: 2,
+            })
+        ));
+    }
 }
 
 #[cfg(test)]

@@ -81,6 +81,17 @@ pub enum OrionRoutingError {
     #[error("Orion upper tier must contain at least one node")]
     EmptyUpperTier,
 
+    #[error(
+        "Orion upper vector storage size overflows usize for {node_count} nodes at dimension {dimension}"
+    )]
+    UpperVectorStorageSizeOverflow { node_count: usize, dimension: usize },
+
+    #[error("failed to allocate Orion upper vector storage for {element_count} elements: {reason}")]
+    UpperVectorStorageAllocation {
+        element_count: usize,
+        reason: String,
+    },
+
     #[error("duplicate Orion upper point label {label}")]
     DuplicateUpperLabel { label: ExtendedPointId },
 
