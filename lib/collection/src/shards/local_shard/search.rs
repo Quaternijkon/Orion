@@ -28,6 +28,31 @@ use crate::operations::types::{CollectionError, CollectionResult};
 // See: <https://github.com/qdrant/qdrant/pull/6326>
 const CHUNK_SIZE: usize = 16;
 
+// Requests with explicit HNSW entry points are materially heavier per query and commonly carry a
+// different Dynamic EF for every query.  Giving those requests the same sixteen-query scheduling
+// grain as an ordinary homogeneous batch leaves too little runnable work when a distributed Orion
+// request reaches a worker as a handful of hot shard batches.  A smaller contiguous range exposes
+// more search tasks to the existing shared runtime without changing query order, entry points, EF,
+// or any segment-search semantics.  Ordinary Qdrant/HashAll requests keep the historical chunk
+// size exactly.
+const EXPLICIT_HNSW_PROFILE_CHUNK_SIZE: usize = 8;
+
+fn preferred_search_chunk_size(has_explicit_hnsw_entry_points: bool) -> usize {
+    if has_explicit_hnsw_entry_points {
+        EXPLICIT_HNSW_PROFILE_CHUNK_SIZE
+    } else {
+        CHUNK_SIZE
+    }
+}
+
+fn contiguous_search_ranges(search_count: usize, chunk_size: usize) -> Vec<Range<usize>> {
+    debug_assert!(chunk_size > 0);
+    (0..search_count)
+        .step_by(chunk_size)
+        .map(|start| start..(start + chunk_size).min(search_count))
+        .collect()
+}
+
 impl LocalShard {
     pub async fn do_search(
         &self,
@@ -40,7 +65,13 @@ impl LocalShard {
             return Ok(vec![]);
         }
 
-        let skip_batching = if core_request.searches.len() <= CHUNK_SIZE {
+        let has_explicit_hnsw_entry_points = core_request
+            .searches
+            .iter()
+            .any(|search| search.hnsw_entry_points.is_some());
+        let preferred_chunk_size = preferred_search_chunk_size(has_explicit_hnsw_entry_points);
+
+        let skip_batching = if core_request.searches.len() <= preferred_chunk_size {
             // Don't batch if we have few searches, prevents cloning request
             true
         } else if self.segments.read().len() > self.shared_storage_config.search_thread_count {
@@ -88,12 +119,9 @@ impl LocalShard {
         let chunk_size = if skip_batching {
             core_request.searches.len()
         } else {
-            CHUNK_SIZE
+            preferred_chunk_size
         };
-        let search_ranges = (0..core_request.searches.len())
-            .step_by(chunk_size)
-            .map(|start| start..(start + chunk_size).min(core_request.searches.len()))
-            .collect::<Vec<_>>();
+        let search_ranges = contiguous_search_ranges(core_request.searches.len(), chunk_size);
 
         let chunk_futures = search_ranges
             .into_iter()
@@ -193,5 +221,44 @@ impl LocalShard {
             )));
         }
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_searches_keep_historical_chunk_size() {
+        assert_eq!(preferred_search_chunk_size(false), 16);
+        assert_eq!(
+            contiguous_search_ranges(33, preferred_search_chunk_size(false)),
+            vec![0..16, 16..32, 32..33],
+        );
+    }
+
+    #[test]
+    fn explicit_hnsw_profiles_use_finer_contiguous_ranges() {
+        assert_eq!(preferred_search_chunk_size(true), 8);
+        assert_eq!(
+            contiguous_search_ranges(17, preferred_search_chunk_size(true)),
+            vec![0..8, 8..16, 16..17],
+        );
+    }
+
+    #[test]
+    fn contiguous_ranges_preserve_every_query_slot_once() {
+        for search_count in 1..=65 {
+            for chunk_size in [
+                preferred_search_chunk_size(false),
+                preferred_search_chunk_size(true),
+            ] {
+                let slots = contiguous_search_ranges(search_count, chunk_size)
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                assert_eq!(slots, (0..search_count).collect::<Vec<_>>());
+            }
+        }
     }
 }

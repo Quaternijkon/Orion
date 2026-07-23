@@ -299,6 +299,77 @@ fn search_dedup_point_id(
     ExtendedPointId::NumId((point_num_id - 1) % block_size)
 }
 
+fn merge_query_from_shards(
+    results_from_shards: impl IntoIterator<Item = Vec<ScoredPoint>>,
+    request: &CoreSearchRequest,
+    order: Order,
+    is_client_request: bool,
+    seen_ids: &mut AHashSet<ExtendedPointId>,
+) -> CollectionResult<Vec<ScoredPoint>> {
+    let merged_iter = results_from_shards
+        .into_iter()
+        .kmerge_by(|a, b| match order {
+            Order::LargeBetter => ScoredPointTies(a) > ScoredPointTies(b),
+            Order::SmallBetter => ScoredPointTies(a) < ScoredPointTies(b),
+        })
+        .filter(|point| {
+            seen_ids.insert(search_dedup_point_id(
+                point.id,
+                request.source_id_dedup_block_size,
+            ))
+        });
+
+    // Skip `offset` only for client requests to avoid applying it twice in distributed mode.
+    // Internal merges retain the full `limit + offset` window for the coordinator.
+    let (skip, take) = if is_client_request {
+        (request.offset, request.limit)
+    } else {
+        let window = request.limit.checked_add(request.offset).ok_or_else(|| {
+            CollectionError::bad_request("search merge limit + offset overflows usize")
+        })?;
+        (0, window)
+    };
+
+    Ok(merged_iter.skip(skip).take(take).collect())
+}
+
+/// Collect compact peer-RPC rows directly by original query without materializing one full,
+/// mostly-empty `batch_size` row matrix per RPC.
+///
+/// `try_join_all` preserves the input RPC order. Appending each non-empty row while walking its
+/// output therefore preserves the source encounter order used by the former dense matrices,
+/// including the order in which otherwise identical ties reach source-ID deduplication.
+fn collect_sparse_peer_rows_by_query(
+    peer_results: Vec<(Vec<usize>, Vec<Vec<ScoredPoint>>)>,
+    batch_size: usize,
+) -> CollectionResult<Vec<Vec<Vec<ScoredPoint>>>> {
+    let mut rows_by_query = Vec::with_capacity(batch_size);
+    rows_by_query.resize_with(batch_size, Vec::new);
+
+    for (original_indices, rows) in peer_results {
+        if rows.len() != original_indices.len() {
+            return Err(CollectionError::service_error(format!(
+                "Compact peer-local shard-major search returned {} rows for {} query slots",
+                rows.len(),
+                original_indices.len(),
+            )));
+        }
+
+        for (original_index, row) in original_indices.into_iter().zip(rows) {
+            let query_rows = rows_by_query.get_mut(original_index).ok_or_else(|| {
+                CollectionError::service_error(format!(
+                    "Compact peer-local shard-major search returned out-of-range original query slot {original_index} for batch size {batch_size}",
+                ))
+            })?;
+            if !row.is_empty() {
+                query_rows.push(row);
+            }
+        }
+    }
+
+    Ok(rows_by_query)
+}
+
 /// Reuse the already ordered, point-ID-unique rows returned by a single replica set for an
 /// internal numeric-shard search.
 ///
@@ -1327,17 +1398,34 @@ impl Collection {
         });
 
         let peer_results = future::try_join_all(peer_searches).await?;
-        let mut all_peer_rows = Vec::with_capacity(peer_results.len());
-        for (original_indices, rows) in peer_results {
-            let mut peer_rows = vec![Vec::new(); original_requests.searches.len()];
-            for (original_index, row) in original_indices.into_iter().zip(rows) {
-                peer_rows[original_index] = row;
-            }
-            all_peer_rows.push(peer_rows);
+        let rows_by_query =
+            collect_sparse_peer_rows_by_query(peer_results, original_requests.searches.len())?;
+        let collection_params = self.collection_config.read().await.params.clone();
+        let mut top_results = Vec::with_capacity(original_requests.searches.len());
+        let mut seen_ids = AHashSet::new();
+
+        for (results_from_shards, request) in rows_by_query
+            .into_iter()
+            .zip(original_requests.searches.iter())
+        {
+            let order = if request.query.is_distance_scored() {
+                collection_params
+                    .get_distance(request.query.get_vector_name())?
+                    .distance_order()
+            } else {
+                Order::LargeBetter
+            };
+            top_results.push(merge_query_from_shards(
+                results_from_shards,
+                request,
+                order,
+                true,
+                &mut seen_ids,
+            )?);
+            seen_ids.clear();
         }
 
-        self.merge_from_shards(all_peer_rows, original_requests, true)
-            .await
+        Ok(top_results)
     }
 
     /// Batch Orion's numeric auto-shard searches by the worker peer that owns them.
@@ -2109,31 +2197,13 @@ impl Collection {
                 .iter_mut()
                 .map(|res| res.get_mut(batch_index).map_or(Vec::new(), mem::take));
 
-            let merged_iter = results_from_shards
-                .kmerge_by(|a, b| match order {
-                    Order::LargeBetter => ScoredPointTies(a) > ScoredPointTies(b),
-                    Order::SmallBetter => ScoredPointTies(a) < ScoredPointTies(b),
-                })
-                .filter(|point| {
-                    seen_ids.insert(search_dedup_point_id(
-                        point.id,
-                        request.source_id_dedup_block_size,
-                    ))
-                });
-
-            // Skip `offset` only for client requests to avoid applying it twice in distributed
-            // mode. Internal merges retain the full `limit + offset` window for the coordinator.
-            let (skip, take) = if is_client_request {
-                (request.offset, request.limit)
-            } else {
-                let window = request.limit.checked_add(request.offset).ok_or_else(|| {
-                    CollectionError::bad_request("search merge limit + offset overflows usize")
-                })?;
-                (0, window)
-            };
-            let top_res = merged_iter.skip(skip).take(take).collect();
-
-            top_results.push(top_res);
+            top_results.push(merge_query_from_shards(
+                results_from_shards,
+                request,
+                order,
+                is_client_request,
+                &mut seen_ids,
+            )?);
 
             seen_ids.clear();
         }
@@ -2320,6 +2390,318 @@ mod tests {
             shard_key: Some(ShardKey::from(format!("shard-{id}"))),
             order_value: None,
         }
+    }
+
+    #[test]
+    fn compact_sparse_peer_rows_match_dense_merge_deterministically_randomized() {
+        fn next_random(state: &mut u64) -> u64 {
+            *state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            *state
+        }
+
+        fn score_for_rank(order: Order, rank: usize) -> f32 {
+            match order {
+                Order::LargeBetter => 100.0 - rank as f32,
+                Order::SmallBetter => rank as f32,
+            }
+        }
+
+        fn point(id: u64, score: f32, version: u64) -> ScoredPoint {
+            ScoredPoint {
+                id: id.into(),
+                version,
+                score,
+                payload: None,
+                vector: None,
+                shard_key: Some(ShardKey::from(format!("source-{version}"))),
+                order_value: None,
+            }
+        }
+
+        fn sort_row(row: &mut [ScoredPoint], order: Order) {
+            row.sort_by(|left, right| match order {
+                Order::LargeBetter => ScoredPointTies(right).cmp(&ScoredPointTies(left)),
+                Order::SmallBetter => ScoredPointTies(left).cmp(&ScoredPointTies(right)),
+            });
+        }
+
+        fn merge_dense_baseline(
+            peer_results: &[(Vec<usize>, Vec<Vec<ScoredPoint>>)],
+            requests: &[CoreSearchRequest],
+            order: Order,
+            is_client_request: bool,
+        ) -> Vec<Vec<ScoredPoint>> {
+            // This is the exact dense matrix shape used by the compact controller path before
+            // sparse collection: one full batch-sized vector per RPC, in RPC encounter order.
+            let mut dense_peer_rows = peer_results
+                .iter()
+                .map(|(original_indices, rows)| {
+                    let mut peer_rows = vec![Vec::new(); requests.len()];
+                    for (original_index, row) in original_indices.iter().copied().zip(rows) {
+                        peer_rows[original_index] = row.clone();
+                    }
+                    peer_rows
+                })
+                .collect::<Vec<_>>();
+
+            let mut merged = Vec::with_capacity(requests.len());
+            let mut seen_ids = AHashSet::new();
+            for (batch_index, request) in requests.iter().enumerate() {
+                let rows = dense_peer_rows
+                    .iter_mut()
+                    .map(|peer_rows| mem::take(&mut peer_rows[batch_index]));
+                merged.push(
+                    merge_query_from_shards(rows, request, order, is_client_request, &mut seen_ids)
+                        .unwrap(),
+                );
+                seen_ids.clear();
+            }
+            merged
+        }
+
+        fn merge_sparse(
+            peer_results: Vec<(Vec<usize>, Vec<Vec<ScoredPoint>>)>,
+            requests: &[CoreSearchRequest],
+            order: Order,
+            is_client_request: bool,
+        ) -> Vec<Vec<ScoredPoint>> {
+            let rows_by_query =
+                collect_sparse_peer_rows_by_query(peer_results, requests.len()).unwrap();
+            let mut merged = Vec::with_capacity(requests.len());
+            let mut seen_ids = AHashSet::new();
+            for (rows, request) in rows_by_query.into_iter().zip(requests) {
+                merged.push(
+                    merge_query_from_shards(rows, request, order, is_client_request, &mut seen_ids)
+                        .unwrap(),
+                );
+                seen_ids.clear();
+            }
+            merged
+        }
+
+        fn assert_exact_rows_equal(dense: &[Vec<ScoredPoint>], sparse: &[Vec<ScoredPoint>]) {
+            assert_eq!(dense.len(), sparse.len());
+            for (query_index, (dense_row, sparse_row)) in dense.iter().zip(sparse).enumerate() {
+                assert_eq!(
+                    dense_row.len(),
+                    sparse_row.len(),
+                    "query {query_index} returned a different result count"
+                );
+                for (rank, (dense_point, sparse_point)) in
+                    dense_row.iter().zip(sparse_row).enumerate()
+                {
+                    assert_eq!(
+                        dense_point.id, sparse_point.id,
+                        "query {query_index}, rank {rank} changed point ID"
+                    );
+                    assert_eq!(
+                        dense_point.score.to_bits(),
+                        sparse_point.score.to_bits(),
+                        "query {query_index}, rank {rank} changed score bits"
+                    );
+                    assert_eq!(
+                        dense_point.version, sparse_point.version,
+                        "query {query_index}, rank {rank} changed equal-tie encounter order"
+                    );
+                    assert_eq!(dense_point.payload, sparse_point.payload);
+                    assert_eq!(dense_point.vector, sparse_point.vector);
+                    assert_eq!(dense_point.shard_key, sparse_point.shard_key);
+                    assert_eq!(dense_point.order_value, sparse_point.order_value);
+                }
+            }
+        }
+
+        const BATCH_SIZE: usize = 8;
+        for order in [Order::LargeBetter, Order::SmallBetter] {
+            let mut requests = (0..BATCH_SIZE)
+                .map(|query_index| {
+                    let mut request = default_dense_request();
+                    request.limit = 3 + query_index % 3;
+                    request.offset = query_index % 2;
+                    if query_index % 4 == 0 {
+                        request.source_id_dedup_block_size = Some(100);
+                    }
+                    request
+                })
+                .collect::<Vec<_>>();
+            requests[0].limit = 8;
+            requests[0].offset = 0;
+            requests[0].source_id_dedup_block_size = Some(100);
+            requests[1].limit = 2;
+            requests[1].offset = 1;
+            requests[1].source_id_dedup_block_size = None;
+            requests[3].limit = 8;
+            requests[3].offset = 0;
+            requests[3].source_id_dedup_block_size = None;
+
+            let mut first_rpc_rows = vec![
+                Vec::new(),
+                vec![
+                    point(10, score_for_rank(order, 0), 10_001),
+                    point(30, score_for_rank(order, 2), 10_030),
+                ],
+                vec![
+                    point(77, score_for_rank(order, 0), 111),
+                    point(78, score_for_rank(order, 4), 10_078),
+                ],
+                vec![point(1, score_for_rank(order, 1), 10_101)],
+                Vec::new(),
+                vec![
+                    point(50, score_for_rank(order, 2), 10_050),
+                    point(51, score_for_rank(order, 2), 10_051),
+                ],
+            ];
+            let mut second_rpc_rows = vec![
+                vec![
+                    point(101, score_for_rank(order, 0), 20_101),
+                    point(2, score_for_rank(order, 3), 20_002),
+                ],
+                vec![
+                    point(77, score_for_rank(order, 0), 222),
+                    point(79, score_for_rank(order, 2), 20_079),
+                ],
+                vec![
+                    point(20, score_for_rank(order, 1), 20_020),
+                    point(40, score_for_rank(order, 3), 20_040),
+                ],
+                Vec::new(),
+            ];
+            for row in first_rpc_rows.iter_mut().chain(&mut second_rpc_rows) {
+                sort_row(row, order);
+            }
+
+            // The slots are deliberately non-monotonic and contain empty rows. Query 0 has
+            // source copies 1/101 across RPCs; query 3 has an identical score+ID tie whose
+            // differing version exposes any change in source encounter order.
+            let mut peer_results = vec![
+                (vec![5, 1, 3, 0, 6, 2], first_rpc_rows),
+                (vec![0, 3, 1, 7], second_rpc_rows),
+            ];
+
+            let mut random_state = 0x5eed_cafe_f00d_baad_u64;
+            for rpc_index in 0..24_u64 {
+                let mut slots = vec![2, 4, 5, 6, 7];
+                for index in (1..slots.len()).rev() {
+                    let swap_index = (next_random(&mut random_state) as usize) % (index + 1);
+                    slots.swap(index, swap_index);
+                }
+                let slot_count = 1 + next_random(&mut random_state) as usize % slots.len();
+                slots.truncate(slot_count);
+
+                let mut rows = Vec::with_capacity(slots.len());
+                for &query_index in &slots {
+                    let row_len = next_random(&mut random_state) as usize % 5;
+                    let mut row = Vec::with_capacity(row_len);
+                    for point_index in 0..row_len {
+                        let base_id = 1 + next_random(&mut random_state) % 35;
+                        let copy_block =
+                            if requests[query_index].source_id_dedup_block_size.is_some()
+                                && next_random(&mut random_state) % 3 == 0
+                            {
+                                100 * (1 + next_random(&mut random_state) % 2)
+                            } else {
+                                0
+                            };
+                        let id = base_id + copy_block;
+                        let rank = next_random(&mut random_state) as usize % 8;
+                        row.push(point(
+                            id,
+                            score_for_rank(order, rank),
+                            30_000 + rpc_index * 100 + point_index as u64,
+                        ));
+                    }
+                    sort_row(&mut row, order);
+                    rows.push(row);
+                }
+                peer_results.push((slots, rows));
+            }
+
+            for is_client_request in [true, false] {
+                let dense =
+                    merge_dense_baseline(&peer_results, &requests, order, is_client_request);
+                let sparse =
+                    merge_sparse(peer_results.clone(), &requests, order, is_client_request);
+                assert_exact_rows_equal(&dense, &sparse);
+
+                let query_zero_source_ids = sparse[0]
+                    .iter()
+                    .map(|point| search_dedup_point_id(point.id, Some(100)))
+                    .collect::<AHashSet<_>>();
+                assert_eq!(query_zero_source_ids.len(), sparse[0].len());
+                assert!(
+                    sparse[0]
+                        .iter()
+                        .any(|point| point.id == PointIdType::from(101))
+                );
+                assert!(
+                    !sparse[0]
+                        .iter()
+                        .any(|point| point.id == PointIdType::from(1))
+                );
+
+                let query_one_ids = sparse[1].iter().map(|point| point.id).collect::<Vec<_>>();
+                if is_client_request {
+                    assert_eq!(
+                        query_one_ids,
+                        vec![PointIdType::from(20), PointIdType::from(30)]
+                    );
+                } else {
+                    assert_eq!(
+                        query_one_ids,
+                        vec![
+                            PointIdType::from(10),
+                            PointIdType::from(20),
+                            PointIdType::from(30),
+                        ]
+                    );
+                }
+
+                let equal_tie = sparse[3]
+                    .iter()
+                    .find(|point| point.id == PointIdType::from(77))
+                    .unwrap();
+                assert_eq!(equal_tie.version, 111);
+            }
+        }
+    }
+
+    #[test]
+    fn compact_sparse_peer_rows_fail_closed_on_invalid_shape_or_slot() {
+        let row_count_error = collect_sparse_peer_rows_by_query(
+            vec![(vec![0, 1], vec![vec![scored_point(1, 0.9)]])],
+            2,
+        )
+        .unwrap_err();
+        assert!(
+            row_count_error
+                .to_string()
+                .contains("returned 1 rows for 2 query slots")
+        );
+
+        let slot_error =
+            collect_sparse_peer_rows_by_query(vec![(vec![2], vec![vec![scored_point(1, 0.9)]])], 2)
+                .unwrap_err();
+        assert!(
+            slot_error
+                .to_string()
+                .contains("out-of-range original query slot 2 for batch size 2")
+        );
+    }
+
+    #[test]
+    fn compact_sparse_peer_rows_preserve_all_empty_queries() {
+        let rows = collect_sparse_peer_rows_by_query(
+            vec![
+                (vec![1, 0], vec![Vec::new(), Vec::new()]),
+                (vec![0, 2], vec![Vec::new(), Vec::new()]),
+            ],
+            3,
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(Vec::is_empty));
     }
 
     #[test]
@@ -3177,6 +3559,17 @@ mod tests {
         assert_eq!(rpcs[1].original_indices, vec![9, 5]);
         assert_eq!(rpcs[1].query_templates.len(), 2);
         assert_eq!(rpcs[1].is_payload_required_by_query, vec![false, false]);
+        for rpc in &rpcs {
+            assert_eq!(
+                rpc.original_indices
+                    .iter()
+                    .copied()
+                    .collect::<AHashSet<_>>()
+                    .len(),
+                rpc.original_indices.len(),
+                "each compact RPC must contain every original query slot at most once",
+            );
+        }
         assert!(
             rpcs.iter()
                 .flat_map(|rpc| &rpc.query_templates)

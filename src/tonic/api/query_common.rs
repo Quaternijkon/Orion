@@ -729,6 +729,14 @@ struct MaterializedCompactShardSearch {
     requests: Vec<CoreSearchRequest>,
 }
 
+#[derive(Debug)]
+struct ValidatedCompactSearchEntry {
+    query_index: usize,
+    shard_id: ShardId,
+    hnsw_ef: usize,
+    hnsw_entry_points: Vec<PointIdType>,
+}
+
 fn attach_explicit_local_shard_results(
     prepared: Vec<PreparedCompactShardSearch>,
     rows_by_shard: Vec<(ShardId, Vec<Vec<ScoredPoint>>)>,
@@ -806,13 +814,11 @@ fn validate_compact_orion_query_template(
     Ok(())
 }
 
-fn decode_compact_query_templates(
+fn decode_compact_query_templates_after_budget(
     collection_name: &str,
     query_templates: Vec<CoreSearchByShardQueryTemplate>,
     wire_version: u32,
 ) -> Result<DecodedCompactQueryTemplates, Status> {
-    validate_compact_query_template_budget(&query_templates)?;
-
     let mut requests = Vec::with_capacity(query_templates.len());
     let mut metadata = Vec::with_capacity(query_templates.len());
     for (query_slot, template) in query_templates.into_iter().enumerate() {
@@ -894,90 +900,43 @@ fn decode_compact_query_templates(
     Ok(DecodedCompactQueryTemplates { requests, metadata })
 }
 
-fn validate_compact_entry_points(
-    query_index: usize,
-    entry: &CoreSearchByShardCompactEntry,
+#[cfg(test)]
+fn decode_compact_query_templates(
+    collection_name: &str,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
     wire_version: u32,
-    seen_entry_points: &mut HashSet<PointIdType>,
-) -> Result<(), Status> {
-    let no_entry_points = || {
-        Status::invalid_argument(format!(
-            "compact search for query_slot {query_index} and shard {} has no HNSW entry points",
-            entry.shard_id
-        ))
-    };
-    let duplicate_entry_point = |entry_point: PointIdType| {
-        Status::invalid_argument(format!(
-            "compact search for query_slot {query_index} and shard {} contains duplicate ordered HNSW entry point {entry_point}",
-            entry.shard_id,
-        ))
-    };
-
-    seen_entry_points.clear();
-    match wire_version {
-        1 => {
-            if !entry.hnsw_entry_point_num_ids.is_empty() {
-                return Err(Status::invalid_argument(format!(
-                    "compact wire-version 1 search for query_slot {query_index} and shard {} must not contain packed numeric HNSW entry points",
-                    entry.shard_id,
-                )));
-            }
-            if entry.hnsw_entry_points.is_empty() {
-                return Err(no_entry_points());
-            }
-            seen_entry_points.reserve(entry.hnsw_entry_points.len());
-            for entry_point in &entry.hnsw_entry_points {
-                let entry_point = PointIdType::try_from(entry_point.clone())?;
-                if !seen_entry_points.insert(entry_point) {
-                    return Err(duplicate_entry_point(entry_point));
-                }
-            }
-        }
-        2 => match (
-            entry.hnsw_entry_points.is_empty(),
-            entry.hnsw_entry_point_num_ids.is_empty(),
-        ) {
-            (true, true) => return Err(no_entry_points()),
-            (false, false) => {
-                return Err(Status::invalid_argument(format!(
-                    "compact wire-version 2 search for query_slot {query_index} and shard {} must use exactly one HNSW entry-point representation",
-                    entry.shard_id,
-                )));
-            }
-            (false, true) => {
-                seen_entry_points.reserve(entry.hnsw_entry_points.len());
-                for entry_point in &entry.hnsw_entry_points {
-                    let entry_point = PointIdType::try_from(entry_point.clone())?;
-                    if !seen_entry_points.insert(entry_point) {
-                        return Err(duplicate_entry_point(entry_point));
-                    }
-                }
-            }
-            (true, false) => {
-                seen_entry_points.reserve(entry.hnsw_entry_point_num_ids.len());
-                for &entry_point in &entry.hnsw_entry_point_num_ids {
-                    let entry_point = PointIdType::from(entry_point);
-                    if !seen_entry_points.insert(entry_point) {
-                        return Err(duplicate_entry_point(entry_point));
-                    }
-                }
-            }
-        },
-        unsupported => {
-            return Err(Status::invalid_argument(format!(
-                "unsupported compact peer-search wire_version {unsupported}; expected 1 or 2"
-            )));
-        }
-    }
-    Ok(())
+) -> Result<DecodedCompactQueryTemplates, Status> {
+    validate_compact_query_template_budget(&query_templates)?;
+    decode_compact_query_templates_after_budget(collection_name, query_templates, wire_version)
 }
 
-fn validate_compact_search_entries(
+fn collect_validated_compact_entry_points(
+    query_index: usize,
+    shard_id: ShardId,
+    entry_point_count: usize,
+    entry_points: impl IntoIterator<Item = Result<PointIdType, Status>>,
+    seen_entry_points: &mut HashSet<PointIdType>,
+) -> Result<Vec<PointIdType>, Status> {
+    seen_entry_points.clear();
+    seen_entry_points.reserve(entry_point_count);
+    let mut converted = Vec::with_capacity(entry_point_count);
+    for entry_point in entry_points {
+        let entry_point = entry_point?;
+        if !seen_entry_points.insert(entry_point.clone()) {
+            return Err(Status::invalid_argument(format!(
+                "compact search for query_slot {query_index} and shard {shard_id} contains duplicate ordered HNSW entry point {entry_point}"
+            )));
+        }
+        converted.push(entry_point);
+    }
+    Ok(converted)
+}
+
+fn validate_compact_search_entries_after_budget(
     templates: &DecodedCompactQueryTemplates,
-    searches: &[CoreSearchByShardCompactEntry],
+    searches: Vec<CoreSearchByShardCompactEntry>,
     wire_version: u32,
-) -> Result<(), Status> {
-    validate_compact_search_budget(searches)?;
+) -> Result<Vec<ValidatedCompactSearchEntry>, Status> {
     if templates.requests.len() != templates.metadata.len() {
         return Err(Status::internal(
             "compact query template materialization metadata length mismatch",
@@ -988,27 +947,98 @@ fn validate_compact_search_entries(
     let mut referenced_slots = vec![false; query_count];
     let mut seen_query_shards = HashSet::with_capacity(searches.len());
     let mut seen_entry_points = HashSet::new();
+    let mut validated_searches = Vec::with_capacity(searches.len());
     for entry in searches {
-        let query_index = usize::try_from(entry.query_slot)
+        let CoreSearchByShardCompactEntry {
+            query_slot,
+            shard_id,
+            hnsw_entry_points,
+            hnsw_ef,
+            hnsw_entry_point_num_ids,
+        } = entry;
+        let query_index = usize::try_from(query_slot)
             .map_err(|_| Status::invalid_argument("query_slot does not fit into usize"))?;
         if query_index >= query_count {
             return Err(Status::invalid_argument(format!(
                 "query_slot {query_index} is outside query_templates length {query_count}"
             )));
         }
-        if !seen_query_shards.insert((query_index, entry.shard_id)) {
+        if !seen_query_shards.insert((query_index, shard_id)) {
             return Err(Status::invalid_argument(format!(
                 "duplicate compact search for query_slot {query_index} and shard {}",
-                entry.shard_id
+                shard_id
             )));
         }
-        let hnsw_ef = usize::try_from(entry.hnsw_ef)
+        let hnsw_ef = usize::try_from(hnsw_ef)
             .map_err(|_| Status::invalid_argument("hnsw_ef does not fit into usize"))?;
         if hnsw_ef == 0 {
             return Err(Status::invalid_argument("hnsw_ef must be positive"));
         }
-        validate_compact_entry_points(query_index, entry, wire_version, &mut seen_entry_points)?;
+
+        let no_entry_points = || {
+            Status::invalid_argument(format!(
+                "compact search for query_slot {query_index} and shard {shard_id} has no HNSW entry points"
+            ))
+        };
+        let hnsw_entry_points = match wire_version {
+            1 => {
+                if !hnsw_entry_point_num_ids.is_empty() {
+                    return Err(Status::invalid_argument(format!(
+                        "compact wire-version 1 search for query_slot {query_index} and shard {shard_id} must not contain packed numeric HNSW entry points"
+                    )));
+                }
+                if hnsw_entry_points.is_empty() {
+                    return Err(no_entry_points());
+                }
+                collect_validated_compact_entry_points(
+                    query_index,
+                    shard_id,
+                    hnsw_entry_points.len(),
+                    hnsw_entry_points.into_iter().map(PointIdType::try_from),
+                    &mut seen_entry_points,
+                )?
+            }
+            2 => match (
+                hnsw_entry_points.is_empty(),
+                hnsw_entry_point_num_ids.is_empty(),
+            ) {
+                (true, true) => return Err(no_entry_points()),
+                (false, false) => {
+                    return Err(Status::invalid_argument(format!(
+                        "compact wire-version 2 search for query_slot {query_index} and shard {shard_id} must use exactly one HNSW entry-point representation"
+                    )));
+                }
+                (false, true) => collect_validated_compact_entry_points(
+                    query_index,
+                    shard_id,
+                    hnsw_entry_points.len(),
+                    hnsw_entry_points.into_iter().map(PointIdType::try_from),
+                    &mut seen_entry_points,
+                )?,
+                (true, false) => collect_validated_compact_entry_points(
+                    query_index,
+                    shard_id,
+                    hnsw_entry_point_num_ids.len(),
+                    hnsw_entry_point_num_ids
+                        .into_iter()
+                        .map(|entry_point| Ok(PointIdType::from(entry_point))),
+                    &mut seen_entry_points,
+                )?,
+            },
+            unsupported => {
+                return Err(Status::invalid_argument(format!(
+                    "unsupported compact peer-search wire_version {unsupported}; expected 1 or 2"
+                )));
+            }
+        };
+
         referenced_slots[query_index] = true;
+        validated_searches.push(ValidatedCompactSearchEntry {
+            query_index,
+            shard_id,
+            hnsw_ef,
+            hnsw_entry_points,
+        });
     }
 
     if let Some(unreferenced_slot) = referenced_slots.iter().position(|referenced| !referenced) {
@@ -1016,48 +1046,27 @@ fn validate_compact_search_entries(
             "query template slot {unreferenced_slot} has no compact shard search"
         )));
     }
-    Ok(())
+    Ok(validated_searches)
 }
 
 fn materialize_validated_compact_searches_by_shard(
     templates: &DecodedCompactQueryTemplates,
-    searches: Vec<CoreSearchByShardCompactEntry>,
-    wire_version: u32,
+    searches: Vec<ValidatedCompactSearchEntry>,
 ) -> Result<BTreeMap<ShardId, MaterializedCompactShardSearch>, Status> {
     let mut by_shard: BTreeMap<ShardId, MaterializedCompactShardSearch> = BTreeMap::new();
     for entry in searches {
-        let query_index = usize::try_from(entry.query_slot)
-            .map_err(|_| Status::invalid_argument("query_slot does not fit into usize"))?;
+        let ValidatedCompactSearchEntry {
+            query_index,
+            shard_id,
+            hnsw_ef,
+            hnsw_entry_points,
+        } = entry;
         let template_request = templates.requests.get(query_index).ok_or_else(|| {
             Status::internal("validated compact query template is unexpectedly missing")
         })?;
         let template = templates.metadata.get(query_index).ok_or_else(|| {
             Status::internal("compact query template metadata is missing for a decoded request")
         })?;
-        let hnsw_ef = usize::try_from(entry.hnsw_ef)
-            .map_err(|_| Status::invalid_argument("hnsw_ef does not fit into usize"))?;
-        let hnsw_entry_points = match wire_version {
-            1 => entry
-                .hnsw_entry_points
-                .into_iter()
-                .map(PointIdType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            2 if entry.hnsw_entry_point_num_ids.is_empty() => entry
-                .hnsw_entry_points
-                .into_iter()
-                .map(PointIdType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            2 => entry
-                .hnsw_entry_point_num_ids
-                .into_iter()
-                .map(PointIdType::from)
-                .collect(),
-            unsupported => {
-                return Err(Status::invalid_argument(format!(
-                    "unsupported compact peer-search wire_version {unsupported}; expected 1 or 2"
-                )));
-            }
-        };
 
         let mut request = template_request.clone();
         request.limit = template.lower_limit;
@@ -1070,7 +1079,7 @@ fn materialize_validated_compact_searches_by_shard(
         params.hnsw_ef = Some(hnsw_ef);
         request.params = Some(params);
 
-        let shard_search = by_shard.entry(entry.shard_id).or_default();
+        let shard_search = by_shard.entry(shard_id).or_default();
         shard_search.original_rows.push((
             query_index,
             template.final_limit,
@@ -1082,14 +1091,47 @@ fn materialize_validated_compact_searches_by_shard(
     Ok(by_shard)
 }
 
+fn validate_compact_request_before_auth(
+    collection_name: &str,
+    wire_version: u32,
+    query_templates: Vec<CoreSearchByShardQueryTemplate>,
+    searches: Vec<CoreSearchByShardCompactEntry>,
+) -> Result<
+    (
+        DecodedCompactQueryTemplates,
+        Vec<ValidatedCompactSearchEntry>,
+    ),
+    Status,
+> {
+    if !matches!(wire_version, 1 | 2) {
+        return Err(Status::invalid_argument(format!(
+            "unsupported compact peer-search wire_version {wire_version}; expected 1 or 2"
+        )));
+    }
+
+    // Keep both envelope budgets ahead of semantic decoding so malformed peers cannot trigger
+    // query decoding or per-entry validation before the complete request is bounded.
+    validate_compact_query_template_budget(&query_templates)?;
+    validate_compact_search_budget(&searches)?;
+    let templates = decode_compact_query_templates_after_budget(
+        collection_name,
+        query_templates,
+        wire_version,
+    )?;
+    let searches =
+        validate_compact_search_entries_after_budget(&templates, searches, wire_version)?;
+    Ok((templates, searches))
+}
+
 #[cfg(test)]
 fn materialize_compact_searches_by_shard(
     templates: &DecodedCompactQueryTemplates,
     searches: Vec<CoreSearchByShardCompactEntry>,
     wire_version: u32,
 ) -> Result<BTreeMap<ShardId, MaterializedCompactShardSearch>, Status> {
-    validate_compact_search_entries(templates, &searches, wire_version)?;
-    materialize_validated_compact_searches_by_shard(templates, searches, wire_version)
+    validate_compact_search_budget(&searches)?;
+    let searches = validate_compact_search_entries_after_budget(templates, searches, wire_version)?;
+    materialize_validated_compact_searches_by_shard(templates, searches)
 }
 
 #[cfg(test)]
@@ -1123,19 +1165,13 @@ pub async fn core_search_batch_by_shard_compact(
     timeout: Option<Duration>,
     request_hw_counter: RequestHwCounter,
 ) -> Result<Response<SearchBatchResponse>, Status> {
-    if !matches!(wire_version, 1 | 2) {
-        return Err(Status::invalid_argument(format!(
-            "unsupported compact peer-search wire_version {wire_version}; expected 1 or 2"
-        )));
-    }
-    // Reject amplification-sized envelopes before decoding templates, reserving validation maps,
-    // or cloning one full query request per shard entry.
-    validate_compact_query_template_budget(&query_templates)?;
-    validate_compact_search_budget(&searches)?;
-    let templates =
-        decode_compact_query_templates(&collection_name, query_templates, wire_version)?;
+    let (templates, searches) = validate_compact_request_before_auth(
+        &collection_name,
+        wire_version,
+        query_templates,
+        searches,
+    )?;
     let query_count = templates.len();
-    validate_compact_search_entries(&templates, &searches, wire_version)?;
 
     // Resolve authorization, collection identity, the Orion router schema, and vector distance
     // before materializing shard-local clones of every decoded query template.
@@ -1143,8 +1179,7 @@ pub async fn core_search_batch_by_shard_compact(
         .validate_orion_compact_peer_search(&collection_name, &templates.requests, &auth)
         .await
         .map_err(Status::from)?;
-    let by_shard =
-        materialize_validated_compact_searches_by_shard(&templates, searches, wire_version)?;
+    let by_shard = materialize_validated_compact_searches_by_shard(&templates, searches)?;
 
     let timing = Instant::now();
     let prepared = by_shard
@@ -2601,6 +2636,151 @@ mod tests {
     }
 
     #[test]
+    fn compact_request_resource_budgets_accept_exact_boundaries() {
+        let maximum_templates =
+            vec![CoreSearchByShardQueryTemplate::default(); MAX_COMPACT_QUERY_TEMPLATES];
+        validate_compact_query_template_budget(&maximum_templates).unwrap();
+
+        let maximum_searches =
+            vec![CoreSearchByShardCompactEntry::default(); MAX_COMPACT_SEARCH_ENTRIES];
+        validate_compact_search_budget(&maximum_searches).unwrap();
+
+        let maximum_entry = CoreSearchByShardCompactEntry {
+            hnsw_entry_point_num_ids: vec![0; MAX_COMPACT_HNSW_ENTRY_POINTS_PER_SEARCH],
+            ..Default::default()
+        };
+        validate_compact_search_budget(std::slice::from_ref(&maximum_entry)).unwrap();
+        let maximum_total_entry_points = vec![
+            maximum_entry;
+            MAX_COMPACT_HNSW_ENTRY_POINTS
+                / MAX_COMPACT_HNSW_ENTRY_POINTS_PER_SEARCH
+        ];
+        validate_compact_search_budget(&maximum_total_entry_points).unwrap();
+
+        let maximum_encoded_payload =
+            prost::bytes::Bytes::from(vec![0; MAX_COMPACT_ENCODED_SEARCH_POINTS_BYTES]);
+        let maximum_total_encoded_bytes = (0..MAX_COMPACT_TOTAL_SEARCH_POINTS_BYTES
+            / MAX_COMPACT_ENCODED_SEARCH_POINTS_BYTES)
+            .map(|_| CoreSearchByShardQueryTemplate {
+                search_points: None,
+                source_id_dedup_block_size: None,
+                encoded_search_points: maximum_encoded_payload.clone(),
+            })
+            .collect::<Vec<_>>();
+        validate_compact_query_template_budget(&maximum_total_encoded_bytes).unwrap();
+
+        assert_eq!(
+            checked_compact_budget_add(usize::MAX - 1, 1, usize::MAX, "test resource").unwrap(),
+            usize::MAX,
+        );
+    }
+
+    #[test]
+    fn compact_pre_auth_validation_preserves_error_stage_order() {
+        let error =
+            validate_compact_request_before_auth("orion", 3, Vec::new(), Vec::new()).unwrap_err();
+        assert_eq!(
+            error.message(),
+            "unsupported compact peer-search wire_version 3; expected 1 or 2"
+        );
+
+        let missing_template = CoreSearchByShardQueryTemplate {
+            search_points: None,
+            source_id_dedup_block_size: None,
+            encoded_search_points: Default::default(),
+        };
+        let error = validate_compact_request_before_auth(
+            "orion",
+            2,
+            vec![missing_template.clone()],
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert_eq!(error.message(), "compact searches is empty");
+
+        let error = validate_compact_request_before_auth(
+            "orion",
+            2,
+            vec![missing_template],
+            vec![compact_entry(0, 9, &[31], 0)],
+        )
+        .unwrap_err();
+        assert_eq!(error.message(), "query template 0 is missing search_points");
+
+        let error = validate_compact_request_before_auth(
+            "orion",
+            2,
+            vec![compact_template("orion", 10, 0, None)],
+            vec![compact_entry(0, 9, &[31], 0)],
+        )
+        .unwrap_err();
+        assert_eq!(error.message(), "hnsw_ef must be positive");
+    }
+
+    #[test]
+    fn compact_fused_entry_validation_preserves_converted_order() {
+        let uuid = "550e8400-e29b-41d4-a716-446655440000"
+            .parse::<PointIdType>()
+            .unwrap();
+        let generic_entry_points = vec![uuid, PointIdType::from(17)];
+        let generic_entry = CoreSearchByShardCompactEntry {
+            query_slot: 0,
+            shard_id: 9,
+            hnsw_entry_points: generic_entry_points
+                .iter()
+                .cloned()
+                .map(Into::into)
+                .collect(),
+            hnsw_ef: 76,
+            hnsw_entry_point_num_ids: Vec::new(),
+        };
+        let numeric_entry_points = vec![31, 29, 11];
+        let numeric_entry = compact_entry(0, 10, &numeric_entry_points, 88);
+        let searches = vec![generic_entry, numeric_entry];
+        validate_compact_search_budget(&searches).unwrap();
+
+        let templates = decode_compact_query_templates(
+            "orion",
+            vec![encoded_compact_template(compact_template(
+                "orion", 10, 7, None,
+            ))],
+            2,
+        )
+        .unwrap();
+        let validated =
+            validate_compact_search_entries_after_budget(&templates, searches, 2).unwrap();
+        assert_eq!(validated.len(), 2);
+        assert_eq!(validated[0].query_index, 0);
+        assert_eq!(validated[0].shard_id, 9);
+        assert_eq!(validated[0].hnsw_ef, 76);
+        assert_eq!(validated[0].hnsw_entry_points, generic_entry_points);
+        assert_eq!(validated[1].query_index, 0);
+        assert_eq!(validated[1].shard_id, 10);
+        assert_eq!(validated[1].hnsw_ef, 88);
+        assert_eq!(
+            validated[1].hnsw_entry_points,
+            numeric_entry_points
+                .into_iter()
+                .map(PointIdType::from)
+                .collect::<Vec<_>>()
+        );
+
+        let by_shard =
+            materialize_validated_compact_searches_by_shard(&templates, validated).unwrap();
+        assert_eq!(
+            by_shard[&9].requests[0].hnsw_entry_points,
+            Some(generic_entry_points)
+        );
+        assert_eq!(
+            by_shard[&10].requests[0]
+                .params
+                .as_ref()
+                .and_then(|params| params.hnsw_ef),
+            Some(88)
+        );
+    }
+
+    #[test]
     fn compact_wire_v2_generic_uuid_entry_points_roundtrip_exactly() {
         let uuid = "550e8400-e29b-41d4-a716-446655440000"
             .parse::<PointIdType>()
@@ -2623,6 +2803,74 @@ mod tests {
         .unwrap();
         let by_shard = materialize_compact_searches_by_shard(&templates, vec![entry], 2).unwrap();
         assert_eq!(by_shard[&9].requests[0].hnsw_entry_points, Some(expected));
+    }
+
+    #[test]
+    fn compact_wire_v1_generic_uuid_entry_points_validate_and_preserve_order() {
+        use api::grpc::qdrant::PointId;
+        use api::grpc::qdrant::point_id::PointIdOptions;
+
+        let first_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        let second_uuid = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+        let expected = vec![
+            first_uuid.parse::<PointIdType>().unwrap(),
+            PointIdType::from(17),
+            second_uuid.parse::<PointIdType>().unwrap(),
+        ];
+        let entry = CoreSearchByShardCompactEntry {
+            query_slot: 0,
+            shard_id: 9,
+            hnsw_entry_points: vec![
+                PointId {
+                    point_id_options: Some(PointIdOptions::Uuid(first_uuid.to_string())),
+                },
+                PointId {
+                    point_id_options: Some(PointIdOptions::Num(17)),
+                },
+                PointId {
+                    point_id_options: Some(PointIdOptions::Uuid(second_uuid.to_string())),
+                },
+            ],
+            hnsw_ef: 76,
+            hnsw_entry_point_num_ids: Vec::new(),
+        };
+        let templates = decode_compact_query_templates(
+            "orion",
+            vec![compact_template("orion", 10, 7, None)],
+            1,
+        )
+        .unwrap();
+        let by_shard =
+            materialize_compact_searches_by_shard(&templates, vec![entry.clone()], 1).unwrap();
+        assert_eq!(by_shard[&9].requests[0].hnsw_entry_points, Some(expected));
+
+        let mut duplicate = entry.clone();
+        duplicate.hnsw_entry_points.push(PointId {
+            point_id_options: Some(PointIdOptions::Uuid(first_uuid.to_string())),
+        });
+        let error =
+            materialize_compact_searches_by_shard(&templates, vec![duplicate], 1).unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("duplicate ordered HNSW entry point")
+        );
+
+        let mut malformed = entry.clone();
+        malformed.hnsw_entry_points[0] = PointId {
+            point_id_options: Some(PointIdOptions::Uuid("not-a-uuid".to_string())),
+        };
+        let error =
+            materialize_compact_searches_by_shard(&templates, vec![malformed], 1).unwrap_err();
+        assert!(error.message().contains("Unable to parse UUID"));
+
+        let mut missing = entry;
+        missing.hnsw_entry_points[0] = PointId {
+            point_id_options: None,
+        };
+        let error =
+            materialize_compact_searches_by_shard(&templates, vec![missing], 1).unwrap_err();
+        assert!(error.message().contains("No ID options provided"));
     }
 
     #[test]
