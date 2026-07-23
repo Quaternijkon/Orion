@@ -1,5 +1,12 @@
 # Method4/Orion Four-Node Distributed Initial Results
 
+> [!WARNING]
+> **Historical custom-routing result.** These measurements belong to the
+> earlier benchmark/client-hint four-node implementation. They must not be
+> relabeled as results of the native numeric-auto-shard coordinator path. The
+> authoritative native-v4 comparison is
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md).
+
 ## Result summary
 
 The final fresh six-point run is:

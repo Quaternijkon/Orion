@@ -1,0 +1,13 @@
+index,label,elapsed_s,aggregate_sha256,output
+1,baseline,8.457346112001687,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-01-baseline.json
+2,candidate,6.976290049031377,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-02-candidate.json
+3,candidate,6.9581298240227625,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-03-candidate.json
+4,baseline,8.5691477349028,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-04-baseline.json
+5,candidate,7.094052599044517,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-05-candidate.json
+6,baseline,8.538374503958039,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-06-baseline.json
+7,baseline,8.609120788984,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-07-baseline.json
+8,candidate,7.09024790301919,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-08-candidate.json
+9,baseline,8.488432482001372,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-09-baseline.json
+10,candidate,7.048492157948203,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-10-candidate.json
+11,candidate,7.0308925489662215,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-11-candidate.json
+12,baseline,8.51370072492864,af86295971df9059f289febdc80ed149180e51403245f1ff128067e38cfbfd86,/tmp/orion-flat-vector-ab-20260723/run-12-baseline.json

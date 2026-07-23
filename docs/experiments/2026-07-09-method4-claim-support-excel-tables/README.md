@@ -1,5 +1,12 @@
 # Method4 Claim 支撑实验数据 Excel 文件
 
+> [!WARNING]
+> **Historical single-host workbook.** This workbook and the TSV exports retain
+> the 2026-07-09 single-machine evidence exactly as published. They are not
+> updated with native four-host data. See
+> [`../2026-07-23-orion-native-v4-four-node-results.md`](../2026-07-23-orion-native-v4-four-node-results.md)
+> for the separate native-v4 result set.
+
 这里是从 `docs/experiments/2026-07-09-method4-claim-support-excel-chart-data.md` 导出的原始 Excel 友好文件。
 
 - `method4_claim_support_excel_tables.xlsx`：一个 Excel 工作簿，每个 TSV 数据区一个 sheet；其中完整数字单元格已存为 Excel 数值类型，推荐直接打开这个文件绘图。

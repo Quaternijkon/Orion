@@ -1,5 +1,12 @@
 # 2026-07-20 Orion Native Auto-Shard Phase 1
 
+> [!NOTE]
+> **Phase-1 design record.** This document describes the first native
+> auto-shard implementation boundary and remains useful for design history.
+> The authoritative four-node native-v4 experiment, exact same-recall results,
+> and current limitations are recorded in
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md).
+
 ## 当前结论
 
 本阶段已经把 Orion 的**读取路由**放进 Qdrant collection coordinator，并把离线

@@ -1,5 +1,13 @@
 # 2026-06-04 当前 Method4 Idea 的 Docker 分布式架构设计
 
+> [!WARNING]
+> **Historical single-host design.** This document describes the earlier
+> controller-plus-workers deployment on one physical host. It is not the
+> architecture or performance evidence for the native four-host Qdrant path.
+> See
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md)
+> for the current native-v4 architecture and results.
+
 ## 目标
 
 当前 idea 实现的目标，是把原初 C++ method4 的两层图索引思想迁移到

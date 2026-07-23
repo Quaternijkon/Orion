@@ -10,7 +10,9 @@
 > `sharding_method=auto` Orion architecture**. Native claims require a fresh run through
 > the server-side `AutoShardPolicy::Orion`, numeric `ShardId`, standard Search/Query,
 > ordinary `ShardReplicaSet`, and collection global-merge path documented in
-> `2026-07-20-orion-native-auto-shard-phase1.md`.
+> `2026-07-20-orion-native-auto-shard-phase1.md`. The completed native-v4
+> four-node results are in
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md).
 
 This runbook replaces the old single-host, multi-container layout for the initial
 Orion versus Simple KMeans nprobe versus Naive all-shards Recall–QPS comparison.

@@ -1,5 +1,12 @@
 # 2026-06-16 Method4 Distributed Qdrant 投稿实验计划
 
+> [!NOTE]
+> **Historical experiment plan.** This plan predates the completed native-v4
+> coordinator implementation and its final four-node measurements. Preserve it
+> as the predeclared design record; use
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md)
+> for current results and claim boundaries.
+
 ## 目标
 
 本实验计划用于支撑当前 Method4 idea 在 Docker/Qdrant 分布式架构下的投稿版本。

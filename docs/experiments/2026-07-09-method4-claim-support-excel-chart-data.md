@@ -1,5 +1,13 @@
 # Method4 Claim 支撑实验数据：Excel 绘图数据表
 
+> [!WARNING]
+> **Historical single-host evidence.** The tables below summarize the
+> 2026-07-09 single-machine simulation campaign. Do not merge or relabel them as
+> native four-host results. Current native-v4 evidence is published separately
+> in
+> [`2026-07-23-orion-native-v4-four-node-results.md`](2026-07-23-orion-native-v4-four-node-results.md)
+> and its adjacent small evidence bundle.
+
 生成日期：2026-07-09
 
 本文件把当前 GloVe 范围内可以支撑 Method4 论文/报告 claim 的派生实验数据整理成“Excel 可画图”的数据块。每个图表块都说明它支撑的论据、推荐图形、X 轴、建议系列、数据来源和不能越界使用的 caveat。
