@@ -175,4 +175,13 @@ def test_cli_plumbing_is_explicit_and_ephemeral_values_are_not_recorded():
             "secret-token",
         ]
     ) == ["python", "tool.py", "--ordinary", "value"]
+    assert module.strip_cli_arguments(
+        [
+            "python",
+            "tool.py",
+            f"{module.LOCK_FD_ARGUMENT}=17",
+            "--ordinary=value",
+            f"{module.LOCK_TOKEN_ARGUMENT}=secret-token",
+        ]
+    ) == ["python", "tool.py", "--ordinary=value"]
     assert module.public_namespace(args) == {}

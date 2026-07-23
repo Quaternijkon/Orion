@@ -33,9 +33,13 @@ class FakeHeldLock:
 
     def evidence(self):
         return {
+            "schema_version": 1,
             "path": "/runs/benchmark.lock",
             "mode": "acquired",
             "token_sha256": "a" * 64,
+            "owner_pid": 4242,
+            "owner_kind": "native_auto_shard_matrix",
+            "process_pid": 4242,
         }
 
 
@@ -144,6 +148,7 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
             "neighbors_shape": [100, 10],
         },
         "deployment": {
+            "path": "/runs/manifest.json",
             "manifest_sha256": "c" * 64,
             "image": {
                 "id": image_id,
@@ -377,11 +382,28 @@ def write_case_result(
     visited,
     ef_sum,
     image_id: str = "sha256:same",
+    deployment_manifest_path: str = "/runs/manifest.json",
+    benchmark_lock_evidence: dict | None = None,
 ) -> None:
     case_dir = matrix_dir / "cases" / case["name"]
     case_dir.mkdir(parents=True)
     manifest = shared_manifest(case["method"], image_id=image_id)
+    manifest["deployment"]["path"] = deployment_manifest_path
     manifest["collection"] = case["collection"]
+    if benchmark_lock_evidence is None:
+        benchmark_lock_evidence = {
+            "schema_version": 1,
+            "path": str(
+                Path(deployment_manifest_path).expanduser().resolve().parent
+                / "benchmark.lock"
+            ),
+            "mode": "inherited",
+            "token_sha256": "f" * 64,
+            "owner_pid": 4242,
+            "owner_kind": "native_auto_shard_matrix",
+            "process_pid": 5000 + sum(case["name"].encode("utf-8")),
+        }
+    manifest["benchmark_lock"] = benchmark_lock_evidence
     if case["method"] in {"orion", "simple_kmeans"}:
         layout_sha256 = (
             "a" * 64 if case["method"] == "orion" else "b" * 64
@@ -441,6 +463,16 @@ def write_case_result(
         }
     (case_dir / "run_manifest.json").write_text(
         json.dumps(manifest),
+        encoding="utf-8",
+    )
+    (case_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "method": case["method"],
+                "collection": case["collection"],
+                "benchmark_lock": benchmark_lock_evidence,
+            }
+        ),
         encoding="utf-8",
     )
     fields = [
@@ -657,10 +689,24 @@ def test_collect_only_does_not_acquire_or_claim_a_new_benchmark_lock(
     monkeypatch, tmp_path
 ):
     module = load_module()
-    config = module.load_config(write_config(tmp_path / "config"))
+    deployment = tmp_path / "deployment" / "manifest.json"
+    deployment.parent.mkdir()
+    deployment.write_text("{}\n", encoding="utf-8")
+    value = base_config()
+    value["shared"]["deployment_manifest"] = str(deployment)
+    config = module.load_config(write_config(tmp_path / "config", value))
     matrix_dir = tmp_path / "existing-matrix"
     matrix_dir.mkdir()
-    observed = []
+    for case in config["cases"]:
+        write_case_result(
+            matrix_dir,
+            case,
+            recall=0.9,
+            qps=100.0,
+            visited=2 if case["method"] == "orion" else 3,
+            ef_sum=120,
+            deployment_manifest_path=str(deployment),
+        )
 
     monkeypatch.setattr(module, "load_config", lambda _path: config)
     monkeypatch.setattr(
@@ -679,12 +725,7 @@ def test_collect_only_does_not_acquire_or_claim_a_new_benchmark_lock(
             "collect-only must not acquire a measurement lock"
         ),
     )
-
-    def fake_collect(*args):
-        observed.append(args)
-        return {}
-
-    monkeypatch.setattr(module, "collect_results", fake_collect)
+    monkeypatch.setattr(module, "write_plots", lambda *_args: [])
     args = SimpleNamespace(
         config="config.json",
         run_id="matrix-run",
@@ -697,7 +738,145 @@ def test_collect_only_does_not_acquire_or_claim_a_new_benchmark_lock(
     )
 
     assert module.run(args) == matrix_dir
-    assert observed[0][-1] is None
+    matrix_manifest = json.loads(
+        (matrix_dir / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    evidence = matrix_manifest["benchmark_lock"]
+    assert evidence == {
+        "schema_version": 1,
+        "path": str(deployment.parent / "benchmark.lock"),
+        "token_sha256": "f" * 64,
+        "owner_pid": 4242,
+        "owner_kind": "native_auto_shard_matrix",
+        "mode": "inherited",
+        "status": "verified",
+        "source": "case_run_manifest_and_summary",
+        "case_count": 3,
+        "case_process_pids": {
+            case["name"]: 5000 + sum(case["name"].encode("utf-8"))
+            for case in config["cases"]
+        },
+    }
+
+
+def test_collect_only_rejects_missing_case_lock_evidence(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    for case in config["cases"]:
+        write_case_result(
+            matrix_dir,
+            case,
+            recall=0.9,
+            qps=100.0,
+            visited=2 if case["method"] == "orion" else 3,
+            ef_sum=120,
+        )
+    case_dir = matrix_dir / "cases" / config["cases"][0]["name"]
+    for filename in ("run_manifest.json", "summary.json"):
+        path = case_dir / filename
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.pop("benchmark_lock")
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="missing benchmark_lock measurement"):
+        module.collect_results(
+            matrix_dir,
+            config,
+            case_records=None,
+            run_id="native-run",
+            mode="collect_only",
+            taskset_cpus=None,
+        )
+
+
+def test_collect_only_rejects_manifest_summary_lock_evidence_mismatch(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    for case in config["cases"]:
+        write_case_result(
+            matrix_dir,
+            case,
+            recall=0.9,
+            qps=100.0,
+            visited=2 if case["method"] == "orion" else 3,
+            ef_sum=120,
+        )
+    summary_path = (
+        matrix_dir / "cases" / config["cases"][1]["name"] / "summary.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["benchmark_lock"]["token_sha256"] = "e" * 64
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="differs between run_manifest.json"):
+        module.collect_results(
+            matrix_dir,
+            config,
+            case_records=None,
+            run_id="native-run",
+            mode="collect_only",
+            taskset_cpus=None,
+        )
+
+
+def test_collect_only_rejects_cases_from_different_matrix_parents(tmp_path):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    matrix_dir = tmp_path / "matrix"
+    matrix_dir.mkdir()
+    for index, case in enumerate(config["cases"]):
+        evidence = None
+        if index == len(config["cases"]) - 1:
+            evidence = {
+                "schema_version": 1,
+                "path": "/runs/benchmark.lock",
+                "mode": "inherited",
+                "token_sha256": "e" * 64,
+                "owner_pid": 4343,
+                "owner_kind": "native_auto_shard_matrix",
+                "process_pid": 6000,
+            }
+        write_case_result(
+            matrix_dir,
+            case,
+            recall=0.9,
+            qps=100.0,
+            visited=2 if case["method"] == "orion" else 3,
+            ef_sum=120,
+            benchmark_lock_evidence=evidence,
+        )
+
+    with pytest.raises(RuntimeError, match="do not share one benchmark_lock parent"):
+        module.collect_results(
+            matrix_dir,
+            config,
+            case_records=None,
+            run_id="native-run",
+            mode="collect_only",
+            taskset_cpus=None,
+        )
+
+
+def test_run_mode_parent_lock_evidence_must_match_measured_cases():
+    module = load_module()
+    measured = {
+        "schema_version": 1,
+        "path": "/runs/benchmark.lock",
+        "token_sha256": "f" * 64,
+        "owner_pid": 4242,
+        "owner_kind": "native_auto_shard_matrix",
+    }
+    parent = {**measured, "mode": "acquired", "process_pid": 4242}
+
+    module.validate_parent_benchmark_lock_evidence(parent, measured)
+
+    parent["token_sha256"] = "e" * 64
+    with pytest.raises(RuntimeError, match="does not match measured cases"):
+        module.validate_parent_benchmark_lock_evidence(parent, measured)
 
 
 def test_collect_rejects_configured_orion_trace_without_exact_proof(tmp_path):

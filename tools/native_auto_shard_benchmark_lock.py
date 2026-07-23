@@ -63,6 +63,9 @@ def strip_cli_arguments(arguments: Sequence[str]) -> list[str]:
     index = 0
     while index < len(arguments):
         value = str(arguments[index])
+        if any(value.startswith(f"{argument}=") for argument in LOCK_ARGUMENTS):
+            index += 1
+            continue
         if value in LOCK_ARGUMENTS:
             if index + 1 >= len(arguments):
                 raise ValueError(f"{value} requires a value")

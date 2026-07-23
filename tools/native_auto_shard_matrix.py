@@ -54,6 +54,13 @@ CASE_ARGUMENTS = {
     "hnsw_ef",
     "orion_route_trace",
 }
+LOCK_PARENT_IDENTITY_FIELDS = (
+    "schema_version",
+    "path",
+    "token_sha256",
+    "owner_pid",
+    "owner_kind",
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -452,6 +459,8 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
             f"case {case['name']} is missing run_manifest.json or final_metrics.csv"
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"case {case['name']} run_manifest.json must be an object")
     with metrics_path.open("r", newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     if len(rows) != 1:
@@ -569,6 +578,137 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
         "run_manifest_path": str(manifest_path),
     }
     return {"case": case, "manifest": manifest, "point": point}
+
+
+def _positive_integer(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int) and value > 0
+
+
+def _configured_input_path(value: Any) -> Path:
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def validate_case_benchmark_lock_evidence(
+    matrix_dir: Path,
+    results: list[dict[str, Any]],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """Verify that every measured case inherited one common matrix lock."""
+    deployment_path = _configured_input_path(
+        config["shared"]["deployment_manifest"]
+    )
+    expected_lock_path = deployment_path.parent / benchmark_lock.LOCK_FILENAME
+    parent_identity: tuple[Any, ...] | None = None
+    process_pids: dict[str, int] = {}
+    for result in results:
+        case_name = str(result["point"]["case_name"])
+        manifest = result["manifest"]
+        summary_path = matrix_dir / "cases" / case_name / "summary.json"
+        if not summary_path.is_file():
+            raise FileNotFoundError(
+                f"case {case_name} is missing summary.json benchmark_lock evidence"
+            )
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        if not isinstance(summary, dict):
+            raise RuntimeError(f"case {case_name} summary.json must be an object")
+        if str(summary.get("method")) != str(result["case"]["method"]) or str(
+            summary.get("collection")
+        ) != str(result["case"]["collection"]):
+            raise RuntimeError(
+                f"case {case_name} summary identity does not match the matrix case"
+            )
+        recorded_deployment_path = (manifest.get("deployment") or {}).get("path")
+        if not isinstance(recorded_deployment_path, str) or (
+            _configured_input_path(recorded_deployment_path) != deployment_path
+        ):
+            raise RuntimeError(
+                f"case {case_name} deployment manifest path does not match the "
+                "matrix configuration"
+            )
+        manifest_evidence = manifest.get("benchmark_lock")
+        summary_evidence = summary.get("benchmark_lock")
+        if manifest_evidence != summary_evidence:
+            raise RuntimeError(
+                f"case {case_name} benchmark_lock evidence differs between "
+                "run_manifest.json and summary.json"
+            )
+        evidence = manifest_evidence
+        if not isinstance(evidence, dict):
+            raise RuntimeError(
+                f"case {case_name} is missing benchmark_lock measurement evidence"
+            )
+        schema_version = evidence.get("schema_version")
+        if isinstance(schema_version, bool) or schema_version != 1:
+            raise RuntimeError(
+                f"case {case_name} benchmark_lock evidence has an unsupported schema"
+            )
+        path_value = evidence.get("path")
+        if not isinstance(path_value, str) or (
+            Path(path_value).expanduser().resolve() != expected_lock_path
+        ):
+            raise RuntimeError(
+                f"case {case_name} benchmark_lock path does not match "
+                f"{expected_lock_path}"
+            )
+        token_sha256 = evidence.get("token_sha256")
+        owner_pid = evidence.get("owner_pid")
+        process_pid = evidence.get("process_pid")
+        if (
+            evidence.get("mode") != "inherited"
+            or evidence.get("owner_kind") != "native_auto_shard_matrix"
+            or not isinstance(token_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", token_sha256) is None
+            or not _positive_integer(owner_pid)
+            or not _positive_integer(process_pid)
+            or owner_pid == process_pid
+        ):
+            raise RuntimeError(
+                f"case {case_name} benchmark_lock evidence does not prove "
+                "inheritance from a matrix parent"
+            )
+        identity = tuple(evidence[field] for field in LOCK_PARENT_IDENTITY_FIELDS)
+        if parent_identity is None:
+            parent_identity = identity
+        elif identity != parent_identity:
+            raise RuntimeError(
+                "matrix cases do not share one benchmark_lock parent identity; "
+                f"case {case_name} differs"
+            )
+        process_pids[case_name] = evidence["process_pid"]
+
+    if parent_identity is None:
+        raise RuntimeError("matrix has no case benchmark_lock evidence to validate")
+    common = dict(zip(LOCK_PARENT_IDENTITY_FIELDS, parent_identity, strict=True))
+    return {
+        **common,
+        "mode": "inherited",
+        "status": "verified",
+        "source": "case_run_manifest_and_summary",
+        "case_count": len(results),
+        "case_process_pids": process_pids,
+    }
+
+
+def validate_parent_benchmark_lock_evidence(
+    parent_evidence: Any,
+    case_evidence: dict[str, Any],
+) -> None:
+    if (
+        not isinstance(parent_evidence, dict)
+        or parent_evidence.get("mode") != "acquired"
+        or not _positive_integer(parent_evidence.get("process_pid"))
+        or parent_evidence.get("process_pid") != parent_evidence.get("owner_pid")
+    ):
+        raise RuntimeError("matrix parent benchmark_lock evidence is invalid")
+    for field in LOCK_PARENT_IDENTITY_FIELDS:
+        if parent_evidence.get(field) != case_evidence.get(field):
+            raise RuntimeError(
+                "matrix parent benchmark_lock evidence does not match measured "
+                f"cases: field={field}"
+            )
 
 
 def provenance_fingerprint(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -1285,6 +1425,22 @@ def collect_results(
     benchmark_lock_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     results = [load_case_result(matrix_dir, case) for case in config["cases"]]
+    measured_lock_evidence = validate_case_benchmark_lock_evidence(
+        matrix_dir,
+        results,
+        config,
+    )
+    if mode == "collect_only":
+        if benchmark_lock_evidence is not None:
+            raise RuntimeError(
+                "collect-only must derive benchmark_lock evidence from measured cases"
+            )
+        benchmark_lock_evidence = measured_lock_evidence
+    else:
+        validate_parent_benchmark_lock_evidence(
+            benchmark_lock_evidence,
+            measured_lock_evidence,
+        )
     shared_provenance = validate_shared_provenance(results)
     routed_profile_families = validate_routed_profile_families(results)
     points = [result["point"] for result in results]
