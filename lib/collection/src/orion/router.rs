@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::mem;
 
 use ahash::{AHashMap, AHashSet};
 use ordered_float::OrderedFloat;
@@ -25,6 +26,34 @@ pub struct OrionShardTarget {
     /// Ordered, unique external point IDs to use as lower HNSW entry-point hints.
     pub entry_points: Vec<ExtendedPointId>,
     pub ef: usize,
+}
+
+type UpperNodeCandidate = (OrderedFloat<f32>, usize);
+
+/// Per-routing-task storage reused across every query in one coordinator routing chunk.
+///
+/// The router itself remains immutable and shareable. Keeping this scratch task-local avoids
+/// synchronizing upper searches while retaining the capacity of the normalized query, visited
+/// set, HNSW heaps, and sorted upper-node results between consecutive queries.
+#[derive(Debug)]
+pub(crate) struct OrionRouteScratch {
+    query: Vec<f32>,
+    visited: AHashSet<usize>,
+    candidates: BinaryHeap<Reverse<UpperNodeCandidate>>,
+    nearest: BinaryHeap<UpperNodeCandidate>,
+    sorted_nearest: Vec<UpperNodeCandidate>,
+}
+
+impl OrionRouteScratch {
+    fn new(dimension: usize, upper_ef_search: usize) -> Self {
+        Self {
+            query: Vec::with_capacity(dimension),
+            visited: AHashSet::with_capacity(upper_ef_search.saturating_mul(2)),
+            candidates: BinaryHeap::with_capacity(upper_ef_search),
+            nearest: BinaryHeap::with_capacity(upper_ef_search),
+            sorted_nearest: Vec::with_capacity(upper_ef_search),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -142,6 +171,10 @@ impl OrionRouter {
         self.upper_k
     }
 
+    pub(crate) fn new_route_scratch(&self) -> OrionRouteScratch {
+        OrionRouteScratch::new(self.dimension, self.upper_ef_search)
+    }
+
     pub fn search_upper(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionUpperHit>> {
         self.validate_query(query)?;
         let query = preprocess_vector(self.distance, query.to_vec());
@@ -160,11 +193,24 @@ impl OrionRouter {
 
     /// Search the upper tier and build the complete configured shard union.
     pub fn route_query(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionShardTarget>> {
-        let hits = self.search_upper(query)?;
-        // Both production upper-search backends return each node at most once. Avoid allocating
-        // duplicate-label tracking on this query-hot path while keeping the public route helpers
-        // defensive for arbitrary caller-supplied labels.
-        self.route_upper_labels_impl(hits.iter().map(|hit| hit.label), false)
+        let mut scratch = self.new_route_scratch();
+        self.route_query_with_scratch(query, &mut scratch)
+    }
+
+    /// Route one query while retaining query-hot allocations owned by the caller's routing task.
+    pub(crate) fn route_query_with_scratch(
+        &self,
+        query: &[f32],
+        scratch: &mut OrionRouteScratch,
+    ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
+        self.search_upper_indices_with_scratch(query, scratch)?;
+        self.route_upper_node_indices(
+            scratch
+                .sorted_nearest
+                .iter()
+                .take(self.upper_k)
+                .map(|(_, node_index)| *node_index),
+        )
     }
 
     /// Convert ordered upper hits into sorted logical-shard targets.
@@ -215,6 +261,30 @@ impl OrionRouter {
             }
         }
 
+        self.finish_targets(entry_points_by_shard)
+    }
+
+    fn route_upper_node_indices(
+        &self,
+        ordered_node_indices: impl IntoIterator<Item = usize>,
+    ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
+        // HNSW and exact-testing search both return each upper node at most once. Route directly
+        // from those node indices so the production query path does not hash every upper label
+        // back into the same immutable node array.
+        let mut entry_points_by_shard = vec![Vec::new(); self.shard_count as usize];
+        for node_index in ordered_node_indices.into_iter().take(self.upper_k) {
+            let node = &self.nodes[node_index];
+            for &shard_id in &node.shard_membership {
+                entry_points_by_shard[shard_id as usize].push(node.label);
+            }
+        }
+        self.finish_targets(entry_points_by_shard)
+    }
+
+    fn finish_targets(
+        &self,
+        entry_points_by_shard: Vec<Vec<ExtendedPointId>>,
+    ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         entry_points_by_shard
             .into_iter()
             .enumerate()
@@ -232,6 +302,73 @@ impl OrionRouter {
                 })
             })
             .collect()
+    }
+
+    fn search_upper_indices_with_scratch(
+        &self,
+        query: &[f32],
+        scratch: &mut OrionRouteScratch,
+    ) -> OrionRoutingResult<()> {
+        self.validate_query(query)?;
+
+        let OrionRouteScratch {
+            query: normalized_query,
+            visited,
+            candidates,
+            nearest,
+            sorted_nearest,
+        } = scratch;
+
+        normalized_query.clear();
+        normalized_query.extend_from_slice(query);
+        let owned_query = mem::take(normalized_query);
+        *normalized_query = preprocess_vector(self.distance, owned_query);
+
+        visited.clear();
+        candidates.clear();
+        nearest.clear();
+        sorted_nearest.clear();
+
+        match &self.search_backend {
+            UpperSearchBackend::Hnsw(graph) => self.search_hnsw_indices_into(
+                normalized_query,
+                graph,
+                visited,
+                candidates,
+                nearest,
+                sorted_nearest,
+            )?,
+            UpperSearchBackend::BruteForceTesting => {
+                self.search_brute_force_indices_into(normalized_query, sorted_nearest)?
+            }
+        }
+
+        let actual = sorted_nearest.len().min(self.upper_k);
+        if actual != self.upper_k {
+            return Err(OrionRoutingError::IncompleteUpperSearch {
+                expected: self.upper_k,
+                actual,
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn search_upper_with_scratch(
+        &self,
+        query: &[f32],
+        scratch: &mut OrionRouteScratch,
+    ) -> OrionRoutingResult<Vec<OrionUpperHit>> {
+        self.search_upper_indices_with_scratch(query, scratch)?;
+        Ok(scratch
+            .sorted_nearest
+            .iter()
+            .take(self.upper_k)
+            .map(|(distance, node_index)| OrionUpperHit {
+                label: self.nodes[*node_index].label,
+                distance: distance.into_inner(),
+            })
+            .collect())
     }
 
     pub(crate) fn validate_query(&self, query: &[f32]) -> OrionRoutingResult<()> {
@@ -269,6 +406,22 @@ impl OrionRouter {
                 distance: distance.into_inner(),
             })
             .collect())
+    }
+
+    fn search_brute_force_indices_into(
+        &self,
+        query: &[f32],
+        sorted_nearest: &mut Vec<UpperNodeCandidate>,
+    ) -> OrionRoutingResult<()> {
+        sorted_nearest.reserve(self.nodes.len());
+        for node_index in 0..self.nodes.len() {
+            sorted_nearest.push((
+                OrderedFloat(self.distance_to(query, node_index)?),
+                node_index,
+            ));
+        }
+        sorted_nearest.sort_unstable();
+        Ok(())
     }
 
     fn search_hnsw(
@@ -334,6 +487,66 @@ impl OrionRouter {
                 distance: distance.into_inner(),
             })
             .collect())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn search_hnsw_indices_into(
+        &self,
+        query: &[f32],
+        graph: &RuntimeUpperGraph,
+        visited: &mut AHashSet<usize>,
+        candidates: &mut BinaryHeap<Reverse<UpperNodeCandidate>>,
+        nearest: &mut BinaryHeap<UpperNodeCandidate>,
+        sorted_nearest: &mut Vec<UpperNodeCandidate>,
+    ) -> OrionRoutingResult<()> {
+        let mut current = graph.entry_point;
+        let mut current_distance = OrderedFloat(self.distance_to(query, current)?);
+
+        for level in (1..=graph.max_level).rev() {
+            loop {
+                let mut next = (current_distance, current);
+                for &neighbor in &graph.neighbors_by_node_and_level[current][level] {
+                    let candidate = (OrderedFloat(self.distance_to(query, neighbor)?), neighbor);
+                    if candidate < next {
+                        next = candidate;
+                    }
+                }
+                if next.1 == current {
+                    break;
+                }
+                (current_distance, current) = next;
+            }
+        }
+
+        visited.insert(current);
+        candidates.push(Reverse((current_distance, current)));
+        nearest.push((current_distance, current));
+
+        while let Some(Reverse(candidate)) = candidates.pop() {
+            if nearest.len() >= self.upper_ef_search && candidate > *nearest.peek().unwrap() {
+                break;
+            }
+            for &neighbor in &graph.neighbors_by_node_and_level[candidate.1][0] {
+                if !visited.insert(neighbor) {
+                    continue;
+                }
+                let neighbor_candidate =
+                    (OrderedFloat(self.distance_to(query, neighbor)?), neighbor);
+                let should_add = nearest.len() < self.upper_ef_search
+                    || neighbor_candidate < *nearest.peek().unwrap();
+                if should_add {
+                    candidates.push(Reverse(neighbor_candidate));
+                    nearest.push(neighbor_candidate);
+                    if nearest.len() > self.upper_ef_search {
+                        nearest.pop();
+                    }
+                }
+            }
+        }
+
+        sorted_nearest.extend(nearest.drain());
+        sorted_nearest.sort_unstable();
+        Ok(())
     }
 
     fn distance_to(&self, query: &[f32], node_index: usize) -> OrionRoutingResult<f32> {

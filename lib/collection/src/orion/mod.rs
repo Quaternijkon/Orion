@@ -24,6 +24,7 @@ pub use builder::{
     ORION_UPPER_HNSW_DEFAULT_SEED, OrionUpperGraphBuildOptions, build_upper_hnsw_graph,
 };
 pub use error::{OrionRoutingError, OrionRoutingResult};
+pub(crate) use router::OrionRouteScratch;
 pub use router::{OrionRouter, OrionShardTarget, OrionUpperHit};
 
 #[cfg(test)]
