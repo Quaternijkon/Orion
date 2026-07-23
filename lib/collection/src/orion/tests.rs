@@ -108,6 +108,57 @@ fn route_upper_labels_per_shard_dedup_reference(
         .collect()
 }
 
+fn deterministic_component(state: &mut u64) -> f32 {
+    *state = state
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
+    let bucket = ((*state >> 32) % 2_001) as i32 - 1_000;
+    bucket as f32 / 137.0
+}
+
+fn assert_scratch_route_matches_reference(
+    router: &OrionRouter,
+    scratch: &mut OrionRouteScratch,
+    query: &[f32],
+) {
+    let reference_hits = router.search_upper(query).unwrap();
+    let scratch_hits = router.search_upper_with_scratch(query, scratch).unwrap();
+    assert_eq!(
+        scratch_hits
+            .iter()
+            .map(|hit| (hit.label, hit.distance.to_bits()))
+            .collect::<Vec<_>>(),
+        reference_hits
+            .iter()
+            .map(|hit| (hit.label, hit.distance.to_bits()))
+            .collect::<Vec<_>>(),
+        "upper IDs/order/score bits differ for query={query:?}",
+    );
+
+    let reference_targets = router.route_upper_hits(&reference_hits).unwrap();
+    let scratch_targets = router.route_query_with_scratch(query, scratch).unwrap();
+    assert_eq!(
+        scratch_targets, reference_targets,
+        "target shard IDs, ordered entry points, or per-shard EF differ for query={query:?}",
+    );
+    assert_eq!(
+        scratch_targets.len(),
+        reference_targets.len(),
+        "visited-shard count differs for query={query:?}",
+    );
+    assert_eq!(
+        scratch_targets
+            .iter()
+            .map(|target| target.ef)
+            .sum::<usize>(),
+        reference_targets
+            .iter()
+            .map(|target| target.ef)
+            .sum::<usize>(),
+        "EF sum differs for query={query:?}",
+    );
+}
+
 #[test]
 fn artifact_round_trip_and_checksum_ignore_json_whitespace() {
     let artifact = valid_artifact();
@@ -227,6 +278,8 @@ fn production_requires_graph_and_testing_fallback_is_explicit() {
         hits.iter().map(|hit| hit.label).collect::<Vec<_>>(),
         vec![id(20), id(10), id(30)]
     );
+    let mut scratch = router.new_route_scratch();
+    assert_scratch_route_matches_reference(&router, &mut scratch, &[0.9, 0.0]);
 }
 
 #[test]
@@ -317,6 +370,97 @@ fn route_query_combines_server_side_upper_search_and_route_plan() {
 }
 
 #[test]
+fn reusable_route_scratch_has_randomized_exact_parity_for_cosine_and_euclid() {
+    for distance in [Distance::Cosine, Distance::Euclid] {
+        let mut artifact = valid_artifact();
+        artifact.vector_schema.distance = distance;
+        if distance == Distance::Cosine {
+            artifact.upper_nodes[0].vector = vec![2.0, 1.0];
+            artifact.upper_nodes[1].vector = vec![-1.0, 3.0];
+            artifact.upper_nodes[2].vector = vec![-4.0, -2.0];
+            artifact.upper_nodes[3].vector = vec![3.0, -5.0];
+        }
+
+        let router = OrionRouter::new(artifact).unwrap();
+        let mut scratch = router.new_route_scratch();
+
+        // Include exact-distance ties, a zero cosine vector, scale changes, and alternating signs
+        // before reusing the same task-local scratch for a deterministic randomized sequence.
+        for query in [
+            [0.5, 0.0],
+            [1.5, 0.0],
+            [0.0, 0.0],
+            [1.0, -1.0],
+            [100.0, -100.0],
+        ] {
+            assert_scratch_route_matches_reference(&router, &mut scratch, &query);
+        }
+
+        let mut state = 0x4f52_494f_4e5f_5254;
+        for _ in 0..512 {
+            let query = [
+                deterministic_component(&mut state),
+                deterministic_component(&mut state),
+            ];
+            assert_scratch_route_matches_reference(&router, &mut scratch, &query);
+        }
+    }
+}
+
+#[test]
+fn reusable_route_scratch_preserves_glove_sized_cosine_score_bits() {
+    let mut artifact = valid_artifact();
+    artifact.vector_schema.dimension = 200;
+    artifact.vector_schema.distance = Distance::Cosine;
+
+    let mut state = 0x474c_4f56_4532_3030;
+    for node in &mut artifact.upper_nodes {
+        node.vector = (0..artifact.vector_schema.dimension)
+            .map(|_| deterministic_component(&mut state))
+            .collect();
+    }
+
+    let router = OrionRouter::new(artifact).unwrap();
+    let mut scratch = router.new_route_scratch();
+    for _ in 0..64 {
+        let query = (0..200)
+            .map(|_| deterministic_component(&mut state))
+            .collect::<Vec<_>>();
+        assert_scratch_route_matches_reference(&router, &mut scratch, &query);
+    }
+}
+
+#[test]
+fn reusable_route_scratch_preserves_query_error_semantics_after_success() {
+    let router = OrionRouter::new(valid_artifact()).unwrap();
+    let mut scratch = router.new_route_scratch();
+    assert_scratch_route_matches_reference(&router, &mut scratch, &[0.25, -0.5]);
+
+    assert!(matches!(
+        router.route_query_with_scratch(&[1.0], &mut scratch),
+        Err(OrionRoutingError::QueryDimensionMismatch {
+            expected: 2,
+            actual: 1,
+        })
+    ));
+    assert!(matches!(
+        router.route_query_with_scratch(&[1.0, f32::INFINITY], &mut scratch),
+        Err(OrionRoutingError::NonFiniteQueryVector { dimension: 1 })
+    ));
+    assert!(matches!(
+        router.search_upper(&[f32::MAX, f32::MAX]),
+        Err(OrionRoutingError::NonFiniteDistance { label }) if label == id(40)
+    ));
+    assert!(matches!(
+        router.route_query_with_scratch(&[f32::MAX, f32::MAX], &mut scratch),
+        Err(OrionRoutingError::NonFiniteDistance { label }) if label == id(40)
+    ));
+
+    // An error must not leave reusable heap/set/query state observable by the next route.
+    assert_scratch_route_matches_reference(&router, &mut scratch, &[2.75, 0.125]);
+}
+
+#[test]
 fn cosine_upper_search_uses_qdrant_preprocessing_and_is_scale_invariant() {
     let mut artifact = valid_artifact();
     artifact.vector_schema.distance = Distance::Cosine;
@@ -366,6 +510,14 @@ fn incomplete_upper_hnsw_search_is_rejected_instead_of_routing_a_partial_union()
     let router = OrionRouter::new(artifact).unwrap();
     assert!(matches!(
         router.search_upper(&[0.0, 0.0]),
+        Err(OrionRoutingError::IncompleteUpperSearch {
+            expected: 3,
+            actual: 1,
+        })
+    ));
+    let mut scratch = router.new_route_scratch();
+    assert!(matches!(
+        router.route_query_with_scratch(&[0.0, 0.0], &mut scratch),
         Err(OrionRoutingError::IncompleteUpperSearch {
             expected: 3,
             actual: 1,

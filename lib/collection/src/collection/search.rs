@@ -30,7 +30,7 @@ use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
-use crate::orion::OrionShardTarget;
+use crate::orion::{OrionRouteScratch, OrionShardTarget};
 use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
 use crate::shards::shard::{PeerId, ShardId};
 use crate::shards::shard_holder::shard_not_found_error;
@@ -1749,6 +1749,7 @@ impl Collection {
                 let request = Arc::clone(&request);
                 let cpu_utilization = hw_measurement_acc.cpu_utilization();
                 AbortOnDropHandle::new(self.search_runtime.spawn_blocking(move || {
+                    let mut route_scratch: OrionRouteScratch = router.new_route_scratch();
                     (chunk_start..chunk_end)
                         .map(|query_index| {
                             let query = orion_eligible_dense_query(
@@ -1758,7 +1759,9 @@ impl Collection {
                             .expect("Orion routing eligibility was checked before task dispatch");
                             (
                                 query_index,
-                                cpu_utilization.measure(|| router.route_query(query)),
+                                cpu_utilization.measure(|| {
+                                    router.route_query_with_scratch(query, &mut route_scratch)
+                                }),
                             )
                         })
                         .collect::<Vec<_>>()
