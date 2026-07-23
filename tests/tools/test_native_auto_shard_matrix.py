@@ -8,11 +8,35 @@ import math
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class FakeHeldLock:
+    fd = 77
+    token = "matrix-lock-token"
+
+    def inheritance_cli_arguments(self):
+        return [
+            "--benchmark-lock-fd",
+            str(self.fd),
+            "--benchmark-lock-token",
+            self.token,
+        ]
+
+    def inheritance_pass_fds(self):
+        return (self.fd,)
+
+    def evidence(self):
+        return {
+            "path": "/runs/benchmark.lock",
+            "mode": "acquired",
+            "token_sha256": "a" * 64,
+        }
 
 
 def load_module():
@@ -478,6 +502,7 @@ def test_config_validation_and_taskset_command(tmp_path):
         config["cases"][0],
         tmp_path / "case-output",
         "8-19",
+        FakeHeldLock(),
     )
 
     assert command[:3] == ["taskset", "-c", "8-19"]
@@ -493,6 +518,7 @@ def test_config_validation_and_taskset_command(tmp_path):
         config["cases"][1],
         tmp_path / "orion-output",
         None,
+        FakeHeldLock(),
     )
     assert "--orion-route-trace" in orion_command
 
@@ -547,21 +573,131 @@ def test_execute_cases_preserves_raw_case_directories_and_process_logs(
     matrix_dir.mkdir()
     commands = []
 
-    def fake_run(command, **_kwargs):
+    run_kwargs = []
+
+    def fake_run(command, **kwargs):
         commands.append(command)
+        run_kwargs.append(kwargs)
         output = Path(command[command.index("--output-dir") + 1])
         output.mkdir()
         return subprocess.CompletedProcess(command, 0, "raw stdout", "raw stderr")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
-    records = module.execute_cases(matrix_dir, config, "8-19")
+    records = module.execute_cases(matrix_dir, config, "8-19", FakeHeldLock())
 
     assert len(records) == 3
     assert len(commands) == 3
     assert all(command[:3] == ["taskset", "-c", "8-19"] for command in commands)
+    assert all(kwargs["pass_fds"] == (77,) for kwargs in run_kwargs)
+    assert all("--benchmark-lock-fd" in command for command in commands)
+    assert all("--benchmark-lock-fd" not in record["command"] for record in records)
     assert (matrix_dir / "cases/hash40").is_dir()
     assert (matrix_dir / "logs/hash40.stdout.log").read_text() == "raw stdout"
     assert (matrix_dir / "logs/hash40.stderr.log").read_text() == "raw stderr"
+
+
+def test_matrix_run_holds_one_lock_across_all_cases_and_collection(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    manifest = tmp_path / "deployment" / "manifest.json"
+    manifest.parent.mkdir()
+    manifest.write_text("{}\n", encoding="utf-8")
+    config["shared"]["deployment_manifest"] = str(manifest)
+    matrix_dir = tmp_path / "matrix"
+    events = []
+
+    class LockContext:
+        def __enter__(self):
+            events.append("lock-enter")
+            return FakeHeldLock()
+
+        def __exit__(self, *_exc):
+            events.append("lock-exit")
+
+    monkeypatch.setattr(module, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        module.benchmark_lock,
+        "hold_from_args",
+        lambda *_args, **_kwargs: LockContext(),
+    )
+    monkeypatch.setattr(
+        module,
+        "matrix_directory",
+        lambda *_args, **_kwargs: matrix_dir,
+    )
+
+    def fake_execute(*_args):
+        events.append("execute")
+        return [{"name": "cases"}]
+
+    def fake_collect(*_args):
+        events.append("collect")
+        return {}
+
+    monkeypatch.setattr(module, "execute_cases", fake_execute)
+    monkeypatch.setattr(module, "collect_results", fake_collect)
+    args = SimpleNamespace(
+        config="config.json",
+        run_id="matrix-run",
+        output_root=str(tmp_path),
+        run=True,
+        collect_only=False,
+        taskset_cpus="8-19",
+        benchmark_lock_fd=None,
+        benchmark_lock_token=None,
+    )
+
+    assert module.run(args) == matrix_dir
+    assert events == ["lock-enter", "execute", "collect", "lock-exit"]
+
+
+def test_collect_only_does_not_acquire_or_claim_a_new_benchmark_lock(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    config = module.load_config(write_config(tmp_path / "config"))
+    matrix_dir = tmp_path / "existing-matrix"
+    matrix_dir.mkdir()
+    observed = []
+
+    monkeypatch.setattr(module, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        module,
+        "matrix_directory",
+        lambda *_args, **kwargs: (
+            matrix_dir
+            if kwargs["must_exist"] is True
+            else pytest.fail("collect-only attempted to create a matrix directory")
+        ),
+    )
+    monkeypatch.setattr(
+        module.benchmark_lock,
+        "hold_from_args",
+        lambda *_args, **_kwargs: pytest.fail(
+            "collect-only must not acquire a measurement lock"
+        ),
+    )
+
+    def fake_collect(*args):
+        observed.append(args)
+        return {}
+
+    monkeypatch.setattr(module, "collect_results", fake_collect)
+    args = SimpleNamespace(
+        config="config.json",
+        run_id="matrix-run",
+        output_root=str(tmp_path),
+        run=False,
+        collect_only=True,
+        taskset_cpus=None,
+        benchmark_lock_fd=None,
+        benchmark_lock_token=None,
+    )
+
+    assert module.run(args) == matrix_dir
+    assert observed[0][-1] is None
 
 
 def test_collect_rejects_configured_orion_trace_without_exact_proof(tmp_path):

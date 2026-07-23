@@ -131,6 +131,37 @@ def args_for(module, tmp_path, *extra):
     )
 
 
+def test_run_uses_canonical_lock_and_direct_contention_fails_closed(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    deployment = tmp_path / "run" / "manifest.json"
+    deployment.parent.mkdir()
+    deployment.write_text("{}\n", encoding="utf-8")
+    args = args_for(
+        module,
+        tmp_path,
+        "--deployment-manifest",
+        str(deployment),
+        "--hnsw-ef",
+        "40",
+    )
+    observed = []
+
+    def fake_run_locked(_args, held_lock):
+        observed.append(held_lock.evidence())
+        return tmp_path / "output"
+
+    monkeypatch.setattr(module, "_run_locked", fake_run_locked)
+    assert module.run(args) == tmp_path / "output"
+    assert observed[0]["mode"] == "acquired"
+    assert observed[0]["path"] == str(deployment.parent / "benchmark.lock")
+
+    with module.benchmark_lock.hold_benchmark_lock(deployment):
+        with pytest.raises(module.benchmark_lock.BenchmarkLockError, match="already held"):
+            module.run(args)
+
+
 def route_trace_payload(
     *,
     artifact_sha256: str,

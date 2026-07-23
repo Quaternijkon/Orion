@@ -196,6 +196,47 @@ def test_output_must_be_new_and_outside_repository(tmp_path):
         module.output_path(output)
 
 
+def test_run_probe_uses_canonical_lock_and_direct_contention_fails_closed(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    manifest = tmp_path / "run" / "manifest.json"
+    manifest.parent.mkdir()
+    manifest.write_text("{}\n", encoding="utf-8")
+    args = module.parse_args(
+        [
+            "--base-url",
+            "http://10.10.1.1:6333",
+            "--topology",
+            str(tmp_path / "topology.json"),
+            "--deployment-manifest",
+            str(manifest),
+            "--run-id",
+            "run-1",
+            "--collection",
+            "orion",
+            "--hdf5-path",
+            str(tmp_path / "dataset.hdf5"),
+            "--output",
+            str(tmp_path / "probe.json"),
+        ]
+    )
+    observed = []
+
+    def fake_run_locked(_args, held_lock):
+        observed.append(held_lock.evidence())
+        return Path(_args.output)
+
+    monkeypatch.setattr(module, "_run_probe_locked", fake_run_locked)
+    assert module.run_probe(args) == Path(args.output)
+    assert observed[0]["mode"] == "acquired"
+    assert observed[0]["path"] == str(manifest.parent / "benchmark.lock")
+
+    with module.benchmark_lock.hold_benchmark_lock(manifest):
+        with pytest.raises(module.benchmark_lock.BenchmarkLockError, match="already held"):
+            module.run_probe(args)
+
+
 @pytest.mark.parametrize(
     ("active_version", "representation", "controller_metadata_present"),
     [
