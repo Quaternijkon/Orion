@@ -30,6 +30,39 @@ pub struct OrionShardTarget {
 
 type UpperNodeCandidate = (OrderedFloat<f32>, usize);
 
+/// Dense visited-node bitmap for one upper-HNSW routing task.
+///
+/// Runtime upper-node IDs are validated and compiled into the dense range `0..nodes.len()`.
+/// Using that invariant avoids hashing every level-zero neighbor while preserving exactly the
+/// same first-visit test and traversal order as a hash set. The bitmap is task-local, so clearing
+/// it between queries requires neither synchronization nor allocation.
+#[derive(Debug)]
+struct UpperVisitedSet {
+    words: Vec<usize>,
+}
+
+impl UpperVisitedSet {
+    fn new(node_count: usize) -> Self {
+        Self {
+            words: vec![0; node_count.div_ceil(usize::BITS as usize)],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.words.fill(0);
+    }
+
+    /// Returns `true` exactly once for each node between calls to [`Self::clear`].
+    fn insert(&mut self, node_index: usize) -> bool {
+        let word_index = node_index / usize::BITS as usize;
+        let bit = 1usize << (node_index % usize::BITS as usize);
+        let word = &mut self.words[word_index];
+        let is_new = *word & bit == 0;
+        *word |= bit;
+        is_new
+    }
+}
+
 /// Per-routing-task storage reused across every query in one coordinator routing chunk.
 ///
 /// The router itself remains immutable and shareable. Keeping this scratch task-local avoids
@@ -38,17 +71,17 @@ type UpperNodeCandidate = (OrderedFloat<f32>, usize);
 #[derive(Debug)]
 pub(crate) struct OrionRouteScratch {
     query: Vec<f32>,
-    visited: AHashSet<usize>,
+    visited: UpperVisitedSet,
     candidates: BinaryHeap<Reverse<UpperNodeCandidate>>,
     nearest: BinaryHeap<UpperNodeCandidate>,
     sorted_nearest: Vec<UpperNodeCandidate>,
 }
 
 impl OrionRouteScratch {
-    fn new(dimension: usize, upper_ef_search: usize) -> Self {
+    fn new(dimension: usize, upper_ef_search: usize, upper_node_count: usize) -> Self {
         Self {
             query: Vec::with_capacity(dimension),
-            visited: AHashSet::with_capacity(upper_ef_search.saturating_mul(2)),
+            visited: UpperVisitedSet::new(upper_node_count),
             candidates: BinaryHeap::with_capacity(upper_ef_search),
             nearest: BinaryHeap::with_capacity(upper_ef_search),
             sorted_nearest: Vec::with_capacity(upper_ef_search),
@@ -172,7 +205,7 @@ impl OrionRouter {
     }
 
     pub(crate) fn new_route_scratch(&self) -> OrionRouteScratch {
-        OrionRouteScratch::new(self.dimension, self.upper_ef_search)
+        OrionRouteScratch::new(self.dimension, self.upper_ef_search, self.nodes.len())
     }
 
     pub fn search_upper(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionUpperHit>> {
@@ -494,7 +527,7 @@ impl OrionRouter {
         &self,
         query: &[f32],
         graph: &RuntimeUpperGraph,
-        visited: &mut AHashSet<usize>,
+        visited: &mut UpperVisitedSet,
         candidates: &mut BinaryHeap<Reverse<UpperNodeCandidate>>,
         nearest: &mut BinaryHeap<UpperNodeCandidate>,
         sorted_nearest: &mut Vec<UpperNodeCandidate>,
@@ -612,4 +645,27 @@ fn compile_graph(
         max_level: graph.max_level,
         neighbors_by_node_and_level,
     })
+}
+
+#[cfg(test)]
+mod dense_visited_tests {
+    use super::UpperVisitedSet;
+
+    #[test]
+    fn dense_visited_set_preserves_insert_and_clear_semantics_across_words() {
+        let word_bits = usize::BITS as usize;
+        let last_node = word_bits * 2;
+        let mut visited = UpperVisitedSet::new(last_node + 1);
+
+        for node in [0, word_bits - 1, word_bits, last_node] {
+            assert!(visited.insert(node));
+            assert!(!visited.insert(node));
+        }
+
+        visited.clear();
+        for node in [last_node, word_bits, word_bits - 1, 0] {
+            assert!(visited.insert(node));
+            assert!(!visited.insert(node));
+        }
+    }
 }

@@ -450,6 +450,35 @@ struct CompactPeerShardMajorGroup {
     entries: Vec<CoreSearchByShardCompactEntry>,
 }
 
+type OrionSearchPlansByShard = Vec<Vec<(usize, OrionShardTarget)>>;
+
+fn new_orion_search_plans_by_shard(shard_count: ShardId) -> OrionSearchPlansByShard {
+    let mut search_plans_by_shard = Vec::with_capacity(shard_count as usize);
+    search_plans_by_shard.resize_with(shard_count as usize, Vec::new);
+    search_plans_by_shard
+}
+
+fn append_orion_search_plans(
+    search_plans_by_shard: &mut OrionSearchPlansByShard,
+    query_index: usize,
+    targets: Vec<OrionShardTarget>,
+) -> CollectionResult<()> {
+    let shard_count = search_plans_by_shard.len();
+    for target in targets {
+        let shard_id = target.shard_id;
+        let search_plans = search_plans_by_shard
+            .get_mut(shard_id as usize)
+            .ok_or_else(|| {
+                CollectionError::service_error(format!(
+                    "Orion route target shard {shard_id} is outside configured shard count {}",
+                    shard_count,
+                ))
+            })?;
+        search_plans.push((query_index, target));
+    }
+    Ok(())
+}
+
 struct CompactPeerShardMajorRpc {
     original_indices: Vec<usize>,
     is_payload_required_by_query: Vec<bool>,
@@ -458,13 +487,13 @@ struct CompactPeerShardMajorRpc {
 }
 
 impl CompactPeerShardMajorGroup {
-    fn new(remote: RemoteShard) -> Self {
+    fn new(remote: RemoteShard, batch_size: usize) -> Self {
         Self {
             remote,
-            original_indices: Vec::new(),
-            query_slot_by_original_index: Vec::new(),
-            is_payload_required_by_query: Vec::new(),
-            query_templates: Vec::new(),
+            original_indices: Vec::with_capacity(batch_size),
+            query_slot_by_original_index: vec![None; batch_size],
+            is_payload_required_by_query: Vec::with_capacity(batch_size),
+            query_templates: Vec::with_capacity(batch_size),
             entries: Vec::new(),
         }
     }
@@ -617,99 +646,119 @@ fn split_compact_peer_shard_major_rpcs(
         }]);
     };
 
-    let mut entries_by_shard = BTreeMap::<ShardId, Vec<CoreSearchByShardCompactEntry>>::new();
-    for entry in entries {
-        entries_by_shard
-            .entry(entry.shard_id)
-            .or_default()
-            .push(entry);
+    // Controller production entries are already shard-major because Orion search-plan buckets are
+    // traversed in numeric shard order. Keep that common case allocation-free; stable-sort only a
+    // defensive out-of-order caller so equal-shard query encounter order remains unchanged.
+    let mut entries = entries;
+    if entries
+        .windows(2)
+        .any(|window| window[0].shard_id > window[1].shard_id)
+    {
+        entries.sort_by_key(|entry| entry.shard_id);
     }
-    if entries_by_shard.len() <= shards_per_rpc {
+    let distinct_shard_count = entries
+        .first()
+        .map(|_| {
+            1 + entries
+                .windows(2)
+                .filter(|window| window[0].shard_id != window[1].shard_id)
+                .count()
+        })
+        .unwrap_or(0);
+    if distinct_shard_count <= shards_per_rpc {
         return Ok(vec![CompactPeerShardMajorRpc {
             original_indices,
             is_payload_required_by_query,
             query_templates,
-            entries: entries_by_shard.into_values().flatten().collect(),
+            entries,
         }]);
     }
 
-    let distinct_shard_count = entries_by_shard.len();
-    let mut rpcs = Vec::with_capacity(distinct_shard_count.div_ceil(shards_per_rpc));
+    let rpc_count = distinct_shard_count.div_ceil(shards_per_rpc);
+    let entries_per_rpc_capacity = entries.len().div_ceil(rpc_count);
+    let mut rpcs = Vec::with_capacity(rpc_count);
     let mut current_rpc = CompactPeerShardMajorRpc {
-        original_indices: Vec::new(),
-        is_payload_required_by_query: Vec::new(),
-        query_templates: Vec::new(),
-        entries: Vec::new(),
+        original_indices: Vec::with_capacity(original_indices.len()),
+        is_payload_required_by_query: Vec::with_capacity(original_indices.len()),
+        query_templates: Vec::with_capacity(original_indices.len()),
+        entries: Vec::with_capacity(entries_per_rpc_capacity),
     };
-    let mut current_query_slot_by_original_index = Vec::<Option<usize>>::new();
+    let query_slot_count = original_indices
+        .iter()
+        .copied()
+        .max()
+        .and_then(|index| index.checked_add(1))
+        .unwrap_or(0);
+    let mut current_query_slot_by_original_index = vec![None; query_slot_count];
     let mut current_shard_count = 0usize;
+    let mut current_shard_id = None;
 
-    for shard_entries in entries_by_shard.into_values() {
-        if current_shard_count == shards_per_rpc {
-            rpcs.push(current_rpc);
-            current_rpc = CompactPeerShardMajorRpc {
-                original_indices: Vec::new(),
-                is_payload_required_by_query: Vec::new(),
-                query_templates: Vec::new(),
-                entries: Vec::new(),
-            };
-            current_query_slot_by_original_index.fill(None);
-            current_shard_count = 0;
+    for mut entry in entries {
+        if current_shard_id != Some(entry.shard_id) {
+            if current_shard_count == shards_per_rpc {
+                rpcs.push(current_rpc);
+                current_rpc = CompactPeerShardMajorRpc {
+                    original_indices: Vec::with_capacity(original_indices.len()),
+                    is_payload_required_by_query: Vec::with_capacity(original_indices.len()),
+                    query_templates: Vec::with_capacity(original_indices.len()),
+                    entries: Vec::with_capacity(entries_per_rpc_capacity),
+                };
+                current_query_slot_by_original_index.fill(None);
+                current_shard_count = 0;
+            }
+            current_shard_id = Some(entry.shard_id);
+            current_shard_count += 1;
         }
 
-        for mut entry in shard_entries {
-            let peer_query_index = usize::try_from(entry.query_slot).map_err(|_| {
-                CollectionError::service_error(format!(
-                    "Compact peer-local query slot {} does not fit into usize",
-                    entry.query_slot,
-                ))
-            })?;
-            let Some(&original_index) = original_indices.get(peer_query_index) else {
-                return Err(CollectionError::service_error(format!(
-                    "Compact peer-local query slot {peer_query_index} is outside peer query slot count {}",
-                    original_indices.len(),
-                )));
-            };
-            let Some(&is_payload_required) = is_payload_required_by_query.get(peer_query_index)
-            else {
-                return Err(CollectionError::service_error(format!(
-                    "Compact peer-local payload slot {peer_query_index} is outside peer payload slot count {}",
-                    is_payload_required_by_query.len(),
-                )));
-            };
-            let Some(query_template) = query_templates.get(peer_query_index) else {
-                return Err(CollectionError::service_error(format!(
-                    "Compact peer-local template slot {peer_query_index} is outside peer template slot count {}",
-                    query_templates.len(),
-                )));
-            };
+        let peer_query_index = usize::try_from(entry.query_slot).map_err(|_| {
+            CollectionError::service_error(format!(
+                "Compact peer-local query slot {} does not fit into usize",
+                entry.query_slot,
+            ))
+        })?;
+        let Some(&original_index) = original_indices.get(peer_query_index) else {
+            return Err(CollectionError::service_error(format!(
+                "Compact peer-local query slot {peer_query_index} is outside peer query slot count {}",
+                original_indices.len(),
+            )));
+        };
+        let Some(&is_payload_required) = is_payload_required_by_query.get(peer_query_index) else {
+            return Err(CollectionError::service_error(format!(
+                "Compact peer-local payload slot {peer_query_index} is outside peer payload slot count {}",
+                is_payload_required_by_query.len(),
+            )));
+        };
+        let Some(query_template) = query_templates.get(peer_query_index) else {
+            return Err(CollectionError::service_error(format!(
+                "Compact peer-local template slot {peer_query_index} is outside peer template slot count {}",
+                query_templates.len(),
+            )));
+        };
 
-            let chunk_query_index = if let Some(query_index) = current_query_slot_by_original_index
-                .get(original_index)
-                .and_then(|query_index| *query_index)
-            {
-                query_index
-            } else {
-                let query_index = current_rpc.original_indices.len();
-                current_rpc.original_indices.push(original_index);
-                if current_query_slot_by_original_index.len() <= original_index {
-                    current_query_slot_by_original_index.resize(original_index + 1, None);
-                }
-                current_query_slot_by_original_index[original_index] = Some(query_index);
-                current_rpc
-                    .is_payload_required_by_query
-                    .push(is_payload_required);
-                current_rpc.query_templates.push(query_template.clone());
-                query_index
-            };
-            entry.query_slot = u64::try_from(chunk_query_index).map_err(|_| {
-                CollectionError::service_error(
-                    "Compact peer-local chunk query slot does not fit into u64",
-                )
-            })?;
-            current_rpc.entries.push(entry);
-        }
-        current_shard_count += 1;
+        let chunk_query_index = if let Some(query_index) = current_query_slot_by_original_index
+            .get(original_index)
+            .and_then(|query_index| *query_index)
+        {
+            query_index
+        } else {
+            let query_index = current_rpc.original_indices.len();
+            current_rpc.original_indices.push(original_index);
+            if current_query_slot_by_original_index.len() <= original_index {
+                current_query_slot_by_original_index.resize(original_index + 1, None);
+            }
+            current_query_slot_by_original_index[original_index] = Some(query_index);
+            current_rpc
+                .is_payload_required_by_query
+                .push(is_payload_required);
+            current_rpc.query_templates.push(query_template.clone());
+            query_index
+        };
+        entry.query_slot = u64::try_from(chunk_query_index).map_err(|_| {
+            CollectionError::service_error(
+                "Compact peer-local chunk query slot does not fit into u64",
+            )
+        })?;
+        current_rpc.entries.push(entry);
     }
 
     if !current_rpc.entries.is_empty() {
@@ -1441,29 +1490,29 @@ impl Collection {
     /// existing per-shard coordinator path before issuing a peer-batched request.
     async fn try_orion_numeric_peer_premerge(
         &self,
-        search_plans_by_shard: &BTreeMap<ShardId, Vec<(usize, OrionShardTarget)>>,
+        search_plans_by_shard: &OrionSearchPlansByShard,
         original_requests: Arc<CoreSearchRequestBatch>,
         read_consistency: Option<ReadConsistency>,
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
-        if search_plans_by_shard.is_empty() || peer_premerge_disabled() {
+        if search_plans_by_shard.iter().all(Vec::is_empty) || peer_premerge_disabled() {
             return Ok(None);
         }
         let topology_check_started = Instant::now();
 
         let collection_params = self.collection_config.read().await.params.clone();
-        let all_queries_are_large_better = original_requests
-            .searches
-            .iter()
-            .map(|request| {
-                collection_params
-                    .get_distance(request.query.get_vector_name())
-                    .map(|distance| distance.distance_order() == Order::LargeBetter)
-            })
-            .collect::<CollectionResult<Vec<_>>>()?
-            .into_iter()
-            .all(|large_better| large_better);
+        let all_queries_are_large_better =
+            original_requests
+                .searches
+                .iter()
+                .try_fold(true, |all_large_better, request| {
+                    collection_params
+                        .get_distance(request.query.get_vector_name())
+                        .map(|distance| {
+                            all_large_better && distance.distance_order() == Order::LargeBetter
+                        })
+                })?;
         if !numeric_peer_premerge_request_is_safe(
             collection_params.replication_factor.get(),
             read_consistency,
@@ -1484,7 +1533,15 @@ impl Collection {
         });
         {
             let shard_holder = self.shards_holder.read().await;
-            for (&shard_id, search_plans) in search_plans_by_shard {
+            for (shard_index, search_plans) in search_plans_by_shard.iter().enumerate() {
+                if search_plans.is_empty() {
+                    continue;
+                }
+                let shard_id = ShardId::try_from(shard_index).map_err(|_| {
+                    CollectionError::service_error(format!(
+                        "Orion route-plan shard index {shard_index} does not fit into ShardId",
+                    ))
+                })?;
                 let Some(replica_set) = shard_holder.get_shard(shard_id) else {
                     return Ok(None);
                 };
@@ -1508,9 +1565,9 @@ impl Collection {
                 };
                 let remote = remote.expect("numeric peer-premerge safety checked remote presence");
 
-                let group = peer_groups
-                    .entry(peer_id)
-                    .or_insert_with(|| CompactPeerShardMajorGroup::new(remote));
+                let group = peer_groups.entry(peer_id).or_insert_with(|| {
+                    CompactPeerShardMajorGroup::new(remote, original_requests.searches.len())
+                });
                 for (original_index, target) in search_plans {
                     if target.shard_id != shard_id {
                         return Err(CollectionError::service_error(format!(
@@ -1779,8 +1836,7 @@ impl Collection {
             None => future::join_all(route_tasks).await,
         };
 
-        let mut search_plans_by_shard: BTreeMap<ShardId, Vec<(usize, OrionShardTarget)>> =
-            BTreeMap::new();
+        let mut search_plans_by_shard = new_orion_search_plans_by_shard(router.shard_count());
         for routed_query_chunk in routed_query_chunks {
             let routed_query_chunk = routed_query_chunk.map_err(|err| {
                 CollectionError::service_error(format!(
@@ -1804,16 +1860,11 @@ impl Collection {
                     )));
                 }
 
-                for target in targets {
-                    search_plans_by_shard
-                        .entry(target.shard_id)
-                        .or_default()
-                        .push((query_index, target));
-                }
+                append_orion_search_plans(&mut search_plans_by_shard, query_index, targets)?;
             }
         }
 
-        if search_plans_by_shard.is_empty() {
+        if search_plans_by_shard.iter().all(Vec::is_empty) {
             return Err(CollectionError::service_error(format!(
                 "Orion routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
                 router.generation(),
@@ -1843,21 +1894,34 @@ impl Collection {
         let batch_size = request.searches.len();
         let all_shard_rows = {
             let shard_holder = self.shards_holder.read().await;
-            if let Some(missing_shard) = search_plans_by_shard
-                .keys()
-                .copied()
-                .find(|shard_id| shard_holder.get_shard(*shard_id).is_none())
-            {
-                return Err(CollectionError::service_error(format!(
-                    "Orion routing generation {} selected missing shard {missing_shard} for collection {}; refusing a silent all-shards fallback",
-                    router.generation(),
-                    self.id,
-                )));
+            for (shard_index, search_plans) in search_plans_by_shard.iter().enumerate() {
+                if search_plans.is_empty() {
+                    continue;
+                }
+                let shard_id = ShardId::try_from(shard_index).map_err(|_| {
+                    CollectionError::service_error(format!(
+                        "Orion fallback shard index {shard_index} does not fit into ShardId",
+                    ))
+                })?;
+                if shard_holder.get_shard(shard_id).is_none() {
+                    return Err(CollectionError::service_error(format!(
+                        "Orion routing generation {} selected missing shard {shard_id} for collection {}; refusing a silent all-shards fallback",
+                        router.generation(),
+                        self.id,
+                    )));
+                }
             }
 
             let prepared_shard_searches = search_plans_by_shard
                 .into_iter()
-                .map(|(shard_id, search_plans)| {
+                .enumerate()
+                .filter(|(_shard_index, search_plans)| !search_plans.is_empty())
+                .map(|(shard_index, search_plans)| {
+                    let shard_id = ShardId::try_from(shard_index).map_err(|_| {
+                        CollectionError::service_error(format!(
+                            "Orion fallback shard index {shard_index} does not fit into ShardId",
+                        ))
+                    })?;
                     let shard = shard_holder
                         .get_shard(shard_id)
                         .expect("Orion target shard existence was checked");
@@ -3457,6 +3521,84 @@ mod tests {
     }
 
     #[test]
+    fn orion_dense_search_plan_buckets_preserve_shard_and_query_encounter_order() {
+        let mut search_plans = new_orion_search_plans_by_shard(3);
+        append_orion_search_plans(
+            &mut search_plans,
+            5,
+            vec![
+                OrionShardTarget {
+                    shard_id: 0,
+                    entry_points: vec![PointIdType::from(31)],
+                    ef: 48,
+                },
+                OrionShardTarget {
+                    shard_id: 2,
+                    entry_points: vec![PointIdType::from(29)],
+                    ef: 52,
+                },
+            ],
+        )
+        .unwrap();
+        append_orion_search_plans(
+            &mut search_plans,
+            1,
+            vec![
+                OrionShardTarget {
+                    shard_id: 0,
+                    entry_points: vec![PointIdType::from(17)],
+                    ef: 56,
+                },
+                OrionShardTarget {
+                    shard_id: 1,
+                    entry_points: vec![PointIdType::from(11)],
+                    ef: 60,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            search_plans
+                .iter()
+                .enumerate()
+                .filter(|(_shard_id, plans)| !plans.is_empty())
+                .map(|(shard_id, plans)| (
+                    shard_id,
+                    plans
+                        .iter()
+                        .map(|(query_index, target)| (*query_index, target.entry_points[0]))
+                        .collect::<Vec<_>>(),
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    0,
+                    vec![(5, PointIdType::from(31)), (1, PointIdType::from(17))],
+                ),
+                (1, vec![(1, PointIdType::from(11))]),
+                (2, vec![(5, PointIdType::from(29))]),
+            ],
+        );
+
+        let error = append_orion_search_plans(
+            &mut search_plans,
+            9,
+            vec![OrionShardTarget {
+                shard_id: 3,
+                entry_points: vec![PointIdType::from(7)],
+                ef: 64,
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("outside configured shard count 3")
+        );
+    }
+
+    #[test]
     fn compact_peer_chunk_config_is_bounded_and_invalid_values_fail_closed() {
         assert_eq!(
             parse_compact_orion_peer_premerge_shards_per_rpc("1"),
@@ -3543,6 +3685,17 @@ mod tests {
             },
         ];
 
+        let mut shard_major_entries = entries.clone();
+        shard_major_entries.sort_by_key(|entry| entry.shard_id);
+        let shard_major_rpcs = split_compact_peer_shard_major_rpcs(
+            original_indices.clone(),
+            payload_required.clone(),
+            templates.clone(),
+            shard_major_entries,
+            Some(2),
+        )
+        .unwrap();
+
         let rpcs = split_compact_peer_shard_major_rpcs(
             original_indices,
             payload_required,
@@ -3551,6 +3704,17 @@ mod tests {
             Some(2),
         )
         .unwrap();
+
+        assert_eq!(shard_major_rpcs.len(), rpcs.len());
+        for (shard_major, reordered) in shard_major_rpcs.iter().zip(&rpcs) {
+            assert_eq!(shard_major.original_indices, reordered.original_indices);
+            assert_eq!(
+                shard_major.is_payload_required_by_query,
+                reordered.is_payload_required_by_query
+            );
+            assert_eq!(shard_major.query_templates, reordered.query_templates);
+            assert_eq!(shard_major.entries, reordered.entries);
+        }
 
         assert_eq!(rpcs.len(), 2);
         assert_eq!(rpcs[0].original_indices, vec![5, 9, 1]);
