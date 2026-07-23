@@ -23,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools import method4_distributed_cluster as cluster_tool
 from tools import native_auto_shard_prepare as prepare
+from tools import native_auto_shard_benchmark_lock as benchmark_lock
 from tools import qdrant_two_level_routing_experiment as experiment
 
 
@@ -284,6 +285,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional external CARGO_TARGET_DIR used by --orion-route-trace.",
     )
     parser.add_argument("--write-per-query-metrics", action="store_true")
+    benchmark_lock.add_cli_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -1490,8 +1492,10 @@ def verify_repository_provenance_unchanged(
     }
 
 
-def run(args: argparse.Namespace) -> Path:
-    validate_args(args)
+def _run_locked(
+    args: argparse.Namespace,
+    held_lock: benchmark_lock.HeldBenchmarkLock,
+) -> Path:
     distance = experiment.vector_distance_config(args.vector_distance)
     topology = experiment.load_cluster_topology(args.topology)
     deployment_manifest = experiment.load_optional_json(args.deployment_manifest)
@@ -1737,7 +1741,10 @@ def run(args: argparse.Namespace) -> Path:
     run_manifest = {
         "schema_version": 1,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "command": [sys.executable, *sys.argv],
+        "command": [
+            sys.executable,
+            *benchmark_lock.strip_cli_arguments(sys.argv),
+        ],
         "method": args.method,
         "api": args.api,
         "base_url": args.base_url,
@@ -1770,7 +1777,8 @@ def run(args: argparse.Namespace) -> Path:
         "artifact_bundle": artifact_bundle_proof,
         "orion_route_trace": route_trace_proof,
         "route_reporting": route,
-        "parameters": vars(args),
+        "parameters": benchmark_lock.public_namespace(args),
+        "benchmark_lock": held_lock.evidence(),
         "files": {
             "stability_runs": "stability_runs.csv",
             "final_metrics": "final_metrics.csv",
@@ -1804,6 +1812,7 @@ def run(args: argparse.Namespace) -> Path:
             "orion_compact_wire": deployment_evidence["orion_compact_wire"],
             "peer_premerge": deployment_evidence["peer_premerge"],
         },
+        "benchmark_lock": held_lock.evidence(),
         "limitations": (
             [
                 "Orion visited-shard and EF-sum values are unknown without an exact route "
@@ -1825,6 +1834,25 @@ def run(args: argparse.Namespace) -> Path:
     write_json(output_dir / "run_manifest.json", run_manifest)
     write_json(output_dir / "summary.json", summary)
     return output_dir
+
+
+def run(args: argparse.Namespace) -> Path:
+    validate_args(args)
+    if not args.deployment_manifest:
+        raise ValueError(
+            "--deployment-manifest is required to acquire the cluster benchmark lock"
+        )
+    with benchmark_lock.hold_from_args(
+        args,
+        args.deployment_manifest,
+        owner={
+            "kind": "native_auto_shard_benchmark",
+            "method": args.method,
+            "collection": args.collection,
+            "output_dir": str(Path(args.output_dir).expanduser().resolve()),
+        },
+    ) as held_lock:
+        return _run_locked(args, held_lock)
 
 
 def main(argv: list[str] | None = None) -> int:

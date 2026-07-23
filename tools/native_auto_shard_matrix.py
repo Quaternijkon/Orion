@@ -22,6 +22,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools import native_auto_shard_benchmark as benchmark
+from tools import native_auto_shard_benchmark_lock as benchmark_lock
 
 
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,127}$")
@@ -66,6 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--run", action="store_true")
     mode.add_argument("--collect-only", action="store_true")
     parser.add_argument("--taskset-cpus")
+    benchmark_lock.add_cli_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -198,6 +200,7 @@ def benchmark_command(
     case: dict[str, Any],
     output_dir: Path,
     taskset_cpus: str | None,
+    held_lock: benchmark_lock.HeldBenchmarkLock,
 ) -> list[str]:
     if taskset_cpus is not None and not CPUSET_RE.fullmatch(taskset_cpus):
         raise ValueError(f"invalid taskset CPU list: {taskset_cpus!r}")
@@ -240,6 +243,7 @@ def benchmark_command(
         command.extend(["--hnsw-ef", str(case["hnsw_ef"])])
     if case.get("orion_route_trace") is True:
         command.append("--orion-route-trace")
+    command.extend(held_lock.inheritance_cli_arguments())
     return ["taskset", "-c", taskset_cpus, *command] if taskset_cpus else command
 
 
@@ -247,6 +251,7 @@ def execute_cases(
     matrix_dir: Path,
     config: dict[str, Any],
     taskset_cpus: str | None,
+    held_lock: benchmark_lock.HeldBenchmarkLock,
 ) -> list[dict[str, Any]]:
     cases_root = matrix_dir / "cases"
     logs_root = matrix_dir / "logs"
@@ -255,7 +260,13 @@ def execute_cases(
     records: list[dict[str, Any]] = []
     for case in config["cases"]:
         case_output = cases_root / str(case["name"])
-        command = benchmark_command(config["shared"], case, case_output, taskset_cpus)
+        command = benchmark_command(
+            config["shared"],
+            case,
+            case_output,
+            taskset_cpus,
+            held_lock,
+        )
         started = time.time()
         result = subprocess.run(
             command,
@@ -263,6 +274,7 @@ def execute_cases(
             text=True,
             capture_output=True,
             check=False,
+            pass_fds=held_lock.inheritance_pass_fds(),
         )
         (logs_root / f"{case['name']}.stdout.log").write_text(
             result.stdout, encoding="utf-8"
@@ -270,6 +282,7 @@ def execute_cases(
         (logs_root / f"{case['name']}.stderr.log").write_text(
             result.stderr, encoding="utf-8"
         )
+        recorded_command = benchmark_lock.strip_cli_arguments(command)
         record = {
             "name": case["name"],
             "method": case["method"],
@@ -278,8 +291,9 @@ def execute_cases(
             "hnsw_ef": case.get("hnsw_ef"),
             "orion_route_trace": case.get("orion_route_trace", False),
             "output_dir": str(case_output),
-            "command": command,
-            "command_shell": shlex.join(command),
+            "command": recorded_command,
+            "command_shell": shlex.join(recorded_command),
+            "benchmark_lock": held_lock.evidence(),
             "returncode": result.returncode,
             "started_epoch": started,
             "completed_epoch": time.time(),
@@ -1268,6 +1282,7 @@ def collect_results(
     run_id: str,
     mode: str,
     taskset_cpus: str | None,
+    benchmark_lock_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     results = [load_case_result(matrix_dir, case) for case in config["cases"]]
     shared_provenance = validate_shared_provenance(results)
@@ -1318,6 +1333,7 @@ def collect_results(
         "require_strict_same_recall": config["require_strict_same_recall"],
         "same_recall_confirmation": confirmations,
         "taskset_cpus": taskset_cpus,
+        "benchmark_lock": benchmark_lock_evidence,
         "cases": case_records
         or [
             {
@@ -1344,25 +1360,54 @@ def run(args: argparse.Namespace) -> Path:
     config = load_config(args.config)
     if args.taskset_cpus is not None and not CPUSET_RE.fullmatch(args.taskset_cpus):
         raise ValueError(f"invalid taskset CPU list: {args.taskset_cpus!r}")
-    matrix_dir = matrix_directory(
-        args.output_root,
-        args.run_id,
-        must_exist=bool(args.collect_only),
-    )
-    case_records = (
-        None
-        if args.collect_only
-        else execute_cases(matrix_dir, config, args.taskset_cpus)
-    )
-    collect_results(
-        matrix_dir,
-        config,
-        case_records,
-        args.run_id,
-        "collect_only" if args.collect_only else "run",
-        args.taskset_cpus,
-    )
-    return matrix_dir
+    if args.collect_only:
+        matrix_dir = matrix_directory(
+            args.output_root,
+            args.run_id,
+            must_exist=True,
+        )
+        collect_results(
+            matrix_dir,
+            config,
+            None,
+            args.run_id,
+            "collect_only",
+            args.taskset_cpus,
+            None,
+        )
+        return matrix_dir
+
+    deployment_manifest = config["shared"]["deployment_manifest"]
+    with benchmark_lock.hold_from_args(
+        args,
+        deployment_manifest,
+        owner={
+            "kind": "native_auto_shard_matrix",
+            "run_id": args.run_id,
+            "config": config["config_path"],
+        },
+    ) as held_lock:
+        matrix_dir = matrix_directory(
+            args.output_root,
+            args.run_id,
+            must_exist=False,
+        )
+        case_records = execute_cases(
+            matrix_dir,
+            config,
+            args.taskset_cpus,
+            held_lock,
+        )
+        collect_results(
+            matrix_dir,
+            config,
+            case_records,
+            args.run_id,
+            "run",
+            args.taskset_cpus,
+            held_lock.evidence(),
+        )
+        return matrix_dir
 
 
 def main(argv: list[str] | None = None) -> int:

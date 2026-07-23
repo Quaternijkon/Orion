@@ -31,6 +31,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools import qdrant_two_level_routing_experiment as experiment  # noqa: E402
 from tools import method4_distributed_cluster as cluster  # noqa: E402
+from tools import native_auto_shard_benchmark_lock as benchmark_lock  # noqa: E402
 
 
 DEFAULT_TELEMETRY_METHODS = (
@@ -73,6 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--vector-name", default="")
     parser.add_argument("--request-timeout-secs", type=float, default=600.0)
+    benchmark_lock.add_cli_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -644,8 +646,10 @@ def execute_batches(
     return rows, time.perf_counter() - started
 
 
-def run_probe(args: argparse.Namespace) -> Path:
-    validate_args(args)
+def _run_probe_locked(
+    args: argparse.Namespace,
+    held_lock: benchmark_lock.HeldBenchmarkLock,
+) -> Path:
     destination = output_path(args.output)
     context = load_deployment_context(args)
     methods = list(args.telemetry_method or DEFAULT_TELEMETRY_METHODS)
@@ -801,6 +805,7 @@ def run_probe(args: argparse.Namespace) -> Path:
         "telemetry_before": before,
         "telemetry_after": after,
         "telemetry_delta": telemetry_delta(before, after),
+        "benchmark_lock": held_lock.evidence(),
         **proof,
     }
     temporary_path: Path | None = None
@@ -825,6 +830,21 @@ def run_probe(args: argparse.Namespace) -> Path:
             temporary_path.unlink(missing_ok=True)
     print(json.dumps({"probe": str(destination)}, indent=2))
     return destination
+
+
+def run_probe(args: argparse.Namespace) -> Path:
+    validate_args(args)
+    with benchmark_lock.hold_from_args(
+        args,
+        args.deployment_manifest,
+        owner={
+            "kind": "native_auto_shard_transport_probe",
+            "run_id": args.run_id,
+            "collection": args.collection,
+            "output": str(Path(args.output).expanduser().resolve()),
+        },
+    ) as held_lock:
+        return _run_probe_locked(args, held_lock)
 
 
 def main(argv: list[str] | None = None) -> int:
