@@ -26,14 +26,21 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::Collection;
 use crate::config::{AutoShardPolicy, CollectionConfigInternal};
+use crate::distributed_index::{
+    LogicalShardRoutingPolicy, LogicalShardSearchPlan, LogicalShardSearchTarget,
+    SelectedLogicalShardSearchPlan,
+};
 use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
-use crate::orion::{OrionRouteScratch, OrionShardTarget};
+use crate::orion::OrionRouteScratch;
+#[cfg(test)]
+use crate::orion::OrionShardTarget;
 use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
 use crate::shards::shard::{PeerId, ShardId};
 use crate::shards::shard_holder::shard_not_found_error;
+#[cfg(test)]
 use crate::simple_kmeans::SimpleKmeansShardTarget;
 
 fn search_batch_requires_shard_specialization(request: &CoreSearchRequestBatch) -> bool {
@@ -145,45 +152,45 @@ fn validate_orion_compact_peer_query_vector_config(
     Ok(())
 }
 
-fn specialize_core_search_for_orion_target(
+fn specialize_core_search_for_logical_target(
     request: &CoreSearchRequest,
-    target: &OrionShardTarget,
+    target: &LogicalShardSearchTarget,
+    policy_name: &str,
 ) -> CollectionResult<CoreSearchRequest> {
     let mut specialized = request.clone();
     specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
-        CollectionError::bad_request("Orion lower-search limit + offset overflows usize")
+        CollectionError::bad_request(format!(
+            "{policy_name} lower-search limit + offset overflows usize"
+        ))
     })?;
     specialized.offset = 0;
-    specialized.hnsw_entry_points = Some(target.entry_points.clone());
+    specialized
+        .hnsw_entry_points
+        .clone_from(&target.entry_points);
     specialized.hnsw_entry_points_by_shard = None;
     specialized.hnsw_ef_by_shard = None;
     specialized.source_id_dedup_block_size = None;
 
     let mut params = specialized.params.unwrap_or_default();
-    params.hnsw_ef = Some(target.ef);
+    params.hnsw_ef = Some(target.hnsw_ef);
     specialized.params = Some(params);
     Ok(specialized)
 }
 
+#[cfg(test)]
+fn specialize_core_search_for_orion_target(
+    request: &CoreSearchRequest,
+    target: &OrionShardTarget,
+) -> CollectionResult<CoreSearchRequest> {
+    specialize_core_search_for_logical_target(request, &target.clone().into(), "Orion")
+}
+
+#[cfg(test)]
 fn specialize_core_search_for_simple_kmeans_target(
     request: &CoreSearchRequest,
     target: &SimpleKmeansShardTarget,
 ) -> CollectionResult<CoreSearchRequest> {
-    let mut specialized = request.clone();
-    specialized.limit = request.limit.checked_add(request.offset).ok_or_else(|| {
-        CollectionError::bad_request("Simple KMeans lower-search limit + offset overflows usize")
-    })?;
-    specialized.offset = 0;
-    // Simple KMeans selects shards only. Lower HNSW starts from its ordinary entry point.
-    specialized.hnsw_entry_points = None;
-    specialized.hnsw_entry_points_by_shard = None;
-    specialized.hnsw_ef_by_shard = None;
-    specialized.source_id_dedup_block_size = None;
-
-    let mut params = specialized.params.unwrap_or_default();
-    params.hnsw_ef = Some(target.ef);
-    specialized.params = Some(params);
-    Ok(specialized)
+    specialize_core_search_for_logical_target(request, &(*target).into(), "Simple KMeans")
 }
 
 fn remaining_search_timeout(
@@ -370,6 +377,37 @@ fn collect_sparse_peer_rows_by_query(
     Ok(rows_by_query)
 }
 
+/// Restore one selected logical shard's compact request rows to the original batch slots.
+///
+/// Every static routing policy uses this helper before the common collection-level merge, which
+/// keeps batch ordering and empty-slot behavior independent of the routing algorithm.
+fn restore_selected_shard_rows_to_batch(
+    policy_name: &str,
+    shard_id: ShardId,
+    original_indices: Vec<usize>,
+    rows: Vec<Vec<ScoredPoint>>,
+    batch_size: usize,
+) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+    if rows.len() != original_indices.len() {
+        return Err(CollectionError::service_error(format!(
+            "{policy_name} shard {shard_id} returned {} rows for {} query slots",
+            rows.len(),
+            original_indices.len(),
+        )));
+    }
+
+    let mut full_batch_rows = vec![Vec::new(); batch_size];
+    for (query_index, row) in original_indices.into_iter().zip(rows) {
+        let Some(batch_row) = full_batch_rows.get_mut(query_index) else {
+            return Err(CollectionError::service_error(format!(
+                "{policy_name} shard {shard_id} returned out-of-range original query slot {query_index} for batch size {batch_size}",
+            )));
+        };
+        *batch_row = row;
+    }
+    Ok(full_batch_rows)
+}
+
 /// Reuse the already ordered, point-ID-unique rows returned by a single replica set for an
 /// internal numeric-shard search.
 ///
@@ -448,35 +486,6 @@ struct CompactPeerShardMajorGroup {
     is_payload_required_by_query: Vec<bool>,
     query_templates: Vec<CoreSearchByShardQueryTemplate>,
     entries: Vec<CoreSearchByShardCompactEntry>,
-}
-
-type OrionSearchPlansByShard = Vec<Vec<(usize, OrionShardTarget)>>;
-
-fn new_orion_search_plans_by_shard(shard_count: ShardId) -> OrionSearchPlansByShard {
-    let mut search_plans_by_shard = Vec::with_capacity(shard_count as usize);
-    search_plans_by_shard.resize_with(shard_count as usize, Vec::new);
-    search_plans_by_shard
-}
-
-fn append_orion_search_plans(
-    search_plans_by_shard: &mut OrionSearchPlansByShard,
-    query_index: usize,
-    targets: Vec<OrionShardTarget>,
-) -> CollectionResult<()> {
-    let shard_count = search_plans_by_shard.len();
-    for target in targets {
-        let shard_id = target.shard_id;
-        let search_plans = search_plans_by_shard
-            .get_mut(shard_id as usize)
-            .ok_or_else(|| {
-                CollectionError::service_error(format!(
-                    "Orion route target shard {shard_id} is outside configured shard count {}",
-                    shard_count,
-                ))
-            })?;
-        search_plans.push((query_index, target));
-    }
-    Ok(())
 }
 
 struct CompactPeerShardMajorRpc {
@@ -867,12 +876,14 @@ fn peer_premerge_entry(
 
 fn compact_peer_premerge_entry(
     local_query_index: usize,
-    target: &OrionShardTarget,
+    target: &LogicalShardSearchTarget,
     wire_version: u32,
     seen_entry_points: &mut AHashSet<PointIdType>,
 ) -> CollectionResult<CoreSearchByShardCompactEntry> {
-    let entry_points = (!target.entry_points.is_empty())
-        .then_some(target.entry_points.as_slice())
+    let entry_points = target
+        .entry_points
+        .as_deref()
+        .filter(|entry_points| !entry_points.is_empty())
         .ok_or_else(|| {
             CollectionError::service_error(format!(
                 "Orion compact peer-premerge shard {} has no ordered HNSW entry points",
@@ -890,12 +901,14 @@ fn compact_peer_premerge_entry(
             target.shard_id,
         )));
     }
-    let hnsw_ef = (target.ef > 0).then_some(target.ef).ok_or_else(|| {
-        CollectionError::service_error(format!(
-            "Orion compact peer-premerge shard {} has no positive per-shard HNSW EF",
-            target.shard_id,
-        ))
-    })?;
+    let hnsw_ef = (target.hnsw_ef > 0)
+        .then_some(target.hnsw_ef)
+        .ok_or_else(|| {
+            CollectionError::service_error(format!(
+                "Orion compact peer-premerge shard {} has no positive per-shard HNSW EF",
+                target.shard_id,
+            ))
+        })?;
 
     let all_numeric = entry_points
         .iter()
@@ -1490,12 +1503,16 @@ impl Collection {
     /// existing per-shard coordinator path before issuing a peer-batched request.
     async fn try_orion_numeric_peer_premerge(
         &self,
-        search_plans_by_shard: &OrionSearchPlansByShard,
+        plan: &SelectedLogicalShardSearchPlan,
         original_requests: Arc<CoreSearchRequestBatch>,
         read_consistency: Option<ReadConsistency>,
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+        if plan.policy != LogicalShardRoutingPolicy::Orion {
+            return Ok(None);
+        }
+        let search_plans_by_shard = &plan.targets_by_shard;
         if search_plans_by_shard.iter().all(Vec::is_empty) || peer_premerge_disabled() {
             return Ok(None);
         }
@@ -1633,40 +1650,122 @@ impl Collection {
         self.ensure_static_router_available(shard_selection).await?;
         let request = Arc::new(request);
         let instant = Instant::now();
+        let configured_policy = self
+            .collection_config
+            .read()
+            .await
+            .auto_shard_policy
+            .clone();
+        let plan = match AutoShardPolicy::canonical_ref(configured_policy.as_ref()) {
+            None => LogicalShardSearchPlan::AllShards,
+            Some(AutoShardPolicy::Orion { .. }) => self
+                .plan_orion_core_search_batch(
+                    request.clone(),
+                    shard_selection,
+                    timeout,
+                    instant,
+                    hw_measurement_acc.clone(),
+                )
+                .await?
+                .unwrap_or(LogicalShardSearchPlan::AllShards),
+            Some(AutoShardPolicy::SimpleKmeans { .. }) => self
+                .plan_simple_kmeans_core_search_batch(
+                    request.clone(),
+                    shard_selection,
+                    timeout,
+                    instant,
+                    hw_measurement_acc.clone(),
+                )
+                .await?
+                .unwrap_or(LogicalShardSearchPlan::AllShards),
+            Some(AutoShardPolicy::HashAll) => unreachable!("canonical HashAll is None"),
+        };
 
-        if let Some(result) = self
-            .try_orion_core_search_batch(
+        let result = self
+            .execute_logical_shard_search_plan(
+                plan,
                 request.clone(),
                 read_consistency,
                 shard_selection,
                 timeout,
                 instant,
-                hw_measurement_acc.clone(),
+                hw_measurement_acc,
             )
-            .await?
-        {
-            let filters_refs = request.searches.iter().map(|req| req.filter.as_ref());
-            self.post_process_if_slow_request(instant.elapsed(), filters_refs);
-            return Ok(result);
-        }
+            .await;
 
-        if let Some(result) = self
-            .try_simple_kmeans_core_search_batch(
-                request.clone(),
-                read_consistency,
-                shard_selection,
-                timeout,
-                instant,
-                hw_measurement_acc.clone(),
-            )
-            .await?
-        {
-            let filters_refs = request.searches.iter().map(|req| req.filter.as_ref());
-            self.post_process_if_slow_request(instant.elapsed(), filters_refs);
-            return Ok(result);
-        }
+        let filters_refs = request.searches.iter().map(|req| req.filter.as_ref());
+        self.post_process_if_slow_request(instant.elapsed(), filters_refs);
+        result
+    }
 
-        let timeout = remaining_search_timeout(timeout, instant.elapsed(), "search")?;
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_logical_shard_search_plan(
+        &self,
+        plan: LogicalShardSearchPlan,
+        request: Arc<CoreSearchRequestBatch>,
+        read_consistency: Option<ReadConsistency>,
+        shard_selection: &ShardSelectorInternal,
+        timeout: Option<Duration>,
+        request_started: Instant,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        match plan {
+            LogicalShardSearchPlan::AllShards => {
+                self.execute_all_shards_search_plan(
+                    request,
+                    read_consistency,
+                    shard_selection,
+                    timeout,
+                    request_started,
+                    hw_measurement_acc,
+                )
+                .await
+            }
+            LogicalShardSearchPlan::SelectedByShard(plan) => {
+                if plan.policy == LogicalShardRoutingPolicy::Orion {
+                    let compact_timeout = remaining_search_timeout(
+                        timeout,
+                        request_started.elapsed(),
+                        "Orion distributed search",
+                    )?;
+                    if let Some(rows) = self
+                        .try_orion_numeric_peer_premerge(
+                            &plan,
+                            request.clone(),
+                            read_consistency,
+                            compact_timeout,
+                            hw_measurement_acc.clone(),
+                        )
+                        .await?
+                    {
+                        return Ok(rows);
+                    }
+                }
+
+                self.execute_selected_logical_shards(
+                    plan,
+                    request,
+                    read_consistency,
+                    timeout,
+                    request_started,
+                    hw_measurement_acc,
+                )
+                .await
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_all_shards_search_plan(
+        &self,
+        request: Arc<CoreSearchRequestBatch>,
+        read_consistency: Option<ReadConsistency>,
+        shard_selection: &ShardSelectorInternal,
+        timeout: Option<Duration>,
+        request_started: Instant,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let timeout = remaining_search_timeout(timeout, request_started.elapsed(), "search")?;
         let requires_shard_specialization = search_batch_requires_shard_specialization(&request);
 
         // query all shards concurrently
@@ -1706,19 +1805,8 @@ impl Collection {
             future::try_join_all(all_searches).await?
         };
 
-        let result = self
-            .merge_from_shards(
-                all_searches_res,
-                request.clone(),
-                !shard_selection.is_shard_id(),
-            )
-            .await;
-
-        let filters_refs = request.searches.iter().map(|req| req.filter.as_ref());
-
-        self.post_process_if_slow_request(instant.elapsed(), filters_refs);
-
-        result
+        self.merge_from_shards(all_searches_res, request, !shard_selection.is_shard_id())
+            .await
     }
 
     /// A declared static routing policy must never silently become a different all-shards
@@ -1759,21 +1847,20 @@ impl Collection {
         Ok(())
     }
 
-    /// Execute a native Orion route through ordinary numeric shard replica sets.
+    /// Compile a native Orion route into the common logical-shard search plan.
     ///
     /// Returning `Ok(None)` is reserved for requests that are not eligible for native Orion
     /// routing. Once an eligible batch enters Orion, every routing or placement failure is
     /// fail-closed; silently changing that batch into an all-shards search would change the
     /// configured algorithm and contaminate benchmark semantics.
-    async fn try_orion_core_search_batch(
+    async fn plan_orion_core_search_batch(
         &self,
         request: Arc<CoreSearchRequestBatch>,
-        read_consistency: Option<ReadConsistency>,
         shard_selection: &ShardSelectorInternal,
         timeout: Option<Duration>,
         request_started: Instant,
         hw_measurement_acc: HwMeasurementAcc,
-    ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+    ) -> CollectionResult<Option<LogicalShardSearchPlan>> {
         if !matches!(shard_selection, ShardSelectorInternal::All) {
             return Ok(None);
         }
@@ -1836,7 +1923,11 @@ impl Collection {
             None => future::join_all(route_tasks).await,
         };
 
-        let mut search_plans_by_shard = new_orion_search_plans_by_shard(router.shard_count());
+        let mut plan = SelectedLogicalShardSearchPlan::new(
+            LogicalShardRoutingPolicy::Orion,
+            router.generation(),
+            router.shard_count(),
+        );
         for routed_query_chunk in routed_query_chunks {
             let routed_query_chunk = routed_query_chunk.map_err(|err| {
                 CollectionError::service_error(format!(
@@ -1860,11 +1951,17 @@ impl Collection {
                     )));
                 }
 
-                append_orion_search_plans(&mut search_plans_by_shard, query_index, targets)?;
+                plan.push_targets(query_index, targets.into_iter().map(Into::into))
+                    .map_err(|shard_id| {
+                        CollectionError::service_error(format!(
+                            "Orion route target shard {shard_id} is outside configured shard count {}",
+                            plan.shard_count(),
+                        ))
+                    })?;
             }
         }
 
-        if search_plans_by_shard.iter().all(Vec::is_empty) {
+        if plan.is_empty() {
             return Err(CollectionError::service_error(format!(
                 "Orion routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
                 router.generation(),
@@ -1872,140 +1969,22 @@ impl Collection {
             )));
         }
 
-        let lower_timeout = remaining_search_timeout(
-            timeout,
-            request_started.elapsed(),
-            "Orion distributed search",
-        )?;
-
-        if let Some(rows) = self
-            .try_orion_numeric_peer_premerge(
-                &search_plans_by_shard,
-                request.clone(),
-                read_consistency,
-                lower_timeout,
-                hw_measurement_acc.clone(),
-            )
-            .await?
-        {
-            return Ok(Some(rows));
-        }
-
-        let batch_size = request.searches.len();
-        let all_shard_rows = {
-            let shard_holder = self.shards_holder.read().await;
-            for (shard_index, search_plans) in search_plans_by_shard.iter().enumerate() {
-                if search_plans.is_empty() {
-                    continue;
-                }
-                let shard_id = ShardId::try_from(shard_index).map_err(|_| {
-                    CollectionError::service_error(format!(
-                        "Orion fallback shard index {shard_index} does not fit into ShardId",
-                    ))
-                })?;
-                if shard_holder.get_shard(shard_id).is_none() {
-                    return Err(CollectionError::service_error(format!(
-                        "Orion routing generation {} selected missing shard {shard_id} for collection {}; refusing a silent all-shards fallback",
-                        router.generation(),
-                        self.id,
-                    )));
-                }
-            }
-
-            let prepared_shard_searches = search_plans_by_shard
-                .into_iter()
-                .enumerate()
-                .filter(|(_shard_index, search_plans)| !search_plans.is_empty())
-                .map(|(shard_index, search_plans)| {
-                    let shard_id = ShardId::try_from(shard_index).map_err(|_| {
-                        CollectionError::service_error(format!(
-                            "Orion fallback shard index {shard_index} does not fit into ShardId",
-                        ))
-                    })?;
-                    let shard = shard_holder
-                        .get_shard(shard_id)
-                        .expect("Orion target shard existence was checked");
-                    let mut original_indices = Vec::with_capacity(search_plans.len());
-                    let mut searches = Vec::with_capacity(search_plans.len());
-                    for (query_index, target) in search_plans {
-                        let original = request.searches.get(query_index).ok_or_else(|| {
-                            CollectionError::service_error(format!(
-                                "Orion fallback query index {query_index} is outside batch size {batch_size}",
-                            ))
-                        })?;
-                        if target.shard_id != shard_id {
-                            return Err(CollectionError::service_error(format!(
-                                "Orion fallback target shard {} does not match route-plan shard {shard_id}",
-                                target.shard_id,
-                            )));
-                        }
-                        original_indices.push(query_index);
-                        searches.push(specialize_core_search_for_orion_target(original, &target)?);
-                    }
-                    let shard_request = Arc::new(CoreSearchRequestBatch { searches });
-                    Ok::<_, CollectionError>((shard_id, shard, original_indices, shard_request))
-                })
-                .collect::<CollectionResult<Vec<_>>>()?;
-
-            // Compact topology checks and fallback-only request materialization are part of the
-            // caller's end-to-end timeout. Recompute the remaining budget immediately before the
-            // ordinary replica-set searches so a failed compact gate cannot extend the deadline.
-            let fallback_timeout = remaining_search_timeout(
-                timeout,
-                request_started.elapsed(),
-                "Orion distributed fallback search",
-            )?;
-            let shard_searches = prepared_shard_searches.into_iter().map(
-                |(shard_id, shard, original_indices, shard_request)| {
-                    let hw_measurement_acc = hw_measurement_acc.clone();
-                    async move {
-                        let rows = shard
-                            .core_search(
-                                shard_request,
-                                read_consistency,
-                                false,
-                                fallback_timeout,
-                                hw_measurement_acc,
-                            )
-                            .await?;
-                        if rows.len() != original_indices.len() {
-                            return Err(CollectionError::service_error(format!(
-                                "Orion shard {shard_id} returned {} rows for {} query slots",
-                                rows.len(),
-                                original_indices.len(),
-                            )));
-                        }
-
-                        let mut full_batch_rows = vec![Vec::new(); batch_size];
-                        for (query_index, row) in original_indices.into_iter().zip(rows) {
-                            full_batch_rows[query_index] = row;
-                        }
-                        Ok::<_, CollectionError>(full_batch_rows)
-                    }
-                },
-            );
-            future::try_join_all(shard_searches).await?
-        };
-
-        self.merge_from_shards(all_shard_rows, request, true)
-            .await
-            .map(Some)
+        Ok(Some(LogicalShardSearchPlan::SelectedByShard(plan)))
     }
 
-    /// Execute a static Simple KMeans nprobe route through ordinary numeric shard replica sets.
+    /// Compile a static Simple KMeans nprobe route into the common logical-shard search plan.
     ///
     /// Eligibility is batch-wide: unsupported requests use Qdrant's normal path before routing.
     /// Once an eligible batch enters Simple KMeans, invalid routes fail closed rather than
     /// silently changing the configured baseline into an all-shards search.
-    async fn try_simple_kmeans_core_search_batch(
+    async fn plan_simple_kmeans_core_search_batch(
         &self,
         request: Arc<CoreSearchRequestBatch>,
-        read_consistency: Option<ReadConsistency>,
         shard_selection: &ShardSelectorInternal,
         timeout: Option<Duration>,
         request_started: Instant,
         hw_measurement_acc: HwMeasurementAcc,
-    ) -> CollectionResult<Option<Vec<Vec<ScoredPoint>>>> {
+    ) -> CollectionResult<Option<LogicalShardSearchPlan>> {
         if !matches!(shard_selection, ShardSelectorInternal::All) {
             return Ok(None);
         }
@@ -2057,8 +2036,11 @@ impl Collection {
             None => future::join_all(route_tasks).await,
         };
 
-        let mut searches_by_shard: BTreeMap<ShardId, Vec<(usize, CoreSearchRequest)>> =
-            BTreeMap::new();
+        let mut plan = SelectedLogicalShardSearchPlan::new(
+            LogicalShardRoutingPolicy::SimpleKmeans,
+            router.generation(),
+            router.shard_count(),
+        );
         for routed_query_chunk in routed_query_chunks {
             let routed_query_chunk = routed_query_chunk.map_err(|err| {
                 CollectionError::service_error(format!(
@@ -2082,89 +2064,142 @@ impl Collection {
                     )));
                 }
 
-                let original = &request.searches[query_index];
-                for target in targets {
-                    let specialized =
-                        specialize_core_search_for_simple_kmeans_target(original, &target)?;
-                    searches_by_shard
-                        .entry(target.shard_id)
-                        .or_default()
-                        .push((query_index, specialized));
-                }
+                plan.push_targets(query_index, targets.into_iter().map(Into::into))
+                    .map_err(|shard_id| {
+                        CollectionError::service_error(format!(
+                            "Simple KMeans route target shard {shard_id} is outside configured shard count {}",
+                            plan.shard_count(),
+                        ))
+                    })?;
             }
         }
 
-        if searches_by_shard.is_empty() {
+        if plan.is_empty() {
             return Err(CollectionError::service_error(format!(
                 "Simple KMeans routing generation {} produced no lower-shard searches for collection {}; refusing a silent all-shards fallback",
                 router.generation(),
                 self.id,
             )));
         }
-        let lower_timeout = remaining_search_timeout(
-            timeout,
-            request_started.elapsed(),
-            "Simple KMeans distributed search",
-        )?;
+
+        Ok(Some(LogicalShardSearchPlan::SelectedByShard(plan)))
+    }
+
+    /// Execute every selected-shard policy through the same ordinary Qdrant replica-set path.
+    ///
+    /// The policy-specific planner has already chosen shards and lower-HNSW overrides. From this
+    /// point onward Orion and Simple KMeans share request materialization, shard validation,
+    /// `ShardReplicaSet::core_search`, batch-slot restoration, and collection-level merge.
+    async fn execute_selected_logical_shards(
+        &self,
+        plan: SelectedLogicalShardSearchPlan,
+        request: Arc<CoreSearchRequestBatch>,
+        read_consistency: Option<ReadConsistency>,
+        timeout: Option<Duration>,
+        request_started: Instant,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let policy_name = plan.policy.name();
+        let generation = plan.generation;
+        if plan.is_empty() {
+            return Err(CollectionError::service_error(format!(
+                "{policy_name} routing generation {generation} produced an empty logical-shard plan for collection {}; refusing a silent all-shards fallback",
+                self.id,
+            )));
+        }
 
         let batch_size = request.searches.len();
         let all_shard_rows = {
             let shard_holder = self.shards_holder.read().await;
-            if let Some(missing_shard) = searches_by_shard
-                .keys()
-                .copied()
-                .find(|shard_id| shard_holder.get_shard(*shard_id).is_none())
-            {
-                return Err(CollectionError::service_error(format!(
-                    "Simple KMeans routing generation {} selected missing shard {missing_shard} for collection {}; refusing a silent all-shards fallback",
-                    router.generation(),
-                    self.id,
-                )));
+            for (shard_index, targets) in plan.targets_by_shard.iter().enumerate() {
+                if targets.is_empty() {
+                    continue;
+                }
+                let shard_id = ShardId::try_from(shard_index).map_err(|_| {
+                    CollectionError::service_error(format!(
+                        "{policy_name} route-plan shard index {shard_index} does not fit into ShardId",
+                    ))
+                })?;
+                if shard_holder.get_shard(shard_id).is_none() {
+                    return Err(CollectionError::service_error(format!(
+                        "{policy_name} routing generation {generation} selected missing shard {shard_id} for collection {}; refusing a silent all-shards fallback",
+                        self.id,
+                    )));
+                }
             }
 
-            let shard_searches = searches_by_shard.into_iter().map(|(shard_id, searches)| {
-                let shard = shard_holder
-                    .get_shard(shard_id)
-                    .expect("Simple KMeans target shard existence was checked");
-                let original_indices = searches
-                    .iter()
-                    .map(|(query_index, _)| *query_index)
-                    .collect::<Vec<_>>();
-                let shard_request = Arc::new(CoreSearchRequestBatch {
-                    searches: searches.into_iter().map(|(_, search)| search).collect(),
-                });
-                let hw_measurement_acc = hw_measurement_acc.clone();
-                async move {
-                    let rows = shard
-                        .core_search(
-                            shard_request,
-                            read_consistency,
-                            false,
-                            lower_timeout,
-                            hw_measurement_acc,
-                        )
-                        .await?;
-                    if rows.len() != original_indices.len() {
-                        return Err(CollectionError::service_error(format!(
-                            "Simple KMeans shard {shard_id} returned {} rows for {} query slots",
-                            rows.len(),
-                            original_indices.len(),
-                        )));
+            let prepared_shard_searches = plan
+                .targets_by_shard
+                .into_iter()
+                .enumerate()
+                .filter(|(_shard_index, targets)| !targets.is_empty())
+                .map(|(shard_index, targets)| {
+                    let shard_id = ShardId::try_from(shard_index).map_err(|_| {
+                        CollectionError::service_error(format!(
+                            "{policy_name} route-plan shard index {shard_index} does not fit into ShardId",
+                        ))
+                    })?;
+                    let shard = shard_holder
+                        .get_shard(shard_id)
+                        .expect("selected logical target shard existence was checked");
+                    let mut original_indices = Vec::with_capacity(targets.len());
+                    let mut searches = Vec::with_capacity(targets.len());
+                    for (query_index, target) in targets {
+                        let original = request.searches.get(query_index).ok_or_else(|| {
+                            CollectionError::service_error(format!(
+                                "{policy_name} route-plan query index {query_index} is outside batch size {batch_size}",
+                            ))
+                        })?;
+                        if target.shard_id != shard_id {
+                            return Err(CollectionError::service_error(format!(
+                                "{policy_name} target shard {} does not match route-plan shard {shard_id}",
+                                target.shard_id,
+                            )));
+                        }
+                        original_indices.push(query_index);
+                        searches.push(specialize_core_search_for_logical_target(
+                            original,
+                            &target,
+                            policy_name,
+                        )?);
                     }
+                    let shard_request = Arc::new(CoreSearchRequestBatch { searches });
+                    Ok::<_, CollectionError>((shard_id, shard, original_indices, shard_request))
+                })
+                .collect::<CollectionResult<Vec<_>>>()?;
 
-                    let mut full_batch_rows = vec![Vec::new(); batch_size];
-                    for (query_index, row) in original_indices.into_iter().zip(rows) {
-                        full_batch_rows[query_index] = row;
+            // Planning, compact-path topology checks, and common-path request materialization are
+            // all charged to the caller's original timeout.
+            let timeout_operation = format!("{policy_name} distributed logical-shard search");
+            let lower_timeout =
+                remaining_search_timeout(timeout, request_started.elapsed(), &timeout_operation)?;
+            let shard_searches = prepared_shard_searches.into_iter().map(
+                |(shard_id, shard, original_indices, shard_request)| {
+                    let hw_measurement_acc = hw_measurement_acc.clone();
+                    async move {
+                        let rows = shard
+                            .core_search(
+                                shard_request,
+                                read_consistency,
+                                false,
+                                lower_timeout,
+                                hw_measurement_acc,
+                            )
+                            .await?;
+                        restore_selected_shard_rows_to_batch(
+                            policy_name,
+                            shard_id,
+                            original_indices,
+                            rows,
+                            batch_size,
+                        )
                     }
-                    Ok::<_, CollectionError>(full_batch_rows)
-                }
-            });
+                },
+            );
             future::try_join_all(shard_searches).await?
         };
 
-        self.merge_from_shards(all_shard_rows, request, true)
-            .await
-            .map(Some)
+        self.merge_from_shards(all_shard_rows, request, true).await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2772,6 +2807,56 @@ mod tests {
     }
 
     #[test]
+    fn selected_shard_rows_restore_original_batch_slots_for_every_policy() {
+        for policy_name in ["Orion", "Simple KMeans"] {
+            let restored = restore_selected_shard_rows_to_batch(
+                policy_name,
+                7,
+                vec![2, 0],
+                vec![vec![scored_point(20, 0.8)], vec![scored_point(10, 0.9)]],
+                3,
+            )
+            .unwrap();
+
+            assert_eq!(restored.len(), 3);
+            assert_eq!(restored[0][0].id, PointIdType::from(10));
+            assert!(restored[1].is_empty());
+            assert_eq!(restored[2][0].id, PointIdType::from(20));
+        }
+    }
+
+    #[test]
+    fn selected_shard_row_restoration_fails_closed_on_shape_or_slot_mismatch() {
+        let shape_error = restore_selected_shard_rows_to_batch(
+            "Orion",
+            7,
+            vec![0, 1],
+            vec![vec![scored_point(10, 0.9)]],
+            2,
+        )
+        .unwrap_err();
+        assert!(
+            shape_error
+                .to_string()
+                .contains("returned 1 rows for 2 query slots")
+        );
+
+        let slot_error = restore_selected_shard_rows_to_batch(
+            "Simple KMeans",
+            7,
+            vec![2],
+            vec![vec![scored_point(10, 0.9)]],
+            2,
+        )
+        .unwrap_err();
+        assert!(
+            slot_error
+                .to_string()
+                .contains("out-of-range original query slot 2 for batch size 2")
+        );
+    }
+
+    #[test]
     fn single_internal_shard_reuses_rows_and_preserves_full_window() {
         let mut first = default_dense_request();
         first.limit = 2;
@@ -3337,7 +3422,9 @@ mod tests {
         assert_eq!(roundtrip.with_payload, original.with_payload);
 
         let mut seen_entry_points = AHashSet::new();
-        let entry = compact_peer_premerge_entry(3, &target, 2, &mut seen_entry_points).unwrap();
+        let entry =
+            compact_peer_premerge_entry(3, &target.clone().into(), 2, &mut seen_entry_points)
+                .unwrap();
         assert_eq!(entry.query_slot, 3);
         assert_eq!(entry.shard_id, target.shard_id);
         assert_eq!(entry.hnsw_ef, 76);
@@ -3358,11 +3445,28 @@ mod tests {
             entry_points: vec![PointIdType::from(31), PointIdType::from(17)],
             ef: 76,
         };
-        compact_peer_premerge_entry(0, &first_valid_target, 2, &mut seen_entry_points).unwrap();
-        compact_peer_premerge_entry(0, &second_valid_target, 2, &mut seen_entry_points).unwrap();
+        compact_peer_premerge_entry(
+            0,
+            &first_valid_target.clone().into(),
+            2,
+            &mut seen_entry_points,
+        )
+        .unwrap();
+        compact_peer_premerge_entry(
+            0,
+            &second_valid_target.clone().into(),
+            2,
+            &mut seen_entry_points,
+        )
+        .unwrap();
 
-        let legacy_numeric =
-            compact_peer_premerge_entry(0, &first_valid_target, 1, &mut seen_entry_points).unwrap();
+        let legacy_numeric = compact_peer_premerge_entry(
+            0,
+            &first_valid_target.clone().into(),
+            1,
+            &mut seen_entry_points,
+        )
+        .unwrap();
         assert!(legacy_numeric.hnsw_entry_point_num_ids.is_empty());
         assert_eq!(legacy_numeric.hnsw_entry_points.len(), 2);
 
@@ -3375,7 +3479,8 @@ mod tests {
             ef: 80,
         };
         let uuid_fallback =
-            compact_peer_premerge_entry(0, &uuid_target, 2, &mut seen_entry_points).unwrap();
+            compact_peer_premerge_entry(0, &uuid_target.clone().into(), 2, &mut seen_entry_points)
+                .unwrap();
         assert!(uuid_fallback.hnsw_entry_point_num_ids.is_empty());
         assert_eq!(
             uuid_fallback
@@ -3393,7 +3498,7 @@ mod tests {
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &empty_entry_points, 2, &mut seen_entry_points)
+            compact_peer_premerge_entry(0, &empty_entry_points.into(), 2, &mut seen_entry_points,)
                 .unwrap_err()
                 .to_string()
                 .contains("no ordered HNSW entry points")
@@ -3405,10 +3510,15 @@ mod tests {
             ef: 76,
         };
         assert!(
-            compact_peer_premerge_entry(0, &duplicate_entry_points, 2, &mut seen_entry_points)
-                .unwrap_err()
-                .to_string()
-                .contains("duplicate ordered HNSW entry point 31")
+            compact_peer_premerge_entry(
+                0,
+                &duplicate_entry_points.into(),
+                2,
+                &mut seen_entry_points,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate ordered HNSW entry point 31")
         );
 
         let zero_ef = OrionShardTarget {
@@ -3417,7 +3527,7 @@ mod tests {
             ef: 0,
         };
         assert!(
-            compact_peer_premerge_entry(0, &zero_ef, 2, &mut seen_entry_points)
+            compact_peer_premerge_entry(0, &zero_ef.into(), 2, &mut seen_entry_points)
                 .unwrap_err()
                 .to_string()
                 .contains("no positive per-shard HNSW EF")
@@ -3522,9 +3632,8 @@ mod tests {
 
     #[test]
     fn orion_dense_search_plan_buckets_preserve_shard_and_query_encounter_order() {
-        let mut search_plans = new_orion_search_plans_by_shard(3);
-        append_orion_search_plans(
-            &mut search_plans,
+        let mut plan = SelectedLogicalShardSearchPlan::new(LogicalShardRoutingPolicy::Orion, 7, 3);
+        plan.push_targets(
             5,
             vec![
                 OrionShardTarget {
@@ -3537,11 +3646,12 @@ mod tests {
                     entry_points: vec![PointIdType::from(29)],
                     ef: 52,
                 },
-            ],
+            ]
+            .into_iter()
+            .map(Into::into),
         )
         .unwrap();
-        append_orion_search_plans(
-            &mut search_plans,
+        plan.push_targets(
             1,
             vec![
                 OrionShardTarget {
@@ -3554,12 +3664,14 @@ mod tests {
                     entry_points: vec![PointIdType::from(11)],
                     ef: 60,
                 },
-            ],
+            ]
+            .into_iter()
+            .map(Into::into),
         )
         .unwrap();
 
         assert_eq!(
-            search_plans
+            plan.targets_by_shard
                 .iter()
                 .enumerate()
                 .filter(|(_shard_id, plans)| !plans.is_empty())
@@ -3567,7 +3679,9 @@ mod tests {
                     shard_id,
                     plans
                         .iter()
-                        .map(|(query_index, target)| (*query_index, target.entry_points[0]))
+                        .map(|(query_index, target)| {
+                            (*query_index, target.entry_points.as_ref().unwrap()[0])
+                        })
                         .collect::<Vec<_>>(),
                 ))
                 .collect::<Vec<_>>(),
@@ -3581,21 +3695,19 @@ mod tests {
             ],
         );
 
-        let error = append_orion_search_plans(
-            &mut search_plans,
-            9,
-            vec![OrionShardTarget {
-                shard_id: 3,
-                entry_points: vec![PointIdType::from(7)],
-                ef: 64,
-            }],
-        )
-        .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("outside configured shard count 3")
-        );
+        let error = plan
+            .push_targets(
+                9,
+                vec![OrionShardTarget {
+                    shard_id: 3,
+                    entry_points: vec![PointIdType::from(7)],
+                    ef: 64,
+                }]
+                .into_iter()
+                .map(Into::into),
+            )
+            .unwrap_err();
+        assert_eq!(error, 3);
     }
 
     #[test]

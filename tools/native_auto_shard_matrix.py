@@ -169,6 +169,11 @@ def load_config(path: str | Path) -> dict[str, Any]:
     require_strict = data.get("require_strict_same_recall", False)
     if not isinstance(require_strict, bool):
         raise ValueError("require_strict_same_recall must be a boolean")
+    required_peer_premerge_mode = data.get("required_peer_premerge_mode")
+    if required_peer_premerge_mode not in {None, "enabled", "disabled"}:
+        raise ValueError(
+            "required_peer_premerge_mode must be enabled, disabled, or omitted"
+        )
     pairwise_window = float(data.get("same_recall_pairwise_window", window))
     if pairwise_window < 0:
         raise ValueError("same_recall_pairwise_window must be non-negative")
@@ -180,7 +185,53 @@ def load_config(path: str | Path) -> dict[str, Any]:
         "same_recall_window": window,
         "same_recall_pairwise_window": pairwise_window,
         "require_strict_same_recall": require_strict,
+        "required_peer_premerge_mode": required_peer_premerge_mode,
     }
+
+
+def enforce_required_peer_premerge_mode(
+    config: dict[str, Any], actual_mode: Any, *, source: str
+) -> None:
+    required_mode = config.get("required_peer_premerge_mode")
+    if required_mode is None:
+        return
+    normalized_actual_mode = str(actual_mode or "")
+    if normalized_actual_mode != required_mode:
+        raise RuntimeError(
+            "native matrix peer-premerge requirement mismatch: "
+            f"required={required_mode!r}, actual={normalized_actual_mode!r}, "
+            f"source={source}"
+        )
+
+
+def validate_live_deployment_transport_requirement(config: dict[str, Any]) -> None:
+    """Reject a transport-mismatched matrix before the first timed case runs."""
+
+    if config.get("required_peer_premerge_mode") is None:
+        return
+    manifest_path = Path(config["shared"]["deployment_manifest"]).expanduser().resolve()
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"deployment manifest not found: {manifest_path}")
+    try:
+        deployment_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"invalid deployment manifest JSON {manifest_path}: {exc}"
+        ) from exc
+    if not isinstance(deployment_manifest, dict):
+        raise RuntimeError("deployment manifest root must be an object")
+    transport_identity = benchmark.deployment_transport_identity(deployment_manifest)
+    peer_premerge = transport_identity.get("peer_premerge")
+    actual_mode = (
+        peer_premerge.get("current_mode")
+        if isinstance(peer_premerge, dict)
+        else None
+    )
+    enforce_required_peer_premerge_mode(
+        config,
+        actual_mode,
+        source=str(manifest_path),
+    )
 
 
 def matrix_directory(output_root: str | Path, run_id: str, *, must_exist: bool) -> Path:
@@ -480,6 +531,23 @@ def load_case_result(matrix_dir: Path, case: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             f"case {case['name']} method mismatch: config={case['method']}, "
             f"metrics={metrics.get('method')}"
+        )
+    execution = manifest.get("distributed_index_execution")
+    expected_execution = benchmark.distributed_index_execution_identity(
+        str(case["method"]), manifest.get("deployment") or {}
+    )
+    if execution != expected_execution:
+        raise RuntimeError(
+            f"case {case['name']} distributed-index execution identity mismatch: "
+            f"expected={expected_execution!r}, actual={execution!r}"
+        )
+    if (
+        metrics.get("execution_mode") != execution["executor"]
+        or metrics.get("transport_mode") != execution["transport_mode"]
+    ):
+        raise RuntimeError(
+            f"case {case['name']} final metrics do not match distributed-index "
+            "execution provenance"
         )
     route_trace_file_proof: dict[str, Any] | None = None
     if case.get("orion_route_trace") is True:
@@ -1442,6 +1510,11 @@ def collect_results(
             measured_lock_evidence,
         )
     shared_provenance = validate_shared_provenance(results)
+    enforce_required_peer_premerge_mode(
+        config,
+        shared_provenance.get("peer_premerge_mode"),
+        source="measured case provenance",
+    )
     routed_profile_families = validate_routed_profile_families(results)
     points = [result["point"] for result in results]
     frontiers: list[dict[str, Any]] = []
@@ -1487,6 +1560,7 @@ def collect_results(
         "same_recall_window": config["same_recall_window"],
         "same_recall_pairwise_window": config["same_recall_pairwise_window"],
         "require_strict_same_recall": config["require_strict_same_recall"],
+        "required_peer_premerge_mode": config["required_peer_premerge_mode"],
         "same_recall_confirmation": confirmations,
         "taskset_cpus": taskset_cpus,
         "benchmark_lock": benchmark_lock_evidence,
@@ -1533,6 +1607,7 @@ def run(args: argparse.Namespace) -> Path:
         )
         return matrix_dir
 
+    validate_live_deployment_transport_requirement(config)
     deployment_manifest = config["shared"]["deployment_manifest"]
     with benchmark_lock.hold_from_args(
         args,

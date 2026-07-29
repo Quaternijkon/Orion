@@ -171,6 +171,10 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
             .unwrap();
     }
 
+    collection.collection_config.write().await.auto_shard_policy = Some(AutoShardPolicy::Orion {
+        generation: 1,
+        artifact_sha256: "0".repeat(64),
+    });
     collection.orion_router = Some(Arc::new(OrionRouter::new(artifact()).unwrap()));
     (collection, collection_dir, snapshots_path)
 }
@@ -590,6 +594,31 @@ async fn native_orion_routes_standard_search_and_query_through_numeric_replica_s
         .await
         .unwrap();
     assert_eq!(query_result[0].id, 100_u64.into());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hash_all_policy_does_not_execute_a_loaded_orion_router() {
+    let (collection, _collection_dir, _snapshots_path) = fixture().await;
+
+    for policy in [Some(AutoShardPolicy::HashAll), None] {
+        collection.collection_config.write().await.auto_shard_policy = policy;
+        let result = collection
+            .core_search_batch(
+                shard::search::CoreSearchRequestBatch {
+                    searches: vec![core_request(false)],
+                },
+                None,
+                ShardSelectorInternal::All,
+                None,
+                HwMeasurementAcc::new(),
+            )
+            .await
+            .unwrap();
+
+        // Orion maps this query to shard 0 (point 100), while HashAll searches both shards and
+        // returns the exact dot-product winner from shard 1.
+        assert_eq!(result[0][0].id, 200_u64.into());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

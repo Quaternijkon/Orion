@@ -4,6 +4,7 @@ pub mod collection_state;
 pub mod common;
 pub mod config;
 pub mod discovery;
+pub(crate) mod distributed_index;
 pub mod grouping;
 pub mod hash_ring;
 pub mod lookup;

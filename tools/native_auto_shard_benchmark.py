@@ -184,6 +184,61 @@ def build_deployment_evidence(
     }
 
 
+def distributed_index_execution_identity(
+    method: str, deployment_evidence: dict[str, Any]
+) -> dict[str, Any]:
+    """Describe the planner/executor boundary used by one benchmark arm.
+
+    HashAll, Orion, and Simple KMeans all enter through ordinary coordinator Search/Query
+    requests. Static policies compile their algorithm-specific shard choices into the common
+    logical-shard plan. Orion's compact peer pre-merge remains an explicitly identified optional
+    transport optimization so policy-only and optimized experiments cannot be conflated.
+    """
+
+    if method not in {"hash_all", *ROUTED_METHODS}:
+        raise ValueError(f"unsupported distributed index method: {method!r}")
+    peer_premerge = deployment_evidence.get("peer_premerge") or {}
+    if not isinstance(peer_premerge, dict):
+        raise RuntimeError("deployment peer_premerge evidence must be an object or null")
+    peer_premerge_mode = str(peer_premerge.get("current_mode") or "unknown")
+
+    if method == "hash_all":
+        planner = "explicit_all_shards"
+        plan_kind = "all_shards"
+        executor = "qdrant_all_shards_replica_set"
+        transport_mode = "ordinary_per_shard_replica_set"
+    elif method == "orion":
+        planner = "orion_upper_hnsw"
+        plan_kind = "selected_by_shard"
+        if peer_premerge_mode == "enabled":
+            executor = "orion_compact_peer_premerge"
+            transport_mode = "orion_compact_peer_premerge"
+        else:
+            executor = "common_selected_shard_executor"
+            transport_mode = "ordinary_per_shard_replica_set"
+    else:
+        planner = "simple_kmeans_nprobe"
+        plan_kind = "selected_by_shard"
+        executor = "common_selected_shard_executor"
+        transport_mode = "ordinary_per_shard_replica_set"
+
+    return {
+        "schema_version": 1,
+        "cluster_architecture": "symmetric_qdrant_peers_request_scoped_coordinator",
+        "planner": planner,
+        "plan_kind": plan_kind,
+        "logical_shard_plan": "collection_logical_shard_plan_v1",
+        "executor": executor,
+        "replica_read_path": "ShardReplicaSet::core_search",
+        "global_merge_path": "Collection::merge_from_shards",
+        "transport_mode": transport_mode,
+        "peer_premerge_mode": peer_premerge_mode,
+        "policy_isolation_transport": (
+            method != "orion" or peer_premerge_mode == "disabled"
+        ),
+    }
+
+
 def verify_deployment_evidence_unchanged(evidence: dict[str, Any]) -> None:
     path_value = evidence.get("path")
     expected_sha256 = evidence.get("manifest_sha256")
@@ -1614,6 +1669,9 @@ def _run_locked(
         shard_count,
     )
     route = route_reporting(args.method, shard_count, artifact, args.hnsw_ef)
+    distributed_index_execution = distributed_index_execution_identity(
+        args.method, deployment_evidence
+    )
     output_dir = create_output_directory(args.output_dir)
     route_trace_proof: dict[str, Any] | None = None
 
@@ -1650,6 +1708,8 @@ def _run_locked(
             "visited_shards_source": route.get("visited_shards_source"),
             "ef_sum_per_query": route.get("ef_sum_per_query"),
             "ef_sum_source": route.get("ef_sum_source"),
+            "execution_mode": distributed_index_execution["executor"],
+            "transport_mode": distributed_index_execution["transport_mode"],
         }
         stability_rows.append(row)
         for per_query in result.get("per_query_rows") or []:
@@ -1714,6 +1774,8 @@ def _run_locked(
         "visited_shards_source": route.get("visited_shards_source"),
         "ef_sum_per_query": route.get("ef_sum_per_query"),
         "ef_sum_source": route.get("ef_sum_source"),
+        "execution_mode": distributed_index_execution["executor"],
+        "transport_mode": distributed_index_execution["transport_mode"],
     }
 
     verify_deployment_evidence_unchanged(deployment_evidence)
@@ -1773,6 +1835,7 @@ def _run_locked(
         "indexing_readiness": indexing_readiness,
         "placement_proof": placement_proof,
         "live_policy": policy,
+        "distributed_index_execution": distributed_index_execution,
         "artifact": artifact_proof,
         "artifact_bundle": artifact_bundle_proof,
         "orion_route_trace": route_trace_proof,
@@ -1802,6 +1865,7 @@ def _run_locked(
         "final_metrics": final_metrics,
         "stability_runs": len(stability_rows),
         "route_reporting": route,
+        "distributed_index_execution": distributed_index_execution,
         "artifact_validation": artifact_proof["status"],
         "placement_valid": placement_proof["valid"],
         "deployment_transport": {

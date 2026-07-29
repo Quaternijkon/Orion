@@ -23,6 +23,31 @@ def load_module():
     return module
 
 
+def test_distributed_index_execution_identity_separates_policy_and_transport():
+    module = load_module()
+    disabled = {"peer_premerge": {"current_mode": "disabled"}}
+    enabled = {"peer_premerge": {"current_mode": "enabled"}}
+
+    hash_all = module.distributed_index_execution_identity("hash_all", disabled)
+    orion_common = module.distributed_index_execution_identity("orion", disabled)
+    simple_common = module.distributed_index_execution_identity(
+        "simple_kmeans", disabled
+    )
+    orion_optimized = module.distributed_index_execution_identity("orion", enabled)
+
+    assert hash_all["plan_kind"] == "all_shards"
+    assert orion_common["plan_kind"] == "selected_by_shard"
+    assert simple_common["plan_kind"] == "selected_by_shard"
+    assert (
+        orion_common["executor"]
+        == simple_common["executor"]
+        == "common_selected_shard_executor"
+    )
+    assert orion_common["policy_isolation_transport"] is True
+    assert orion_optimized["executor"] == "orion_compact_peer_premerge"
+    assert orion_optimized["policy_isolation_transport"] is False
+
+
 def write_dataset(module, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with module.experiment.h5py.File(path, "w") as handle:

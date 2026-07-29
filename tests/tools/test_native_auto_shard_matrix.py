@@ -234,6 +234,45 @@ def shared_manifest(method: str, image_id: str = "sha256:same") -> dict:
     }
 
 
+def distributed_index_execution_identity(method: str, peer_mode: str = "enabled") -> dict:
+    if method == "hash_all":
+        planner = "explicit_all_shards"
+        plan_kind = "all_shards"
+        executor = "qdrant_all_shards_replica_set"
+        transport_mode = "ordinary_per_shard_replica_set"
+    elif method == "orion":
+        planner = "orion_upper_hnsw"
+        plan_kind = "selected_by_shard"
+        executor = (
+            "orion_compact_peer_premerge"
+            if peer_mode == "enabled"
+            else "common_selected_shard_executor"
+        )
+        transport_mode = (
+            "orion_compact_peer_premerge"
+            if peer_mode == "enabled"
+            else "ordinary_per_shard_replica_set"
+        )
+    else:
+        planner = "simple_kmeans_nprobe"
+        plan_kind = "selected_by_shard"
+        executor = "common_selected_shard_executor"
+        transport_mode = "ordinary_per_shard_replica_set"
+    return {
+        "schema_version": 1,
+        "cluster_architecture": "symmetric_qdrant_peers_request_scoped_coordinator",
+        "planner": planner,
+        "plan_kind": plan_kind,
+        "logical_shard_plan": "collection_logical_shard_plan_v1",
+        "executor": executor,
+        "replica_read_path": "ShardReplicaSet::core_search",
+        "global_merge_path": "Collection::merge_from_shards",
+        "transport_mode": transport_mode,
+        "peer_premerge_mode": peer_mode,
+        "policy_isolation_transport": method != "orion" or peer_mode == "disabled",
+    }
+
+
 def write_orion_route_trace(
     case_dir: Path,
     *,
@@ -390,6 +429,8 @@ def write_case_result(
     manifest = shared_manifest(case["method"], image_id=image_id)
     manifest["deployment"]["path"] = deployment_manifest_path
     manifest["collection"] = case["collection"]
+    execution = distributed_index_execution_identity(case["method"])
+    manifest["distributed_index_execution"] = execution
     if benchmark_lock_evidence is None:
         benchmark_lock_evidence = {
             "schema_version": 1,
@@ -486,6 +527,8 @@ def write_case_result(
         "visited_shards_source",
         "ef_sum_per_query",
         "ef_sum_source",
+        "execution_mode",
+        "transport_mode",
     ]
     with (case_dir / "final_metrics.csv").open(
         "w", newline="", encoding="utf-8"
@@ -520,6 +563,8 @@ def write_case_result(
                         else "derived"
                     )
                 ),
+                "execution_mode": execution["executor"],
+                "transport_mode": execution["transport_mode"],
             }
         )
 
@@ -528,6 +573,7 @@ def test_config_validation_and_taskset_command(tmp_path):
     module = load_module()
     config = module.load_config(write_config(tmp_path))
     assert config["require_strict_same_recall"] is False
+    assert config["required_peer_premerge_mode"] is None
     assert config["same_recall_pairwise_window"] == config["same_recall_window"]
     command = module.benchmark_command(
         config["shared"],
@@ -582,6 +628,49 @@ def test_config_validation_and_taskset_command(tmp_path):
         module.load_config(
             write_config(tmp_path / "missing-deployment", missing_deployment)
         )
+
+    invalid_peer_mode = base_config()
+    invalid_peer_mode["required_peer_premerge_mode"] = "policy_only"
+    with pytest.raises(ValueError, match="required_peer_premerge_mode"):
+        module.load_config(
+            write_config(tmp_path / "invalid-peer-mode", invalid_peer_mode)
+        )
+
+
+def test_live_deployment_transport_requirement_fails_before_timed_cases(tmp_path):
+    module = load_module()
+    config_value = base_config()
+    config_value["required_peer_premerge_mode"] = "disabled"
+    deployment_manifest_path = tmp_path / "deployment.json"
+    config_value["shared"]["deployment_manifest"] = str(deployment_manifest_path)
+    config = module.load_config(write_config(tmp_path / "config", config_value))
+
+    deployment_manifest_path.write_text(
+        json.dumps(
+            {
+                "image": {},
+                "orion_compact_wire": {"current_version": "2"},
+                "peer_premerge": {"current_mode": "disabled"},
+                "nodes": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    module.validate_live_deployment_transport_requirement(config)
+
+    deployment_manifest_path.write_text(
+        json.dumps(
+            {
+                "image": {},
+                "orion_compact_wire": {"current_version": "2"},
+                "peer_premerge": {"current_mode": "enabled"},
+                "nodes": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="required='disabled'.*actual='enabled'"):
+        module.validate_live_deployment_transport_requirement(config)
 
 
 def test_matrix_output_must_be_new_and_outside_repository(tmp_path):
