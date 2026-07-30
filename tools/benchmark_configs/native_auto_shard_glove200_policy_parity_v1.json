@@ -26,10 +26,10 @@
   "require_strict_same_recall": true,
   "cases": [
     {
-      "name": "hash_all_r090_ef37",
+      "name": "hash_all_r090_ef36",
       "method": "hash_all",
       "collection": "dist_native-20260729-policy-parity-v1_hash_all",
-      "hnsw_ef": 37
+      "hnsw_ef": 36
     },
     {
       "name": "hash_all_r095_ef71",
