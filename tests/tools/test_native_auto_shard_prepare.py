@@ -65,6 +65,29 @@ def args_for(module, tmp_path, method, *extra):
     return module.parse_args(values)
 
 
+def test_layout_size_balanced_placement_is_routed_only(tmp_path):
+    module = load_module()
+
+    hash_args = args_for(
+        module,
+        tmp_path,
+        "hash_all",
+        "--placement-strategy",
+        "layout_size_balanced",
+    )
+    with pytest.raises(ValueError, match="only valid for routed methods"):
+        module.validate_args(hash_args)
+
+    routed_args = args_for(
+        module,
+        tmp_path,
+        "orion",
+        "--placement-strategy",
+        "layout_size_balanced",
+    )
+    module.validate_args(routed_args)
+
+
 def collection_info(method, points_count, policy=None, metadata=None):
     return {
         "status": "green",
@@ -688,6 +711,11 @@ def test_load_simple_layout_validates_build_artifact_and_import_binding(tmp_path
         "format_version": 1,
         "tool": "tools/simple_kmeans_native_layout.py",
         "mode": "production_bundle",
+        "routing": {
+            "logical_point_count": 2,
+            "physical_point_count": 2,
+            "shard_counts": [1, 1],
+        },
         "outputs": {
             "production_artifact": artifact.name,
             "import_manifest": import_manifest.name,
@@ -716,6 +744,17 @@ def test_load_simple_layout_validates_build_artifact_and_import_binding(tmp_path
     assert proof["logical_point_count"] == proof["physical_point_count"] == 2
     assert proof["artifact_sha256"] == module.layout_common.sha256_path(artifact)
     assert proof["smoke_vector"] == [1.0, 0.0]
+    assert proof["shard_weights"] == [1, 1]
+
+    build_manifest["routing"]["shard_counts"] = [2, 1]
+    (layout_dir / module.layout_common.BUILD_MANIFEST_NAME).write_text(
+        json.dumps(build_manifest),
+        encoding="utf-8",
+    )
+    (layout_dir / module.layout_common.CHECKSUMS_NAME).unlink()
+    module.layout_common.write_checksums(layout_dir)
+    with pytest.raises(RuntimeError, match="do not sum to physical_point_count"):
+        module.load_routed_layout("simple_kmeans", layout_dir)
 
 
 def build_simple_runtime_profile_bundle(module, monkeypatch, tmp_path):

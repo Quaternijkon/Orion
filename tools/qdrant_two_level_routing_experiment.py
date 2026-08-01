@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -3003,6 +3004,111 @@ def round_robin_numeric_shard_targets(
     }
 
 
+def size_balanced_numeric_shard_targets(
+    shard_weights: list[int] | tuple[int, ...],
+    worker_peer_ids: list[int] | tuple[int, ...],
+    *,
+    current_placement: dict[int, int] | None = None,
+) -> dict[int, int]:
+    """Place unequal numeric shards with deterministic count-balanced LPT bin packing.
+
+    The weights are layout facts such as the number of physical vectors in each Orion shard.
+    They do not depend on benchmark queries.  The optional current placement only chooses which
+    physical worker receives each already-computed bin, minimizing live shard moves without
+    changing the bins or their loads.
+    """
+    workers = list(worker_peer_ids)
+    round_robin_numeric_shard_targets([], workers)
+    if not shard_weights:
+        raise ValueError("at least one numeric shard weight is required")
+
+    weights: list[int] = []
+    for shard_id, weight in enumerate(shard_weights):
+        if isinstance(weight, bool) or not isinstance(weight, int) or weight <= 0:
+            raise ValueError(
+                f"numeric shard {shard_id} weight must be a positive integer, got {weight!r}"
+            )
+        weights.append(weight)
+
+    shard_count = len(weights)
+    worker_count = len(workers)
+    max_shards_per_worker = ceil(shard_count / worker_count)
+    min_shards_per_worker = shard_count // worker_count
+    bins: list[list[int]] = [[] for _ in workers]
+    loads = [0 for _ in workers]
+    for shard_id in sorted(range(shard_count), key=lambda index: (-weights[index], index)):
+        candidates = [
+            index
+            for index, assigned in enumerate(bins)
+            if len(assigned) < max_shards_per_worker
+        ]
+        target = min(candidates, key=lambda index: (loads[index], len(bins[index]), index))
+        bins[target].append(shard_id)
+        loads[target] += weights[shard_id]
+
+    # A ceiling cap can still produce counts such as 6/6/4.  Rebalance only the shard count,
+    # selecting the move that minimizes the resulting maximum load and then the load range.
+    while min(map(len, bins)) < min_shards_per_worker:
+        destination = min(
+            (index for index in range(worker_count) if len(bins[index]) < min_shards_per_worker),
+            key=lambda index: (loads[index], index),
+        )
+        candidates: list[tuple[tuple[int, int, int, int], int, int]] = []
+        for source in range(worker_count):
+            if len(bins[source]) <= min_shards_per_worker:
+                continue
+            for shard_id in bins[source]:
+                candidate_loads = list(loads)
+                candidate_loads[source] -= weights[shard_id]
+                candidate_loads[destination] += weights[shard_id]
+                score = (
+                    max(candidate_loads),
+                    max(candidate_loads) - min(candidate_loads),
+                    weights[shard_id],
+                    shard_id,
+                )
+                candidates.append((score, source, shard_id))
+        if not candidates:
+            raise RuntimeError("could not count-balance size-aware numeric shard bins")
+        _score, source, shard_id = min(candidates)
+        bins[source].remove(shard_id)
+        bins[destination].append(shard_id)
+        loads[source] -= weights[shard_id]
+        loads[destination] += weights[shard_id]
+
+    bin_to_worker = list(range(worker_count))
+    if current_placement is not None:
+        expected_ids = set(range(shard_count))
+        if set(current_placement) != expected_ids:
+            raise ValueError(
+                "current numeric shard placement must cover the contiguous shard range: "
+                f"expected={sorted(expected_ids)}, actual={sorted(current_placement)}"
+            )
+        if any(peer_id not in workers for peer_id in current_placement.values()):
+            raise ValueError("current numeric shard placement contains a non-worker peer")
+        if worker_count <= 8:
+            def assignment_score(permutation: tuple[int, ...]) -> tuple[int, int, tuple[int, ...]]:
+                moved = 0
+                moved_weight = 0
+                for bin_index, shard_ids in enumerate(bins):
+                    peer_id = workers[permutation[bin_index]]
+                    for shard_id in shard_ids:
+                        if current_placement[shard_id] != peer_id:
+                            moved += 1
+                            moved_weight += weights[shard_id]
+                return moved, moved_weight, permutation
+
+            bin_to_worker = list(
+                min(itertools.permutations(range(worker_count)), key=assignment_score)
+            )
+
+    return {
+        shard_id: workers[bin_to_worker[bin_index]]
+        for bin_index, shard_ids in enumerate(bins)
+        for shard_id in shard_ids
+    }
+
+
 def _validate_numeric_auto_rf1_config(
     info: dict[str, Any],
     expected_shard_count: int,
@@ -3231,17 +3337,19 @@ def _wait_for_numeric_shard_owner(
     )
 
 
-def move_numeric_shards_round_robin(
+def _move_numeric_shards_to_targets(
     base_url: str,
     collection: str,
     worker_peer_ids: list[int] | tuple[int, ...],
+    targets: dict[int, int],
     *,
     expected_shard_count: int,
+    placement_mode: str,
     transfer_method: str = "stream_records",
     timeout_sec: float = 3600.0,
     poll_interval_sec: float = 1.0,
 ) -> dict[str, Any]:
-    """Idempotently move native numeric shards to an exact worker round-robin layout."""
+    """Idempotently move native numeric shards to one exact worker-only layout."""
     if expected_shard_count <= 0:
         raise ValueError("expected_shard_count must be positive")
     if timeout_sec <= 0:
@@ -3265,6 +3373,26 @@ def move_numeric_shards_round_robin(
     unknown_workers = sorted(set(workers) - known_peer_ids)
     if unknown_workers:
         raise RuntimeError(f"worker peer IDs are not cluster members: {unknown_workers}")
+    expected_ids = set(range(expected_shard_count))
+    if set(targets) != expected_ids:
+        raise ValueError(
+            "target numeric shard placement must cover the contiguous shard range: "
+            f"expected={sorted(expected_ids)}, actual={sorted(targets)}"
+        )
+    invalid_targets = {
+        shard_id: peer_id
+        for shard_id, peer_id in targets.items()
+        if (
+            isinstance(shard_id, bool)
+            or not isinstance(shard_id, int)
+            or shard_id < 0
+            or isinstance(peer_id, bool)
+            or not isinstance(peer_id, int)
+            or peer_id not in workers
+        )
+    }
+    if invalid_targets:
+        raise ValueError(f"invalid worker-only numeric shard targets: {invalid_targets}")
 
     deadline = time.perf_counter() + timeout_sec
 
@@ -3287,7 +3415,6 @@ def move_numeric_shards_round_robin(
         idle_cluster,
         expected_shard_count=expected_shard_count,
     )
-    targets = round_robin_numeric_shard_targets(list(placement), workers)
     moves: list[dict[str, Any]] = []
     cluster_path = f"/collections/{urllib.parse.quote(collection, safe='')}/cluster"
     for shard_id in sorted(targets):
@@ -3335,13 +3462,76 @@ def move_numeric_shards_round_robin(
         timeout_sec=remaining_timeout(),
         poll_interval_sec=poll_interval_sec,
     )
-    audit = validate_numeric_shard_round_robin_placement(
-        final_info,
-        final_cluster,
-        workers,
-        expected_shard_count,
-    )
+    if placement_mode == "round_robin":
+        audit = validate_numeric_shard_round_robin_placement(
+            final_info,
+            final_cluster,
+            workers,
+            expected_shard_count,
+        )
+    elif placement_mode == "explicit":
+        audit = validate_numeric_shard_explicit_placement(
+            final_info,
+            final_cluster,
+            workers,
+            expected_shard_count,
+            targets,
+        )
+    else:
+        raise ValueError(f"unsupported numeric shard placement mode: {placement_mode!r}")
     return {**audit, "moves": moves, "transfer_method": transfer_method}
+
+
+def move_numeric_shards_explicit(
+    base_url: str,
+    collection: str,
+    worker_peer_ids: list[int] | tuple[int, ...],
+    target_placement: dict[int, int],
+    *,
+    expected_shard_count: int,
+    transfer_method: str = "snapshot",
+    timeout_sec: float = 3600.0,
+    poll_interval_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Idempotently move native numeric shards to an explicit worker-only layout."""
+    return _move_numeric_shards_to_targets(
+        base_url,
+        collection,
+        worker_peer_ids,
+        dict(target_placement),
+        expected_shard_count=expected_shard_count,
+        placement_mode="explicit",
+        transfer_method=transfer_method,
+        timeout_sec=timeout_sec,
+        poll_interval_sec=poll_interval_sec,
+    )
+
+
+def move_numeric_shards_round_robin(
+    base_url: str,
+    collection: str,
+    worker_peer_ids: list[int] | tuple[int, ...],
+    *,
+    expected_shard_count: int,
+    transfer_method: str = "stream_records",
+    timeout_sec: float = 3600.0,
+    poll_interval_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Idempotently move native numeric shards to an exact worker round-robin layout."""
+    targets = round_robin_numeric_shard_targets(
+        list(range(expected_shard_count)), list(worker_peer_ids)
+    )
+    return _move_numeric_shards_to_targets(
+        base_url,
+        collection,
+        worker_peer_ids,
+        targets,
+        expected_shard_count=expected_shard_count,
+        placement_mode="round_robin",
+        transfer_method=transfer_method,
+        timeout_sec=timeout_sec,
+        poll_interval_sec=poll_interval_sec,
+    )
 
 
 def collection_shard_key_to_peer(base_url: str, collection: str) -> dict[str, int]:

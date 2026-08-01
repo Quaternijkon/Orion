@@ -88,6 +88,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--transfer-timeout-secs", type=float, default=3600.0)
     parser.add_argument("--transfer-poll-interval-secs", type=float, default=1.0)
     parser.add_argument(
+        "--placement-strategy",
+        choices=("round_robin", "layout_size_balanced"),
+        default="round_robin",
+        help=(
+            "Physical worker placement for native numeric shards. "
+            "layout_size_balanced uses only offline layout shard sizes and preserves "
+            "the logical routing/search plan."
+        ),
+    )
+    parser.add_argument(
         "--cargo-runner",
         default=str(REPO_ROOT / "tools/cargo_in_docker.sh"),
     )
@@ -130,6 +140,10 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--layout-dir is only valid for routed methods")
         if args.resume:
             raise ValueError("--resume is only valid for routed import")
+        if args.placement_strategy != "round_robin":
+            raise ValueError(
+                "--placement-strategy layout_size_balanced is only valid for routed methods"
+            )
 
 
 def create_output_directory(path: str | Path) -> Path:
@@ -825,6 +839,27 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
     )
     if not experiment.np.isfinite(smoke_vector).all():
         raise RuntimeError("import bundle first vector contains a non-finite value")
+    routing = build_manifest.get("routing")
+    shard_weights = None
+    if isinstance(routing, dict) and "shard_counts" in routing:
+        raw_shard_weights = routing.get("shard_counts")
+        if not isinstance(raw_shard_weights, list):
+            raise ValueError("layout routing shard_counts must be a list")
+        if len(raw_shard_weights) != artifact["shard_count"]:
+            raise RuntimeError(
+                "layout routing shard_counts length does not match artifact shard_count"
+            )
+        if any(
+            isinstance(weight, bool) or not isinstance(weight, int) or weight <= 0
+            for weight in raw_shard_weights
+        ):
+            raise ValueError("layout routing shard_counts must contain positive integers")
+        if sum(raw_shard_weights) != artifact["physical_point_count"]:
+            raise RuntimeError(
+                "layout routing shard_counts do not sum to physical_point_count"
+            )
+        shard_weights = list(raw_shard_weights)
+
     return {
         "layout_dir": str(layout_dir),
         "build_manifest_path": str(build_manifest_path),
@@ -842,6 +877,7 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         "shard_count": artifact["shard_count"],
         "logical_point_count": artifact["logical_point_count"],
         "physical_point_count": artifact["physical_point_count"],
+        "shard_weights": shard_weights,
         "smoke_vector": smoke_vector.tolist(),
     }
 
@@ -1374,14 +1410,67 @@ def prepare(args: argparse.Namespace) -> Path:
             shard_count,
         )
 
-    placement_proof = experiment.move_numeric_shards_round_robin(
-        args.base_url,
-        args.collection,
-        cluster_preflight["worker_peer_ids"],
-        expected_shard_count=shard_count,
-        timeout_sec=args.transfer_timeout_secs,
-        poll_interval_sec=args.transfer_poll_interval_secs,
-    )
+    placement_plan: dict[str, Any]
+    if args.placement_strategy == "round_robin":
+        target_placement = experiment.round_robin_numeric_shard_targets(
+            list(range(shard_count)),
+            cluster_preflight["worker_peer_ids"],
+        )
+        placement_plan = {
+            "strategy": "round_robin",
+            "weight_source": None,
+            "target_placement": target_placement,
+        }
+        placement_proof = experiment.move_numeric_shards_round_robin(
+            args.base_url,
+            args.collection,
+            cluster_preflight["worker_peer_ids"],
+            expected_shard_count=shard_count,
+            timeout_sec=args.transfer_timeout_secs,
+            poll_interval_sec=args.transfer_poll_interval_secs,
+        )
+    else:
+        if layout is None or layout.get("shard_weights") is None:
+            raise RuntimeError(
+                "layout_size_balanced placement requires routing.shard_counts in the layout "
+                "build manifest"
+            )
+        current_placement = experiment.discover_numeric_shard_placement(
+            args.base_url,
+            args.collection,
+            expected_shard_count=shard_count,
+        )
+        target_placement = experiment.size_balanced_numeric_shard_targets(
+            layout["shard_weights"],
+            cluster_preflight["worker_peer_ids"],
+            current_placement=current_placement,
+        )
+        worker_weights = {
+            peer_id: sum(
+                layout["shard_weights"][shard_id]
+                for shard_id, owner in target_placement.items()
+                if owner == peer_id
+            )
+            for peer_id in cluster_preflight["worker_peer_ids"]
+        }
+        placement_plan = {
+            "strategy": "layout_size_balanced",
+            "weight_source": "layout_build_manifest.routing.shard_counts",
+            "shard_weights": layout["shard_weights"],
+            "target_placement": target_placement,
+            "target_weight_per_worker": worker_weights,
+            "target_weight_max_over_mean": max(worker_weights.values())
+            / (sum(worker_weights.values()) / len(worker_weights)),
+        }
+        placement_proof = experiment.move_numeric_shards_explicit(
+            args.base_url,
+            args.collection,
+            cluster_preflight["worker_peer_ids"],
+            target_placement,
+            expected_shard_count=shard_count,
+            timeout_sec=args.transfer_timeout_secs,
+            poll_interval_sec=args.transfer_poll_interval_secs,
+        )
 
     commands: list[dict[str, Any]] = []
     initial_points_count = int(info.get("points_count") or 0)
@@ -1471,11 +1560,29 @@ def prepare(args: argparse.Namespace) -> Path:
     final_cluster = experiment.collection_cluster_info(args.base_url, args.collection)
     if final_cluster is None:
         raise RuntimeError("final collection cluster placement is unavailable")
-    final_placement = experiment.validate_numeric_shard_round_robin_placement(
-        final_info,
-        final_cluster,
-        cluster_preflight["worker_peer_ids"],
-        shard_count,
+    if args.placement_strategy == "round_robin":
+        final_placement = experiment.validate_numeric_shard_round_robin_placement(
+            final_info,
+            final_cluster,
+            cluster_preflight["worker_peer_ids"],
+            shard_count,
+        )
+    else:
+        final_placement = experiment.validate_numeric_shard_explicit_placement(
+            final_info,
+            final_cluster,
+            cluster_preflight["worker_peer_ids"],
+            shard_count,
+            target_placement,
+        )
+
+    placement_map_path = output_dir / "placement_map.json"
+    layout_common.write_json_new(
+        placement_map_path,
+        {
+            "strategy": args.placement_strategy,
+            "target_placement": target_placement,
+        },
     )
 
     manifest = {
@@ -1539,6 +1646,11 @@ def prepare(args: argparse.Namespace) -> Path:
         "commands": commands,
         "standard_api_smoke": smoke_proof,
         "provenance_metadata": provenance_metadata,
+        "placement_plan": placement_plan,
+        "placement_map": {
+            "path": str(placement_map_path),
+            "sha256": layout_common.sha256_path(placement_map_path),
+        },
         "placement": placement_proof,
         "final_collection_proof": final_proof,
         "final_placement_proof": final_placement,

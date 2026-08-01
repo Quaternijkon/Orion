@@ -1006,6 +1006,58 @@ def test_numeric_shard_placement_discovers_local_and_remote_rf1_replicas():
     ) == {0: 202, 1: 303, 2: 404, 3: 202}
 
 
+def test_size_balanced_numeric_shard_targets_balance_layout_and_minimize_moves():
+    module = load_module()
+    weights = [
+        119810,
+        60310,
+        37970,
+        86496,
+        84733,
+        126939,
+        108507,
+        58525,
+        60986,
+        103783,
+        35261,
+        87684,
+        83828,
+        104673,
+        95088,
+        71088,
+    ]
+    workers = [202, 303, 404]
+    current = {shard_id: workers[shard_id % len(workers)] for shard_id in range(16)}
+
+    targets = module.size_balanced_numeric_shard_targets(
+        weights,
+        workers,
+        current_placement=current,
+    )
+
+    assert [shard_id for shard_id in range(16) if targets[shard_id] != current[shard_id]] == [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        11,
+        12,
+    ]
+    assert {
+        peer_id: sum(weights[shard_id] for shard_id, owner in targets.items() if owner == peer_id)
+        for peer_id in workers
+    } == {202: 437939, 303: 457923, 404: 429819}
+    assert {
+        peer_id: sum(owner == peer_id for owner in targets.values())
+        for peer_id in workers
+    } == {202: 5, 303: 6, 404: 5}
+
+    with pytest.raises(ValueError, match="positive integer"):
+        module.size_balanced_numeric_shard_targets([10, 0], workers)
+
+
 def test_numeric_shard_placement_rejects_custom_keys_duplicate_replicas_and_transfers():
     module = load_module()
     base = {
@@ -1119,6 +1171,21 @@ def test_move_numeric_shards_round_robin_is_sequential_strict_and_idempotent(mon
     )
     assert repeated["moves"] == []
     assert move_calls == []
+
+    explicit_targets = {0: 404, 1: 303, 2: 202, 3: 404}
+    explicit = module.move_numeric_shards_explicit(
+        "http://10.10.1.1:6333",
+        "native",
+        [202, 303, 404],
+        explicit_targets,
+        expected_shard_count=4,
+        timeout_sec=5.0,
+        poll_interval_sec=0.0,
+    )
+    assert owners == explicit_targets
+    assert explicit["placement_mode"] == "explicit"
+    assert [move["shard_id"] for move in move_calls] == [0, 2, 3]
+    assert all(move["method"] == "snapshot" for move in move_calls)
 
 
 def test_validate_numeric_shard_round_robin_rejects_controller_or_wrong_peer():
