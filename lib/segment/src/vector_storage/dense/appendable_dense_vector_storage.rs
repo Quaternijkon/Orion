@@ -91,6 +91,14 @@ impl<T: PrimitiveVectorElement> DenseVectorStorage<T> for AppendableMmapDenseVec
     fn for_each_in_dense_batch<F: FnMut(usize, &[T])>(&self, keys: &[PointOffsetType], f: F) {
         self.vectors.for_each_in_batch(keys, f);
     }
+
+    fn for_each_in_dense_batch_prefetched<F: FnMut(usize, &[T])>(
+        &self,
+        keys: &[PointOffsetType],
+        f: F,
+    ) {
+        self.vectors.for_each_in_batch_prefetched(keys, f);
+    }
 }
 
 impl<T: PrimitiveVectorElement> VectorStorage for AppendableMmapDenseVectorStorage<T> {

@@ -23,7 +23,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::Flusher;
 use crate::common::operation_error::{OperationError, OperationResult};
-use crate::vector_storage::common::{CHUNK_SIZE, PAGE_SIZE_BYTES, VECTOR_READ_BATCH_SIZE};
+use crate::vector_storage::common::{
+    CHUNK_SIZE, DENSE_VECTOR_PREFETCH_DISTANCE, PAGE_SIZE_BYTES, VECTOR_READ_BATCH_SIZE,
+    prefetch_dense_vector,
+};
 use crate::vector_storage::query_scorer::is_read_with_prefetch_efficient;
 use crate::vector_storage::{VectorOffset, VectorOffsetType};
 
@@ -334,6 +337,35 @@ impl<T: Sized + Copy + 'static, S: UniversalWrite<T>> ChunkedVectors<T, S> {
 
         for (i, vec) in vectors.iter().enumerate() {
             f(i, vec.as_ref());
+        }
+    }
+
+    pub fn for_each_in_batch_prefetched<F: FnMut(usize, &[T]), O: VectorOffset>(
+        &self,
+        keys: &[O],
+        mut f: F,
+    ) {
+        debug_assert!(keys.len() <= VECTOR_READ_BATCH_SIZE);
+        let do_sequential_read = is_read_with_prefetch_efficient(keys);
+
+        let mut vectors_buffer = [const { MaybeUninit::uninit() }; VECTOR_READ_BATCH_SIZE];
+        let vectors = maybe_uninit_fill_from(
+            &mut vectors_buffer,
+            keys.iter().map(|&key| {
+                self.get_many_impl(key.offset(), 1, do_sequential_read)
+                    .unwrap_or_else(|| panic!("Vector {key} not found"))
+            }),
+        )
+        .0;
+
+        for vector in vectors.iter().take(DENSE_VECTOR_PREFETCH_DISTANCE) {
+            prefetch_dense_vector(vector.as_ref());
+        }
+        for (i, vector) in vectors.iter().enumerate() {
+            if let Some(next_vector) = vectors.get(i + DENSE_VECTOR_PREFETCH_DISTANCE) {
+                prefetch_dense_vector(next_vector.as_ref());
+            }
+            f(i, vector.as_ref());
         }
     }
 

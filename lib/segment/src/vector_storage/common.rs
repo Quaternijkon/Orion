@@ -30,6 +30,39 @@ pub const PAGE_SIZE_BYTES: usize = 4096;
 /// in case we need to score an iterator of vector ids
 pub const VECTOR_READ_BATCH_SIZE: usize = 64;
 
+/// Number of vector scores between issuing a software prefetch and consuming the vector.
+///
+/// HNSW neighbor batches are made of random vector IDs. A short fixed look-ahead gives the CPU
+/// time to fetch the first cache line without pulling the complete batch into L1 at once.
+pub const DENSE_VECTOR_PREFETCH_DISTANCE: usize = 4;
+
+/// Prefetch the first cache line of a dense vector into the closest cache level.
+///
+/// This is deliberately a best-effort hint. Unsupported architectures keep the same access path,
+/// and an empty slice is never passed to an architecture intrinsic.
+#[inline]
+pub fn prefetch_dense_vector<T>(vector: &[T]) {
+    if vector.is_empty() {
+        return;
+    }
+
+    #[cfg(target_arch = "x86")]
+    unsafe {
+        std::arch::x86::_mm_prefetch(vector.as_ptr().cast::<i8>(), std::arch::x86::_MM_HINT_T0);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::x86_64::_mm_prefetch(
+            vector.as_ptr().cast::<i8>(),
+            std::arch::x86_64::_MM_HINT_T0,
+        );
+    }
+
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let _ = vector;
+}
+
 #[cfg(debug_assertions)]
 pub const CHUNK_SIZE: usize = 512 * 1024;
 

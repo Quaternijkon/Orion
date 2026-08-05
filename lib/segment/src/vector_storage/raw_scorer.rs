@@ -32,6 +32,14 @@ use crate::vector_storage::sparse::volatile_sparse_vector_storage::VolatileSpars
 pub trait RawScorer {
     fn score_points(&self, points: &[PointOffsetType], scores: &mut [ScoreType]);
 
+    /// Score points using best-effort storage prefetching.
+    ///
+    /// New scorer implementations remain on their established path unless they explicitly
+    /// override this method.
+    fn score_points_prefetched(&self, points: &[PointOffsetType], scores: &mut [ScoreType]) {
+        self.score_points(points, scores);
+    }
+
     /// Whether [`RawScorer::score_points`] can replace repeated
     /// [`RawScorer::score_point`] calls without changing scorer usage semantics.
     ///
@@ -446,6 +454,23 @@ impl<TQueryScorer: QueryScorer> RawScorer for RawScorerImpl<TQueryScorer> {
 
             self.query_scorer
                 .score_stored_batch(chunk_points, chunk_scores);
+        }
+    }
+
+    fn score_points_prefetched(&self, points: &[PointOffsetType], scores: &mut [ScoreType]) {
+        assert_eq!(points.len(), scores.len());
+
+        let (mut remaining_points, mut remaining_scores) = (points, scores);
+        while !remaining_points.is_empty() {
+            let chunk_size = remaining_points.len().min(VECTOR_READ_BATCH_SIZE);
+
+            let (chunk_points, rest_points) = remaining_points.split_at(chunk_size);
+            let (chunk_scores, rest_scores) = remaining_scores.split_at_mut(chunk_size);
+            remaining_points = rest_points;
+            remaining_scores = rest_scores;
+
+            self.query_scorer
+                .score_stored_batch_prefetched(chunk_points, chunk_scores);
         }
     }
 

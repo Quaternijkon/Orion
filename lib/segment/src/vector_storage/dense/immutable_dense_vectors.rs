@@ -17,7 +17,9 @@ use fs_err::{File, OpenOptions};
 use crate::common::error_logging::LogError;
 use crate::common::operation_error::OperationResult;
 use crate::data_types::primitive::PrimitiveVectorElement;
-use crate::vector_storage::common::VECTOR_READ_BATCH_SIZE;
+use crate::vector_storage::common::{
+    DENSE_VECTOR_PREFETCH_DISTANCE, VECTOR_READ_BATCH_SIZE, prefetch_dense_vector,
+};
 use crate::vector_storage::query_scorer::is_read_with_prefetch_efficient;
 
 const HEADER_SIZE: usize = 4;
@@ -157,6 +159,33 @@ impl<T: PrimitiveVectorElement, S: UniversalRead<T>> ImmutableDenseVectors<T, S>
 
         for (i, vec) in vectors.iter().enumerate() {
             f(i, vec);
+        }
+    }
+
+    pub fn for_each_in_batch_prefetched<F: FnMut(usize, &[T])>(
+        &self,
+        keys: &[PointOffsetType],
+        mut f: F,
+    ) {
+        debug_assert!(keys.len() <= VECTOR_READ_BATCH_SIZE);
+
+        let mut vectors_buffer = [const { MaybeUninit::uninit() }; VECTOR_READ_BATCH_SIZE];
+        let vectors = if is_read_with_prefetch_efficient(keys) {
+            let iter = keys.iter().map(|key| self.get_vector::<Sequential>(*key));
+            maybe_uninit_fill_from(&mut vectors_buffer, iter).0
+        } else {
+            let iter = keys.iter().map(|key| self.get_vector::<Random>(*key));
+            maybe_uninit_fill_from(&mut vectors_buffer, iter).0
+        };
+
+        for vector in vectors.iter().take(DENSE_VECTOR_PREFETCH_DISTANCE) {
+            prefetch_dense_vector(vector);
+        }
+        for (i, vector) in vectors.iter().enumerate() {
+            if let Some(next_vector) = vectors.get(i + DENSE_VECTOR_PREFETCH_DISTANCE) {
+                prefetch_dense_vector(next_vector);
+            }
+            f(i, vector);
         }
     }
 

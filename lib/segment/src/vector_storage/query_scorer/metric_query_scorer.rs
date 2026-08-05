@@ -87,6 +87,19 @@ impl<
             });
     }
 
+    fn score_stored_batch_prefetched(&self, ids: &[PointOffsetType], scores: &mut [ScoreType]) {
+        debug_assert!(ids.len() <= VECTOR_READ_BATCH_SIZE);
+        debug_assert_eq!(ids.len(), scores.len());
+
+        self.hardware_counter.cpu_counter().incr_delta(ids.len());
+        self.hardware_counter.vector_io_read().incr_delta(ids.len());
+
+        self.vector_storage
+            .for_each_in_dense_batch_prefetched(ids, |idx, vector| {
+                scores[idx] = TMetric::similarity(&self.query, vector);
+            });
+    }
+
     #[inline]
     fn score(&self, v2: &[TElement]) -> ScoreType {
         self.hardware_counter.cpu_counter().incr();

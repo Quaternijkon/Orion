@@ -209,6 +209,15 @@ where
         let mmap_store = self.vectors.as_ref().unwrap();
         mmap_store.for_each_in_batch(keys, f);
     }
+
+    fn for_each_in_dense_batch_prefetched<F: FnMut(usize, &[T])>(
+        &self,
+        keys: &[PointOffsetType],
+        f: F,
+    ) {
+        let mmap_store = self.vectors.as_ref().unwrap();
+        mmap_store.for_each_in_batch_prefetched(keys, f);
+    }
 }
 
 impl<T, S> VectorStorage for DenseVectorStorageImpl<T, S>

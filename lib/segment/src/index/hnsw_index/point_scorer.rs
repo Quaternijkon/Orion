@@ -251,6 +251,35 @@ impl<'a> FilteredScorer<'a> {
             .map(|(&idx, &score)| ScoredPointOffset { idx, score })
     }
 
+    /// Filters and scores points through the storage-prefetched batch path.
+    pub fn score_points_prefetched(
+        &mut self,
+        point_ids: &mut Vec<PointOffsetType>,
+        limit: usize,
+    ) -> impl Iterator<Item = ScoredPointOffset> {
+        point_ids.retain(|point_id| self.filters.check_vector(*point_id));
+        if limit != 0 {
+            point_ids.truncate(limit);
+        }
+
+        self.score_points_unfiltered_prefetched(point_ids)
+    }
+
+    pub fn score_points_unfiltered_prefetched(
+        &mut self,
+        point_ids: &[PointOffsetType],
+    ) -> impl Iterator<Item = ScoredPointOffset> {
+        if self.scores_buffer.len() < point_ids.len() {
+            self.scores_buffer.resize(point_ids.len(), 0.0);
+        }
+
+        self.raw_scorer
+            .score_points_prefetched(point_ids, &mut self.scores_buffer[..point_ids.len()]);
+
+        std::iter::zip(point_ids, &self.scores_buffer)
+            .map(|(&idx, &score)| ScoredPointOffset { idx, score })
+    }
+
     pub fn score_point(&self, point_id: PointOffsetType) -> ScoreType {
         self.raw_scorer.score_point(point_id)
     }

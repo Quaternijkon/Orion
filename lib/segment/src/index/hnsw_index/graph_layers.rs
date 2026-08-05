@@ -171,7 +171,7 @@ pub trait GraphLayersBase {
             .score_points_preserves_scalar_usage()
         {
             points_scorer
-                .score_points_unfiltered(level_entry_ids)
+                .score_points_unfiltered_prefetched(level_entry_ids)
                 .for_each(|level_entry| {
                     if !visited_list.check_and_update_visited(level_entry.idx) {
                         search_context.process_candidate(level_entry);
@@ -214,7 +214,7 @@ pub trait GraphLayersBase {
             });
 
             points_scorer
-                .score_points(&mut points_ids, limit)
+                .score_points_prefetched(&mut points_ids, limit)
                 .for_each(|score_point| {
                     search_context.process_candidate(score_point);
                     visited_list.check_and_update_visited(score_point.idx);

@@ -198,6 +198,18 @@ pub trait DenseVectorStorage<T: PrimitiveVectorElement>: VectorStorage {
         }
     }
 
+    /// Run a dense batch with best-effort software prefetching.
+    ///
+    /// Storage implementations which can retain all borrowed vectors for the duration of the
+    /// batch may override this. The fail-closed default is the ordinary scoring path.
+    fn for_each_in_dense_batch_prefetched<F: FnMut(usize, &[T])>(
+        &self,
+        keys: &[PointOffsetType],
+        f: F,
+    ) {
+        self.for_each_in_dense_batch(keys, f);
+    }
+
     fn size_of_available_vectors_in_bytes(&self) -> usize {
         self.available_vector_count() * self.vector_dim() * std::mem::size_of::<T>()
     }

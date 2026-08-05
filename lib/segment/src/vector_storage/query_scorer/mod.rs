@@ -34,6 +34,14 @@ pub trait QueryScorer {
         }
     }
 
+    /// Score a batch after issuing storage-specific software prefetch hints.
+    ///
+    /// The default preserves the ordinary batch implementation exactly. Only callers whose
+    /// access pattern benefits from random-vector look-ahead opt into this method.
+    fn score_stored_batch_prefetched(&self, ids: &[PointOffsetType], scores: &mut [ScoreType]) {
+        self.score_stored_batch(ids, scores);
+    }
+
     fn score(&self, v2: &Self::TVector) -> ScoreType;
 
     fn score_internal(&self, point_a: PointOffsetType, point_b: PointOffsetType) -> ScoreType;

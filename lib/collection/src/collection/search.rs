@@ -154,7 +154,7 @@ fn validate_orion_compact_peer_query_vector_config(
 
 fn specialize_core_search_for_logical_target(
     request: &CoreSearchRequest,
-    target: &LogicalShardSearchTarget,
+    target: LogicalShardSearchTarget,
     policy_name: &str,
 ) -> CollectionResult<CoreSearchRequest> {
     let mut specialized = request.clone();
@@ -164,9 +164,7 @@ fn specialize_core_search_for_logical_target(
         ))
     })?;
     specialized.offset = 0;
-    specialized
-        .hnsw_entry_points
-        .clone_from(&target.entry_points);
+    specialized.hnsw_entry_points = target.entry_points;
     specialized.hnsw_entry_points_by_shard = None;
     specialized.hnsw_ef_by_shard = None;
     specialized.source_id_dedup_block_size = None;
@@ -182,7 +180,7 @@ fn specialize_core_search_for_orion_target(
     request: &CoreSearchRequest,
     target: &OrionShardTarget,
 ) -> CollectionResult<CoreSearchRequest> {
-    specialize_core_search_for_logical_target(request, &target.clone().into(), "Orion")
+    specialize_core_search_for_logical_target(request, target.clone().into(), "Orion")
 }
 
 #[cfg(test)]
@@ -190,7 +188,7 @@ fn specialize_core_search_for_simple_kmeans_target(
     request: &CoreSearchRequest,
     target: &SimpleKmeansShardTarget,
 ) -> CollectionResult<CoreSearchRequest> {
-    specialize_core_search_for_logical_target(request, &(*target).into(), "Simple KMeans")
+    specialize_core_search_for_logical_target(request, (*target).into(), "Simple KMeans")
 }
 
 fn remaining_search_timeout(
@@ -346,17 +344,18 @@ fn merge_query_from_shards(
 /// `try_join_all` preserves the input RPC order. Appending each non-empty row while walking its
 /// output therefore preserves the source encounter order used by the former dense matrices,
 /// including the order in which otherwise identical ties reach source-ID deduplication.
-fn collect_sparse_peer_rows_by_query(
-    peer_results: Vec<(Vec<usize>, Vec<Vec<ScoredPoint>>)>,
+fn collect_sparse_rows_by_query(
+    context: &str,
+    shard_results: Vec<(Vec<usize>, Vec<Vec<ScoredPoint>>)>,
     batch_size: usize,
 ) -> CollectionResult<Vec<Vec<Vec<ScoredPoint>>>> {
     let mut rows_by_query = Vec::with_capacity(batch_size);
     rows_by_query.resize_with(batch_size, Vec::new);
 
-    for (original_indices, rows) in peer_results {
+    for (original_indices, rows) in shard_results {
         if rows.len() != original_indices.len() {
             return Err(CollectionError::service_error(format!(
-                "Compact peer-local shard-major search returned {} rows for {} query slots",
+                "{context} returned {} rows for {} query slots",
                 rows.len(),
                 original_indices.len(),
             )));
@@ -365,7 +364,7 @@ fn collect_sparse_peer_rows_by_query(
         for (original_index, row) in original_indices.into_iter().zip(rows) {
             let query_rows = rows_by_query.get_mut(original_index).ok_or_else(|| {
                 CollectionError::service_error(format!(
-                    "Compact peer-local shard-major search returned out-of-range original query slot {original_index} for batch size {batch_size}",
+                    "{context} returned out-of-range original query slot {original_index} for batch size {batch_size}",
                 ))
             })?;
             if !row.is_empty() {
@@ -381,6 +380,7 @@ fn collect_sparse_peer_rows_by_query(
 ///
 /// Every static routing policy uses this helper before the common collection-level merge, which
 /// keeps batch ordering and empty-slot behavior independent of the routing algorithm.
+#[cfg(test)]
 fn restore_selected_shard_rows_to_batch(
     policy_name: &str,
     shard_id: ShardId,
@@ -1460,8 +1460,28 @@ impl Collection {
         });
 
         let peer_results = future::try_join_all(peer_searches).await?;
-        let rows_by_query =
-            collect_sparse_peer_rows_by_query(peer_results, original_requests.searches.len())?;
+        let rows_by_query = collect_sparse_rows_by_query(
+            "Compact peer-local shard-major search",
+            peer_results,
+            original_requests.searches.len(),
+        )?;
+        self.merge_sparse_rows_by_query(rows_by_query, original_requests, true)
+            .await
+    }
+
+    async fn merge_sparse_rows_by_query(
+        &self,
+        rows_by_query: Vec<Vec<Vec<ScoredPoint>>>,
+        original_requests: Arc<CoreSearchRequestBatch>,
+        is_client_request: bool,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        if rows_by_query.len() != original_requests.searches.len() {
+            return Err(CollectionError::service_error(format!(
+                "Sparse selected-shard search returned {} query rows for batch size {}",
+                rows_by_query.len(),
+                original_requests.searches.len(),
+            )));
+        }
         let collection_params = self.collection_config.read().await.params.clone();
         let mut top_results = Vec::with_capacity(original_requests.searches.len());
         let mut seen_ids = AHashSet::new();
@@ -1481,7 +1501,7 @@ impl Collection {
                 results_from_shards,
                 request,
                 order,
-                true,
+                is_client_request,
                 &mut seen_ids,
             )?);
             seen_ids.clear();
@@ -2109,7 +2129,7 @@ impl Collection {
         }
 
         let batch_size = request.searches.len();
-        let all_shard_rows = {
+        let sparse_rows_by_query = {
             let shard_holder = self.shards_holder.read().await;
             for (shard_index, targets) in plan.targets_by_shard.iter().enumerate() {
                 if targets.is_empty() {
@@ -2159,7 +2179,7 @@ impl Collection {
                         original_indices.push(query_index);
                         searches.push(specialize_core_search_for_logical_target(
                             original,
-                            &target,
+                            target,
                             policy_name,
                         )?);
                     }
@@ -2186,20 +2206,23 @@ impl Collection {
                                 hw_measurement_acc,
                             )
                             .await?;
-                        restore_selected_shard_rows_to_batch(
-                            policy_name,
-                            shard_id,
-                            original_indices,
-                            rows,
-                            batch_size,
-                        )
+                        if rows.len() != original_indices.len() {
+                            return Err(CollectionError::service_error(format!(
+                                "{policy_name} shard {shard_id} returned {} rows for {} query slots",
+                                rows.len(),
+                                original_indices.len(),
+                            )));
+                        }
+                        Ok::<_, CollectionError>((original_indices, rows))
                     }
                 },
             );
-            future::try_join_all(shard_searches).await?
+            let shard_results = future::try_join_all(shard_searches).await?;
+            collect_sparse_rows_by_query(policy_name, shard_results, batch_size)?
         };
 
-        self.merge_from_shards(all_shard_rows, request, true).await
+        self.merge_sparse_rows_by_query(sparse_rows_by_query, request, true)
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2570,7 +2593,8 @@ mod tests {
             is_client_request: bool,
         ) -> Vec<Vec<ScoredPoint>> {
             let rows_by_query =
-                collect_sparse_peer_rows_by_query(peer_results, requests.len()).unwrap();
+                collect_sparse_rows_by_query("test sparse rows", peer_results, requests.len())
+                    .unwrap();
             let mut merged = Vec::with_capacity(requests.len());
             let mut seen_ids = AHashSet::new();
             for (rows, request) in rows_by_query.into_iter().zip(requests) {
@@ -2771,7 +2795,8 @@ mod tests {
 
     #[test]
     fn compact_sparse_peer_rows_fail_closed_on_invalid_shape_or_slot() {
-        let row_count_error = collect_sparse_peer_rows_by_query(
+        let row_count_error = collect_sparse_rows_by_query(
+            "test sparse rows",
             vec![(vec![0, 1], vec![vec![scored_point(1, 0.9)]])],
             2,
         )
@@ -2782,9 +2807,12 @@ mod tests {
                 .contains("returned 1 rows for 2 query slots")
         );
 
-        let slot_error =
-            collect_sparse_peer_rows_by_query(vec![(vec![2], vec![vec![scored_point(1, 0.9)]])], 2)
-                .unwrap_err();
+        let slot_error = collect_sparse_rows_by_query(
+            "test sparse rows",
+            vec![(vec![2], vec![vec![scored_point(1, 0.9)]])],
+            2,
+        )
+        .unwrap_err();
         assert!(
             slot_error
                 .to_string()
@@ -2794,7 +2822,8 @@ mod tests {
 
     #[test]
     fn compact_sparse_peer_rows_preserve_all_empty_queries() {
-        let rows = collect_sparse_peer_rows_by_query(
+        let rows = collect_sparse_rows_by_query(
+            "test sparse rows",
             vec![
                 (vec![1, 0], vec![Vec::new(), Vec::new()]),
                 (vec![0, 2], vec![Vec::new(), Vec::new()]),

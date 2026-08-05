@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::mem;
+use std::ops::Range;
 
 use ahash::{AHashMap, AHashSet};
 use ordered_float::OrderedFloat;
@@ -99,7 +100,23 @@ struct RuntimeUpperNode {
 struct RuntimeUpperGraph {
     entry_point: usize,
     max_level: usize,
-    neighbors_by_node_and_level: Vec<Vec<Vec<usize>>>,
+    level_count: usize,
+    /// Node-major, then level-major ranges into `neighbors`.
+    ///
+    /// The serialized graph stores one independently allocated vector per node and level. Runtime
+    /// HNSW traversal is pointer-chase heavy, so compile those immutable lists into one contiguous
+    /// adjacency arena while retaining every neighbor's encounter order exactly.
+    neighbor_ranges_by_node_and_level: Box<[Range<usize>]>,
+    neighbors: Box<[usize]>,
+}
+
+impl RuntimeUpperGraph {
+    #[inline]
+    fn neighbors(&self, node_index: usize, level: usize) -> &[usize] {
+        debug_assert!(level < self.level_count);
+        let range = &self.neighbor_ranges_by_node_and_level[node_index * self.level_count + level];
+        &self.neighbors[range.clone()]
+    }
 }
 
 #[derive(Debug)]
@@ -124,6 +141,7 @@ pub struct OrionRouter {
     upper_ef_search: usize,
     dynamic_ef_base: usize,
     dynamic_ef_factor: usize,
+    entry_point_capacity_hint: usize,
     nodes: Vec<RuntimeUpperNode>,
     /// Preprocessed upper vectors in immutable node-index-major order.
     ///
@@ -169,6 +187,11 @@ impl OrionRouter {
         };
         let distance = artifact.vector_schema.distance;
         let dimension = artifact.vector_schema.dimension;
+        let entry_point_capacity_hint = route_entry_point_capacity_hint(
+            artifact.upper_k,
+            artifact.shard_count,
+            &artifact.upper_nodes,
+        );
         let upper_vector_element_count =
             checked_upper_vector_element_count(artifact.upper_nodes.len(), dimension)?;
         let mut upper_vectors = Vec::new();
@@ -200,6 +223,7 @@ impl OrionRouter {
             upper_ef_search: artifact.upper_ef_search,
             dynamic_ef_base: artifact.dynamic_ef_base,
             dynamic_ef_factor: artifact.dynamic_ef_factor,
+            entry_point_capacity_hint,
             nodes,
             upper_vectors: upper_vectors.into_boxed_slice(),
             node_by_label,
@@ -293,7 +317,7 @@ impl OrionRouter {
         // Logical shard IDs are validated as the dense range `0..shard_count` when the artifact
         // is loaded. Indexing that range directly avoids hashing every membership and makes the
         // final shard-ID order intrinsic rather than requiring a per-query sort.
-        let mut entry_points_by_shard = vec![Vec::new(); self.shard_count as usize];
+        let mut entry_points_by_shard = vec![None; self.shard_count as usize];
         for label in ordered_labels.into_iter().take(self.upper_k) {
             let Some(&node_index) = self.node_by_label.get(&label) else {
                 return Err(OrionRoutingError::UnknownUpperLabel { label });
@@ -309,7 +333,9 @@ impl OrionRouter {
                 // Artifact validation guarantees that one upper node cannot list the same shard
                 // twice. A label-global duplicate check is therefore exactly equivalent to the
                 // previous HashSet attached to every target shard.
-                entry_points_by_shard[shard_id as usize].push(label);
+                entry_points_by_shard[shard_id as usize]
+                    .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
+                    .push(label);
             }
         }
 
@@ -323,11 +349,13 @@ impl OrionRouter {
         // HNSW and exact-testing search both return each upper node at most once. Route directly
         // from those node indices so the production query path does not hash every upper label
         // back into the same immutable node array.
-        let mut entry_points_by_shard = vec![Vec::new(); self.shard_count as usize];
+        let mut entry_points_by_shard = vec![None; self.shard_count as usize];
         for node_index in ordered_node_indices.into_iter().take(self.upper_k) {
             let node = &self.nodes[node_index];
             for &shard_id in &node.shard_membership {
-                entry_points_by_shard[shard_id as usize].push(node.label);
+                entry_points_by_shard[shard_id as usize]
+                    .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
+                    .push(node.label);
             }
         }
         self.finish_targets(entry_points_by_shard)
@@ -335,12 +363,14 @@ impl OrionRouter {
 
     fn finish_targets(
         &self,
-        entry_points_by_shard: Vec<Vec<ExtendedPointId>>,
+        entry_points_by_shard: Vec<Option<Vec<ExtendedPointId>>>,
     ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         entry_points_by_shard
             .into_iter()
             .enumerate()
-            .filter(|(_, entry_points)| !entry_points.is_empty())
+            .filter_map(|(shard_id, entry_points)| {
+                entry_points.map(|entry_points| (shard_id, entry_points))
+            })
             .map(|(shard_id, entry_points)| {
                 let ef = self
                     .dynamic_ef_factor
@@ -487,7 +517,7 @@ impl OrionRouter {
         for level in (1..=graph.max_level).rev() {
             loop {
                 let mut next = (current_distance, current);
-                for &neighbor in &graph.neighbors_by_node_and_level[current][level] {
+                for &neighbor in graph.neighbors(current, level) {
                     let candidate = (OrderedFloat(self.distance_to(query, neighbor)?), neighbor);
                     if candidate < next {
                         next = candidate;
@@ -511,7 +541,7 @@ impl OrionRouter {
             if nearest.len() >= self.upper_ef_search && candidate > *nearest.peek().unwrap() {
                 break;
             }
-            for &neighbor in &graph.neighbors_by_node_and_level[candidate.1][0] {
+            for &neighbor in graph.neighbors(candidate.1, 0) {
                 if !visited.insert(neighbor) {
                     continue;
                 }
@@ -557,7 +587,7 @@ impl OrionRouter {
         for level in (1..=graph.max_level).rev() {
             loop {
                 let mut next = (current_distance, current);
-                for &neighbor in &graph.neighbors_by_node_and_level[current][level] {
+                for &neighbor in graph.neighbors(current, level) {
                     let candidate = (OrderedFloat(self.distance_to(query, neighbor)?), neighbor);
                     if candidate < next {
                         next = candidate;
@@ -578,7 +608,7 @@ impl OrionRouter {
             if nearest.len() >= self.upper_ef_search && candidate > *nearest.peek().unwrap() {
                 break;
             }
-            for &neighbor in &graph.neighbors_by_node_and_level[candidate.1][0] {
+            for &neighbor in graph.neighbors(candidate.1, 0) {
                 if !visited.insert(neighbor) {
                     continue;
                 }
@@ -629,6 +659,29 @@ fn checked_upper_vector_element_count(
         })
 }
 
+fn route_entry_point_capacity_hint(
+    upper_k: usize,
+    shard_count: ShardId,
+    upper_nodes: &[super::artifact::OrionUpperNode],
+) -> usize {
+    let total_memberships = upper_nodes
+        .iter()
+        .map(|node| node.shard_membership.len())
+        .sum::<usize>();
+    let denominator = upper_nodes
+        .len()
+        .saturating_mul(shard_count as usize)
+        .max(1);
+    let expected = upper_k
+        .saturating_mul(total_memberships)
+        .div_ceil(denominator)
+        .max(1);
+    expected
+        .checked_next_power_of_two()
+        .unwrap_or(upper_k.max(1))
+        .min(upper_k.max(1))
+}
+
 fn preprocess_vector(distance: Distance, vector: Vec<VectorElementType>) -> Vec<VectorElementType> {
     match distance {
         Distance::Cosine => <CosineMetric as Metric<VectorElementType>>::preprocess(vector),
@@ -653,32 +706,39 @@ fn compile_graph(
     graph: &OrionUpperHnswGraph,
     node_by_label: &AHashMap<ExtendedPointId, usize>,
 ) -> OrionRoutingResult<RuntimeUpperGraph> {
-    let mut neighbors_by_node_and_level = vec![Vec::new(); node_by_label.len()];
+    let level_count = graph.max_level + 1;
+    let range_count = node_by_label.len().saturating_mul(level_count);
+    let neighbor_count = graph
+        .nodes
+        .iter()
+        .flat_map(|node| &node.neighbors_by_level)
+        .map(Vec::len)
+        .sum();
+    let mut neighbor_ranges_by_node_and_level = vec![0..0; range_count];
+    let mut neighbors = Vec::with_capacity(neighbor_count);
     for graph_node in &graph.nodes {
         let node_index = node_by_label[&graph_node.label];
-        neighbors_by_node_and_level[node_index] = graph_node
-            .neighbors_by_level
-            .iter()
-            .map(|neighbors| {
-                neighbors
-                    .iter()
-                    .map(|label| {
-                        node_by_label.get(label).copied().ok_or(
-                            OrionRoutingError::GraphNeighborNotFound {
-                                label: graph_node.label,
-                                level: 0,
-                                neighbor: *label,
-                            },
-                        )
-                    })
-                    .collect()
-            })
-            .collect::<OrionRoutingResult<Vec<_>>>()?;
+        for (level, neighbor_labels) in graph_node.neighbors_by_level.iter().enumerate() {
+            let start = neighbors.len();
+            for neighbor in neighbor_labels {
+                neighbors.push(node_by_label.get(neighbor).copied().ok_or(
+                    OrionRoutingError::GraphNeighborNotFound {
+                        label: graph_node.label,
+                        level,
+                        neighbor: *neighbor,
+                    },
+                )?);
+            }
+            neighbor_ranges_by_node_and_level[node_index * level_count + level] =
+                start..neighbors.len();
+        }
     }
     Ok(RuntimeUpperGraph {
         entry_point: node_by_label[&graph.entry_point],
         max_level: graph.max_level,
-        neighbors_by_node_and_level,
+        level_count,
+        neighbor_ranges_by_node_and_level: neighbor_ranges_by_node_and_level.into_boxed_slice(),
+        neighbors: neighbors.into_boxed_slice(),
     })
 }
 
