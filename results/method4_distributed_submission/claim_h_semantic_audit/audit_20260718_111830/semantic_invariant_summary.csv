@@ -1,0 +1,10 @@
+invariant,status,query_count,search_count,visited_shards,upper_labels,multi_assignment_queries,failure_count,detail
+upper routing unchanged,pass,100,100,1972,10400,95,0,ok
+point_to_shards unchanged,pass,100,100,1972,10400,95,0,ok
+multi-assignment preserved,pass,100,100,1972,10400,95,0,ok
+per-shard entry points preserved,pass,100,100,1972,10400,95,0,ok
+dynamic EF formula preserved,pass,100,100,1972,10400,95,0,ok
+lower search remains per logical shard,pass,100,100,1972,10400,95,0,ok
+no adaptive shard pruning,pass,100,100,1972,10400,95,0,ok
+source-id dedup preserved,pass,100,100,1972,10400,95,0,ok
+final global merge preserved,pass,100,100,1972,10400,95,0,ok

@@ -83,6 +83,28 @@ pub enum SearchAlgorithm {
     Acorn,
 }
 
+/// One directed graph transition considered by a traced HNSW search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HnswTraceEdge {
+    pub source_node: PointOffsetType,
+    pub destination_node: PointOffsetType,
+    pub traversal_order: usize,
+    pub layer: usize,
+}
+
+/// Complete algorithmic trace for one conventional HNSW query.
+///
+/// `visited_node_ids` records every distance evaluation in execution order, including repeated
+/// entry-point evaluations on successive upper layers. `visited_edges` records the graph edge
+/// responsible for each neighbor evaluation; direct entry-point evaluations have no edge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HnswSearchTrace {
+    pub visited_node_ids: Vec<PointOffsetType>,
+    pub visited_edges: Vec<HnswTraceEdge>,
+    pub distance_computations: usize,
+    pub result_ids: Vec<PointOffsetType>,
+}
+
 pub trait GraphLayersBase {
     fn get_visited_list_from_pool(&self) -> VisitedListHandle<'_>;
 
@@ -128,6 +150,7 @@ pub trait GraphLayersBase {
             if candidate.score < search_context.lower_bound() {
                 break;
             }
+            points_scorer.record_graph_node_visit();
 
             points_ids.clear();
             self.for_each_link(candidate.idx, level, |link| {
@@ -205,6 +228,7 @@ pub trait GraphLayersBase {
             if candidate.score < search_context.lower_bound() {
                 break;
             }
+            points_scorer.record_graph_node_visit();
 
             points_ids.clear();
             self.for_each_link(candidate.idx, level, |link| {
@@ -374,6 +398,7 @@ pub trait GraphLayersBase {
         };
         while changed {
             changed = false;
+            points_scorer.record_graph_node_visit();
 
             links.clear();
             self.for_each_link(current_point.idx, level, |link| {
@@ -440,6 +465,7 @@ pub trait GraphLayersWithVectors: GraphLayersBase {
                 });
                 break;
             }
+            links_scorer.record_graph_node_visit();
 
             points.clear();
             let (base_vector, links_iter) = self.links_with_vectors(candidate.idx, level);
@@ -510,6 +536,7 @@ pub trait GraphLayersWithVectors: GraphLayersBase {
         let mut current_point = entry_point;
         while changed {
             changed = false;
+            links_scorer.record_graph_node_visit();
 
             links.clear();
             let (_, links_iter) = self.links_with_vectors(current_point.idx, level);
@@ -578,6 +605,22 @@ impl GraphLayers {
     /// Returns the highest level this point is included in
     pub fn point_level(&self, point_id: PointOffsetType) -> usize {
         self.links.point_level(point_id)
+    }
+
+    /// Return the conventional HNSW entry point and its level.
+    pub fn entry_point(&self) -> Option<(PointOffsetType, usize)> {
+        self.entry_points
+            .get_entry_point(|_point_id| true)
+            .map(|entry| (entry.point_id, entry.level))
+    }
+
+    /// Copy one point's ordered neighbors at a graph level for offline analysis.
+    pub fn neighbors_at_level(
+        &self,
+        point_id: PointOffsetType,
+        level: usize,
+    ) -> Vec<PointOffsetType> {
+        self.links.links(point_id, level).collect()
     }
 
     fn get_entry_point(
@@ -667,6 +710,139 @@ impl GraphLayers {
             }
         }?;
         Ok(nearest.into_iter_sorted().take(top).collect_vec())
+    }
+
+    /// Execute the same conventional single-entry HNSW path as [`Self::search`] while retaining
+    /// every scored node and considered graph edge for offline experiment analysis.
+    ///
+    /// This intentionally excludes custom entry points and ACORN so the trace cannot accidentally
+    /// include Orion online-routing behavior in partition-quality experiments.
+    pub fn search_hnsw_with_trace(
+        &self,
+        top: usize,
+        ef: usize,
+        mut points_scorer: FilteredScorer,
+        is_stopped: &AtomicBool,
+    ) -> CancellableResult<(Vec<ScoredPointOffset>, HnswSearchTrace)> {
+        let Some(entry_point) = self.get_entry_point(points_scorer.filters(), None) else {
+            return Ok((
+                Vec::new(),
+                HnswSearchTrace {
+                    visited_node_ids: Vec::new(),
+                    visited_edges: Vec::new(),
+                    distance_computations: 0,
+                    result_ids: Vec::new(),
+                },
+            ));
+        };
+
+        let mut visited_node_ids = Vec::new();
+        let mut visited_edges = Vec::new();
+        let mut traversal_order = 0usize;
+        let mut level_entry = entry_point.point_id;
+        let mut upper_result = None;
+        let mut links = Vec::new();
+
+        for level in rev_range(entry_point.level, 0) {
+            check_process_stopped(is_stopped)?;
+            let mut current_point = ScoredPointOffset {
+                idx: level_entry,
+                score: points_scorer.score_point(level_entry),
+            };
+            visited_node_ids.push(level_entry);
+
+            let mut changed = true;
+            while changed {
+                changed = false;
+                points_scorer.record_graph_node_visit();
+                links.clear();
+                self.for_each_link(current_point.idx, level, |link| links.push(link));
+                let scored = points_scorer
+                    .score_points(&mut links, self.get_m(level))
+                    .collect_vec();
+                for score_point in &scored {
+                    visited_edges.push(HnswTraceEdge {
+                        source_node: current_point.idx,
+                        destination_node: score_point.idx,
+                        traversal_order,
+                        layer: level,
+                    });
+                    traversal_order += 1;
+                    visited_node_ids.push(score_point.idx);
+                }
+                for score_point in scored {
+                    if score_point.score > current_point.score {
+                        changed = true;
+                        current_point = score_point;
+                    }
+                }
+            }
+            level_entry = current_point.idx;
+            upper_result = Some(current_point);
+        }
+
+        let zero_level_entry = match upper_result {
+            Some(result) => result,
+            None => {
+                let score = points_scorer.score_point(level_entry);
+                visited_node_ids.push(level_entry);
+                ScoredPointOffset {
+                    idx: level_entry,
+                    score,
+                }
+            }
+        };
+
+        let mut visited_list = self.get_visited_list_from_pool();
+        visited_list.check_and_update_visited(zero_level_entry.idx);
+        let mut search_context = SearchContext::new(max(ef, top));
+        search_context.process_candidate(zero_level_entry);
+        let mut point_ids = Vec::with_capacity(2 * self.get_m(0));
+
+        while let Some(candidate) = search_context.candidates.pop() {
+            check_process_stopped(is_stopped)?;
+            if candidate.score < search_context.lower_bound() {
+                break;
+            }
+            points_scorer.record_graph_node_visit();
+            point_ids.clear();
+            self.for_each_link(candidate.idx, 0, |link| {
+                if !visited_list.check(link) {
+                    point_ids.push(link);
+                }
+            });
+            let scored = points_scorer
+                .score_points(&mut point_ids, self.get_m(0))
+                .collect_vec();
+            for score_point in &scored {
+                visited_edges.push(HnswTraceEdge {
+                    source_node: candidate.idx,
+                    destination_node: score_point.idx,
+                    traversal_order,
+                    layer: 0,
+                });
+                traversal_order += 1;
+                visited_node_ids.push(score_point.idx);
+            }
+            for score_point in scored {
+                search_context.process_candidate(score_point);
+                visited_list.check_and_update_visited(score_point.idx);
+            }
+        }
+
+        let result = search_context
+            .nearest
+            .into_iter_sorted()
+            .take(top)
+            .collect_vec();
+        let result_ids = result.iter().map(|point| point.idx).collect();
+        let trace = HnswSearchTrace {
+            distance_computations: visited_node_ids.len(),
+            visited_node_ids,
+            visited_edges,
+            result_ids,
+        };
+        Ok((result, trace))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1134,6 +1310,56 @@ mod tests {
                 scorer.score_internal(linking_idx, nearest.idx)
             )
         }
+    }
+
+    #[test]
+    fn traced_search_matches_conventional_hnsw_results() {
+        let num_vectors = 128;
+        let dim = 12;
+        let top = 10;
+        let ef = 32;
+        let mut rng = StdRng::seed_from_u64(20260821);
+        let query = random_vector(&mut rng, dim);
+        let (vector_holder, graph_layers) = create_graph_layer_fixture(
+            num_vectors,
+            M,
+            dim,
+            GraphLinksFormat::Plain,
+            true,
+            false,
+            Distance::Euclid,
+            &mut rng,
+        );
+
+        let conventional = graph_layers
+            .search(
+                top,
+                ef,
+                SearchAlgorithm::Hnsw,
+                vector_holder.scorer(query.clone()),
+                None,
+                &DEFAULT_STOPPED,
+            )
+            .unwrap();
+        let (traced, trace) = graph_layers
+            .search_hnsw_with_trace(top, ef, vector_holder.scorer(query), &DEFAULT_STOPPED)
+            .unwrap();
+
+        assert_eq!(traced, conventional);
+        assert_eq!(
+            trace.result_ids,
+            traced.iter().map(|point| point.idx).collect_vec()
+        );
+        assert_eq!(trace.distance_computations, trace.visited_node_ids.len());
+        assert!(!trace.visited_node_ids.is_empty());
+        assert!(!trace.visited_edges.is_empty());
+        assert!(
+            trace
+                .visited_edges
+                .iter()
+                .enumerate()
+                .all(|(order, edge)| edge.traversal_order == order)
+        );
     }
 
     #[rstest]

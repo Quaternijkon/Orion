@@ -1,0 +1,24 @@
+{
+  "collection": "c1v2_e3_glove_kmeans_m32",
+  "controller_storage_absent": true,
+  "controller_storage_path": "/users/dry/orion-distributed/c1-20260821-v2/controller/storage/collections/c1v2_e3_glove_kmeans_m32",
+  "peers": {
+    "10.10.1.1": {
+      "http_status": 404
+    },
+    "10.10.1.2": {
+      "http_status": 404
+    },
+    "10.10.1.3": {
+      "http_status": 404
+    },
+    "10.10.1.4": {
+      "http_status": 404
+    }
+  },
+  "record_type": "c1_final_collection_cleanup_proof",
+  "source_cleanup_record": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m32-cleanup.json",
+  "source_cleanup_record_sha256": "97b924564fedf24a052f061abd1e3ef5614f82808f66dba8cf85eeb41d0ba4af",
+  "status": "VERIFIED_DELETED",
+  "timestamp": "2026-08-21T06:05:52Z"
+}

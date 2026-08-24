@@ -91,6 +91,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--kmeans-iters", type=int, default=10)
     parser.add_argument("--kmeans-seed", type=int, default=1)
     parser.add_argument("--topology-iters", type=int, default=50)
+    parser.add_argument(
+        "--disable-topology-refinement",
+        action="store_true",
+        help=(
+            "Build the P2-A ablation: retain the navigation graph, initial balanced "
+            "K-Means labels, and search-based point assignment, but skip iterative "
+            "self-search topology refinement."
+        ),
+    )
     parser.add_argument("--disable-multi-assign", action="store_true")
     parser.add_argument("--multi-assign-min-max-vote", type=int, default=2)
     parser.add_argument("--multi-assign-vote-delta", type=int, default=0)
@@ -377,6 +386,7 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "kmeans_iters": int(args.kmeans_iters),
         "kmeans_seed": int(args.kmeans_seed),
         "topology_iters": int(args.topology_iters),
+        "enable_topology_refinement": not bool(args.disable_topology_refinement),
         "use_multi_assign": not bool(args.disable_multi_assign),
         "multi_assign_min_max_vote": int(args.multi_assign_min_max_vote),
         "multi_assign_vote_delta": int(args.multi_assign_vote_delta),
@@ -435,6 +445,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         multi_assign_min_max_vote=int(args.multi_assign_min_max_vote),
         multi_assign_vote_delta=int(args.multi_assign_vote_delta),
         multi_assign_max_shards=int(args.multi_assign_max_shards),
+        enable_topology_refinement=not bool(args.disable_topology_refinement),
     )
 
     graphless_path = output_dir / GRAPHLESS_NAME

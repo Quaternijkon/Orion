@@ -1,0 +1,264 @@
+{
+  "checks": {
+    "all_13_source_audits_have_only_pass_checks": "PASS",
+    "all_8_required_pdf_figures_valid": "PASS",
+    "causal_configuration_table_has_required_metrics": "PASS",
+    "complete_40_configuration_final_tables": "PASS",
+    "construction_overhead_has_40_rows": "PASS",
+    "correlation_analysis_has_18_scope_relation_rows": "PASS",
+    "final_C2_and_C3_verdicts_are_separate": "PASS",
+    "logical_to_physical_mapping_is_modulo_four": "PASS",
+    "partition_balance_has_all_496_logical_shards": "PASS",
+    "run_summary_has_40_rows_and_four_physical_hosts": "PASS"
+  },
+  "experiment": "C23 final two-dataset synthesis",
+  "figure_checks": {
+    "c23_combined_causal_chain.pdf": true,
+    "c23_fig1_traversal_weighted_edge_cut.pdf": true,
+    "c23_fig2_local_navigability.pdf": true,
+    "c23_fig3_exact_fanout.pdf": true,
+    "c23_fig4_hnsw_fanout.pdf": true,
+    "c23_fig5_fanout_decomposition.pdf": true,
+    "c23_fig6_work_to_90_recall.pdf": true,
+    "c23_fig7_partition_balance.pdf": true
+  },
+  "files": {
+    "figures": {
+      "c23_combined_causal_chain.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_combined_causal_chain.pdf",
+        "sha256": "0b67ec98a93eed9066576c709a228dd134d168a0b75545af1aabcd26285c6bc9"
+      },
+      "c23_fig1_traversal_weighted_edge_cut.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig1_traversal_weighted_edge_cut.pdf",
+        "sha256": "e83d366cb046ba58c4a9c10209f1533838c039f4278c13dafd7e5388894217c8"
+      },
+      "c23_fig2_local_navigability.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig2_local_navigability.pdf",
+        "sha256": "408b01f3b22f08699003e6f11fd02784782793023d98bdc4ad87501737216706"
+      },
+      "c23_fig3_exact_fanout.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig3_exact_fanout.pdf",
+        "sha256": "5ba44ff16eb18b6ac2312ce8d49529c69c8504c8837a8aaff68d5394e4b82754"
+      },
+      "c23_fig4_hnsw_fanout.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig4_hnsw_fanout.pdf",
+        "sha256": "48b2f50a692b7cf19eb17ce4bf6c7195d828e0cad3d7f4d7aa0d38ea136a544f"
+      },
+      "c23_fig5_fanout_decomposition.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig5_fanout_decomposition.pdf",
+        "sha256": "6a0c839265a3b745b53a164f7c34d13f0b584024dae8501e3572fba12ef94998"
+      },
+      "c23_fig6_work_to_90_recall.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig6_work_to_90_recall.pdf",
+        "sha256": "b9535a5fc6fadd0bb2eca849409da01146a063e7a5c4405e2b3db2b8f9c31ab9"
+      },
+      "c23_fig7_partition_balance.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/figures/c23_fig7_partition_balance.pdf",
+        "sha256": "e4017e69829b108e5aa50a59b16b482139b7e7cbed72a222b16f12f89fd55e55"
+      }
+    },
+    "final_verdicts": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/final-v1/final_verdicts.json",
+      "sha256": "ee763cfad673af06b94adc1c5f0f378feae635d3f2bacecbbcc4c091bf1bf11e"
+    },
+    "run_summary": {
+      "path": "/users/dry/Orion/experiments/c23/runs/summary.csv",
+      "rows": 40,
+      "sha256": "d765f1fc76e57779e430bf7df79a45435053aef0d42fb9802d348901c364bcae"
+    },
+    "tables": {
+      "c23_causal_configuration_table.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_causal_configuration_table.csv",
+        "rows": 40,
+        "sha256": "0a42e27ab8af92d77e13502f41a4430b9f4a4c445b1d680e4ec6cdf2e314632e"
+      },
+      "c23_construction_overhead.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_construction_overhead.csv",
+        "rows": 40,
+        "sha256": "ff546bca916975fabcfcafc74af460d1455595df783d789e0037faefb097b7e5"
+      },
+      "c23_correlation_analysis.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_correlation_analysis.csv",
+        "rows": 18,
+        "sha256": "5bda0c66704a973c903e343cdac8c43f8fef8ab986ec8bda7dcb8df97e657074"
+      },
+      "c23_exact_fanout_summary.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_exact_fanout_summary.csv",
+        "rows": 40,
+        "sha256": "c4816c1a4da5625a36bfb8c3ed29f86c1c2f47fe8d8e5ec36ac44c7d5f2b29cd"
+      },
+      "c23_fanout_decomposition.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_fanout_decomposition.csv",
+        "rows": 40,
+        "sha256": "dc9f5bb0013aa5f7d4148a612f8868a7f8cdb980f0e6e2cf8bb6ea2442cf3e6b"
+      },
+      "c23_hnsw_fanout_summary.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_hnsw_fanout_summary.csv",
+        "rows": 40,
+        "sha256": "3dbb26c1fa505edf1777b0a2a0096ed9541eb348dba9a8bb560e8d708b143c5b"
+      },
+      "c23_local_navigability_summary.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_local_navigability_summary.csv",
+        "rows": 40,
+        "sha256": "0a8fdecc2c3b85ebb5a203795ed5fbeb3974c9c3619d506d5218f2322ff40fa2"
+      },
+      "c23_partition_balance.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_partition_balance.csv",
+        "rows": 496,
+        "sha256": "46f48581fc856636b17a96c7e087e2703677bf350ba2941581e8c3d67a88942d"
+      },
+      "c23_topology_summary.csv": {
+        "path": "/users/dry/Orion/experiments/c23/tables/c23_topology_summary.csv",
+        "rows": 40,
+        "sha256": "1be72bfb4e7e0ccb8a479fd1c4ba37d67b0af9bd24e2ea83f126a24840987342"
+      }
+    }
+  },
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "logical_shards": [
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/final-v1/manifest.json",
+  "manifest_sha256": "a16c397d1dbaf0ed6f9c9905634504f918aa3fe584cdb785753dd4d7a2cfa474",
+  "microbenchmark_execution": "one logical shard at a time",
+  "physical_host_count": 4,
+  "protocol_version": "c23-20260821-v1",
+  "source_audits": [
+    "/users/dry/Orion/experiments/c23/logs/stage1-sift1m-reference-audit-v2.json",
+    "/users/dry/Orion/experiments/c23/logs/stage2-sift1m-e1-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage3-sift1m-e2-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage5-7-sift1m-local-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage8-sift1m-bootstrap-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage8-sift1m-variance-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-reference-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-e1-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-e2-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-local-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-bootstrap-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage9-glove-variance-audit-v1.json",
+    "/users/dry/Orion/experiments/c23/logs/stage11-construction-audit-v1.json"
+  ],
+  "table_counts": {
+    "c23_causal_configuration_table.csv": 40,
+    "c23_construction_overhead.csv": 40,
+    "c23_correlation_analysis.csv": 18,
+    "c23_exact_fanout_summary.csv": 40,
+    "c23_fanout_decomposition.csv": 40,
+    "c23_hnsw_fanout_summary.csv": 40,
+    "c23_local_navigability_summary.csv": 40,
+    "c23_partition_balance.csv": 496,
+    "c23_topology_summary.csv": 40
+  },
+  "timestamp": "2026-08-22T09:46:07.674886Z",
+  "verdicts": {
+    "ablation_conclusion": "Topology refinement consistently lowers TWCut relative to Orion-NoRefinement, but does not establish downstream fan-out superiority over K-Means; the required two-part ablation question is answered NO.",
+    "dataset_verdicts": {
+      "glove-200-angular": {
+        "C2_status": "CONTRADICTED",
+        "C3_status": "CONTRADICTED",
+        "P_HNSW_bootstrap_conclusions": {
+          "16": "KMEANS_FAVORED",
+          "2": "KMEANS_FAVORED",
+          "32": "KMEANS_FAVORED",
+          "4": "KMEANS_FAVORED",
+          "8": "KMEANS_FAVORED"
+        },
+        "orion_minus_kmeans_P_HNSW": {
+          "16": 0.391,
+          "2": 0.03255555555555567,
+          "32": 1.6227777777777779,
+          "4": 0.14100000000000001,
+          "8": 0.1848888888888891
+        },
+        "orion_minus_kmeans_P_exact": {
+          "16": 0.05877777777777782,
+          "2": -0.021333333333333426,
+          "32": 0.007444444444444365,
+          "4": 0.24388888888888904,
+          "8": 0.07444444444444454
+        },
+        "orion_minus_kmeans_W90": {
+          "16": 1802.1239999999998,
+          "2": 193.32866666666632,
+          "32": 10791.215555555558,
+          "4": 813.5591111111135,
+          "8": 260.1074444444421
+        },
+        "orion_minus_kmeans_common_ef_local_target_recall": {
+          "16": -0.01740984467667439,
+          "2": 0.01940811901526951,
+          "32": -0.015330385349283548,
+          "4": 0.00035815261781402263,
+          "8": -0.0042730340229168995
+        },
+        "orion_minus_kmeans_twcut": {
+          "16": 0.06062555482509219,
+          "2": -0.007238079539251235,
+          "32": 0.05321861674114431,
+          "4": 0.143409942597311,
+          "8": 0.07189082912766043
+        }
+      },
+      "sift1m": {
+        "C2_status": "CONTRADICTED",
+        "C3_status": "CONTRADICTED",
+        "P_HNSW_bootstrap_conclusions": {
+          "16": "KMEANS_FAVORED",
+          "2": "INCONCLUSIVE",
+          "32": "KMEANS_FAVORED",
+          "4": "KMEANS_FAVORED",
+          "8": "KMEANS_FAVORED"
+        },
+        "orion_minus_kmeans_P_HNSW": {
+          "16": 0.29899999999999993,
+          "2": 0.0043333333333333,
+          "32": 0.8472222222222223,
+          "4": 0.09577777777777796,
+          "8": 0.0692222222222223
+        },
+        "orion_minus_kmeans_P_exact": {
+          "16": 0.03355555555555556,
+          "2": -0.0006666666666665932,
+          "32": 0.10033333333333339,
+          "4": 0.16555555555555546,
+          "8": 0.06277777777777782
+        },
+        "orion_minus_kmeans_W90": {
+          "16": -1.4209999999998217,
+          "2": -9.532444444444423,
+          "32": 195.66100000000006,
+          "4": 61.59877777777774,
+          "8": -2.647111111111144
+        },
+        "orion_minus_kmeans_common_ef_local_target_recall": {
+          "16": 0.0012247638424923712,
+          "2": -0.0012501971655282107,
+          "32": -0.0027845454799980685,
+          "4": 0.0056594889929010295,
+          "8": 0.0009881178387011191
+        },
+        "orion_minus_kmeans_twcut": {
+          "16": 0.023977087498097793,
+          "2": -0.00021962276087122892,
+          "32": 0.03643307685120217,
+          "4": 0.08676411592806925,
+          "8": 0.038781221032375135
+        }
+      }
+    },
+    "final_verdicts": {
+      "C2": {
+        "reason": "K-Means has lower traversal-weighted cut than Full Orion at M=4,8,16,32 on both datasets, while Random combines extreme cut with competitive local navigability; the proposed monotonic topology-to-navigability mechanism does not hold.",
+        "status": "CONTRADICTED"
+      },
+      "C3": {
+        "reason": "Full Orion requires higher mean HNSW oracle fan-out than K-Means throughout the evaluated range on GloVe and at M=2,4,8,16,32 on SIFT (M=2 is bootstrap-inconclusive on SIFT); it never provides the claimed meaningful fan-out reduction.",
+        "status": "CONTRADICTED"
+      }
+    }
+  }
+}

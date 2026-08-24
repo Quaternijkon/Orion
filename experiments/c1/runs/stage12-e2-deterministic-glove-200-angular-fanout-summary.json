@@ -1,0 +1,2519 @@
+{
+  "configuration_count": 12,
+  "configuration_summaries": [
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m1.csv",
+      "e3_per_search_sha256": "3be067c458925b25627857605c475bb49c2ae3b02e45b9f1dcfcd57e35e96dd5",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m1-summary.json",
+      "e3_summary_sha256": "6d16e299902761c3c952e1832e58e597a99ff616c937d649d66a6e230c57d31f",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 1,
+      "measurement_recall": 0.9267,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m1.npz",
+      "partition_artifact_sha256": "97313d67339f0ea621aa42ed5562c3701d783589b96364be1ee981a03901f13b",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 1,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          1183514
+        ],
+        "timestamp": "2026-08-20T21:15:33Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 1,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 192,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9236,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8981
+        },
+        "0.90": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9236
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9236
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m1-tuning-pinned.json",
+      "tuning_artifact_sha256": "428fa80af77347022da43aa7f8bda414dae3255483e8e755a509070beec37231"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "2": 9000
+        },
+        "max": 2.0,
+        "mean": 2.0,
+        "median": 2.0,
+        "min": 2.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m2.csv",
+      "e3_per_search_sha256": "8977f46525c694ec06294785fdc8c7b9d65df9b37e58fe4c89210dd3f3212dec",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m2-summary.json",
+      "e3_summary_sha256": "a89f35bb8ffae3b34c1c53ce1508b831d9e095cacee31b2a07e3ed4268f67b16",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 2,
+      "measurement_recall": 0.9018444444444444,
+      "minimum_feasible_fanout": 2,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 203,
+          "2": 8797
+        },
+        "max": 2.0,
+        "mean": 1.9774444444444443,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.14848165701235894
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m2.npz",
+      "partition_artifact_sha256": "5c154087494614be1871db5638e1eec106487dff4c6d96a0c35ec6de855ff77b",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 2,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          592332,
+          591182
+        ],
+        "timestamp": "2026-08-20T21:15:34Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 2,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 128,
+      "selected_fanout": 2,
+      "selected_tuning_recall": 0.9078999999999999,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 203,
+              "2": 8797
+            },
+            "max": 2.0,
+            "mean": 1.9774444444444443,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.14848165701235894
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9078999999999999
+        },
+        "0.90": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 203,
+              "2": 8797
+            },
+            "max": 2.0,
+            "mean": 1.9774444444444443,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.14848165701235894
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9078999999999999
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 16,
+              "2": 8984
+            },
+            "max": 2.0,
+            "mean": 1.9982222222222221,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.042126206617147686
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9314
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m2-tuning-pinned.json",
+      "tuning_artifact_sha256": "2eb7a204e721c85ea2aa6c2e65b9b00364a185335641589c67c5baaa7942fefd"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "4": 9000
+        },
+        "max": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "min": 4.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m4.csv",
+      "e3_per_search_sha256": "5ccefa0a0e49e00ac51008a19377904ebbb17ef6d9704877abfbdb7e6e66bf63",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m4-summary.json",
+      "e3_summary_sha256": "ded661a5a26b72a08681239b5d189fa04655b779e9f7a0ae30368167a72b786a",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 4,
+      "measurement_recall": 0.9020777777777778,
+      "minimum_feasible_fanout": 4,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 2,
+          "2": 596,
+          "3": 6494,
+          "4": 1908
+        },
+        "max": 4.0,
+        "mean": 3.1453333333333333,
+        "median": 3.0,
+        "min": 1.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.5079265038697365
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m4.npz",
+      "partition_artifact_sha256": "57931d3f726ec2e3bd5960c47145792b036502044929061e2bbc2135e0e0c56f",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 4,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          296026,
+          296306,
+          295828,
+          295354
+        ],
+        "timestamp": "2026-08-20T21:15:35Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 128,
+      "selected_fanout": 4,
+      "selected_tuning_recall": 0.901,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2,
+              "2": 596,
+              "3": 6494,
+              "4": 1908
+            },
+            "max": 4.0,
+            "mean": 3.1453333333333333,
+            "median": 3.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.5079265038697365
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.901
+        },
+        "0.90": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2,
+              "2": 596,
+              "3": 6494,
+              "4": 1908
+            },
+            "max": 4.0,
+            "mean": 3.1453333333333333,
+            "median": 3.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.5079265038697365
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.901
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 47,
+              "3": 1912,
+              "4": 7041
+            },
+            "max": 4.0,
+            "mean": 3.777111111111111,
+            "median": 4.0,
+            "min": 2.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.4285485696431734
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.926
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m4-tuning-pinned.json",
+      "tuning_artifact_sha256": "02a87cd8f826ab88b54f4a28037b8a524a2c9b38a0f9a525954910094686c668"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "8": 9000
+        },
+        "max": 8.0,
+        "mean": 8.0,
+        "median": 8.0,
+        "min": 8.0,
+        "p95": 8.0,
+        "p99": 8.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m8.csv",
+      "e3_per_search_sha256": "d7a46864363d5ddff955ba4559c527a03a6c2b4be3010a53692a0cbd804e8935",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m8-summary.json",
+      "e3_summary_sha256": "225bab04e4983b390c2a6f806e503f4207a16a45b6d29a72a290af653f4fa23a",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 8,
+      "measurement_recall": 0.912,
+      "minimum_feasible_fanout": 8,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "2": 15,
+          "3": 342,
+          "4": 2445,
+          "5": 3911,
+          "6": 2038,
+          "7": 249
+        },
+        "max": 7.0,
+        "mean": 4.929111111111111,
+        "median": 5.0,
+        "min": 2.0,
+        "p95": 6.0,
+        "p99": 7.0,
+        "query_population_std": 0.8779251353104525
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m8.npz",
+      "partition_artifact_sha256": "576c1b3df2c3e34d92bca9ab819474e609d01d3f64d1643863dee80320eb4aa8",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 8,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          148470,
+          147556,
+          148379,
+          147927,
+          147926,
+          147902,
+          147530,
+          147824
+        ],
+        "timestamp": "2026-08-20T21:15:36Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 96,
+      "selected_fanout": 8,
+      "selected_tuning_recall": 0.913,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 96,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 15,
+              "3": 342,
+              "4": 2445,
+              "5": 3911,
+              "6": 2038,
+              "7": 249
+            },
+            "max": 7.0,
+            "mean": 4.929111111111111,
+            "median": 5.0,
+            "min": 2.0,
+            "p95": 6.0,
+            "p99": 7.0,
+            "query_population_std": 0.8779251353104525
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.913
+        },
+        "0.90": {
+          "globally_selected_ef_search": 96,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 15,
+              "3": 342,
+              "4": 2445,
+              "5": 3911,
+              "6": 2038,
+              "7": 249
+            },
+            "max": 7.0,
+            "mean": 4.929111111111111,
+            "median": 5.0,
+            "min": 2.0,
+            "p95": 6.0,
+            "p99": 7.0,
+            "query_population_std": 0.8779251353104525
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.913
+        },
+        "0.91": {
+          "globally_selected_ef_search": 96,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 31,
+              "4": 455,
+              "5": 2368,
+              "6": 3859,
+              "7": 2038,
+              "8": 249
+            },
+            "max": 8.0,
+            "mean": 5.907222222222222,
+            "median": 6.0,
+            "min": 3.0,
+            "p95": 7.0,
+            "p99": 8.0,
+            "query_population_std": 0.908205223721523
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.913
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m8-tuning-pinned.json",
+      "tuning_artifact_sha256": "9253e64c05ebc6ae63def849d30d72edd8d61e5126966c72fd7951688fdce2b0"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "16": 9000
+        },
+        "max": 16.0,
+        "mean": 16.0,
+        "median": 16.0,
+        "min": 16.0,
+        "p95": 16.0,
+        "p99": 16.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m16.csv",
+      "e3_per_search_sha256": "c628cd33bc9e81e43d133599f0ba90a8a2185011dac702cecaefc946f703eb2e",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m16-summary.json",
+      "e3_summary_sha256": "e90b3e522a93780206ac32758c024e167d3b204113cb0b01b282cb966ad62fac",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 16,
+      "measurement_recall": 0.9150444444444444,
+      "minimum_feasible_fanout": 16,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "3": 10,
+          "4": 176,
+          "5": 1093,
+          "6": 2759,
+          "7": 3187,
+          "8": 1539,
+          "9": 236
+        },
+        "max": 9.0,
+        "mean": 6.610888888888889,
+        "median": 7.0,
+        "min": 3.0,
+        "p95": 8.0,
+        "p99": 9.0,
+        "query_population_std": 1.0538465463291495
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m16.npz",
+      "partition_artifact_sha256": "1f6140d37db3bf86495860d8494e36985aa8ba523e2095e8527b72fe655c0a4b",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 16,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          74238,
+          74232,
+          73581,
+          73975,
+          74353,
+          74026,
+          74186,
+          73741,
+          73853,
+          74073,
+          74118,
+          73784,
+          73800,
+          73730,
+          73793,
+          74031
+        ],
+        "timestamp": "2026-08-20T21:15:37Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 64,
+      "selected_fanout": 16,
+      "selected_tuning_recall": 0.9101,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 64,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 10,
+              "4": 176,
+              "5": 1093,
+              "6": 2759,
+              "7": 3187,
+              "8": 1539,
+              "9": 236
+            },
+            "max": 9.0,
+            "mean": 6.610888888888889,
+            "median": 7.0,
+            "min": 3.0,
+            "p95": 8.0,
+            "p99": 9.0,
+            "query_population_std": 1.0538465463291495
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9101
+        },
+        "0.90": {
+          "globally_selected_ef_search": 64,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 10,
+              "4": 176,
+              "5": 1093,
+              "6": 2759,
+              "7": 3187,
+              "8": 1539,
+              "9": 236
+            },
+            "max": 9.0,
+            "mean": 6.610888888888889,
+            "median": 7.0,
+            "min": 3.0,
+            "p95": 8.0,
+            "p99": 9.0,
+            "query_population_std": 1.0538465463291495
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9101
+        },
+        "0.91": {
+          "globally_selected_ef_search": 64,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "10": 236,
+              "4": 14,
+              "5": 180,
+              "6": 1085,
+              "7": 2759,
+              "8": 3187,
+              "9": 1539
+            },
+            "max": 10.0,
+            "mean": 7.609555555555556,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 10.0,
+            "query_population_std": 1.0569336267514744
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9101
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m16-tuning-pinned.json",
+      "tuning_artifact_sha256": "2672c10e1fbc86403b08837ce7237b7ee26989115a39f073abd7ef087bf28ee1"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "32": 9000
+        },
+        "max": 32.0,
+        "mean": 32.0,
+        "median": 32.0,
+        "min": 32.0,
+        "p95": 32.0,
+        "p99": 32.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m32.csv",
+      "e3_per_search_sha256": "c601cb1f82be1eba90b789b04a91c3b61f754f40600d54f280d89a859894adb6",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m32-summary.json",
+      "e3_summary_sha256": "b133a628430d7bc52dc251d074be7b21a4bf2a8c7ad8e2c58bc3a2df927fbfa6",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 32,
+      "measurement_recall": 0.9222666666666667,
+      "minimum_feasible_fanout": 32,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "4": 9,
+          "5": 126,
+          "6": 816,
+          "7": 2506,
+          "8": 3695,
+          "9": 1848
+        },
+        "max": 9.0,
+        "mean": 7.6995555555555555,
+        "median": 8.0,
+        "min": 4.0,
+        "p95": 9.0,
+        "p99": 9.0,
+        "query_population_std": 0.9477223117806786
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/random-m32.npz",
+      "partition_artifact_sha256": "27eb4d507a626277b2755c430d33cc816a37e269a19518045a34e70cdce81569",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": null,
+        "logical_shards": 32,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          37353,
+          36885,
+          37168,
+          37064,
+          36777,
+          36804,
+          37039,
+          36936,
+          37276,
+          37077,
+          37027,
+          36999,
+          37016,
+          37170,
+          36897,
+          36844,
+          37115,
+          36738,
+          37124,
+          36949,
+          36824,
+          37294,
+          36949,
+          36835,
+          36863,
+          36937,
+          36675,
+          37055,
+          36697,
+          37096,
+          37256,
+          36775
+        ],
+        "timestamp": "2026-08-20T21:15:38Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 48,
+      "selected_fanout": 32,
+      "selected_tuning_recall": 0.9251,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 48,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "4": 9,
+              "5": 126,
+              "6": 816,
+              "7": 2506,
+              "8": 3695,
+              "9": 1848
+            },
+            "max": 9.0,
+            "mean": 7.6995555555555555,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 9.0,
+            "query_population_std": 0.9477223117806786
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9251
+        },
+        "0.90": {
+          "globally_selected_ef_search": 48,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "4": 9,
+              "5": 126,
+              "6": 816,
+              "7": 2506,
+              "8": 3695,
+              "9": 1848
+            },
+            "max": 9.0,
+            "mean": 7.6995555555555555,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 9.0,
+            "query_population_std": 0.9477223117806786
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9251
+        },
+        "0.91": {
+          "globally_selected_ef_search": 48,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "10": 1848,
+              "5": 9,
+              "6": 126,
+              "7": 816,
+              "8": 2506,
+              "9": 3695
+            },
+            "max": 10.0,
+            "mean": 8.699555555555555,
+            "median": 9.0,
+            "min": 5.0,
+            "p95": 10.0,
+            "p99": 10.0,
+            "query_population_std": 0.9477223117806786
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9251
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m32-tuning-pinned.json",
+      "tuning_artifact_sha256": "673aa1b959a984c4df879b6557c3f70158e7617c2711f6e9b0a8bef7ebfb1b83"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m1.csv",
+      "e3_per_search_sha256": "7288734b0993b6dad7d646808b3fc4f415e456ec1cdc0b37885c9820871ff883",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m1-summary.json",
+      "e3_summary_sha256": "417c6ec1162a2bb56b05c6052d4efe18dbf70916e405bdd73cfe7bb3e5124b71",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 1,
+      "measurement_recall": 0.9267,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m1.npz",
+      "partition_artifact_sha256": "c459b380050e2765667289ba2a55884ce3b4421a00ec49d0c9123bd2dc297c56",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 1.1073203086853027,
+              "max_cluster_size": 1183514,
+              "min_cluster_size": 1183514
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.0,
+              "max_cluster_size": 1183514,
+              "min_cluster_size": 1183514
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 1,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          1183514
+        ],
+        "timestamp": "2026-08-20T21:16:25Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 1,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 192,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9236,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8981
+        },
+        "0.90": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9236
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9236
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m1-tuning-pinned.json",
+      "tuning_artifact_sha256": "d243b52e3e7067e1dfd6a7d0f89f08b75c3b5c6ead051415b6d28ae84b5f457b"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "2": 9000
+        },
+        "max": 2.0,
+        "mean": 2.0,
+        "median": 2.0,
+        "min": 2.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m2.csv",
+      "e3_per_search_sha256": "134e8e9571017e0ea4d8c73e70b73680f95cd3193a9967184ecfbb6a7b2e7e27",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m2-summary.json",
+      "e3_summary_sha256": "46f6c91297283639e82afb70ba4a70cdc2763470104317ac267d1fad0b63c3e2",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 2,
+      "measurement_recall": 0.9262666666666666,
+      "minimum_feasible_fanout": 2,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 6033,
+          "2": 2967
+        },
+        "max": 2.0,
+        "mean": 1.3296666666666668,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.47009207136002146
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m2.npz",
+      "partition_artifact_sha256": "675f7d857b1abbb94b4ffc08da17df710b9c639aaf9cfe73c2581b21f4dcd46b",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 1.0523239374160767,
+              "max_cluster_size": 779472,
+              "min_cluster_size": 404042
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.1570933610200882,
+              "max_cluster_size": 741296,
+              "min_cluster_size": 442218
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.15021800994873047,
+              "max_cluster_size": 757805,
+              "min_cluster_size": 425709
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.12213554233312607,
+              "max_cluster_size": 792060,
+              "min_cluster_size": 391454
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.08743634074926376,
+              "max_cluster_size": 813309,
+              "min_cluster_size": 370205
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 0.05471281707286835,
+              "max_cluster_size": 823766,
+              "min_cluster_size": 359748
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 0.03218197077512741,
+              "max_cluster_size": 827892,
+              "min_cluster_size": 355622
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 0.019361838698387146,
+              "max_cluster_size": 829127,
+              "min_cluster_size": 354387
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 0.013411990366876125,
+              "max_cluster_size": 829338,
+              "min_cluster_size": 354176
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 0.010034368373453617,
+              "max_cluster_size": 829044,
+              "min_cluster_size": 354470
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 0.007836439646780491,
+              "max_cluster_size": 828675,
+              "min_cluster_size": 354839
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 0.006187290884554386,
+              "max_cluster_size": 828324,
+              "min_cluster_size": 355190
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 2,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          828099,
+          355415
+        ],
+        "timestamp": "2026-08-20T21:20:02Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 2,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 192,
+      "selected_fanout": 2,
+      "selected_tuning_recall": 0.929,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 6033,
+              "2": 2967
+            },
+            "max": 2.0,
+            "mean": 1.3296666666666668,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.47009207136002146
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.929
+        },
+        "0.90": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 6033,
+              "2": 2967
+            },
+            "max": 2.0,
+            "mean": 1.3296666666666668,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.47009207136002146
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.929
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4450,
+              "2": 4550
+            },
+            "max": 2.0,
+            "mean": 1.5055555555555555,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.49996913484981176
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.929
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m2-tuning-pinned.json",
+      "tuning_artifact_sha256": "0a4c8f3cd80d96d51fd7072f7dfe1eccc741cac8f609a3014d8cb04b79438c6f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "3": 9000
+        },
+        "max": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "min": 3.0,
+        "p95": 3.0,
+        "p99": 3.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9842333333333334,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m4.csv",
+      "e3_per_search_sha256": "84ab97ec6535f204c62d08676978d046dad9d42225abb0e133ab622b4d78e097",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m4-summary.json",
+      "e3_summary_sha256": "76b20f8233488ddb14cfa9ebdff260dccd75892709c3dd0d7425fd0e66e121e6",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 4,
+      "measurement_recall": 0.902411111111111,
+      "minimum_feasible_fanout": 3,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 4869,
+          "2": 3433,
+          "3": 680,
+          "4": 18
+        },
+        "max": 4.0,
+        "mean": 1.5385555555555555,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 3.0,
+        "p99": 3.0,
+        "query_population_std": 0.6415797536136201
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m4.npz",
+      "partition_artifact_sha256": "9bca00c43e83ffc07b944055c92bc6054e469e51e5db970e01996fa9db2cda7b",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 0.9633995294570923,
+              "max_cluster_size": 437132,
+              "min_cluster_size": 203354
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.30327484011650085,
+              "max_cluster_size": 362216,
+              "min_cluster_size": 234498
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.20874769985675812,
+              "max_cluster_size": 373878,
+              "min_cluster_size": 207305
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.1150384321808815,
+              "max_cluster_size": 410842,
+              "min_cluster_size": 187299
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.05819139629602432,
+              "max_cluster_size": 440926,
+              "min_cluster_size": 180865
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 0.03368610143661499,
+              "max_cluster_size": 463083,
+              "min_cluster_size": 179467
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 0.02475375309586525,
+              "max_cluster_size": 480231,
+              "min_cluster_size": 179683
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 0.02405143342912197,
+              "max_cluster_size": 493562,
+              "min_cluster_size": 178832
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 0.022887134924530983,
+              "max_cluster_size": 504120,
+              "min_cluster_size": 177043
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 0.021801427006721497,
+              "max_cluster_size": 512623,
+              "min_cluster_size": 176342
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 0.02009834349155426,
+              "max_cluster_size": 519158,
+              "min_cluster_size": 176349
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 0.01885853335261345,
+              "max_cluster_size": 524555,
+              "min_cluster_size": 176807
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 4,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          528812,
+          185963,
+          291179,
+          177560
+        ],
+        "timestamp": "2026-08-20T21:23:36Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 192,
+      "selected_fanout": 3,
+      "selected_tuning_recall": 0.906,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4869,
+              "2": 3433,
+              "3": 680,
+              "4": 18
+            },
+            "max": 4.0,
+            "mean": 1.5385555555555555,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 3.0,
+            "query_population_std": 0.6415797536136201
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.906
+        },
+        "0.90": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4869,
+              "2": 3433,
+              "3": 680,
+              "4": 18
+            },
+            "max": 4.0,
+            "mean": 1.5385555555555555,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 3.0,
+            "query_population_std": 0.6415797536136201
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.906
+        },
+        "0.91": {
+          "globally_selected_ef_search": 256,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3338,
+              "2": 3571,
+              "3": 1799,
+              "4": 292
+            },
+            "max": 4.0,
+            "mean": 1.893888888888889,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 4.0,
+            "query_population_std": 0.8302385125097009
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.922
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m4-tuning-pinned.json",
+      "tuning_artifact_sha256": "8ca260c1e5a81c6ff9e274a47d99c9861126b0475373bf9d4dab2ff4034c40be"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "4": 9000
+        },
+        "max": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "min": 4.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.955288888888889,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m8.csv",
+      "e3_per_search_sha256": "93b90c7d9f7f4931f50afd9f1b29ead89870d91280e2ac8e5d6cb8a600a6e48c",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m8-summary.json",
+      "e3_summary_sha256": "807920683387874dc9df6fc923b626c5d707992c39ec9e12d5d5c5f5008ddd36",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 8,
+      "measurement_recall": 0.903788888888889,
+      "minimum_feasible_fanout": 4,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 4009,
+          "2": 2855,
+          "3": 1521,
+          "4": 523,
+          "5": 84,
+          "6": 8
+        },
+        "max": 6.0,
+        "mean": 1.8713333333333333,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 4.0,
+        "p99": 5.0,
+        "query_population_std": 0.9636161061335577
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m8.npz",
+      "partition_artifact_sha256": "026c59a43604885c1cd5c0f87ed907c5f10627a3587cf5b605c17fd98b41d4de",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 0.8936830163002014,
+              "max_cluster_size": 252700,
+              "min_cluster_size": 86986
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.3929772675037384,
+              "max_cluster_size": 222618,
+              "min_cluster_size": 102090
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.2469131499528885,
+              "max_cluster_size": 194817,
+              "min_cluster_size": 94886
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.16480526328086853,
+              "max_cluster_size": 203489,
+              "min_cluster_size": 90039
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.10303323715925217,
+              "max_cluster_size": 203704,
+              "min_cluster_size": 88006
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 0.07092592865228653,
+              "max_cluster_size": 215157,
+              "min_cluster_size": 86353
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 0.06180240586400032,
+              "max_cluster_size": 226474,
+              "min_cluster_size": 84559
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 0.061282187700271606,
+              "max_cluster_size": 235793,
+              "min_cluster_size": 82568
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 0.06640208512544632,
+              "max_cluster_size": 242701,
+              "min_cluster_size": 80300
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 0.07150520384311676,
+              "max_cluster_size": 247663,
+              "min_cluster_size": 77651
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 0.07097522169351578,
+              "max_cluster_size": 250903,
+              "min_cluster_size": 74556
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 0.06749789416790009,
+              "max_cluster_size": 253369,
+              "min_cluster_size": 71290
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 8,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          176385,
+          100608,
+          176261,
+          161546,
+          256096,
+          130553,
+          68251,
+          113814
+        ],
+        "timestamp": "2026-08-20T21:27:07Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 256,
+      "selected_fanout": 4,
+      "selected_tuning_recall": 0.9036000000000001,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 5,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4009,
+              "2": 2855,
+              "3": 1521,
+              "4": 523,
+              "5": 84,
+              "6": 8
+            },
+            "max": 6.0,
+            "mean": 1.8713333333333333,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 5.0,
+            "query_population_std": 0.9636161061335577
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.905
+        },
+        "0.90": {
+          "globally_selected_ef_search": 256,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4009,
+              "2": 2855,
+              "3": 1521,
+              "4": 523,
+              "5": 84,
+              "6": 8
+            },
+            "max": 6.0,
+            "mean": 1.8713333333333333,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 5.0,
+            "query_population_std": 0.9636161061335577
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9036000000000001
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 6,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2662,
+              "2": 2646,
+              "3": 1952,
+              "4": 1189,
+              "5": 460,
+              "6": 83,
+              "7": 8
+            },
+            "max": 7.0,
+            "mean": 2.38,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 5.0,
+            "p99": 6.0,
+            "query_population_std": 1.2355115899451892
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9162
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m8-tuning-pinned.json",
+      "tuning_artifact_sha256": "478d613539be06d941fb32a7e13e67233c08d68acdc2da26defea830940447be"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "9": 9000
+        },
+        "max": 9.0,
+        "mean": 9.0,
+        "median": 9.0,
+        "min": 9.0,
+        "p95": 9.0,
+        "p99": 9.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9768000000000001,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m16.csv",
+      "e3_per_search_sha256": "18b55b6bd2a4f1f40c8be564f909751f7dfeb569cd3ad23ba4140f69c408b1f1",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m16-summary.json",
+      "e3_summary_sha256": "89fec1ade44349f0959b6e50645541b5238bea37d18d864ca7d110466964f85a",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 16,
+      "measurement_recall": 0.9022111111111111,
+      "minimum_feasible_fanout": 5,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 3855,
+          "2": 2354,
+          "3": 1440,
+          "4": 795,
+          "5": 400,
+          "6": 135,
+          "7": 18,
+          "8": 3
+        },
+        "max": 8.0,
+        "mean": 2.1136666666666666,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 5.0,
+        "p99": 6.0,
+        "query_population_std": 1.277006873730739
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m16.npz",
+      "partition_artifact_sha256": "e0a2d50f079def7c556e3b6973da4c1e59445ffe40f9c00ef5d9ebe96baa5f93",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 0.799091100692749,
+              "max_cluster_size": 209750,
+              "min_cluster_size": 23712
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.644615888595581,
+              "max_cluster_size": 132967,
+              "min_cluster_size": 37095
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.37602490186691284,
+              "max_cluster_size": 108943,
+              "min_cluster_size": 31623
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.2561797797679901,
+              "max_cluster_size": 107411,
+              "min_cluster_size": 30700
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.19335436820983887,
+              "max_cluster_size": 110440,
+              "min_cluster_size": 27213
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 0.1458526998758316,
+              "max_cluster_size": 110004,
+              "min_cluster_size": 25168
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 0.12412326037883759,
+              "max_cluster_size": 110055,
+              "min_cluster_size": 23852
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 0.1270608901977539,
+              "max_cluster_size": 112573,
+              "min_cluster_size": 22797
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 0.13447323441505432,
+              "max_cluster_size": 114691,
+              "min_cluster_size": 22034
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 0.19313770532608032,
+              "max_cluster_size": 116002,
+              "min_cluster_size": 21344
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 0.2047443985939026,
+              "max_cluster_size": 117094,
+              "min_cluster_size": 20918
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 0.15173253417015076,
+              "max_cluster_size": 118369,
+              "min_cluster_size": 20810
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 16,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          119678,
+          39522,
+          87201,
+          78814,
+          79552,
+          68608,
+          36599,
+          81789,
+          76177,
+          20789,
+          113883,
+          100982,
+          63916,
+          71770,
+          65568,
+          78666
+        ],
+        "timestamp": "2026-08-20T21:30:55Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 128,
+      "selected_fanout": 9,
+      "selected_tuning_recall": 0.9023,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3855,
+              "2": 2354,
+              "3": 1440,
+              "4": 795,
+              "5": 400,
+              "6": 135,
+              "7": 18,
+              "8": 3
+            },
+            "max": 8.0,
+            "mean": 2.1136666666666666,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 5.0,
+            "p99": 6.0,
+            "query_population_std": 1.277006873730739
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8955
+        },
+        "0.90": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 9,
+          "minimum_feasible_fanout": 5,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3855,
+              "2": 2354,
+              "3": 1440,
+              "4": 795,
+              "5": 400,
+              "6": 135,
+              "7": 18,
+              "8": 3
+            },
+            "max": 8.0,
+            "mean": 2.1136666666666666,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 5.0,
+            "p99": 6.0,
+            "query_population_std": 1.277006873730739
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9023
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 7,
+          "minimum_feasible_fanout": 5,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2708,
+              "2": 2214,
+              "3": 1553,
+              "4": 1226,
+              "5": 746,
+              "6": 397,
+              "7": 135,
+              "8": 18,
+              "9": 3
+            },
+            "max": 9.0,
+            "mean": 2.6585555555555556,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 6.0,
+            "p99": 7.0,
+            "query_population_std": 1.5810594627310377
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9116000000000001
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m16-tuning-pinned.json",
+      "tuning_artifact_sha256": "104b73f26238aa8a0ce620ba803cbe9de1b6978d49f3cb7cec7de932f172c08f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "8": 9000
+        },
+        "max": 8.0,
+        "mean": 8.0,
+        "median": 8.0,
+        "min": 8.0,
+        "p95": 8.0,
+        "p99": 8.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9370111111111111,
+      "between_repetition_std": null,
+      "dataset": "glove-200-angular",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m32.csv",
+      "e3_per_search_sha256": "df3f9f6679137cf5a8e316ea0d2251b09b9b2598282010c17d31b3fee6e3bd72",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m32-summary.json",
+      "e3_summary_sha256": "a464f11e896fbf790aaeb93394f2e8f77b2280aaa6ca2900660a638f8c49bf6a",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 32,
+      "measurement_recall": 0.9066444444444445,
+      "minimum_feasible_fanout": 6,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 3154,
+          "2": 2525,
+          "3": 1380,
+          "4": 940,
+          "5": 554,
+          "6": 279,
+          "7": 135,
+          "8": 27,
+          "9": 6
+        },
+        "max": 9.0,
+        "mean": 2.418111111111111,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 5.0,
+        "p99": 7.0,
+        "query_population_std": 1.520659501988415
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/glove-200-angular/kmeans-m32.npz",
+      "partition_artifact_sha256": "79786a469498c64fe6eabe821ec716bf7ac72da621f37afd66d5141783991bd4",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "angular",
+          "name": "glove-200-angular",
+          "normalize": true,
+          "qdrant_distance": "Cosine"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+        "dimension": 200,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 0.8089197874069214,
+              "max_cluster_size": 152283,
+              "min_cluster_size": 10881
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.6016972661018372,
+              "max_cluster_size": 77952,
+              "min_cluster_size": 17551
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.36200758814811707,
+              "max_cluster_size": 69680,
+              "min_cluster_size": 19463
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.309293657541275,
+              "max_cluster_size": 69562,
+              "min_cluster_size": 16844
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.3145073652267456,
+              "max_cluster_size": 70338,
+              "min_cluster_size": 15962
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 0.2130293995141983,
+              "max_cluster_size": 70476,
+              "min_cluster_size": 15919
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 0.2108452022075653,
+              "max_cluster_size": 70029,
+              "min_cluster_size": 15606
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 0.20419089496135712,
+              "max_cluster_size": 69399,
+              "min_cluster_size": 14786
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 0.1767309457063675,
+              "max_cluster_size": 68836,
+              "min_cluster_size": 14651
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 0.13125692307949066,
+              "max_cluster_size": 68394,
+              "min_cluster_size": 14946
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 0.14429736137390137,
+              "max_cluster_size": 68173,
+              "min_cluster_size": 15306
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 0.19270546734333038,
+              "max_cluster_size": 68083,
+              "min_cluster_size": 15586
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 32,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1183514,
+        "protocol_version": 1,
+        "shard_counts": [
+          16399,
+          26485,
+          26248,
+          39963,
+          54737,
+          54874,
+          25076,
+          64985,
+          40847,
+          19274,
+          57849,
+          31470,
+          26687,
+          23091,
+          33300,
+          45427,
+          27271,
+          35668,
+          32051,
+          51450,
+          27122,
+          55992,
+          28572,
+          58014,
+          68153,
+          25934,
+          20818,
+          23904,
+          65052,
+          15843,
+          35941,
+          25017
+        ],
+        "timestamp": "2026-08-20T21:34:29Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 192,
+      "selected_fanout": 8,
+      "selected_tuning_recall": 0.9054,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 128,
+          "globally_selected_fanout": 9,
+          "minimum_feasible_fanout": 6,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3154,
+              "2": 2525,
+              "3": 1380,
+              "4": 940,
+              "5": 554,
+              "6": 279,
+              "7": 135,
+              "8": 27,
+              "9": 6
+            },
+            "max": 9.0,
+            "mean": 2.418111111111111,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "query_population_std": 1.520659501988415
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8917
+        },
+        "0.90": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 6,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3154,
+              "2": 2525,
+              "3": 1380,
+              "4": 940,
+              "5": 554,
+              "6": 279,
+              "7": 135,
+              "8": 27,
+              "9": 6
+            },
+            "max": 9.0,
+            "mean": 2.418111111111111,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "query_population_std": 1.520659501988415
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9054
+        },
+        "0.91": {
+          "globally_selected_ef_search": 192,
+          "globally_selected_fanout": 9,
+          "minimum_feasible_fanout": 7,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2098,
+              "10": 6,
+              "2": 2195,
+              "3": 1644,
+              "4": 1159,
+              "5": 905,
+              "6": 552,
+              "7": 279,
+              "8": 135,
+              "9": 27
+            },
+            "max": 10.0,
+            "mean": 3.0254444444444446,
+            "median": 3.0,
+            "min": 1.0,
+            "p95": 6.0,
+            "p99": 8.0,
+            "query_population_std": 1.8084116180358147
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9142
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m32-tuning-pinned.json",
+      "tuning_artifact_sha256": "153a365fa05c24704aa80361f9593f41d631d9026d47e6742c41fd579d7e4e52"
+    }
+  ],
+  "dataset": "glove-200-angular",
+  "dataset_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "deterministic_graph_construction": true,
+  "experiment_id": "stage12-e2-deterministic-glove-200-angular-fanout",
+  "graph_build_seed": 20260821,
+  "per_query_row_count": 108000,
+  "qualitative_sensitivity_checks": {
+    "0.89": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_m32_exceeds_m1": true,
+      "kmeans_actual_non_decreasing": true,
+      "kmeans_actual_series": [
+        1,
+        2,
+        3,
+        5,
+        8,
+        9
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.3296666666666668,
+        1.5385555555555555,
+        1.8713333333333333,
+        2.1136666666666666,
+        2.418111111111111
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9774444444444443,
+        3.1453333333333333,
+        4.929111111111111,
+        6.610888888888889,
+        7.6995555555555555
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "0.90": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_m32_exceeds_m1": true,
+      "kmeans_actual_non_decreasing": false,
+      "kmeans_actual_series": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        8
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.3296666666666668,
+        1.5385555555555555,
+        1.8713333333333333,
+        2.1136666666666666,
+        2.418111111111111
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9774444444444443,
+        3.1453333333333333,
+        4.929111111111111,
+        6.610888888888889,
+        7.6995555555555555
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "0.91": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_m32_exceeds_m1": true,
+      "kmeans_actual_non_decreasing": true,
+      "kmeans_actual_series": [
+        1,
+        2,
+        3,
+        6,
+        7,
+        9
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.5055555555555555,
+        1.893888888888889,
+        2.38,
+        2.6585555555555556,
+        3.0254444444444446
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9982222222222221,
+        3.777111111111111,
+        5.907222222222222,
+        7.609555555555556,
+        8.699555555555555
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "all_thresholds_passed": true,
+    "non_monotonic_kmeans_targets": [
+      "0.90"
+    ]
+  },
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e2_fanout_analysis",
+  "sensitivity_targets": [
+    0.89,
+    0.9,
+    0.91
+  ],
+  "status": "VALID_E2",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T06:02:09Z"
+}

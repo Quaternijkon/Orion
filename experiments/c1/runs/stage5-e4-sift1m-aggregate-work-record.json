@@ -1,0 +1,160 @@
+{
+  "anomalies": [
+    "sift1m_kmeans_m4_m8_m16_m32_reached_12_iteration_cap_without_convergence",
+    "work_bound_projection_anticorrelates_with_measured_e1_at_m1_m2_m4"
+  ],
+  "c1_d_aggregate_cost_status": "SUPPORTS",
+  "configuration_count": 12,
+  "dataset": "sift1m",
+  "dataset_checksum": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "evidence_sha256": {
+    "aggregate_work_summary_csv": "0b074c4bb7231bed051da9f2730107eaaf109c45e16be1a7fe21cde408038708",
+    "canonical_aggregate_work": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+    "canonical_projected_scaling": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+    "e2_per_query": "7497dc7a602a5f684fd0c2d7dc0f37afc0e0b34f5b90da20b28a723cbd155a2f",
+    "e3_per_search": {
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m1.csv": "5bf2eed85a99ac6d0ff51f3a68f081eed8bfa9a1c6bce33102502ad0dbd51bda",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m16.csv": "daa1c0572654cb3abac556fb5ef1bf1884b2d877be448a0c62f0073447dd73cb",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m2.csv": "0850bae75d8558b63c3b7496f36db7cb07c3fb3e7dd43ec0ad5d5fe8b2967e73",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m32.csv": "a84dd0d58f7ea7a38b3aba69d8e55faaa8ddbe37d2ecafd2731d1a3fd2fb0a59",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m4.csv": "7dd0b9bddc3c49b00ad09e37cc2a9c9e4fb7185c8890fc869f4104479352199c",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m8.csv": "7d2e83761c0f7ed23a1b55a99b98e32e8c381e525837a0bc0828f2c9f91ee983",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m1.csv": "433f7d882818f7bae2671f5657a22f602f8cf1ee947c8a009ccfeccadf5914bf",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m16.csv": "3456dca86bc56e23007acbe21f749ae60fae987fc4f5b41940c790b60690f02b",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m2.csv": "55868c8695348afc2ab3e2d34bf10ddd3ff24ed61b554236580ed5364be7e26e",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m32.csv": "cf6b2822e713e929929bec44f4af2b4d1e5259cf248245e68d05b07b8abe1c00",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m4.csv": "e57d39089c1361183531e700ac0cdf11f10c8da1a41f3c2a705dbf37b39cb477",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m8.csv": "f10b600d97657356af704f8bc320f080f16de4a8db3395297e849512ef3d4199"
+    },
+    "local_work_summary": "fcba587a147637402aaa69da35fc928ce5f98ff855f1dce3d04914a19e814eaf",
+    "model_accuracy_csv": "1c403bdf6c146d23cf8ef8aaf42cce1b0590e0bfa1ab5f4891683a439623b220",
+    "per_query": "7839f552a01e5b8f404a627101a638326078a9519ef3e41ea3f277b6ae302c1a",
+    "physical_e1_summary": "dafa7d99c1074934a9246b4f697abc058e69411369e8977c916fe15eaa197dec",
+    "protocol_aggregate_work": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+    "protocol_model_vs_observed": "5a2c99732aa33658ead971cf5e40270dee3066c37dc2264402bd384967299b6e",
+    "protocol_projected_scaling": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+    "summary_json": "a2be39eadca3976e531304f5d4eb75cf01a78cb7d7cd7805b705304efc443a5f"
+  },
+  "experiment_id": "stage5-e4-sift1m-aggregate-work",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "logical_shard_counts": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "model_accuracy": {
+    "kmeans": {
+      "maximum_relative_error": 1.707753904240953e-16,
+      "mean_relative_error": 2.846256507068255e-17,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    },
+    "random": {
+      "maximum_relative_error": 0.0,
+      "mean_relative_error": 0.0,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    }
+  },
+  "observed_distance_mean": {
+    "kmeans": {
+      "1": 864.5702222222222,
+      "16": 2322.4502222222222,
+      "2": 861.93,
+      "32": 2662.838888888889,
+      "4": 1359.7886666666666,
+      "8": 1979.2365555555555
+    },
+    "random": {
+      "1": 864.5702222222222,
+      "16": 8296.81088888889,
+      "2": 1669.3712222222223,
+      "32": 15006.159666666666,
+      "4": 2438.0904444444445,
+      "8": 4544.709
+    }
+  },
+  "observed_worker_cpu_time_us_mean": {
+    "kmeans": {
+      "1": 145.07966666666667,
+      "16": 336.142,
+      "2": 138.13088888888888,
+      "32": 300.458,
+      "4": 223.6561111111111,
+      "8": 315.2696666666667
+    },
+    "random": {
+      "1": 143.02911111111112,
+      "16": 1290.6602222222223,
+      "2": 267.6538888888889,
+      "32": 1849.9474444444445,
+      "4": 430.49033333333335,
+      "8": 777.9617777777778
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "per_query_row_count": 108000,
+  "physical_attribution_status": "INSUFFICIENT",
+  "projection_sanity_checks": {
+    "kmeans": {
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 0.8935410299401144,
+      "pearson": -0.9252058919321343,
+      "physical_e1_normalized_qps": [
+        1.0,
+        0.9875785545420257,
+        0.9599830124429427
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        2.006126303115618,
+        2.543248795687042
+      ],
+      "spearman": -0.9999999999999998,
+      "trend_agreement": false
+    },
+    "random": {
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 1.371064779267359,
+      "pearson": -0.8405136161867948,
+      "physical_e1_normalized_qps": [
+        1.0,
+        0.5887929443546758,
+        0.32577848829749273
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        1.0358034339076836,
+        1.4184383096899058
+      ],
+      "spearman": -0.9999999999999998,
+      "trend_agreement": false
+    }
+  },
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e4_aggregate_work_decomposition",
+  "status": "VALID_E4_WITH_PHYSICAL_PROJECTION_SANITY_CHECK_FAILURE",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-20T20:29:46Z"
+}

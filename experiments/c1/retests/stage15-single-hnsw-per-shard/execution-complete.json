@@ -1,0 +1,82 @@
+{
+  "datasets": [
+    "sift1m",
+    "glove-200-angular"
+  ],
+  "expected_nonempty_hnsw_segments_per_logical_shard": 1,
+  "expected_total_segments_per_logical_shard": 2,
+  "fanout_sources": [
+    {
+      "dataset": "sift1m",
+      "fanout": 1,
+      "fixed_ef": 24,
+      "logical_shards": 2,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage13-physical1to4-ef-controlled/fanout/holdout/sift1m-kmeans-m2-ef24-selected.json",
+      "source_sha256": "5d818b7ab7d40c8f7a0702d562816a5ddca3d608328d3f6620b8a1b559fd8395"
+    },
+    {
+      "dataset": "sift1m",
+      "fanout": 2,
+      "fixed_ef": 24,
+      "logical_shards": 3,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage13-physical1to4-ef-controlled/fanout/holdout/sift1m-kmeans-m3-ef24-selected.json",
+      "source_sha256": "74fceb7efbe747566bb551031fac6b5d7dc8557daf6a9f00b97c85703136e02f"
+    },
+    {
+      "dataset": "sift1m",
+      "fanout": 2,
+      "fixed_ef": 24,
+      "logical_shards": 4,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage13-physical1to4-ef-controlled/fanout/holdout/sift1m-kmeans-m4-ef24-selected.json",
+      "source_sha256": "2233869b2952977cfea6639b583b8fd848bce26603584853d26150ea9b7aad70"
+    },
+    {
+      "dataset": "glove-200-angular",
+      "fanout": 2,
+      "fixed_ef": 320,
+      "logical_shards": 2,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/fanout/holdout/glove-200-angular-kmeans-m2-ef320-selected.json",
+      "source_sha256": "fac964ae45b1e102901567058403733bdaec84d4c5e3b548eae7e5cbc5a68361"
+    },
+    {
+      "dataset": "glove-200-angular",
+      "fanout": 3,
+      "fixed_ef": 320,
+      "logical_shards": 3,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/fanout/holdout/glove-200-angular-kmeans-m3-ef320-selected.json",
+      "source_sha256": "659848d8e03096f791be9a6acbfc6fb4c610235d11d1d230527b2827274fc3d0"
+    },
+    {
+      "dataset": "glove-200-angular",
+      "fanout": 3,
+      "fixed_ef": 320,
+      "logical_shards": 4,
+      "source": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/fanout/holdout/glove-200-angular-kmeans-m4-ef320-selected.json",
+      "source_sha256": "04bcfae8ad1e03c72b626b30553897b90ed0b089b9d5ad7988520bab9534035a"
+    }
+  ],
+  "fixed_ef": {
+    "glove-200-angular": 320,
+    "sift1m": 24
+  },
+  "glove_single_graph_bounded_ef_grid": [
+    192,
+    224,
+    256,
+    320,
+    384
+  ],
+  "glove_single_graph_ef_hard_cap": 384,
+  "max_segment_size_kb": 2000000,
+  "physical_counts": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "record_type": "stage15_single_hnsw_per_shard_retest",
+  "status": "MEASUREMENTS_COMPLETE",
+  "timestamp": "2026-08-23T16:26:43Z",
+  "topology": "/users/dry/Orion/experiments/c1/topology-amd-4node-physical-core-isolated.json",
+  "topology_sha256": "cff4a6801a9255127210284e2b17fa69840951514ba441b60b7211cec42b6977"
+}

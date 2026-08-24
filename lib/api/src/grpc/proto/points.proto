@@ -1586,4 +1586,7 @@ message HardwareUsage {
   uint64 payload_index_io_write = 5;
   uint64 vector_io_read = 6;
   uint64 vector_io_write = 7;
+  uint64 graph_nodes_visited = 8;
+  uint64 cpu_time_us = 9;
+  uint64 cpu_wall_time_us = 10;
 }

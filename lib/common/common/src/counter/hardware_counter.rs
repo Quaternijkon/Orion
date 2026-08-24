@@ -13,6 +13,7 @@ pub struct HardwareCounterCell {
     vector_io_read_multiplier: usize,
     cpu_multiplier: usize,
     cpu_counter: CounterCell,
+    graph_nodes_visited_counter: CounterCell,
     pub(super) payload_io_read_counter: CounterCell,
     pub(super) payload_io_write_counter: CounterCell,
     pub(super) payload_index_io_read_counter: CounterCell,
@@ -27,8 +28,9 @@ impl std::fmt::Display for HardwareCounterCell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "HardwareCounterCell {{ cpu: {}, payload_io_read: {}, payload_io_write: {}, payload_index_io_read: {}, vector_io_read: {}, vector_io_write: {} }}",
+            "HardwareCounterCell {{ cpu: {}, graph_nodes_visited: {}, payload_io_read: {}, payload_io_write: {}, payload_index_io_read: {}, vector_io_read: {}, vector_io_write: {} }}",
             self.cpu_counter.get(),
+            self.graph_nodes_visited_counter.get(),
             self.payload_io_read_counter.get(),
             self.payload_io_write_counter.get(),
             self.payload_index_io_read_counter.get(),
@@ -45,6 +47,7 @@ impl HardwareCounterCell {
             vector_io_read_multiplier: 1,
             cpu_multiplier: 1,
             cpu_counter: CounterCell::new(),
+            graph_nodes_visited_counter: CounterCell::new(),
             payload_io_read_counter: CounterCell::new(),
             payload_io_write_counter: CounterCell::new(),
             payload_index_io_read_counter: CounterCell::new(),
@@ -63,6 +66,7 @@ impl HardwareCounterCell {
             vector_io_read_multiplier: 1,
             cpu_multiplier: 1,
             cpu_counter: CounterCell::new(),
+            graph_nodes_visited_counter: CounterCell::new(),
             payload_io_read_counter: CounterCell::new(),
             payload_io_write_counter: CounterCell::new(),
             payload_index_io_read_counter: CounterCell::new(),
@@ -78,6 +82,7 @@ impl HardwareCounterCell {
             vector_io_read_multiplier: 1,
             cpu_multiplier: 1,
             cpu_counter: CounterCell::new(),
+            graph_nodes_visited_counter: CounterCell::new(),
             payload_io_read_counter: CounterCell::new(),
             payload_io_write_counter: CounterCell::new(),
             payload_index_io_read_counter: CounterCell::new(),
@@ -106,6 +111,7 @@ impl HardwareCounterCell {
             vector_io_read_multiplier: self.vector_io_read_multiplier,
             cpu_multiplier: self.cpu_multiplier,
             cpu_counter: CounterCell::new(),
+            graph_nodes_visited_counter: CounterCell::new(),
             payload_io_read_counter: CounterCell::new(),
             payload_io_write_counter: CounterCell::new(),
             payload_index_io_read_counter: CounterCell::new(),
@@ -129,6 +135,12 @@ impl HardwareCounterCell {
     #[inline]
     pub fn cpu_counter(&self) -> &CounterCell {
         &self.cpu_counter
+    }
+
+    /// Counts HNSW graph-node expansion events for query-time instrumentation.
+    #[inline]
+    pub fn graph_nodes_visited_counter(&self) -> &CounterCell {
+        &self.graph_nodes_visited_counter
     }
 
     #[inline]
@@ -167,6 +179,7 @@ impl HardwareCounterCell {
             vector_io_read_multiplier,
             cpu_multiplier,
             cpu_counter, // We use .get_cpu() to calculate the real CPU value.
+            graph_nodes_visited_counter,
             payload_io_read_counter,
             payload_io_write_counter,
             payload_index_io_read_counter,
@@ -178,6 +191,9 @@ impl HardwareCounterCell {
 
         HardwareData {
             cpu: cpu_counter.get() * cpu_multiplier,
+            cpu_time_us: 0,
+            cpu_wall_time_us: 0,
+            graph_nodes_visited: graph_nodes_visited_counter.get(),
             payload_io_read: payload_io_read_counter.get(),
             payload_io_write: payload_io_write_counter.get(),
             payload_index_io_read: payload_index_io_read_counter.get(),
@@ -230,6 +246,7 @@ mod test {
         {
             let draining_cell = accumulator.get_counter_cell();
             draining_cell.cpu_counter().incr(); // Dropping here means we drain the values to `atomic` instead of panicking
+            draining_cell.graph_nodes_visited_counter().incr_delta(3);
 
             {
                 let mut hw_cell_wb = draining_cell.cpu_counter().write_back_counter();
@@ -238,6 +255,7 @@ mod test {
         }
 
         assert_eq!(accumulator.get_cpu(), 2);
+        assert_eq!(accumulator.get_graph_nodes_visited(), 3);
     }
 
     #[test]

@@ -1,0 +1,100 @@
+{
+  "actual_fanout": {
+    "kmeans": {
+      "1": 1.0,
+      "16": 9.0,
+      "2": 2.0,
+      "32": 10.0,
+      "4": 3.0,
+      "8": 4.0
+    },
+    "random": {
+      "1": 1.0,
+      "16": 16.0,
+      "2": 2.0,
+      "32": 32.0,
+      "4": 4.0,
+      "8": 8.0
+    }
+  },
+  "between_repetition_std": null,
+  "configuration_count": 12,
+  "dataset": "glove-200-angular",
+  "dataset_checksum": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "deterministic_repetition_count": 1,
+  "evidence_sha256": {
+    "canonical_fanout": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+    "canonical_oracle_cdf": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+    "per_query": "a017c4e4caf75b74dd529133c8b37cc842b2beb7b7582dfc3ee4c305c01b1418",
+    "protocol_actual_cdf": "47cc6c38f55c9fac0832692c19d0e367d105bae2294f241fc0a3002690dc6278",
+    "protocol_fanout": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+    "protocol_oracle_cdf": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+    "summary_csv": "15beb8c1e59e923f14645e165ad45a02422a3a438d38a2e8abc8dfda5a23e0f5",
+    "summary_json": "83095ace8a53bb0a5192c85ba32316bc3c420c8bde5cb456fabcba88743ac4dd"
+  },
+  "experiment_id": "stage3-e2-glove-200-angular-fanout",
+  "logical_shard_counts": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "measurement_recall": {
+    "kmeans": {
+      "1": 0.9120555555555555,
+      "16": 0.9015666666666667,
+      "2": 0.9044000000000001,
+      "32": 0.902411111111111,
+      "4": 0.9033222222222221,
+      "8": 0.9030222222222222
+    },
+    "random": {
+      "1": 0.9120555555555555,
+      "16": 0.9160888888888888,
+      "2": 0.9154666666666668,
+      "32": 0.9230888888888888,
+      "4": 0.9014222222222222,
+      "8": 0.9120555555555555
+    }
+  },
+  "oracle_mean_fanout": {
+    "kmeans": {
+      "1": 1.0,
+      "16": 2.1136666666666666,
+      "2": 1.3296666666666668,
+      "32": 2.418111111111111,
+      "4": 1.5385555555555555,
+      "8": 1.8713333333333333
+    },
+    "random": {
+      "1": 1.0,
+      "16": 6.610888888888889,
+      "2": 1.9774444444444443,
+      "32": 7.6995555555555555,
+      "4": 3.1453333333333333,
+      "8": 4.929111111111111
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "per_query_row_count": 108000,
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e2_fanout_analysis",
+  "sensitivity_status": "QUALITATIVE_FANOUT_TRENDS_PRESERVED",
+  "sensitivity_targets": [
+    0.89,
+    0.9,
+    0.91
+  ],
+  "status": "VALID_E2",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T00:02:45Z"
+}

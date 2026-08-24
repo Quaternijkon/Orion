@@ -1854,6 +1854,7 @@ def build_original_routing_state(
     multi_assign_min_max_vote: int = 2,
     multi_assign_vote_delta: int = 0,
     multi_assign_max_shards: int = 0,
+    enable_topology_refinement: bool = True,
 ) -> OriginalRoutingState:
     nearest_l1 = np.asarray([l1s[0] for l1s in point_to_l1s], dtype=np.int64)
     l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
@@ -1867,15 +1868,17 @@ def build_original_routing_state(
         kmeans_iters,
         kmeans_seed,
     )
-    l1_to_shard, topology_iteration_count = converge_l1_topology(
-        point_to_l1s,
-        upper_indices,
-        up_tier_weights,
-        l1_to_shard,
-        len(train),
-        initial_num_shards,
-        topology_iters,
-    )
+    topology_iteration_count = 0
+    if enable_topology_refinement:
+        l1_to_shard, topology_iteration_count = converge_l1_topology(
+            point_to_l1s,
+            upper_indices,
+            up_tier_weights,
+            l1_to_shard,
+            len(train),
+            initial_num_shards,
+            topology_iters,
+        )
 
     recalibrated_weights = recalibrate_l1_weights_by_voting(
         point_to_l1s,
@@ -3136,8 +3139,10 @@ def validate_numeric_shard_round_robin_placement(
     cluster_info: dict[str, Any],
     worker_peer_ids: list[int] | tuple[int, ...],
     expected_shard_count: int,
+    *,
+    include_controller: bool = False,
 ) -> dict[str, Any]:
-    """Strictly validate the final native RF=1 worker-only placement."""
+    """Strictly validate the final native RF=1 round-robin placement."""
     workers = list(worker_peer_ids)
     expected = round_robin_numeric_shard_targets(
         list(range(expected_shard_count)), workers
@@ -3150,6 +3155,7 @@ def validate_numeric_shard_round_robin_placement(
         expected,
         placement_mode="round_robin",
         mismatch_label="round-robin",
+        include_controller=include_controller,
     )
 
 
@@ -3159,8 +3165,10 @@ def validate_numeric_shard_explicit_placement(
     worker_peer_ids: list[int] | tuple[int, ...],
     expected_shard_count: int,
     expected_placement: dict[int, int],
+    *,
+    include_controller: bool = False,
 ) -> dict[str, Any]:
-    """Strictly validate one explicit native RF=1 worker-only placement."""
+    """Strictly validate one explicit native RF=1 placement."""
     return _validate_numeric_shard_expected_placement(
         info,
         cluster_info,
@@ -3169,6 +3177,7 @@ def validate_numeric_shard_explicit_placement(
         expected_placement,
         placement_mode="explicit",
         mismatch_label="explicit",
+        include_controller=include_controller,
     )
 
 
@@ -3181,6 +3190,7 @@ def _validate_numeric_shard_expected_placement(
     *,
     placement_mode: str,
     mismatch_label: str,
+    include_controller: bool = False,
 ) -> dict[str, Any]:
     _validate_numeric_auto_rf1_config(info, expected_shard_count)
     controller_peer_id = cluster_info.get("peer_id")
@@ -3193,8 +3203,10 @@ def _validate_numeric_shard_expected_placement(
         raise ValueError("worker peer IDs must be non-negative integers")
     if len(set(workers)) != len(workers):
         raise ValueError("worker peer IDs must be unique")
-    if controller_peer_id in workers:
+    if controller_peer_id in workers and not include_controller:
         raise RuntimeError("worker peer IDs must not include the coordinator/controller peer")
+    if include_controller and controller_peer_id not in workers:
+        raise RuntimeError("all-peer placement must include the coordinator/controller peer")
 
     if not isinstance(expected_placement, dict):
         raise TypeError("expected numeric shard placement must be a dictionary")
@@ -3240,7 +3252,7 @@ def _validate_numeric_shard_expected_placement(
     counts_by_worker = {peer_id: int(counts.get(peer_id, 0)) for peer_id in workers}
     if max(counts_by_worker.values()) - min(counts_by_worker.values()) > 1:
         raise RuntimeError(f"numeric shard placement is imbalanced: {counts_by_worker}")
-    if controller_peer_id in counts:
+    if not include_controller and controller_peer_id in counts:
         raise RuntimeError("controller still owns one or more lower numeric shards")
     return {
         "valid": True,
@@ -3251,6 +3263,7 @@ def _validate_numeric_shard_expected_placement(
         "placement": placement,
         "expected_placement": dict(expected_placement),
         "shards_per_worker": counts_by_worker,
+        "includes_controller": include_controller,
         "shard_transfers": [],
     }
 
@@ -3346,10 +3359,11 @@ def _move_numeric_shards_to_targets(
     expected_shard_count: int,
     placement_mode: str,
     transfer_method: str = "stream_records",
+    include_controller: bool = False,
     timeout_sec: float = 3600.0,
     poll_interval_sec: float = 1.0,
 ) -> dict[str, Any]:
-    """Idempotently move native numeric shards to one exact worker-only layout."""
+    """Idempotently move native numeric shards to one exact peer layout."""
     if expected_shard_count <= 0:
         raise ValueError("expected_shard_count must be positive")
     if timeout_sec <= 0:
@@ -3366,8 +3380,10 @@ def _move_numeric_shards_to_targets(
         raise RuntimeError("controller endpoint did not report its peer ID")
     workers = list(worker_peer_ids)
     round_robin_numeric_shard_targets([], workers)
-    if current_peer_id in workers:
+    if current_peer_id in workers and not include_controller:
         raise RuntimeError("worker peer IDs must not include the coordinator/controller peer")
+    if include_controller and current_peer_id not in workers:
+        raise RuntimeError("all-peer placement must include the coordinator/controller peer")
     known_peer_ids = set(peer_uris)
     known_peer_ids.add(current_peer_id)
     unknown_workers = sorted(set(workers) - known_peer_ids)
@@ -3468,6 +3484,7 @@ def _move_numeric_shards_to_targets(
             final_cluster,
             workers,
             expected_shard_count,
+            include_controller=include_controller,
         )
     elif placement_mode == "explicit":
         audit = validate_numeric_shard_explicit_placement(
@@ -3476,6 +3493,7 @@ def _move_numeric_shards_to_targets(
             workers,
             expected_shard_count,
             targets,
+            include_controller=include_controller,
         )
     else:
         raise ValueError(f"unsupported numeric shard placement mode: {placement_mode!r}")
@@ -3490,6 +3508,7 @@ def move_numeric_shards_explicit(
     *,
     expected_shard_count: int,
     transfer_method: str = "snapshot",
+    include_controller: bool = False,
     timeout_sec: float = 3600.0,
     poll_interval_sec: float = 1.0,
 ) -> dict[str, Any]:
@@ -3502,6 +3521,7 @@ def move_numeric_shards_explicit(
         expected_shard_count=expected_shard_count,
         placement_mode="explicit",
         transfer_method=transfer_method,
+        include_controller=include_controller,
         timeout_sec=timeout_sec,
         poll_interval_sec=poll_interval_sec,
     )
@@ -3514,6 +3534,7 @@ def move_numeric_shards_round_robin(
     *,
     expected_shard_count: int,
     transfer_method: str = "stream_records",
+    include_controller: bool = False,
     timeout_sec: float = 3600.0,
     poll_interval_sec: float = 1.0,
 ) -> dict[str, Any]:
@@ -3529,6 +3550,7 @@ def move_numeric_shards_round_robin(
         expected_shard_count=expected_shard_count,
         placement_mode="round_robin",
         transfer_method=transfer_method,
+        include_controller=include_controller,
         timeout_sec=timeout_sec,
         poll_interval_sec=poll_interval_sec,
     )

@@ -1,0 +1,1025 @@
+{
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_submission-20260718a_simple_kmeans_seed1_s46",
+  "collection_routing_build_metadata": {
+    "status": "verified",
+    "verified": true,
+    "expected_fingerprint": "7eef8ddbfb3f65d6b60dce4cbbc17c1e822d1ac74759b9093be7fb54b55f10a2",
+    "actual_fingerprint": "7eef8ddbfb3f65d6b60dce4cbbc17c1e822d1ac74759b9093be7fb54b55f10a2",
+    "expected_fields": {
+      "schema_version": 1,
+      "routing_mode": "kmeans_simple_nprobe",
+      "routing_family": "simple_kmeans",
+      "num_shards": 46,
+      "effective_num_shards": 46,
+      "train_count": 1183514,
+      "distance": "Cosine",
+      "hnsw_m": 32,
+      "hnsw_ef_construct": 100,
+      "upper_hnsw_m": 32,
+      "upper_hnsw_ef_construction": 100,
+      "upper_hnsw_search_ef_during_routing_build": 400,
+      "upper_sample_seed": 100,
+      "kmeans_rand_seed": 1,
+      "kmeans_iters": 10,
+      "cpp_kmeans_train_size": 10000,
+      "sample_denominator": 32,
+      "k_overlap": 10,
+      "topology_iters": 50,
+      "multi_assign": {
+        "enabled": false,
+        "orion_enabled": false,
+        "orion_min_max_vote": 2,
+        "orion_vote_delta": 0,
+        "orion_max_shards": 0,
+        "simple_kmeans_enabled": false,
+        "simple_kmeans_alpha": 1.0,
+        "simple_kmeans_chunk_size": 50000
+      },
+      "fission": {
+        "enabled": false,
+        "claim_a_partition_family": "none",
+        "claim_a_random_seed": 12345
+      },
+      "legacy_centroid": {
+        "sample_size": 50000,
+        "seed": 42
+      }
+    },
+    "note": "The live collection contains Orion harness routing-build metadata whose canonical fields and SHA-256 fingerprint exactly match this run."
+  },
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "dataset_size_bytes": 962819488,
+  "repository": {
+    "root": "/users/dry/Orion",
+    "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+    "dirty": true
+  },
+  "image_tag": "orion-method4:1a5ac4c47237",
+  "image_digest": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+  "deployment_manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+  "deployment_manifest": {
+    "cluster_snapshot": {
+      "result": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-07-18T12:05:09.362172928Z"
+        },
+        "message_send_failures": {},
+        "peer_id": 987102789522726,
+        "peers": {
+          "1667891846572449": {
+            "uri": "http://10.10.1.4:6335/"
+          },
+          "7896541606624976": {
+            "uri": "http://10.10.1.3:6335/"
+          },
+          "8982479151082257": {
+            "uri": "http://10.10.1.2:6335/"
+          },
+          "987102789522726": {
+            "uri": "http://10.10.1.1:6335/"
+          }
+        },
+        "raft_info": {
+          "commit": 874,
+          "is_voter": true,
+          "leader": 8982479151082257,
+          "pending_operations": 0,
+          "role": "Follower",
+          "term": 13
+        },
+        "status": "enabled"
+      },
+      "status": "ok",
+      "time": 1.4747e-05
+    },
+    "container_ulimits": {
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      }
+    },
+    "controller_uri": "http://10.10.1.1:6335",
+    "controller_url": "http://10.10.1.1:6333",
+    "dataset": {
+      "hdf5_shapes": {
+        "neighbors": [
+          10000,
+          100
+        ],
+        "test": [
+          10000,
+          200
+        ],
+        "train": [
+          1183514,
+          200
+        ]
+      },
+      "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+      "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+      "size_bytes": 962819488,
+      "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+    },
+    "generated_at": "2026-07-18T12:05:06Z",
+    "image": {
+      "id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+      "tag": "orion-method4:1a5ac4c47237",
+      "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/orion-method4_1a5ac4c47237.tar",
+      "tar_sha256": "4aa116f056c6d13ab918535499f459dbd0b8000dad20f07da0d83f56263ec0de",
+      "tar_size_bytes": 70056448
+    },
+    "nodes": [
+      {
+        "advertised_uri": "http://10.10.1.1:6335",
+        "container_name": "orion-dist-dist-20260717-initial-controller",
+        "cpuset": "0-7",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-0.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.1:6333",
+        "max_search_threads": 8,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "enabled",
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/controller/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.2:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_1",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-1.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.2:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.2",
+        "role": "qdrant_shard_1",
+        "ssh_host": "hp052.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_1/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.3:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_2",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-2.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289415680
+        },
+        "http_url": "http://10.10.1.3:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.3",
+        "role": "qdrant_shard_2",
+        "ssh_host": "hp065.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_2/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.4:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_3",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-3.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289407488
+        },
+        "http_url": "http://10.10.1.4:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.4",
+        "role": "qdrant_shard_3",
+        "ssh_host": "hp076.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_3/storage"
+      }
+    ],
+    "peer_premerge": {
+      "current_mode": "enabled",
+      "disable_environment_variable": "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE",
+      "matches_requested": true,
+      "requested_mode": "enabled",
+      "scope": "controller"
+    },
+    "repository": {
+      "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+      "dirty": true,
+      "dirty_paths": [
+        "tests/tools/test_method4_benchmark_matrix.py",
+        "tests/tools/test_qdrant_two_level_routing_experiment.py",
+        "tools/method4_benchmark_matrix.py",
+        "tools/qdrant_two_level_routing_experiment.py",
+        "docs/experiments/2026-07-17-method4-four-node-distributed.md",
+        "results/method4_distributed/",
+        "results/method4_distributed_confirmation/",
+        "results/method4_distributed_smoke/",
+        "results/method4_distributed_submission/",
+        "results/method4_distributed_tuning/",
+        "tests/tools/test_method4_distributed_cluster.py",
+        "tools/benchmark_configs/method4_distributed_baseline_dense_batch200.json",
+        "tools/benchmark_configs/method4_distributed_baseline_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_fixed_ef_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_glove200_initial.json",
+        "tools/benchmark_configs/method4_distributed_high_recall_097_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_high_recall_097_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_native_premerge_ab_batch200.json",
+        "tools/benchmark_configs/method4_distributed_orion_debug.json",
+        "tools/benchmark_configs/method4_distributed_orion_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_strict_batch200.json",
+        "tools/benchmark_configs/method4_distributed_simple_seed1_095_sweep_batch200.json",
+        "tools/benchmark_configs/method4_distributed_smoke.json",
+        "tools/distributed/",
+        "tools/method4_distributed_cluster.py"
+      ],
+      "path": "/users/dry/Orion",
+      "short_commit": "1a5ac4c47237"
+    },
+    "run_id": "dist-20260717-initial",
+    "schema_version": 1,
+    "topology": {
+      "benchmark_client_cpuset": "8-19",
+      "controller": {
+        "cpuset": "0-7",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost"
+      },
+      "dataset": {
+        "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+      },
+      "local_storage_root": "/users/dry/orion-distributed",
+      "ports": {
+        "grpc": 6334,
+        "http": 6333,
+        "p2p": 6335
+      },
+      "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+      "workers": [
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.2",
+          "role": "qdrant_shard_1",
+          "ssh_host": "hp052.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.3",
+          "role": "qdrant_shard_2",
+          "ssh_host": "hp065.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.4",
+          "role": "qdrant_shard_3",
+          "ssh_host": "hp076.utah.cloudlab.us"
+        }
+      ]
+    },
+    "worker_uris": [
+      "http://10.10.1.2:6335",
+      "http://10.10.1.3:6335",
+      "http://10.10.1.4:6335"
+    ]
+  },
+  "runtime_log_since_epoch": 1784381372,
+  "container_log_tails": {
+    "controller": {
+      "returncode": 0,
+      "stdout": "2026-07-18T13:29:32.916364Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 562 \"-\" \"Python-urllib/3.10\" 0.000071\n2026-07-18T13:29:34.159757Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 562 \"-\" \"Python-urllib/3.10\" 0.000072\n2026-07-18T13:29:35.211952Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002543\n2026-07-18T13:29:35.214697Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002112\n2026-07-18T13:29:35.215487Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000073\n2026-07-18T13:29:35.218465Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002165\n2026-07-18T13:29:35.219076Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000065\n2026-07-18T13:29:36.223918Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002962\n2026-07-18T13:29:36.224770Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000097\n2026-07-18T13:29:37.230779Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.004049\n2026-07-18T13:29:37.231766Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000105\n2026-07-18T13:29:38.236572Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002830\n2026-07-18T13:29:38.237377Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000087\n2026-07-18T13:29:39.242190Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002907\n2026-07-18T13:29:39.242975Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000081\n2026-07-18T13:29:40.247507Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002744\n2026-07-18T13:29:40.248228Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000085\n2026-07-18T13:29:40.249077Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000086\n2026-07-18T13:29:40.257612Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002692\n2026-07-18T13:29:40.258531Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000086\n2026-07-18T13:29:40.259506Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000088\n2026-07-18T13:29:40.724502Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142947 \"-\" \"Python-urllib/3.10\" 0.382388\n2026-07-18T13:29:41.145221Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.383444\n2026-07-18T13:29:41.406000Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71466 \"-\" \"Python-urllib/3.10\" 0.241157\n2026-07-18T13:29:41.873073Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.380502\n2026-07-18T13:29:42.289870Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.380704\n2026-07-18T13:29:42.544613Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71467 \"-\" \"Python-urllib/3.10\" 0.235269\n2026-07-18T13:29:42.984247Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.357432\n2026-07-18T13:29:43.387328Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.366608\n2026-07-18T13:29:43.637853Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71467 \"-\" \"Python-urllib/3.10\" 0.230567\n2026-07-18T13:29:44.312534Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.360443\n2026-07-18T13:29:44.715504Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.361235\n2026-07-18T13:29:45.116745Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.363410\n2026-07-18T13:29:45.514313Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.361352\n2026-07-18T13:29:45.914158Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.363345\n2026-07-18T13:29:46.314738Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.364492\n2026-07-18T13:29:46.719372Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.368348\n2026-07-18T13:29:47.121278Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.364880\n2026-07-18T13:29:47.508554Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142967 \"-\" \"Python-urllib/3.10\" 0.347464\n2026-07-18T13:29:47.915742Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.370275\n2026-07-18T13:29:48.321476Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.368208\n2026-07-18T13:29:48.731715Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142931 \"-\" \"Python-urllib/3.10\" 0.373617\n2026-07-18T13:29:49.138203Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.368331\n2026-07-18T13:29:49.538238Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142935 \"-\" \"Python-urllib/3.10\" 0.363424\n2026-07-18T13:29:49.932854Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.358282\n2026-07-18T13:29:50.633830Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.372651\n2026-07-18T13:29:51.041271Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.371987\n2026-07-18T13:29:51.448006Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.372385\n2026-07-18T13:29:51.839311Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.355801\n2026-07-18T13:29:52.236014Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.361990\n2026-07-18T13:29:52.639160Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.368583\n2026-07-18T13:29:53.043976Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.369650\n2026-07-18T13:29:53.445883Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.367112\n2026-07-18T13:29:53.841440Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.361432\n2026-07-18T13:29:54.242288Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.366596\n2026-07-18T13:29:54.628376Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.352094\n2026-07-18T13:29:55.045526Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.360864\n2026-07-18T13:29:55.439006Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.359122\n2026-07-18T13:29:55.841523Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142936 \"-\" \"Python-urllib/3.10\" 0.367917\n2026-07-18T13:29:56.237835Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.361689\n2026-07-18T13:29:56.916968Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.354546\n2026-07-18T13:29:57.319226Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.363856\n2026-07-18T13:29:57.726738Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.373463\n2026-07-18T13:29:58.134958Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.373993\n2026-07-18T13:29:58.524789Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.355181\n2026-07-18T13:29:58.925044Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.365684\n2026-07-18T13:29:59.330335Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.369598\n2026-07-18T13:29:59.720942Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.356056\n2026-07-18T13:30:00.105507Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.349840\n2026-07-18T13:30:00.490735Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.350586\n2026-07-18T13:30:00.893396Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.368717\n2026-07-18T13:30:01.293174Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.365083\n2026-07-18T13:30:01.683210Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.355386\n2026-07-18T13:30:02.084024Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142936 \"-\" \"Python-urllib/3.10\" 0.366251\n2026-07-18T13:30:02.464279Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.346008\n2026-07-18T13:30:03.156445Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.368621\n2026-07-18T13:30:03.561517Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.370529\n2026-07-18T13:30:03.968690Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.372423\n2026-07-18T13:30:04.372543Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.369179\n2026-07-18T13:30:04.752036Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143016 \"-\" \"Python-urllib/3.10\" 0.344999\n2026-07-18T13:30:05.164129Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142893 \"-\" \"Python-urllib/3.10\" 0.357937\n2026-07-18T13:30:05.563354Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.364531\n2026-07-18T13:30:05.947974Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143012 \"-\" \"Python-urllib/3.10\" 0.350197\n2026-07-18T13:30:06.356853Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.374078\n2026-07-18T13:30:06.765889Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.375328\n2026-07-18T13:30:07.167098Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.367332\n2026-07-18T13:30:07.577980Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.376351\n2026-07-18T13:30:07.988662Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.376201\n2026-07-18T13:30:08.388507Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142936 \"-\" \"Python-urllib/3.10\" 0.366012\n2026-07-18T13:30:08.788641Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.365277\n2026-07-18T13:30:08.915504Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.003644\n2026-07-18T13:30:08.916174Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000073\n2026-07-18T13:30:08.916836Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 562 \"-\" \"Python-urllib/3.10\" 0.000052\n",
+      "stderr": ""
+    },
+    "qdrant_shard_1": {
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "qdrant_shard_2": {
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "qdrant_shard_3": {
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "runtime_health_audit": {
+    "valid": true,
+    "checks": {
+      "logs_clean": true,
+      "consensus_working": true,
+      "pending_operations_zero": true,
+      "message_send_failures_empty": true,
+      "collection_green": true,
+      "optimizer_ok": true,
+      "update_queue_empty": true,
+      "all_shards_active": true,
+      "controller_has_no_lower_local_shards": true,
+      "no_shard_transfers": true,
+      "transport_resources_clean": true
+    },
+    "log_audit": {
+      "valid": true,
+      "collection_errors": [],
+      "error_matches": {}
+    },
+    "message_send_failures": {},
+    "pending_operations": 0,
+    "consensus_thread_status": "working",
+    "optimizer_status": "ok",
+    "update_queue_length": 0,
+    "shard_transfers": [],
+    "transport_resources": {
+      "valid": true,
+      "checks": {
+        "start_p2p_within_clean_limit": true,
+        "end_p2p_within_clean_limit": true
+      },
+      "start": {
+        "available": true,
+        "host": "localhost",
+        "container": "orion-dist-dist-20260717-initial-controller",
+        "p2p_port": 6335,
+        "fd_count": 62,
+        "p2p_established": 6,
+        "worker_count": 3,
+        "expected_steady_state_p2p_connections": 6
+      },
+      "end": {
+        "available": true,
+        "host": "localhost",
+        "container": "orion-dist-dist-20260717-initial-controller",
+        "p2p_port": 6335,
+        "fd_count": 62,
+        "p2p_established": 6,
+        "worker_count": 3,
+        "expected_steady_state_p2p_connections": 6
+      },
+      "delta": {
+        "fd_count": 0,
+        "p2p_established": 0
+      },
+      "expected_steady_state_p2p_connections": 6,
+      "tolerance": 6,
+      "clean_limit": 12,
+      "note": "The current Qdrant transport pool maintains two steady-state channels per worker URI. The tolerance permits one additional pool-width while rejecting the hundreds of transient connections produced by ungrouped shard fan-out."
+    }
+  },
+  "command": [
+    "/users/dry/orion-distributed/venv/bin/python",
+    "tools/qdrant_two_level_routing_experiment.py",
+    "--base-url",
+    "http://10.10.1.1:6333",
+    "--hdf5-path",
+    "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "--cluster-topology",
+    "tools/distributed/cloudlab_orion_4node.json",
+    "--deployment-manifest",
+    "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "--require-clean-runtime",
+    "--vector-distance",
+    "cosine",
+    "--top-k",
+    "10",
+    "--hnsw-m",
+    "32",
+    "--ef-construct",
+    "100",
+    "--upper-m",
+    "32",
+    "--upper-ef-construction",
+    "100",
+    "--upper-search-ef",
+    "400",
+    "--sample-denominator",
+    "32",
+    "--k-overlap",
+    "10",
+    "--upper-sample-seed",
+    "100",
+    "--kmeans-rand-seed",
+    "1",
+    "--kmeans-iters",
+    "10",
+    "--tuning-query-count",
+    "500",
+    "--eval-query-count",
+    "3000",
+    "--warmup-query-count",
+    "500",
+    "--stability-repeats",
+    "3",
+    "--batch-size",
+    "200",
+    "--fixed-ef-shard-chunk-size",
+    "0",
+    "--write-per-query-metrics",
+    "--search-dispatch-mode",
+    "coordinator",
+    "--lower-execution-order",
+    "query_major",
+    "--shard-placement",
+    "round_robin",
+    "--reuse-existing",
+    "--routing-mode",
+    "kmeans_simple_nprobe",
+    "--target-recall",
+    "0.97",
+    "--collection",
+    "dist_submission-20260718a_simple_kmeans_seed1_s46",
+    "--num-shards",
+    "46",
+    "--nprobe-candidates",
+    "32",
+    "--upper-k-candidates",
+    "32",
+    "--base-ef-candidates",
+    "280",
+    "--factor-candidates",
+    "0",
+    "--simple-kmeans-multi-assign-alpha",
+    "1.0",
+    "--output-dir",
+    "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280"
+  ],
+  "process_affinity": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "cluster_topology_path": "tools/distributed/cloudlab_orion_4node.json",
+  "cluster_preflight": {
+    "peer_id": 987102789522726,
+    "peer_count": 4,
+    "peers": {
+      "987102789522726": "http://10.10.1.1:6335",
+      "1667891846572449": "http://10.10.1.4:6335",
+      "7896541606624976": "http://10.10.1.3:6335",
+      "8982479151082257": "http://10.10.1.2:6335"
+    },
+    "controller_peer_id": 987102789522726,
+    "worker_peer_ids": [
+      1667891846572449,
+      7896541606624976,
+      8982479151082257
+    ],
+    "pending_operations": 0,
+    "consensus_thread_status": "working",
+    "message_send_failures": {},
+    "raw": {
+      "status": "enabled",
+      "peer_id": 987102789522726,
+      "peers": {
+        "8982479151082257": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "987102789522726": {
+          "uri": "http://10.10.1.1:6335/"
+        },
+        "1667891846572449": {
+          "uri": "http://10.10.1.4:6335/"
+        },
+        "7896541606624976": {
+          "uri": "http://10.10.1.3:6335/"
+        }
+      },
+      "raft_info": {
+        "term": 13,
+        "commit": 874,
+        "pending_operations": 0,
+        "leader": 8982479151082257,
+        "role": "Follower",
+        "is_voter": true
+      },
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-07-18T13:29:32.725592265Z"
+      },
+      "message_send_failures": {}
+    }
+  },
+  "cluster_snapshot": {
+    "status": "enabled",
+    "peer_id": 987102789522726,
+    "peers": {
+      "1667891846572449": {
+        "uri": "http://10.10.1.4:6335/"
+      },
+      "987102789522726": {
+        "uri": "http://10.10.1.1:6335/"
+      },
+      "7896541606624976": {
+        "uri": "http://10.10.1.3:6335/"
+      },
+      "8982479151082257": {
+        "uri": "http://10.10.1.2:6335/"
+      }
+    },
+    "raft_info": {
+      "term": 13,
+      "commit": 874,
+      "pending_operations": 0,
+      "leader": 8982479151082257,
+      "role": "Follower",
+      "is_voter": true
+    },
+    "consensus_thread_status": {
+      "consensus_thread_status": "working",
+      "last_update": "2026-07-18T13:30:08.754453890Z"
+    },
+    "message_send_failures": {}
+  },
+  "vector_distance": "cosine",
+  "upper_hnsw_space": "cosine",
+  "qdrant_vector_distance": "Cosine",
+  "normalize_vectors": true,
+  "score_higher_is_better": true,
+  "train_limit": null,
+  "routing_mode": "kmeans_simple_nprobe",
+  "initial_num_shards": 46,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "shard_placement_map": null,
+  "shard_placement_map_name": null,
+  "placement_peer_uri_contains": null,
+  "discovered_peer_ids": [
+    1667891846572449,
+    7896541606624976,
+    8982479151082257
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46,
+    "cluster_shards_per_peer": {
+      "1667891846572449": 16,
+      "7896541606624976": 15,
+      "8982479151082257": 15
+    },
+    "cluster_placement_valid": true
+  },
+  "collection_cluster_snapshot": {
+    "peer_id": 987102789522726,
+    "shard_count": 46,
+    "local_shards": [],
+    "remote_shards": [
+      {
+        "shard_id": 1,
+        "shard_key": "centroid_00",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 2,
+        "shard_key": "centroid_01",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 3,
+        "shard_key": "centroid_02",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 4,
+        "shard_key": "centroid_03",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 5,
+        "shard_key": "centroid_04",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 6,
+        "shard_key": "centroid_05",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 7,
+        "shard_key": "centroid_06",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 8,
+        "shard_key": "centroid_07",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 9,
+        "shard_key": "centroid_08",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 10,
+        "shard_key": "centroid_09",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 11,
+        "shard_key": "centroid_10",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 12,
+        "shard_key": "centroid_11",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 13,
+        "shard_key": "centroid_12",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 14,
+        "shard_key": "centroid_13",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 15,
+        "shard_key": "centroid_14",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 16,
+        "shard_key": "centroid_15",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 17,
+        "shard_key": "centroid_16",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 18,
+        "shard_key": "centroid_17",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 19,
+        "shard_key": "centroid_18",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 20,
+        "shard_key": "centroid_19",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 21,
+        "shard_key": "centroid_20",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 22,
+        "shard_key": "centroid_21",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 23,
+        "shard_key": "centroid_22",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 24,
+        "shard_key": "centroid_23",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 25,
+        "shard_key": "centroid_24",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 26,
+        "shard_key": "centroid_25",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 27,
+        "shard_key": "centroid_26",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 28,
+        "shard_key": "centroid_27",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 29,
+        "shard_key": "centroid_28",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 30,
+        "shard_key": "centroid_29",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 31,
+        "shard_key": "centroid_30",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 32,
+        "shard_key": "centroid_31",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 33,
+        "shard_key": "centroid_32",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 34,
+        "shard_key": "centroid_33",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 35,
+        "shard_key": "centroid_34",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 36,
+        "shard_key": "centroid_35",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 37,
+        "shard_key": "centroid_36",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 38,
+        "shard_key": "centroid_37",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 39,
+        "shard_key": "centroid_38",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 40,
+        "shard_key": "centroid_39",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 41,
+        "shard_key": "centroid_40",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 42,
+        "shard_key": "centroid_41",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 43,
+        "shard_key": "centroid_42",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 44,
+        "shard_key": "centroid_43",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 45,
+        "shard_key": "centroid_44",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 46,
+        "shard_key": "centroid_45",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      }
+    ],
+    "shard_transfers": []
+  },
+  "worker_shard_points": {
+    "1667891846572449": {
+      "shard_count": 16,
+      "points_count": 400261
+    },
+    "7896541606624976": {
+      "shard_count": 15,
+      "points_count": 389726
+    },
+    "8982479151082257": {
+      "shard_count": 15,
+      "points_count": 393527
+    }
+  },
+  "placement_valid": true,
+  "warmup_query_count": 500,
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "concurrency_evaluation_mode": "preplanned_search",
+  "search_dispatch_mode": "coordinator",
+  "lower_execution_order": "query_major",
+  "fixed_ef_shard_chunk_size": 0,
+  "direct_peer_http_urls": null,
+  "direct_peer_local_premerge": false,
+  "routed_execution_mode": "grouped_by_ef",
+  "routed_planning_mode": "per_batch",
+  "pipelined_execution": null,
+  "placement_simulation": null,
+  "physical_execution_trace": null,
+  "compact_ef_mode": null,
+  "routed_result_limit_mode": "top_k",
+  "routed_result_limit_multiplier": null,
+  "distributed_fixed_ef_peer_compaction": {
+    "enabled": true,
+    "uniform_ef": true,
+    "note": "The harness repeats the baseline's one fixed EF in the per-shard request map so Qdrant can group remote work by physical peer. This changes transport fan-out only; nprobe/all-shards selection and the fixed lower HNSW EF are unchanged."
+  },
+  "source_id_dedup_block_size": null,
+  "multi_assign": false,
+  "orion_multi_assign_min_max_vote": null,
+  "orion_multi_assign_vote_delta": null,
+  "orion_multi_assign_max_shards": null,
+  "fission_enabled": false,
+  "fair_architecture_note": "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same native physical-peer grouping path, and the same client result merge path. Simple and Naive express their one fixed EF as a uniform per-shard transport map; this does not make their EF dynamic. The intended algorithmic difference is shard selection: Orion routes to upper-selected shards with Method4 routing metadata, kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": null,
+  "rng_equivalence_note": null,
+  "upper_hnsw": null,
+  "kmeans_simple_nprobe": {
+    "centroid_count": 46,
+    "nprobe": 32,
+    "hnsw_ef": 280,
+    "cpp_kmeans_train_size": 10000,
+    "kmeans_iters": 10,
+    "kmeans_rand_seed": 1,
+    "multi_assign": false,
+    "multi_assign_alpha": 1.0,
+    "total_assigned": 1183514,
+    "expansion_ratio": 1.0,
+    "shard_count_min": 8824,
+    "shard_count_max": 57840,
+    "dynamic_ef": false,
+    "upper_hnsw_entry_points": false,
+    "source_id_dedup": false
+  },
+  "original_routing": null,
+  "best_tuning_row": {
+    "upper_k": 32,
+    "nprobe": 32,
+    "base_ef": 280,
+    "factor": 0,
+    "query_count": 500,
+    "top_k": 10,
+    "recall_at_k": 0.9708,
+    "qps": 441.0385923219825,
+    "wall_s": 1.1336876380082686,
+    "avg_visited_shards": 32.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 280.0,
+    "estimated_ef_sum_per_query": 8960.0,
+    "avg_physical_peers_per_query": 3.0,
+    "latency_p50_ms": 414.67457301041577,
+    "latency_p95_ms": 416.1587530950783,
+    "latency_p99_ms": 416.29068021371495,
+    "search_batch_calls": 3,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "final_row": {
+    "upper_k": 32,
+    "nprobe": 32,
+    "base_ef": 280,
+    "factor": 0,
+    "query_count": 3000,
+    "top_k": 10,
+    "recall_at_k": 0.9708666666666667,
+    "qps": 476.62296227749493,
+    "wall_s": 6.294283401002758,
+    "avg_visited_shards": 32.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 280.0,
+    "estimated_ef_sum_per_query": 8960.0,
+    "avg_physical_peers_per_query": 3.0,
+    "latency_p50_ms": 399.21819399751257,
+    "latency_p95_ms": 406.20861790230265,
+    "latency_p99_ms": 407.98314757383196,
+    "search_batch_calls": 15,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 479.69907145658084,
+    "qps_stdev": 4.036551295090243,
+    "recall_mean": 0.9708666666666667,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

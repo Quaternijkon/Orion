@@ -738,6 +738,9 @@ impl TableOfContent {
                 let key = i.key().clone();
                 let hw_usage = HardwareUsage {
                     cpu: i.get_cpu(),
+                    cpu_time_us: i.get_cpu_time_us(),
+                    cpu_wall_time_us: i.get_cpu_wall_time_us(),
+                    graph_nodes_visited: i.get_graph_nodes_visited(),
                     payload_io_read: i.get_payload_io_read(),
                     payload_io_write: i.get_payload_io_write(),
                     payload_index_io_read: i.get_payload_index_io_read(),

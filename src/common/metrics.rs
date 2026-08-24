@@ -833,6 +833,9 @@ impl MetricsProvider for HardwareTelemetry {
         // This gets optimized away by the compiler: https://godbolt.org/z/9cMTzcYr4
         let HardwareUsage {
             cpu: _,
+            cpu_time_us: _,
+            cpu_wall_time_us: _,
+            graph_nodes_visited: _,
             payload_io_read: _,
             payload_io_write: _,
             payload_index_io_read: _,
@@ -846,6 +849,30 @@ impl MetricsProvider for HardwareTelemetry {
             "CPU measurements of a collection",
             MetricType::COUNTER,
             self.make_metric_counters(|hw| hw.cpu),
+            prefix,
+        ));
+
+        metrics.push_metric(metric_family(
+            "collection_graph_nodes_visited",
+            "HNSW graph-node expansion events of a collection",
+            MetricType::COUNTER,
+            self.make_metric_counters(|hw| hw.graph_nodes_visited),
+            prefix,
+        ));
+
+        metrics.push_metric(metric_family(
+            "collection_worker_cpu_time_us",
+            "Measured worker thread CPU time of a collection in microseconds",
+            MetricType::COUNTER,
+            self.make_metric_counters(|hw| hw.cpu_time_us),
+            prefix,
+        ));
+
+        metrics.push_metric(metric_family(
+            "collection_worker_cpu_wall_time_us",
+            "Measured wall time inside worker tasks of a collection in microseconds",
+            MetricType::COUNTER,
+            self.make_metric_counters(|hw| hw.cpu_wall_time_us),
             prefix,
         ));
 

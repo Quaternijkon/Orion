@@ -1,0 +1,119 @@
+{
+  "anomalies": [
+    "glove_200_angular_kmeans_m2_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m2_shard_counts_828099_355415",
+    "glove_200_angular_kmeans_m4_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m4_shard_counts_528812_185963_291179_177560"
+  ],
+  "bottleneck_validation": {
+    "all_configurations_unflagged": true,
+    "maximum_aggregator_cpu_pct": 79.41720290267826,
+    "maximum_aggregator_queue_depth": 0,
+    "maximum_network_utilization_pct": 1.8275871675227782,
+    "maximum_routing_share_pct": 1.8402450010011384
+  },
+  "c1_a_status": "SUPPORTS",
+  "configuration_count": 6,
+  "dataset": "glove-200-angular",
+  "dataset_checksum": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "evidence_sha256": {
+    "canonical_physical_scaleout": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+    "physical_scaleout_csv": "73e95e2f25f878bb630df0dc7fd99fb7bc416c669fb07c25c91e8f3ee887f74b",
+    "protocol_physical_scaleout": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+    "protocol_scaling_efficiency": "a43eef2b3191ecfe42170db5913529dcf1c0fafb189a6648e8fa6764e2475367",
+    "source_results": {
+      "/users/dry/Orion/experiments/c1/runs/stage8-e1-corrected-glove-200-angular-common-m1.json": "e333da54d658750e8374688e2c4be9619b23d42b4244f3ab0230ac1bd40460f1",
+      "/users/dry/Orion/experiments/c1/runs/stage8-e1-corrected-glove-200-angular-kmeans-m2.json": "1832f394f05c0aa1d273ff2c589f857981603d19a25e4a9cd3b93029e4132fd8",
+      "/users/dry/Orion/experiments/c1/runs/stage8-e1-corrected-glove-200-angular-kmeans-m4.json": "1002c97a383d17d387099ee5ce2ca2f6269aba0b79ac282b10e8f94321204052",
+      "/users/dry/Orion/experiments/c1/runs/stage8-e1-corrected-glove-200-angular-random-m2.json": "64c04ac5b0c6958c7ba2cd7e9e09d4da43a117ae6e27b9f43ea050c35de9f4e4",
+      "/users/dry/Orion/experiments/c1/runs/stage8-e1-corrected-glove-200-angular-random-m4.json": "64ea96df26e4997fe467d84037e513205d0be5da762d26ef99e70209be6698fc"
+    },
+    "summary_json": "6be8b4b37a96e35da6956824a38f9f8f1d077c5cfd9208d7e88a73085fe5b73d"
+  },
+  "experiment_id": "stage8-e1-corrected-glove-200-angular-physical-scaleout",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "measurement_recall": {
+    "kmeans": {
+      "1": 0.9122666666666667,
+      "2": 0.9041111111111112,
+      "4": 0.9035333333333333
+    },
+    "random": {
+      "1": 0.9122666666666667,
+      "2": 0.9158888888888889,
+      "4": 0.9006666666666666
+    }
+  },
+  "normalized_qps": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 1.1828975583381363,
+      "4": 1.1369248590305958
+    },
+    "random": {
+      "1": 1.0,
+      "2": 1.2448265637884186,
+      "4": 1.0880757627520963
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "physical_machine_counts": [
+    1,
+    2,
+    4
+  ],
+  "qps_mean": {
+    "kmeans": {
+      "1": 3857.6655021573406,
+      "2": 4563.2231033871785,
+      "4": 4385.875807227427
+    },
+    "random": {
+      "1": 3857.6655021573406,
+      "2": 4802.124491295646,
+      "4": 4197.432333702297
+    }
+  },
+  "qps_sample_std": {
+    "kmeans": {
+      "1": 76.74693123408657,
+      "2": 87.83722185765069,
+      "4": 38.15734761152099
+    },
+    "random": {
+      "1": 76.74693123408657,
+      "2": 73.03312382699093,
+      "4": 49.38184159249773
+    }
+  },
+  "record_type": "e1_physical_scaleout_analysis",
+  "repetition_counts": {
+    "kmeans-m1": 3,
+    "kmeans-m2": 3,
+    "kmeans-m4": 3,
+    "random-m1": 3,
+    "random-m2": 3,
+    "random-m4": 3
+  },
+  "scaling_efficiency": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 0.5914487791690681,
+      "4": 0.28423121475764895
+    },
+    "random": {
+      "1": 1.0,
+      "2": 0.6224132818942093,
+      "4": 0.27201894068802407
+    }
+  },
+  "shared_unsharded_baseline": true,
+  "source_stem": "stage8-e1-corrected",
+  "status": "VALID_E1",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T01:06:18Z",
+  "unique_physical_layout_count": 5
+}

@@ -7605,6 +7605,12 @@ pub struct HardwareUsage {
     pub vector_io_read: u64,
     #[prost(uint64, tag = "7")]
     pub vector_io_write: u64,
+    #[prost(uint64, tag = "8")]
+    pub graph_nodes_visited: u64,
+    #[prost(uint64, tag = "9")]
+    pub cpu_time_us: u64,
+    #[prost(uint64, tag = "10")]
+    pub cpu_wall_time_us: u64,
 }
 #[derive(serde::Serialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

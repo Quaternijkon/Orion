@@ -1,0 +1,142 @@
+{
+  "cleanup_proof_count": 16,
+  "csv_files": [
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/physical-qps.csv",
+      "sha256": "c553d26d78fcefbc6330f76d57c49f8f75d67ca576680c525712dda434b83929"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/fanout-fixed-ef.csv",
+      "sha256": "47fb5909c5a8fe5bf46f38cefccfa1267abf1ce664b70816ae6260871aa8badf"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/ef-calibration.csv",
+      "sha256": "241ae5dda4e4368309522478dd0b001a19e75df14572308400350fb30bf1a4b2"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/segment-layout-stage14-vs-stage15.csv",
+      "sha256": "d5edd2159f15cd4d4611a4ad912496e70e16d1a9ab9b7ab64436577c35b70e81"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/stage14-vs-stage15.csv",
+      "sha256": "fb97e2e45c3198e1c65f554d55bf9899dd3f53dd441fcdfd70d9522b7b779516"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/partition-balance.csv",
+      "sha256": "1e40ff175570fc46fdcd3916ad978e777944d455ff4afe0dfe4c1097f69e032b"
+    }
+  ],
+  "distinct_e1_file_count": 16,
+  "execution_complete": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/execution-complete.json",
+  "execution_complete_sha256": "8b5aefe54f7da042f8ce337182b115851be76205e65c6c43033ff27670a86b46",
+  "figures": [
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig1_physical_qps.pdf",
+      "sha256": "4bd76e80554a5e1752c912ec9ee5ab2c8044bed24ac3949bd74133c3b1b8e5c0"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig2_scaling_model.pdf",
+      "sha256": "31e851ca77ccee1132f3bea87fec7d8744212c2db9a66862c1d90836171dab92"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig3_fixed_ef_fanout.pdf",
+      "sha256": "fe4adadd0802782545b670a173dbaec534aefef78a0da1250a2451e5076f49f4"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig4_local_vs_aggregate_work.pdf",
+      "sha256": "469cd4d14d9aefb3e25cc44da12f93a019625f6db32f1e8b979d0ff782b1bd95"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig5_stage14_comparison.pdf",
+      "sha256": "353278520646cdc6590186aa04ff46f3ff7dc607381400a138ceda38d5fcbe45"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig6_glove_ef_calibration.pdf",
+      "sha256": "10b6d0101a93ae3cfb8fccdb8b084b57ba7678631b0b176562e834f5c8ec3f23"
+    },
+    {
+      "pages": 1,
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/figures/stage15_fig7_diagnostics.pdf",
+      "sha256": "699f9183ff2e251768a82ca102c910cf22f0d81ca1eee16101553068570f7b8a"
+    }
+  ],
+  "integrity_audit": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/integrity-audit.json",
+  "integrity_audit_sha256": "00622714f9b57369b233b3d5b98e0638f157afae65e800839a4eb0c8f386bedf",
+  "physical_e1_sources": [
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-kmeans-m2-primary.json",
+      "sha256": "c19f9b9aae38578ab5d4f52ec72cca64cecbde2c6acd72bdf56c9418b7901ddd"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-kmeans-m3-primary.json",
+      "sha256": "cdf840dc92b4f8971d9f07ec571c6e118dc02840dd8b3968fe6e805593dbe8de"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-kmeans-m4-primary.json",
+      "sha256": "adb12dade861828f51ec92838aae098dddc4a83de868b7d1c13aec761de90890"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-random-m1-baseline-a.json",
+      "sha256": "26df8032f1933668ef6bd1dd8030e8e165c76c53ed83c70112b3f26ee79cbe71"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-random-m1-baseline-b.json",
+      "sha256": "a2109da40e6a57790cbc9b2bc28bc886e6efbef10872c4ee1ccd7371c6783f28"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-random-m2-primary.json",
+      "sha256": "c342629da548eb6cbfc571313e9e82af2d9b0d0c609dfe39215ab0176838b86b"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-random-m3-primary.json",
+      "sha256": "5b44ca619f4fd804b9f344314659742772c85746aa5eae1caee4e02a5b14b5dd"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-glove-200-angular-random-m4-primary.json",
+      "sha256": "9898ec43c4cf4313706d6029e3e325dcc6277cbca93457b1dc8cf6169b4c2003"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-kmeans-m2-primary.json",
+      "sha256": "df681fb8a50d5f87da822b98fef1460c3bf87d5d4c7f609e19550aff4b78683e"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-kmeans-m3-primary.json",
+      "sha256": "80e197f6d62202afb5ea73ca7cf11285660d47d52cc71c73e05cfb7a0972c5cf"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-kmeans-m4-primary.json",
+      "sha256": "e7cbd60c377a8676ba5f33e0a6599aed3eb0457b127715d110fd0f2967fd92f3"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-random-m1-baseline-a.json",
+      "sha256": "db4396074b416ca8454186cfcf859abf56a22021d4cb2f868034f76a562608d0"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-random-m1-baseline-b.json",
+      "sha256": "93e0044f70fc9c055a8dc54fe2b7e0956cb390d41459ba067d67a3656963ed6f"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-random-m2-primary.json",
+      "sha256": "af79224f578b5d1a2280db8c7954a17bff207caada3c3672a1efd9936254dd02"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-random-m3-primary.json",
+      "sha256": "3f252860e02a940374eb9ab5b9efdf418a30876fea5fde94b26455abb15bae9d"
+    },
+    {
+      "path": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/e1/stage15-e1-sift1m-random-m4-primary.json",
+      "sha256": "d775f8ee20275d6e21096a15fd6af46556fe172bf07ee5faf7574e4fdaf7c763"
+    }
+  ],
+  "record_type": "stage15_single_hnsw_per_shard_summary",
+  "report": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/summary/RESULTS_zh.md",
+  "report_sha256": "fdaa27a8378e8118e1a579eec3ca8f5dd9061bb4e17ac6670b122e5d0f56050d",
+  "single_graph_prepare_gate_count": 16,
+  "status": "PASS"
+}

@@ -20,7 +20,11 @@ use fs_err as fs;
 use itertools::Itertools;
 use parking_lot::lock_api::RwLockWriteGuard;
 use parking_lot::{Mutex, RwLockUpgradableReadGuard};
-use segment::common::operation_error::{OperationResult, check_process_stopped};
+use rand::SeedableRng as _;
+use rand::rngs::StdRng;
+use segment::common::operation_error::{
+    OperationError, OperationResult, check_process_stopped,
+};
 use segment::common::operation_time_statistics::{
     OperationDurationsAggregator, ScopeDurationMeasurer,
 };
@@ -36,6 +40,30 @@ use crate::locked_segment::LockedSegment;
 use crate::proxy_segment::{DeletedPoints, ProxyIndexChange, ProxyIndexChanges, ProxySegment};
 use crate::segment_holder::SegmentId;
 use crate::segment_holder::locked::LockedSegmentHolder;
+
+pub const HNSW_GRAPH_BUILD_SEED_ENV: &str = "QDRANT_HNSW_GRAPH_BUILD_SEED";
+
+fn parse_hnsw_graph_build_seed(value: &str) -> OperationResult<u64> {
+    value.parse::<u64>().map_err(|error| {
+        OperationError::service_error(format!(
+            "invalid {HNSW_GRAPH_BUILD_SEED_ENV} value {value:?}: {error}"
+        ))
+    })
+}
+
+fn hnsw_graph_build_rng() -> OperationResult<StdRng> {
+    let Some(raw_seed) = std::env::var_os(HNSW_GRAPH_BUILD_SEED_ENV) else {
+        return Ok(StdRng::from_rng(&mut rand::rng()));
+    };
+    let seed_text = raw_seed.into_string().map_err(|value| {
+        OperationError::service_error(format!(
+            "{HNSW_GRAPH_BUILD_SEED_ENV} must be valid UTF-8, got {value:?}"
+        ))
+    })?;
+    let seed = parse_hnsw_graph_build_seed(&seed_text)?;
+    log::info!("using deterministic HNSW graph-build seed {seed}");
+    Ok(StdRng::seed_from_u64(seed))
+}
 
 /// Result of optimization execution
 #[derive(Debug)]
@@ -286,7 +314,7 @@ fn build_new_segment<F: ?Sized + OptimizationStrategy>(
         })?;
     drop(progress_wait_permit);
 
-    let mut rng = rand::rng();
+    let mut rng = hnsw_graph_build_rng()?;
     let mut optimized_segment = segment_builder.build(
         segments_path,
         output_segment_uuid,
@@ -782,4 +810,16 @@ pub fn execute_optimization<F: ?Sized + OptimizationStrategy>(
     timer.set_success(true);
 
     Ok(OptimizationResult { points_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hnsw_graph_build_seed;
+
+    #[test]
+    fn deterministic_hnsw_graph_build_seed_accepts_u64() {
+        assert_eq!(parse_hnsw_graph_build_seed("20260821").unwrap(), 20_260_821);
+        assert!(parse_hnsw_graph_build_seed("-1").is_err());
+        assert!(parse_hnsw_graph_build_seed("not-a-seed").is_err());
+    }
 }

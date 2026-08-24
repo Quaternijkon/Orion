@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "run_id": "native-20260818-scale4-32-r080-095-v1",
+  "image": {
+    "tag": "orion-method4:fe61fdac6760-source-cb53046429a7",
+    "id": "sha256:4bc1739da6c788a75102867dc742305a65ac84c0af0fcd4655c2450dfdf4d9a3",
+    "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/native-20260730-policy-parity-s16-v1/image-candidates/orion-method4_fe61fdac6760-source-cb53046429a7-wire-v2-11ae024cbfbe.tar",
+    "tar_size_bytes": 70584832,
+    "tar_sha256": "16b43c2a9beff72812b58af50ca69df4bcad91cd62eeca63667e64fdbb97c1e4",
+    "capabilities": {
+      "orion_compact_wire_max_version": "2"
+    }
+  }
+}

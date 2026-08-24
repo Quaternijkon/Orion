@@ -98,6 +98,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--placement-peers",
+        choices=("workers", "all_peers"),
+        default="workers",
+        help=(
+            "Place numeric shards on the three non-coordinator peers (workers) "
+            "or on all four Qdrant peers, including the benchmark coordinator."
+        ),
+    )
+    parser.add_argument(
+        "--allow-orion-scaling-layout",
+        action="store_true",
+        help=(
+            "Allow initial_num_shards to differ from the canonical 31-shard "
+            "Orion configuration for an explicitly labeled shard-scaling experiment. "
+            "All other Orion semantic constants remain strict."
+        ),
+    )
+    parser.add_argument(
         "--cargo-runner",
         default=str(REPO_ROOT / "tools/cargo_in_docker.sh"),
     )
@@ -144,6 +162,8 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError(
                 "--placement-strategy layout_size_balanced is only valid for routed methods"
             )
+    if args.allow_orion_scaling_layout and args.method != "orion":
+        raise ValueError("--allow-orion-scaling-layout is only valid for --method orion")
 
 
 def create_output_directory(path: str | Path) -> Path:
@@ -196,10 +216,12 @@ def verify_checksum_listing(layout_dir: Path) -> dict[str, str]:
 
 
 def validate_faithful_orion_build_parameters(
-    build_parameters: dict[str, Any], artifact_payload: dict[str, Any]
+    build_parameters: dict[str, Any],
+    artifact_payload: dict[str, Any],
+    *,
+    allow_scaling_initial_num_shards: bool = False,
 ) -> int:
     faithful_constants = {
-        "initial_num_shards": 31,
         "sample_denominator": 32,
         "upper_sample_seed": 100,
         "upper_m": 32,
@@ -216,6 +238,15 @@ def validate_faithful_orion_build_parameters(
         "upper_graph_seed": 100,
         "allow_decoupled_runtime_upper_search": False,
     }
+    initial_num_shards = build_parameters.get("initial_num_shards")
+    if (
+        isinstance(initial_num_shards, bool)
+        or not isinstance(initial_num_shards, int)
+        or initial_num_shards <= 0
+    ):
+        raise RuntimeError("Orion initial_num_shards must be a positive integer")
+    if not allow_scaling_initial_num_shards:
+        faithful_constants["initial_num_shards"] = 31
     semantic_drift = {
         key: {"expected": expected, "actual": build_parameters.get(key)}
         for key, expected in faithful_constants.items()
@@ -276,6 +307,8 @@ def validate_orion_runtime_profile_derivation(
     build_manifest: dict[str, Any],
     build_parameters: dict[str, Any],
     artifact_payload: dict[str, Any],
+    *,
+    allow_scaling_initial_num_shards: bool = False,
 ) -> dict[str, Any]:
     derivation = build_manifest.get("derivation")
     if not isinstance(derivation, dict):
@@ -410,6 +443,7 @@ def validate_orion_runtime_profile_derivation(
     validate_faithful_orion_build_parameters(
         source_parameters,
         source_artifact_payload,
+        allow_scaling_initial_num_shards=allow_scaling_initial_num_shards,
     )
     return source
 
@@ -602,7 +636,12 @@ def validate_simple_kmeans_runtime_profile_derivation(
     return source
 
 
-def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
+def load_routed_layout(
+    method: str,
+    layout_path: str | Path,
+    *,
+    allow_orion_scaling_layout: bool = False,
+) -> dict[str, Any]:
     layout_dir = Path(layout_path).expanduser().resolve()
     if not layout_dir.is_dir():
         raise FileNotFoundError(f"layout directory not found: {layout_dir}")
@@ -676,12 +715,14 @@ def load_routed_layout(method: str, layout_path: str | Path) -> dict[str, Any]:
         attachment_search_ef = validate_faithful_orion_build_parameters(
             build_parameters,
             artifact_payload,
+            allow_scaling_initial_num_shards=allow_orion_scaling_layout,
         )
         if actual_tool == ORION_RUNTIME_PROFILE_TOOL:
             runtime_profile_source = validate_orion_runtime_profile_derivation(
                 build_manifest,
                 build_parameters,
                 artifact_payload,
+                allow_scaling_initial_num_shards=allow_orion_scaling_layout,
             )
     elif actual_tool == SIMPLE_KMEANS_RUNTIME_PROFILE_TOOL:
         runtime_profile_source = (
@@ -1302,12 +1343,20 @@ def prepare(args: argparse.Namespace) -> Path:
         args.base_url,
         experiment.load_cluster_topology(topology_path),
     )
+    include_controller_in_placement = args.placement_peers == "all_peers"
+    placement_peer_ids = [int(peer_id) for peer_id in cluster_preflight["worker_peer_ids"]]
+    if include_controller_in_placement:
+        placement_peer_ids.insert(0, int(cluster_preflight["controller_peer_id"]))
 
     layout: dict[str, Any] | None = None
     train = None
     dataset_proof: dict[str, Any] | None = None
     if args.method in ROUTED_METHODS:
-        layout = load_routed_layout(args.method, args.layout_dir)
+        layout = load_routed_layout(
+            args.method,
+            args.layout_dir,
+            allow_orion_scaling_layout=args.allow_orion_scaling_layout,
+        )
         schema = dict(layout["vector_schema"])
         shard_count = int(layout["shard_count"])
         logical_count = int(layout["logical_point_count"])
@@ -1414,7 +1463,7 @@ def prepare(args: argparse.Namespace) -> Path:
     if args.placement_strategy == "round_robin":
         target_placement = experiment.round_robin_numeric_shard_targets(
             list(range(shard_count)),
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
         )
         placement_plan = {
             "strategy": "round_robin",
@@ -1424,8 +1473,9 @@ def prepare(args: argparse.Namespace) -> Path:
         placement_proof = experiment.move_numeric_shards_round_robin(
             args.base_url,
             args.collection,
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
             expected_shard_count=shard_count,
+            include_controller=include_controller_in_placement,
             timeout_sec=args.transfer_timeout_secs,
             poll_interval_sec=args.transfer_poll_interval_secs,
         )
@@ -1442,7 +1492,7 @@ def prepare(args: argparse.Namespace) -> Path:
         )
         target_placement = experiment.size_balanced_numeric_shard_targets(
             layout["shard_weights"],
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
             current_placement=current_placement,
         )
         worker_weights = {
@@ -1451,7 +1501,7 @@ def prepare(args: argparse.Namespace) -> Path:
                 for shard_id, owner in target_placement.items()
                 if owner == peer_id
             )
-            for peer_id in cluster_preflight["worker_peer_ids"]
+            for peer_id in placement_peer_ids
         }
         placement_plan = {
             "strategy": "layout_size_balanced",
@@ -1465,9 +1515,10 @@ def prepare(args: argparse.Namespace) -> Path:
         placement_proof = experiment.move_numeric_shards_explicit(
             args.base_url,
             args.collection,
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
             target_placement,
             expected_shard_count=shard_count,
+            include_controller=include_controller_in_placement,
             timeout_sec=args.transfer_timeout_secs,
             poll_interval_sec=args.transfer_poll_interval_secs,
         )
@@ -1564,16 +1615,18 @@ def prepare(args: argparse.Namespace) -> Path:
         final_placement = experiment.validate_numeric_shard_round_robin_placement(
             final_info,
             final_cluster,
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
             shard_count,
+            include_controller=include_controller_in_placement,
         )
     else:
         final_placement = experiment.validate_numeric_shard_explicit_placement(
             final_info,
             final_cluster,
-            cluster_preflight["worker_peer_ids"],
+            placement_peer_ids,
             shard_count,
             target_placement,
+            include_controller=include_controller_in_placement,
         )
 
     placement_map_path = output_dir / "placement_map.json"
@@ -1647,6 +1700,12 @@ def prepare(args: argparse.Namespace) -> Path:
         "standard_api_smoke": smoke_proof,
         "provenance_metadata": provenance_metadata,
         "placement_plan": placement_plan,
+        "placement_peers": {
+            "mode": args.placement_peers,
+            "peer_ids": placement_peer_ids,
+            "includes_controller": include_controller_in_placement,
+        },
+        "orion_scaling_layout_allowed": bool(args.allow_orion_scaling_layout),
         "placement_map": {
             "path": str(placement_map_path),
             "sha256": layout_common.sha256_path(placement_map_path),

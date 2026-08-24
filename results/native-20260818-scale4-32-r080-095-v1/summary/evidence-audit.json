@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "run_id": "native-20260818-scale4-32-r080-095-v1",
+  "formal_point_count": 56,
+  "issue_count": 0,
+  "issues": [],
+  "protocol": {
+    "dataset": "glove-200-angular",
+    "distance": "cosine",
+    "top_k": 10,
+    "warmup_queries": 500,
+    "evaluation_queries": 3000,
+    "batch_size": 200,
+    "stability_repeats": 3,
+    "api": "search",
+    "recall_window": "[target,target+0.003]"
+  },
+  "required_files_per_point": [
+    "summary.json",
+    "run_manifest.json",
+    "final_metrics.csv",
+    "stability_runs.csv",
+    "per_query_metrics.csv"
+  ],
+  "orion_route_trace_points": 24,
+  "placement_valid_points": 56,
+  "artifact_verified_routed_points": 40,
+  "observed_shard_sets": [
+    {
+      "simulated_worker_scale": 4,
+      "method": "naive_hash",
+      "logical_shards": 4
+    },
+    {
+      "simulated_worker_scale": 4,
+      "method": "orion",
+      "logical_shards": 4
+    },
+    {
+      "simulated_worker_scale": 4,
+      "method": "simple_kmeans",
+      "logical_shards": 4
+    },
+    {
+      "simulated_worker_scale": 8,
+      "method": "naive_hash",
+      "logical_shards": 8
+    },
+    {
+      "simulated_worker_scale": 8,
+      "method": "orion",
+      "logical_shards": 7
+    },
+    {
+      "simulated_worker_scale": 8,
+      "method": "orion",
+      "logical_shards": 10
+    },
+    {
+      "simulated_worker_scale": 8,
+      "method": "simple_kmeans",
+      "logical_shards": 8
+    },
+    {
+      "simulated_worker_scale": 16,
+      "method": "naive_hash",
+      "logical_shards": 16
+    },
+    {
+      "simulated_worker_scale": 16,
+      "method": "orion",
+      "logical_shards": 15
+    },
+    {
+      "simulated_worker_scale": 16,
+      "method": "orion",
+      "logical_shards": 17
+    },
+    {
+      "simulated_worker_scale": 16,
+      "method": "simple_kmeans",
+      "logical_shards": 16
+    },
+    {
+      "simulated_worker_scale": 32,
+      "method": "naive_hash",
+      "logical_shards": 32
+    },
+    {
+      "simulated_worker_scale": 32,
+      "method": "orion",
+      "logical_shards": 32
+    },
+    {
+      "simulated_worker_scale": 32,
+      "method": "simple_kmeans",
+      "logical_shards": 32
+    }
+  ],
+  "scale8_sync": {
+    "checksum_dry_run_clean": true,
+    "excluded": "calibration/scale8/orion-route-screen/**/trace-only*.json"
+  },
+  "post_experiment": {
+    "qdrant_collections": [],
+    "scale8_noncanonical_payload_copies_remaining": 0
+  },
+  "cleanup_records": [
+    "results/native-20260818-scale4-32-r080-095-v1/cleanup/rebuildable-derived-payloads-20260820-part1.json",
+    "results/native-20260818-scale4-32-r080-095-v1/cleanup/rebuildable-derived-payloads-20260820-part2-scale8.json"
+  ]
+}
+

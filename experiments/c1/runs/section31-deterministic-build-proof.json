@@ -1,0 +1,203 @@
+{
+  "authoritative_e2_e4_rerun_complete": true,
+  "authoritative_rerun_completed_at": "2026-08-21T06:05:52Z",
+  "authoritative_rerun_evidence": {
+    "e2_records": {
+      "/users/dry/Orion/experiments/c1/runs/stage12-e2-deterministic-glove-200-angular-fanout-record.json": "f283a0f5a631ec4a0261be0ace14620864cbf94df8d0c0316f9daeac902582e7",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e2-deterministic-sift1m-fanout-record.json": "8e424de8d4556dc2a431258e7bedd1b5c9fb64235293ce68e18176a52fc7caf7"
+    },
+    "e3_configuration_summaries": {
+      "glove-200-angular/kmeans/m1": "417c6ec1162a2bb56b05c6052d4efe18dbf70916e405bdd73cfe7bb3e5124b71",
+      "glove-200-angular/kmeans/m16": "89fec1ade44349f0959b6e50645541b5238bea37d18d864ca7d110466964f85a",
+      "glove-200-angular/kmeans/m2": "46f6c91297283639e82afb70ba4a70cdc2763470104317ac267d1fad0b63c3e2",
+      "glove-200-angular/kmeans/m32": "a464f11e896fbf790aaeb93394f2e8f77b2280aaa6ca2900660a638f8c49bf6a",
+      "glove-200-angular/kmeans/m4": "76b20f8233488ddb14cfa9ebdff260dccd75892709c3dd0d7425fd0e66e121e6",
+      "glove-200-angular/kmeans/m8": "807920683387874dc9df6fc923b626c5d707992c39ec9e12d5d5c5f5008ddd36",
+      "glove-200-angular/random/m1": "6d16e299902761c3c952e1832e58e597a99ff616c937d649d66a6e230c57d31f",
+      "glove-200-angular/random/m16": "e90b3e522a93780206ac32758c024e167d3b204113cb0b01b282cb966ad62fac",
+      "glove-200-angular/random/m2": "a89f35bb8ffae3b34c1c53ce1508b831d9e095cacee31b2a07e3ed4268f67b16",
+      "glove-200-angular/random/m32": "b133a628430d7bc52dc251d074be7b21a4bf2a8c7ad8e2c58bc3a2df927fbfa6",
+      "glove-200-angular/random/m4": "ded661a5a26b72a08681239b5d189fa04655b779e9f7a0ae30368167a72b786a",
+      "glove-200-angular/random/m8": "225bab04e4983b390c2a6f806e503f4207a16a45b6d29a72a290af653f4fa23a",
+      "sift1m/kmeans/m1": "a8ba41b7f6518691a96a774c823e7d97c2993d0aab6bdc44865dc6f07b0cc785",
+      "sift1m/kmeans/m16": "af87d5f24b5e2a6172938581c65924b3a1a63fd64eea86afdf6018ead05135c8",
+      "sift1m/kmeans/m2": "13387ae6f7d7144a08453da60c426bc5749f46be6dd1c555fb8c54a244250511",
+      "sift1m/kmeans/m32": "151ccf83871bb4428eca48d9633069b8b8b0560df57c37cd41949835c0b62877",
+      "sift1m/kmeans/m4": "a14822f5d95f25294667b3657ef384925af04b67c4a2c54db24d9d8bd7f145ad",
+      "sift1m/kmeans/m8": "d57921d4d975fad34657dcc8d40cb090776478b23c3138648123d6923df30b8b",
+      "sift1m/random/m1": "46a7425512909c544437898997ab9e9cc18121b343875087dd20bd7b1432ccc5",
+      "sift1m/random/m16": "e936796439ebf696d2628510b24314198e1151e9adf95067060b01c4621f2537",
+      "sift1m/random/m2": "6e2b25b1314d40ca8c1bedf945be45796a6fc66ac213524626e15c3e3bf1cb05",
+      "sift1m/random/m32": "a5cca13fb036fa646709343a6f9f989c6622372e890790ed9dee72814b66aa45",
+      "sift1m/random/m4": "dcd18b757bfcee427c8997300e458ce05b2451be5b9bd0db4c3cefb5530dc791",
+      "sift1m/random/m8": "e6502ba5359a077addde0fc2999edf80142768bf4f8415d2090171017850309d"
+    },
+    "e3_matrix_record": {
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-matrix-record.json": "7d3395c437b0c8355b495b60937024f2eeec1be0a7aefd7cd6d5672195ad5252"
+    },
+    "e4_records": {
+      "/users/dry/Orion/experiments/c1/runs/stage12-e4-deterministic-glove-200-angular-aggregate-work-record.json": "7973354f71bd83968ea00784059f9ef6870d6650b0cb414de752b0ecb45e8a1f",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e4-deterministic-sift1m-final-aggregate-work-record.json": "7f266226de59960a71a087e1942ed62f534066a7aa16409d727e4b0492126f8c",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e4-deterministic-sift1m-preliminary-aggregate-work-record.json": "2cfa9f895d43d02104f01aa1f4965c48b955dafbf5a89fe67949141db80edb2c"
+    },
+    "final_cleanup": {
+      "/users/dry/Orion/experiments/c1/runs/c1_final_cleanup-proof.json": "b31f17f48edf5bede8bec278fa66fc0eceb0e112f5ea1edf3edcd99813de8495"
+    },
+    "normalized_metadata": {
+      "/users/dry/Orion/experiments/c1/runs/c1_run_metadata.jsonl": "ebe881be3bb1b72953bb7e63c8a74193528e2fe997e10c96a5931319a066c960"
+    }
+  },
+  "builds": [
+    {
+      "build_number": 1,
+      "collection_info": {
+        "config": {
+          "hnsw_config": {
+            "ef_construct": 200,
+            "full_scan_threshold": 10,
+            "m": 32,
+            "max_indexing_threads": 1,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "default_segment_number": 1,
+            "deleted_threshold": 0.2,
+            "flush_interval_sec": 1,
+            "indexing_threshold": 10,
+            "max_optimization_threads": 1,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "prevent_unoptimized": null,
+            "vacuum_min_vector_number": 1000
+          },
+          "params": {
+            "on_disk_payload": true,
+            "replication_factor": 1,
+            "shard_number": 1,
+            "vectors": {
+              "distance": "Euclid",
+              "size": 32
+            },
+            "write_consistency_factor": 1
+          },
+          "quantization_config": null,
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_retain_closed": 1,
+            "wal_segments_ahead": 0
+          }
+        },
+        "indexed_vectors_count": 10000,
+        "optimizer_status": "ok",
+        "payload_schema": {},
+        "points_count": 10000,
+        "segments_count": 2,
+        "status": "green",
+        "update_queue": {
+          "length": 0
+        }
+      },
+      "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+      "graph_files": [
+        {
+          "filename": "graph.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage/collections/c1_section31_deterministic_hnsw/0/segments/680e3da1-7ccb-428a-9e93-8eba24eb3147/vector_index/graph.bin",
+          "sha256": "a85902ea8e2ea03e36e0f761bda674083a57ddc1d68a4b75f69337990ac09955",
+          "size_bytes": 15060
+        },
+        {
+          "filename": "links_compressed.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage/collections/c1_section31_deterministic_hnsw/0/segments/680e3da1-7ccb-428a-9e93-8eba24eb3147/vector_index/links_compressed.bin",
+          "sha256": "2eac270993c01c09a0cd0034b1ca130fde7949dd370a4a585829af62676dac24",
+          "size_bytes": 538076
+        }
+      ],
+      "retained_storage": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage"
+    },
+    {
+      "build_number": 2,
+      "collection_info": {
+        "config": {
+          "hnsw_config": {
+            "ef_construct": 200,
+            "full_scan_threshold": 10,
+            "m": 32,
+            "max_indexing_threads": 1,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "default_segment_number": 1,
+            "deleted_threshold": 0.2,
+            "flush_interval_sec": 1,
+            "indexing_threshold": 10,
+            "max_optimization_threads": 1,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "prevent_unoptimized": null,
+            "vacuum_min_vector_number": 1000
+          },
+          "params": {
+            "on_disk_payload": true,
+            "replication_factor": 1,
+            "shard_number": 1,
+            "vectors": {
+              "distance": "Euclid",
+              "size": 32
+            },
+            "write_consistency_factor": 1
+          },
+          "quantization_config": null,
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_retain_closed": 1,
+            "wal_segments_ahead": 0
+          }
+        },
+        "indexed_vectors_count": 10000,
+        "optimizer_status": "ok",
+        "payload_schema": {},
+        "points_count": 10000,
+        "segments_count": 2,
+        "status": "green",
+        "update_queue": {
+          "length": 0
+        }
+      },
+      "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+      "graph_files": [
+        {
+          "filename": "graph.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage/collections/c1_section31_deterministic_hnsw/0/segments/24db9945-8178-4132-9585-97675c97acc0/vector_index/graph.bin",
+          "sha256": "a85902ea8e2ea03e36e0f761bda674083a57ddc1d68a4b75f69337990ac09955",
+          "size_bytes": 15060
+        },
+        {
+          "filename": "links_compressed.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage/collections/c1_section31_deterministic_hnsw/0/segments/24db9945-8178-4132-9585-97675c97acc0/vector_index/links_compressed.bin",
+          "sha256": "2eac270993c01c09a0cd0034b1ca130fde7949dd370a4a585829af62676dac24",
+          "size_bytes": 538076
+        }
+      ],
+      "retained_storage": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage"
+    }
+  ],
+  "deterministic_construction_verified": true,
+  "dimension": 32,
+  "distance_metric": "Euclid",
+  "graph_build_seed": 20260821,
+  "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+  "hnsw_ef_construction": 200,
+  "hnsw_m": 32,
+  "identical_build_count": 2,
+  "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+  "image_tag": "orion-c1:20260821-deterministic-seed",
+  "max_indexing_threads": 1,
+  "max_optimization_threads": 1,
+  "point_count": 10000,
+  "record_type": "section31_deterministic_build_proof",
+  "retained_build_root": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z",
+  "source_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "status": "VERIFIED_AUTHORITATIVE_RERUN_COMPLETE",
+  "timestamp": "2026-08-21T02:31:47Z",
+  "vector_generation_seed": 20260821
+}

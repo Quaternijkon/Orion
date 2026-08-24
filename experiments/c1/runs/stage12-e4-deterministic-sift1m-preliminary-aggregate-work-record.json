@@ -1,0 +1,208 @@
+{
+  "anomalies": [
+    "sift1m_kmeans_m4_reached_12_iteration_cap_without_convergence",
+    "sift1m_kmeans_m8_reached_12_iteration_cap_without_convergence",
+    "sift1m_kmeans_m16_reached_12_iteration_cap_without_convergence",
+    "sift1m_kmeans_m32_reached_12_iteration_cap_without_convergence",
+    "work_bound_projection_fails_global_physical_sanity_check_at_m1_m2_m4",
+    "random_work_bound_projection_anticorrelates_with_measured_e1_at_m1_m2_m4"
+  ],
+  "c1_d_aggregate_cost_status": "SUPPORTS",
+  "configuration_count": 12,
+  "dataset": "sift1m",
+  "dataset_checksum": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "dataset_physical_attribution_status": "INSUFFICIENT",
+  "deterministic_graph_construction": true,
+  "e1_source_stem": "stage6-e1-corrected",
+  "e2_source_stem": "stage12-e2-deterministic",
+  "e3_source_stem": "stage12-e3-deterministic",
+  "evidence_sha256": {
+    "aggregate_work_summary_csv": "02c1d8fa7af9667d06d5d416536f3b93f4822940430e04a3e1b446b1e4ea92a4",
+    "canonical_aggregate_work": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+    "canonical_projected_scaling": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+    "e2_per_query": "6338e2ee0f4c2ee4b8d2f4912e635ce11780dc363d34c8c50903389739e469b8",
+    "e3_per_search": {
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m1.csv": "c1d09e8b4acbcf668baa20f4c8eb3bcf268b83f1683ea296b6f6fc607dd54c13",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m16.csv": "d07f5842b0f542b34398c2233bc90178f8dff6839eea06ef67191bd9ba1cc93e",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m2.csv": "711a785da8e7911322f73131074bdc0c89c239ab759d3236f7ba9138851e7444",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m32.csv": "f3ade5fe944e8ef3896cf763640da83b8de7eb902a75f3c93ad2fc805b6ca306",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m4.csv": "a1137d298d002d98ce93c0e7df8a3c9b74c0db182ff2d283e996c749247ccead",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-kmeans-m8.csv": "4d30c1af3b80c299abf989accd9583273b3d5a6c90d9aef8c43880fa9ebc6c8a",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m1.csv": "cdd4ab3ef946924f9242a09c031bf2bf4bba6e9e790d5a5bb5b502a1d7758f3b",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m16.csv": "77207cdecd59488ec3073bd22679a90f51e70e562fbdae1698d8a90ae48e20e8",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m2.csv": "ea1e614ef75b48b835ee51b92129b61a7cf663a99b0014def6883fe469ab41dc",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m32.csv": "012f9accc3490f47fcb18f310b01417daaa5e4061a0dd63644c599d581f92a16",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m4.csv": "bafa050f862ab0c59a32925f40c43f46d830ebd3eda08868d6a8130c99c90283",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-sift1m-random-m8.csv": "5de66f5a87b504730dd3a9008ac8552ace13999d348ae4fa95d35471cc5002f3"
+    },
+    "local_work_sources": {
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m1-summary.json": "a8ba41b7f6518691a96a774c823e7d97c2993d0aab6bdc44865dc6f07b0cc785",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m16-summary.json": "af87d5f24b5e2a6172938581c65924b3a1a63fd64eea86afdf6018ead05135c8",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m2-summary.json": "13387ae6f7d7144a08453da60c426bc5749f46be6dd1c555fb8c54a244250511",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m32-summary.json": "151ccf83871bb4428eca48d9633069b8b8b0560df57c37cd41949835c0b62877",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m4-summary.json": "a14822f5d95f25294667b3657ef384925af04b67c4a2c54db24d9d8bd7f145ad",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m8-summary.json": "d57921d4d975fad34657dcc8d40cb090776478b23c3138648123d6923df30b8b",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m1-summary.json": "46a7425512909c544437898997ab9e9cc18121b343875087dd20bd7b1432ccc5",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m16-summary.json": "e936796439ebf696d2628510b24314198e1151e9adf95067060b01c4621f2537",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m2-summary.json": "6e2b25b1314d40ca8c1bedf945be45796a6fc66ac213524626e15c3e3bf1cb05",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m32-summary.json": "a5cca13fb036fa646709343a6f9f989c6622372e890790ed9dee72814b66aa45",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m4-summary.json": "dcd18b757bfcee427c8997300e458ce05b2451be5b9bd0db4c3cefb5530dc791",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m8-summary.json": "e6502ba5359a077addde0fc2999edf80142768bf4f8415d2090171017850309d"
+    },
+    "model_accuracy_csv": "77a18860da4a8c2369e8d43afb9be6cdb511516f99bde0b9bfa0d03d584af9f6",
+    "per_query": "5552eb1e2dbf6539e14800c8e85cb23eff47f73641fdb018b1cb1cc3ecfc2009",
+    "physical_e1_summary": "40a658d3025d089ad90c45ff28183fcdaadc9dd2536393159f7ec017f6daf090",
+    "protocol_aggregate_work": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+    "protocol_model_vs_observed": "4edc33c98084d8b5bd11b6b5f1779846031fab00aecf2625636ca52acdb2f4ff",
+    "protocol_projected_scaling": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+    "summary_json": "979868cef03e88af76d208bf83deeb6a4e337231f03a52451188c856377c35fc"
+  },
+  "experiment_id": "stage12-e4-deterministic-sift1m-preliminary-aggregate-work",
+  "external_projection_gate_records": [],
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "graph_build_seed": 20260821,
+  "hnsw_max_indexing_threads": 1,
+  "logical_shard_counts": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "max_optimization_threads": 1,
+  "model_accuracy": {
+    "kmeans": {
+      "maximum_relative_error": 0.0,
+      "mean_relative_error": 0.0,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    },
+    "random": {
+      "maximum_relative_error": 0.0,
+      "mean_relative_error": 0.0,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    }
+  },
+  "observed_distance_mean": {
+    "kmeans": {
+      "1": 1747.8517777777777,
+      "16": 2316.6564444444443,
+      "2": 1217.1542222222222,
+      "32": 2655.3244444444445,
+      "4": 1931.3122222222223,
+      "8": 1620.5682222222222
+    },
+    "random": {
+      "1": 1747.8517777777777,
+      "16": 8292.424888888889,
+      "2": 1662.168888888889,
+      "32": 14995.416666666666,
+      "4": 2443.010222222222,
+      "8": 4544.046444444444
+    }
+  },
+  "observed_worker_cpu_time_us_mean": {
+    "kmeans": {
+      "1": 367.4277777777778,
+      "16": 432.77422222222225,
+      "2": 243.17277777777778,
+      "32": 406.19866666666667,
+      "4": 377.54255555555557,
+      "8": 308.0302222222222
+    },
+    "random": {
+      "1": 368.8917777777778,
+      "16": 1343.4444444444443,
+      "2": 320.8398888888889,
+      "32": 1866.8092222222222,
+      "4": 460.8186666666667,
+      "8": 818.9431111111111
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "per_query_row_count": 108000,
+  "physical_attribution_status": "INSUFFICIENT",
+  "projection_release_gate": "all_partition_methods_must_pass",
+  "projection_sanity_checks": {
+    "kmeans": {
+      "dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 1.3925300332386101,
+      "method_m_gt_4_projection_status": "AVAILABLE",
+      "pearson": 0.26543681895985305,
+      "physical_e1_normalized_qps": [
+        1.0,
+        1.1175076316988564,
+        1.003456935014608
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        2.8720300942416865,
+        3.620029444574529
+      ],
+      "spearman": 0.4999999999999999,
+      "trend_agreement": true,
+      "work_bound_projection": [
+        1.0,
+        2.8720300942416865,
+        3.620029444574529,
+        8.628340374987813,
+        12.071547557907689,
+        21.06381275023098
+      ]
+    },
+    "random": {
+      "dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 2.8872595842411406,
+      "method_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "pearson": -0.9991765549854394,
+      "physical_e1_normalized_qps": [
+        1.0,
+        0.619233826921201,
+        0.39388956604255965
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        2.103097692974106,
+        2.8618001871279746
+      ],
+      "spearman": -0.9999999999999998,
+      "trend_agreement": false,
+      "work_bound_projection": [
+        1.0,
+        2.103097692974106,
+        2.8618001871279746,
+        3.077172382187604,
+        3.372430720707027,
+        3.7298901479155666
+      ]
+    }
+  },
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e4_aggregate_work_decomposition",
+  "status": "VALID_E4_WITH_PHYSICAL_PROJECTION_SANITY_CHECK_FAILURE",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T06:05:20Z"
+}

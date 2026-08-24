@@ -1,0 +1,38 @@
+{
+  "controller": {
+    "ssh_host": "localhost",
+    "private_ip": "10.10.1.1",
+    "role": "controller",
+    "cpuset": "0-19"
+  },
+  "workers": [
+    {
+      "ssh_host": "10.10.1.2",
+      "private_ip": "10.10.1.2",
+      "role": "qdrant_shard_1",
+      "cpuset": "0-19"
+    },
+    {
+      "ssh_host": "10.10.1.3",
+      "private_ip": "10.10.1.3",
+      "role": "qdrant_shard_2",
+      "cpuset": "0-19"
+    },
+    {
+      "ssh_host": "10.10.1.4",
+      "private_ip": "10.10.1.4",
+      "role": "qdrant_shard_3",
+      "cpuset": "0-19"
+    }
+  ],
+  "logical_shards": [2, 4, 8, 16, 32],
+  "logical_to_physical_rule": "logical_shard_id modulo 4",
+  "benchmark_client_cpuset": "20-31",
+  "hardware_reporting": true,
+  "hnsw": {
+    "m": 32,
+    "ef_construction": 200,
+    "graph_build_seed": 20260821,
+    "max_indexing_threads": 1
+  }
+}

@@ -370,6 +370,50 @@ def test_copy_mode_creates_independent_byte_identical_payloads(monkeypatch, tmp_
         assert destination.stat().st_ino != source_path.stat().st_ino
 
 
+def test_explicit_scaling_flag_accepts_and_preserves_variable_initial_shards(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    source_dir = tmp_path / "source"
+    output_dir = tmp_path / "derived"
+    source = write_source_bundle(module, source_dir)
+    manifest_path = source_dir / module.layout_common.BUILD_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["parameters"]["initial_num_shards"] = 1
+    manifest["routing"]["initial_num_shards"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (source_dir / module.layout_common.CHECKSUMS_NAME).unlink()
+    module.layout_common.write_checksums(source_dir)
+    patch_rust_builder(module, monkeypatch, source["upper_graph"])
+
+    with pytest.raises(RuntimeError, match="initial_num_shards"):
+        module.validate_source_bundle(source_dir)
+
+    summary = module.build(
+        runtime_args(
+            module,
+            source_dir,
+            output_dir,
+            "--allow-orion-scaling-layout",
+        )
+    )
+
+    assert summary["orion_scaling_layout_allowed"] is True
+    build_manifest = json.loads(
+        (output_dir / module.layout_common.BUILD_MANIFEST_NAME).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert build_manifest["parameters"]["initial_num_shards"] == 1
+    assert build_manifest["derivation"]["orion_scaling_layout_allowed"] is True
+    loaded = module.prepare.load_routed_layout(
+        "orion",
+        output_dir,
+        allow_orion_scaling_layout=True,
+    )
+    assert loaded["shard_count"] == 2
+
+
 def test_validated_runtime_profile_can_be_the_source_of_another_profile(
     monkeypatch, tmp_path
 ):

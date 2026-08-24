@@ -52,6 +52,7 @@ use crate::vector_storage::{
 /// ```
 pub struct FilteredScorer<'a> {
     raw_scorer: Box<dyn RawScorer + 'a>,
+    graph_visit_counter: HardwareCounterCell,
     filters: ScorerFilters<'a>,
     /// Temporary buffer for scores.
     scores_buffer: Vec<ScoreType>,
@@ -90,10 +91,18 @@ impl<'a> ScorerFilters<'a> {
 
 pub struct FilteredBytesScorer<'a> {
     scorer_bytes: &'a dyn QueryScorerBytes,
+    graph_visit_counter: &'a HardwareCounterCell,
     filters: ScorerFilters<'a>,
 }
 
 impl<'a> FilteredBytesScorer<'a> {
+    #[inline]
+    pub fn record_graph_node_visit(&self) {
+        self.graph_visit_counter
+            .graph_nodes_visited_counter()
+            .incr();
+    }
+
     pub fn score_points(
         &self,
         points: &mut Vec<(PointOffsetType, &[u8])>,
@@ -123,12 +132,14 @@ impl<'a> FilteredScorer<'a> {
         point_deleted: &'a BitSlice,
         hardware_counter: HardwareCounterCell,
     ) -> OperationResult<Self> {
+        let graph_visit_counter = hardware_counter.fork();
         let raw_scorer = match quantized_vectors {
             Some(quantized_vectors) => quantized_vectors.raw_scorer(query, hardware_counter)?,
             None => new_raw_scorer(query, vectors, hardware_counter)?,
         };
         Ok(FilteredScorer {
             raw_scorer,
+            graph_visit_counter,
             filters: ScorerFilters {
                 filter_context,
                 point_deleted,
@@ -153,6 +164,7 @@ impl<'a> FilteredScorer<'a> {
             let query: QueryVector = query.as_vec_ref().into();
             query
         };
+        let graph_visit_counter = hardware_counter.fork();
         let raw_scorer = match quantized_vectors {
             Some(quantized_vectors) => quantized_vectors
                 .raw_internal_scorer(point_id, hardware_counter)
@@ -166,6 +178,7 @@ impl<'a> FilteredScorer<'a> {
         };
         Ok(FilteredScorer {
             raw_scorer,
+            graph_visit_counter,
             filters: ScorerFilters {
                 filter_context,
                 point_deleted,
@@ -187,6 +200,7 @@ impl<'a> FilteredScorer<'a> {
         point_deleted: &'a BitSlice,
     ) -> Self {
         FilteredScorer {
+            graph_visit_counter: HardwareCounterCell::new(),
             raw_scorer: new_raw_scorer(vector, vector_storage, HardwareCounterCell::new()).unwrap(),
             filters: ScorerFilters {
                 filter_context: None,
@@ -209,6 +223,7 @@ impl<'a> FilteredScorer<'a> {
     pub fn scorer_bytes(&self) -> Option<FilteredBytesScorer<'_>> {
         Some(FilteredBytesScorer {
             scorer_bytes: self.raw_scorer.scorer_bytes()?,
+            graph_visit_counter: &self.graph_visit_counter,
             filters: self.filters.as_borrowed(),
         })
     }
@@ -282,6 +297,13 @@ impl<'a> FilteredScorer<'a> {
 
     pub fn score_point(&self, point_id: PointOffsetType) -> ScoreType {
         self.raw_scorer.score_point(point_id)
+    }
+
+    #[inline]
+    pub fn record_graph_node_visit(&self) {
+        self.graph_visit_counter
+            .graph_nodes_visited_counter()
+            .incr();
     }
 
     pub fn score_internal(&self, point_a: PointOffsetType, point_b: PointOffsetType) -> ScoreType {

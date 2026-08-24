@@ -1,0 +1,21 @@
+{
+  "collection": "c1s15_sift1m_common_m1_baseline-b",
+  "controller_storage_absent": true,
+  "controller_storage_path": "/users/dry/orion-distributed/c1-20260821-v2/controller/storage/collections/c1s15_sift1m_common_m1_baseline-b",
+  "peers": {
+    "10.10.1.1": {
+      "http_status": 404
+    },
+    "10.10.1.2": {
+      "http_status": 404
+    },
+    "10.10.1.3": {
+      "http_status": 404
+    },
+    "10.10.1.4": {
+      "http_status": 404
+    }
+  },
+  "status": "VERIFIED_DELETED",
+  "timestamp": "2026-08-23T13:35:18Z"
+}

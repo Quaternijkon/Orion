@@ -38,6 +38,9 @@ impl RequestHwCounter {
         if self.report_to_api {
             let HardwareData {
                 cpu,
+                cpu_time_us,
+                cpu_wall_time_us,
+                graph_nodes_visited,
                 payload_io_read,
                 payload_io_write,
                 payload_index_io_read,
@@ -48,6 +51,9 @@ impl RequestHwCounter {
 
             Some(api::rest::models::HardwareUsage {
                 cpu,
+                cpu_time_us,
+                cpu_wall_time_us,
+                graph_nodes_visited,
                 payload_io_read,
                 payload_io_write,
                 payload_index_io_read,
@@ -64,6 +70,9 @@ impl RequestHwCounter {
         if self.report_to_api {
             let HardwareData {
                 cpu,
+                cpu_time_us,
+                cpu_wall_time_us,
+                graph_nodes_visited,
                 payload_io_read,
                 payload_io_write,
                 payload_index_io_read,
@@ -74,6 +83,9 @@ impl RequestHwCounter {
 
             Some(api::grpc::qdrant::HardwareUsage {
                 cpu: cpu as u64,
+                cpu_time_us: cpu_time_us as u64,
+                cpu_wall_time_us: cpu_wall_time_us as u64,
+                graph_nodes_visited: graph_nodes_visited as u64,
                 payload_io_read: payload_io_read as u64,
                 payload_io_write: payload_io_write as u64,
                 payload_index_io_read: payload_index_io_read as u64,

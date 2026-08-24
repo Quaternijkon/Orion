@@ -1,0 +1,173 @@
+{
+  "checks": {
+    "complete_sequential_local_matrix": "PASS"
+  },
+  "configuration_count": 20,
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "input_manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-input/sift1m/manifest.json",
+  "input_manifest_sha256": "17e6ea346f0702ec50b2f060a6c1ca5bd517362e3dc8b9b2df328a381fe6d2cd",
+  "protocol_version": "c23-20260821-v1",
+  "runs": [
+    {
+      "configuration_id": "random-m2-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m2-seed20260820-v2/manifest.json",
+      "manifest_sha256": "1b7ffcca95a0823a42d8b6504f635e6579df02975c75d18d0c3f544d704fd005",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m2-seed20260820-v2",
+      "total_seconds": 596.520018169
+    },
+    {
+      "configuration_id": "random-m4-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m4-seed20260820-v2/manifest.json",
+      "manifest_sha256": "2d78ece2bef7dbca05898c0b31aab43113e9dd43af4a9a36149acdc4a4180c3c",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m4-seed20260820-v2",
+      "total_seconds": 515.500660849
+    },
+    {
+      "configuration_id": "random-m8-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m8-seed20260820-v2/manifest.json",
+      "manifest_sha256": "2f04aca017d5b04e176398b7ffc19b862d260dfbe47705e9ada1de8e571805d1",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m8-seed20260820-v2",
+      "total_seconds": 429.707836247
+    },
+    {
+      "configuration_id": "random-m16-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m16-seed20260820-v2/manifest.json",
+      "manifest_sha256": "40bafc0d630e7075274af1658b06b22583cc678916c397a344af283aae259d05",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m16-seed20260820-v2",
+      "total_seconds": 332.162429153
+    },
+    {
+      "configuration_id": "random-m32-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m32-seed20260820-v2/manifest.json",
+      "manifest_sha256": "4e38aff5899c29dd42e2749556ef9397012c50d7f8450b276fe3239f700a9867",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/random-m32-seed20260820-v2",
+      "total_seconds": 230.542768592
+    },
+    {
+      "configuration_id": "kmeans-m2-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m2-seed20260820-v2/manifest.json",
+      "manifest_sha256": "6c832a7759af672d85c3bd6d2f86ee6d88249c2d9bd280537dd18a7e6a13fb5c",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m2-seed20260820-v2",
+      "total_seconds": 599.161850289
+    },
+    {
+      "configuration_id": "kmeans-m4-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m4-seed20260820-v2/manifest.json",
+      "manifest_sha256": "a04fc33b3d007945253bdc4004050cfef5156160f0a730d2c906c26373cbdf91",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m4-seed20260820-v2",
+      "total_seconds": 539.228122973
+    },
+    {
+      "configuration_id": "kmeans-m8-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m8-seed20260820-v2/manifest.json",
+      "manifest_sha256": "8127918f84a3fd4884996dd86ab5698a55488d84904036136af4ba3384cd6388",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m8-seed20260820-v2",
+      "total_seconds": 442.375508417
+    },
+    {
+      "configuration_id": "kmeans-m16-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m16-seed20260820-v2/manifest.json",
+      "manifest_sha256": "75dc058ac12c0c9c8fbbe8b89452c4f457058b300b12f80bc1b2878a110da5d1",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m16-seed20260820-v2",
+      "total_seconds": 342.460517881
+    },
+    {
+      "configuration_id": "kmeans-m32-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m32-seed20260820-v2/manifest.json",
+      "manifest_sha256": "6da9a3de2142c2c322e25b83f3eee4adc28000bf5013e062e601bafe2265dbea",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/kmeans-m32-seed20260820-v2",
+      "total_seconds": 254.09857372
+    },
+    {
+      "configuration_id": "orion-m2-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m2-seed1-v2/manifest.json",
+      "manifest_sha256": "1121cac3ce3f8082fb537cccc76cf5d61ffeaa0d7707617c24c5a8105bd3650a",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m2-seed1-v2",
+      "total_seconds": 591.604092505
+    },
+    {
+      "configuration_id": "orion-m4-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m4-seed1-v2/manifest.json",
+      "manifest_sha256": "1191c00995e5703203d6080c6b77629a4af01f5ac112e4b684aa2d8607b65b7b",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m4-seed1-v2",
+      "total_seconds": 516.982343397
+    },
+    {
+      "configuration_id": "orion-m8-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m8-seed1-v2/manifest.json",
+      "manifest_sha256": "1a68c100c5fc8de6b9afec807e5eca16233e1d14603fef4a1f0808b49f233b5f",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m8-seed1-v2",
+      "total_seconds": 452.427568979
+    },
+    {
+      "configuration_id": "orion-m16-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m16-seed1-v2/manifest.json",
+      "manifest_sha256": "31e25d7820431509bf18792176a7bba2ae9a7f97459d30e8d24ce2bb746177e3",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m16-seed1-v2",
+      "total_seconds": 375.274845444
+    },
+    {
+      "configuration_id": "orion-m32-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m32-seed1-v2/manifest.json",
+      "manifest_sha256": "cc5e54b80765f3bb7b0c8c747da762730b8c404fb8e3306f027ff14d5b1e2eb2",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion-m32-seed1-v2",
+      "total_seconds": 305.090494145
+    },
+    {
+      "configuration_id": "orion_no_refinement-m2-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m2-seed1-v2/manifest.json",
+      "manifest_sha256": "4ab8d564b674f2434a2a37068eaed1057f848ceda8effbf1dea6a5cd730e57ec",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m2-seed1-v2",
+      "total_seconds": 612.845677721
+    },
+    {
+      "configuration_id": "orion_no_refinement-m4-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m4-seed1-v2/manifest.json",
+      "manifest_sha256": "82c968c698cd1300bcab7aedb520b9f990031ff8d8ef4cdcffa349504382a1b5",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m4-seed1-v2",
+      "total_seconds": 508.419332978
+    },
+    {
+      "configuration_id": "orion_no_refinement-m8-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m8-seed1-v2/manifest.json",
+      "manifest_sha256": "9ee7515ac1a5724bbe5cee8cf65a9b7d963f79d8801602efac9d03821d8f14bc",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m8-seed1-v2",
+      "total_seconds": 441.646810404
+    },
+    {
+      "configuration_id": "orion_no_refinement-m16-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m16-seed1-v2/manifest.json",
+      "manifest_sha256": "a7b9417ba183815cf3cd80633a6ea315ee7b27bf6dbb04f9e12c6c9e43faeb25",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m16-seed1-v2",
+      "total_seconds": 340.005092599
+    },
+    {
+      "configuration_id": "orion_no_refinement-m32-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m32-seed1-v2/manifest.json",
+      "manifest_sha256": "e6b41cf1ccc18120ebcfa5cc1ed159ca43dda050fabf1a012ac7896c6d7b4006",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs/sift1m/orion_no_refinement-m32-seed1-v2",
+      "total_seconds": 252.696519166
+    }
+  ],
+  "settings": {
+    "dataset": "sift1m",
+    "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+    "dimension": 128,
+    "e3_ef_values": [
+      10,
+      20,
+      40,
+      80,
+      160,
+      320
+    ],
+    "e4_ef": 24,
+    "full_scan_threshold_kb": 10,
+    "graph_seed": 20260821,
+    "hnsw_ef_construction": 200,
+    "hnsw_m": 32,
+    "measurement_count": 9000,
+    "measurement_start": 1000
+  },
+  "timestamp": "2026-08-21T23:42:15.126809Z"
+}

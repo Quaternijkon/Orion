@@ -100,6 +100,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "and requires the same filesystem. No silent fallback is performed."
         ),
     )
+    parser.add_argument(
+        "--allow-orion-scaling-layout",
+        action="store_true",
+        help=(
+            "Accept a checksum-verified Orion source whose initial shard count "
+            "differs from the canonical 31-shard configuration. This is only "
+            "for explicitly labeled shard-scaling experiments."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -224,8 +233,14 @@ def checked_source_file(
 
 def validate_source_bundle(
     source_dir: Path,
+    *,
+    allow_orion_scaling_layout: bool = False,
 ) -> dict[str, Any]:
-    layout = prepare.load_routed_layout("orion", source_dir)
+    layout = prepare.load_routed_layout(
+        "orion",
+        source_dir,
+        allow_orion_scaling_layout=allow_orion_scaling_layout,
+    )
     build_manifest_path = Path(layout["build_manifest_path"])
     build_manifest = read_json_object(build_manifest_path, "source build manifest")
     outputs = build_manifest.get("outputs") or {}
@@ -429,7 +444,11 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     if not source_dir.is_dir():
         raise FileNotFoundError(f"source layout directory not found: {source_dir}")
 
-    source = validate_source_bundle(source_dir)
+    allow_scaling = bool(getattr(args, "allow_orion_scaling_layout", False))
+    source = validate_source_bundle(
+        source_dir,
+        allow_orion_scaling_layout=allow_scaling,
+    )
     source_generation = int(source["layout"]["generation"])
     upper_nodes = source["graphless"].get("upper_nodes")
     if not isinstance(upper_nodes, list) or not upper_nodes:
@@ -585,6 +604,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                 ),
             },
             "formal_evidence_eligible": str(args.payload_mode) == "copy",
+            "orion_scaling_layout_allowed": allow_scaling,
             "source": source_binding,
             "reused_payloads": reused_payloads,
         },
@@ -601,7 +621,11 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     checksums_path = layout_common.write_checksums(output_dir)
 
     # Verify the finished bundle through the same production preparation gate.
-    derived_layout = prepare.load_routed_layout("orion", output_dir)
+    derived_layout = prepare.load_routed_layout(
+        "orion",
+        output_dir,
+        allow_orion_scaling_layout=allow_scaling,
+    )
     if derived_layout["artifact"]["layout_sha256"] != source_binding["layout_sha256"]:
         raise RuntimeError("derived layout checksum changed after final validation")
     summary = {
@@ -621,6 +645,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "checksums": str(checksums_path),
         "payload_mode": str(args.payload_mode),
         "formal_evidence_eligible": str(args.payload_mode) == "copy",
+        "orion_scaling_layout_allowed": allow_scaling,
         "reused_payloads": reused_payloads,
     }
     print(json.dumps(summary, sort_keys=True, indent=2))

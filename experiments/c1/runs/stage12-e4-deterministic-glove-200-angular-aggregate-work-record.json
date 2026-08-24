@@ -1,0 +1,217 @@
+{
+  "anomalies": [
+    "glove_200_angular_kmeans_m2_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m4_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m8_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m16_reached_12_iteration_cap_without_convergence",
+    "glove_200_angular_kmeans_m32_reached_12_iteration_cap_without_convergence",
+    "work_bound_projection_fails_cross_dataset_release_gate",
+    "external_sift1m_work_bound_projection_gate_failed"
+  ],
+  "c1_d_aggregate_cost_status": "SUPPORTS",
+  "configuration_count": 12,
+  "dataset": "glove-200-angular",
+  "dataset_checksum": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "dataset_m_gt_4_projection_status": "AVAILABLE",
+  "dataset_physical_attribution_status": "SUPPORTS",
+  "deterministic_graph_construction": true,
+  "e1_source_stem": "stage8-e1-corrected",
+  "e2_source_stem": "stage12-e2-deterministic",
+  "e3_source_stem": "stage12-e3-deterministic",
+  "evidence_sha256": {
+    "aggregate_work_summary_csv": "a8654ffcf97ac35a3303eda47587620580f39b411ac74e164904fbc583a95ff5",
+    "canonical_aggregate_work": "6f5d930495892c0967367d177901abf28a5a777635b3759617afd2b50258770c",
+    "canonical_projected_scaling": "f93be9b655cea51cf5adb100160c52dd09c6d33c87bcf3e10591a7fb8cdc3b3c",
+    "e2_per_query": "e3a16eac64716367f67a97ee8f99d9f4b385e393f4f0206e3ba5d25be9f1adb1",
+    "e3_per_search": {
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m1.csv": "7288734b0993b6dad7d646808b3fc4f415e456ec1cdc0b37885c9820871ff883",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m16.csv": "18b55b6bd2a4f1f40c8be564f909751f7dfeb569cd3ad23ba4140f69c408b1f1",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m2.csv": "134e8e9571017e0ea4d8c73e70b73680f95cd3193a9967184ecfbb6a7b2e7e27",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m32.csv": "df3f9f6679137cf5a8e316ea0d2251b09b9b2598282010c17d31b3fee6e3bd72",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m4.csv": "84ab97ec6535f204c62d08676978d046dad9d42225abb0e133ab622b4d78e097",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m8.csv": "93b90c7d9f7f4931f50afd9f1b29ead89870d91280e2ac8e5d6cb8a600a6e48c",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m1.csv": "3be067c458925b25627857605c475bb49c2ae3b02e45b9f1dcfcd57e35e96dd5",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m16.csv": "c628cd33bc9e81e43d133599f0ba90a8a2185011dac702cecaefc946f703eb2e",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m2.csv": "8977f46525c694ec06294785fdc8c7b9d65df9b37e58fe4c89210dd3f3212dec",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m32.csv": "c601cb1f82be1eba90b789b04a91c3b61f754f40600d54f280d89a859894adb6",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m4.csv": "5ccefa0a0e49e00ac51008a19377904ebbb17ef6d9704877abfbdb7e6e66bf63",
+      "/users/dry/Orion/experiments/c1/runs/per_query/stage12-e3-deterministic-glove-200-angular-random-m8.csv": "d7a46864363d5ddff955ba4559c527a03a6c2b4be3010a53692a0cbd804e8935"
+    },
+    "local_work_sources": {
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m1-summary.json": "417c6ec1162a2bb56b05c6052d4efe18dbf70916e405bdd73cfe7bb3e5124b71",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m16-summary.json": "89fec1ade44349f0959b6e50645541b5238bea37d18d864ca7d110466964f85a",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m2-summary.json": "46f6c91297283639e82afb70ba4a70cdc2763470104317ac267d1fad0b63c3e2",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m32-summary.json": "a464f11e896fbf790aaeb93394f2e8f77b2280aaa6ca2900660a638f8c49bf6a",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m4-summary.json": "76b20f8233488ddb14cfa9ebdff260dccd75892709c3dd0d7425fd0e66e121e6",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m8-summary.json": "807920683387874dc9df6fc923b626c5d707992c39ec9e12d5d5c5f5008ddd36",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m1-summary.json": "6d16e299902761c3c952e1832e58e597a99ff616c937d649d66a6e230c57d31f",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m16-summary.json": "e90b3e522a93780206ac32758c024e167d3b204113cb0b01b282cb966ad62fac",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m2-summary.json": "a89f35bb8ffae3b34c1c53ce1508b831d9e095cacee31b2a07e3ed4268f67b16",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m32-summary.json": "b133a628430d7bc52dc251d074be7b21a4bf2a8c7ad8e2c58bc3a2df927fbfa6",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m4-summary.json": "ded661a5a26b72a08681239b5d189fa04655b779e9f7a0ae30368167a72b786a",
+      "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m8-summary.json": "225bab04e4983b390c2a6f806e503f4207a16a45b6d29a72a290af653f4fa23a"
+    },
+    "model_accuracy_csv": "2c6e5c358b964376e4755c5f10599a1c844e28aa957cb939e7f1453f3f046848",
+    "per_query": "452beeb68b1c5d25290481525bc06c6d7e9347c712d0ebfe3cbf6020ac65eede",
+    "physical_e1_summary": "6be8b4b37a96e35da6956824a38f9f8f1d077c5cfd9208d7e88a73085fe5b73d",
+    "protocol_aggregate_work": "6f5d930495892c0967367d177901abf28a5a777635b3759617afd2b50258770c",
+    "protocol_model_vs_observed": "1b8da413d1efee366a186af9e00d4863e6d94979804f598e0fe9f3c95af07061",
+    "protocol_projected_scaling": "f93be9b655cea51cf5adb100160c52dd09c6d33c87bcf3e10591a7fb8cdc3b3c",
+    "summary_json": "bd1c74465e44f3f871a595f60318af9e8670b0bf2658edcac7f624b85c10c01f"
+  },
+  "experiment_id": "stage12-e4-deterministic-glove-200-angular-aggregate-work",
+  "external_projection_gate_records": [
+    {
+      "dataset": "sift1m",
+      "experiment_id": "stage12-e4-deterministic-sift1m-preliminary-aggregate-work",
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "source_record": "/users/dry/Orion/experiments/c1/runs/stage12-e4-deterministic-sift1m-preliminary-aggregate-work-record.json",
+      "source_record_sha256": "2cfa9f895d43d02104f01aa1f4965c48b955dafbf5a89fe67949141db80edb2c"
+    }
+  ],
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "graph_build_seed": 20260821,
+  "hnsw_max_indexing_threads": 1,
+  "logical_shard_counts": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "max_optimization_threads": 1,
+  "model_accuracy": {
+    "kmeans": {
+      "maximum_relative_error": 0.0,
+      "mean_relative_error": 0.0,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    },
+    "random": {
+      "maximum_relative_error": 0.0,
+      "mean_relative_error": 0.0,
+      "pearson_model_vs_observed": 1.0,
+      "spearman_model_vs_observed": 1.0
+    }
+  },
+  "observed_distance_mean": {
+    "kmeans": {
+      "1": 28461.340888888888,
+      "16": 46060.98544444444,
+      "2": 35025.65388888889,
+      "32": 51657.61422222222,
+      "4": 28885.608444444446,
+      "8": 36589.84
+    },
+    "random": {
+      "1": 28461.340888888888,
+      "16": 45416.14333333333,
+      "2": 20267.439777777778,
+      "32": 70248.69033333333,
+      "4": 20266.092,
+      "8": 31867.404777777778
+    }
+  },
+  "observed_worker_cpu_time_us_mean": {
+    "kmeans": {
+      "1": 6592.077555555556,
+      "16": 7593.3313333333335,
+      "2": 6689.8386666666665,
+      "32": 7800.088555555555,
+      "4": 6007.051777777778,
+      "8": 6484.988666666667
+    },
+    "random": {
+      "1": 6455.033777777778,
+      "16": 7597.582111111111,
+      "2": 4113.150666666666,
+      "32": 10442.624,
+      "4": 4009.605,
+      "8": 5679.394111111111
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "per_query_row_count": 108000,
+  "physical_attribution_status": "INSUFFICIENT",
+  "projection_release_gate": "all_partition_methods_and_external_datasets_must_pass",
+  "projection_sanity_checks": {
+    "kmeans": {
+      "dataset_m_gt_4_projection_status": "AVAILABLE",
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 0.9468255683290859,
+      "method_m_gt_4_projection_status": "AVAILABLE",
+      "pearson": 0.4641832424410294,
+      "physical_e1_normalized_qps": [
+        1.0,
+        1.1828975583381363,
+        1.1369248590305958
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        1.6251711376567686,
+        3.941248590089899
+      ],
+      "spearman": 0.4999999999999999,
+      "trend_agreement": true,
+      "work_bound_projection": [
+        1.0,
+        1.6251711376567686,
+        3.941248590089899,
+        6.22278553585124,
+        9.886489614328196,
+        17.630758256207848
+      ]
+    },
+    "random": {
+      "dataset_m_gt_4_projection_status": "AVAILABLE",
+      "m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+      "mean_relative_error": 1.806336935873781,
+      "method_m_gt_4_projection_status": "AVAILABLE",
+      "pearson": 0.23635057896053335,
+      "physical_e1_normalized_qps": [
+        1.0,
+        1.2448265637884186,
+        1.0880757627520963
+      ],
+      "physical_machine_counts": [
+        1,
+        2,
+        4
+      ],
+      "physical_work_bound_projection": [
+        1.0,
+        2.808577817519439,
+        5.6175291987994305
+      ],
+      "spearman": 0.4999999999999999,
+      "trend_agreement": true,
+      "work_bound_projection": [
+        1.0,
+        2.808577817519439,
+        5.6175291987994305,
+        7.144941004731191,
+        10.026863154802346,
+        12.964838264212922
+      ]
+    }
+  },
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e4_aggregate_work_decomposition",
+  "status": "VALID_E4_WITH_PHYSICAL_PROJECTION_SANITY_CHECK_FAILURE",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T06:05:36Z"
+}

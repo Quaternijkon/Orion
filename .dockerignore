@@ -1,4 +1,6 @@
 tests/
+experiments/
+plan/
 target/
 storage/
 qdrant-storage/

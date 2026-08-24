@@ -1,0 +1,367 @@
+{
+  "anomalies": [
+    "sift1m_random_work_bound_projection_anticorrelates_with_measured_e1",
+    "cross_dataset_m_gt_4_throughput_projection_withheld",
+    "sift1m_kmeans_fanout_is_nearly_constant_and_small",
+    "glove_random_m4_automatic_c32_formal_repetitions_exceeded_client_cpu_gate",
+    "kmeans_partitions_reached_iteration_cap_without_convergence",
+    "e5_recall_sensitivity_contains_qualitative_trend_reversal"
+  ],
+  "authoritative_source_stems": {
+    "e2": "stage12-e2-deterministic",
+    "e3": "stage12-e3-deterministic",
+    "e4": {
+      "glove-200-angular": "stage12-e4-deterministic-glove-200-angular",
+      "sift1m": "stage12-e4-deterministic-sift1m-final"
+    }
+  },
+  "c1_status": "INSUFFICIENT",
+  "configuration_counts": {
+    "aggregate_work_e4": 24,
+    "fanout_e2": 24,
+    "local_work_e3": 24,
+    "physical_e1": 12,
+    "recall_sensitivity_e5": 24
+  },
+  "cross_dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "dataset_projection_status": {
+    "glove-200-angular": "AVAILABLE",
+    "sift1m": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED"
+  },
+  "datasets": [
+    "sift1m",
+    "glove-200-angular"
+  ],
+  "e5_checks": {
+    "glove-200-angular": {
+      "kmeans": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5269957988530317,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5287422803302312,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.572539829041558,
+          "qualitative_c1_trend_preserved": true
+        }
+      },
+      "random": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5608695623056072,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5608695623056072,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.3988954422826321,
+          "qualitative_c1_trend_preserved": true
+        }
+      }
+    },
+    "sift1m": {
+      "kmeans": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": false,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.47485343876898467,
+          "qualitative_c1_trend_preserved": false
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.39427808983017176,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.39427808983017176,
+          "qualitative_c1_trend_preserved": true
+        }
+      },
+      "random": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8462046510045959,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8462046510045959,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8462046510045959,
+          "qualitative_c1_trend_preserved": true
+        }
+      }
+    }
+  },
+  "e5_contradicted_checks": [
+    "sift1m/kmeans/0.89"
+  ],
+  "e5_recall_sensitivity_status": "CONTRADICTED_QUALITATIVE_TREND_REVERSAL",
+  "evidence_sha256": {
+    "aggregate_work_summary_csv": "27f2ea4cfe73bdbf981e2c0b66b29bb227a2bd73c3017c8ea33a9c98c81529b6",
+    "c1_combined_motivation": "a704ae26a92b08e309d8f162e379d6cfcb1d74e23fd17b256f6748e3d0f65cc5",
+    "c1_fig1_physical_scaleout": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+    "c1_fig2_fanout_vs_logical_shards": "97d3f43360c6d5e0ae82d68c22158df2d34b57064f8821742800952a58895811",
+    "c1_fig3_required_fanout_cdf": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+    "c1_fig4_local_search_work": "cc6fd1574ac124137e6214ffb081f59e43d83560946d229d4d61837fe82e360d",
+    "c1_fig5_aggregate_work_decomposition": "1607299ae4c7ce0b9c4533cc25d8ad7f298601be57188edca4ee8ad1b1d74551",
+    "c1_fig6_projected_logical_scaling": "7d10511667638b9abb89aa5528c4476171c14885c9099b70530304110fb104f8",
+    "fanout_summary_csv": "2580d73eb092dd6bb5ff455270c8ed684025443acb049d4f28eb2dc9f41c60a4",
+    "fig_c1_actual_fanout_cdf": "1a47a33d7e5bc26c897a824ec14dccce62c2e5f8002e683f1238da9c79ed8ba0",
+    "fig_c1_local_cpu_time": "8687f69ebd919280d138548e7402deaf1af12c4dd06928108faa96f7806939d3",
+    "fig_c1_local_distance_computations": "23c5e0b62676e6ac1633803bac85f4cc1da20bc9b1aa4f03d227feab59eae6d7",
+    "fig_c1_local_nodes_visited": "2e2a31db9d72d65cd3831bd8603e6ebce36c845f8c293a95c7cca6caec6d54e1",
+    "fig_c1_model_vs_observed": "e1ed2b21c92b58da7cb26a9ef4ddce1e5d47cc24bd3b45b7bba15c7a513e1d5f",
+    "fig_c1_scaling_efficiency": "b39e3b81955644a0e1151e6b0fd216676d272938ebb5d48fc440abd02dbd6d35",
+    "local_work_summary_csv": "68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd",
+    "model_accuracy_csv": "0021c4d622fee8403263631e34a470287e5d5b9f98886e227c3551f6db2cb4f3",
+    "physical_scale_latex": "3289ec04d9e229466530670c574ab379abdb4c505859c642a9530a0d535a75f2",
+    "physical_scaleout_csv": "9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b",
+    "recall_sensitivity_csv": "88962800a87b01f7b8ffd316550fbbde7823ca1bdeab5d6532dbd019e3e9d716",
+    "section31_deterministic_build_proof": "ccea5798cd53722032773fb77ee80208b236f6af891c0743e985949cd9eabb32",
+    "summary_json": "111fb56140bdf2306a9ca9d8263583a383b5888d40e0204d799c81ca109ddd69"
+  },
+  "experiment_id": "stage12-c1-deterministic-final",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "graph_build_seed": 20260821,
+  "mechanism_checks": {
+    "generalized_high_fanout_contradicted": true,
+    "physical_attribution_insufficient": true,
+    "sift1m_kmeans_actual_fanout": {
+      "1": 1.0,
+      "16": 3.0,
+      "2": 1.0,
+      "32": 3.0,
+      "4": 1.0,
+      "8": 2.0
+    },
+    "sift1m_kmeans_m32_normalized_fanout": 0.09375,
+    "slow_local_work_checks": {
+      "glove-200-angular": {
+        "kmeans": {
+          "16": {
+            "distance_ratio_to_m1": 0.17981890915065518,
+            "ideal_ratio": 0.0625,
+            "nodes_ratio_to_m1": 0.17151599485025804,
+            "slower_than_ideal": true
+          },
+          "2": {
+            "distance_ratio_to_m1": 0.6153198126825196,
+            "ideal_ratio": 0.5,
+            "nodes_ratio_to_m1": 0.6256854393467667,
+            "slower_than_ideal": true
+          },
+          "32": {
+            "distance_ratio_to_m1": 0.22687623197326676,
+            "ideal_ratio": 0.03125,
+            "nodes_ratio_to_m1": 0.24699318873614567,
+            "slower_than_ideal": true
+          },
+          "4": {
+            "distance_ratio_to_m1": 0.3383022671256878,
+            "ideal_ratio": 0.25,
+            "nodes_ratio_to_m1": 0.3334831867929759,
+            "slower_than_ideal": true
+          },
+          "8": {
+            "distance_ratio_to_m1": 0.32139947431538984,
+            "ideal_ratio": 0.125,
+            "nodes_ratio_to_m1": 0.32826424135728377,
+            "slower_than_ideal": true
+          }
+        },
+        "random": {
+          "16": {
+            "distance_ratio_to_m1": 0.09973208814773263,
+            "ideal_ratio": 0.0625,
+            "nodes_ratio_to_m1": 0.09223984360880695,
+            "slower_than_ideal": true
+          },
+          "2": {
+            "distance_ratio_to_m1": 0.35605208933936855,
+            "ideal_ratio": 0.5,
+            "nodes_ratio_to_m1": 0.3444443106738576,
+            "slower_than_ideal": false
+          },
+          "32": {
+            "distance_ratio_to_m1": 0.07713169880108092,
+            "ideal_ratio": 0.03125,
+            "nodes_ratio_to_m1": 0.0712120066071421,
+            "slower_than_ideal": true
+          },
+          "4": {
+            "distance_ratio_to_m1": 0.17801420599891468,
+            "ideal_ratio": 0.25,
+            "nodes_ratio_to_m1": 0.17160421503214437,
+            "slower_than_ideal": false
+          },
+          "8": {
+            "distance_ratio_to_m1": 0.13995916821955934,
+            "ideal_ratio": 0.125,
+            "nodes_ratio_to_m1": 0.13201022100010631,
+            "slower_than_ideal": true
+          }
+        }
+      },
+      "sift1m": {
+        "kmeans": {
+          "16": {
+            "distance_ratio_to_m1": 0.44181024079548403,
+            "ideal_ratio": 0.0625,
+            "nodes_ratio_to_m1": 0.4144159526540029,
+            "slower_than_ideal": true
+          },
+          "2": {
+            "distance_ratio_to_m1": 0.696371533156956,
+            "ideal_ratio": 0.5,
+            "nodes_ratio_to_m1": 0.6405100288921365,
+            "slower_than_ideal": true
+          },
+          "32": {
+            "distance_ratio_to_m1": 0.5063977159856635,
+            "ideal_ratio": 0.03125,
+            "nodes_ratio_to_m1": 0.49946154952736016,
+            "slower_than_ideal": true
+          },
+          "4": {
+            "distance_ratio_to_m1": 1.1049633880726983,
+            "ideal_ratio": 0.25,
+            "nodes_ratio_to_m1": 1.0668606253554378,
+            "slower_than_ideal": true
+          },
+          "8": {
+            "distance_ratio_to_m1": 0.4635885727915144,
+            "ideal_ratio": 0.125,
+            "nodes_ratio_to_m1": 0.41934334586804806,
+            "slower_than_ideal": true
+          }
+        },
+        "random": {
+          "16": {
+            "distance_ratio_to_m1": 0.2965220290100877,
+            "ideal_ratio": 0.0625,
+            "nodes_ratio_to_m1": 0.3201448539327051,
+            "slower_than_ideal": true
+          },
+          "2": {
+            "distance_ratio_to_m1": 0.47548908609463836,
+            "ideal_ratio": 0.5,
+            "nodes_ratio_to_m1": 0.42831012596111057,
+            "slower_than_ideal": false
+          },
+          "32": {
+            "distance_ratio_to_m1": 0.2681044106778442,
+            "ideal_ratio": 0.03125,
+            "nodes_ratio_to_m1": 0.30121489148307146,
+            "slower_than_ideal": true
+          },
+          "4": {
+            "distance_ratio_to_m1": 0.34943040555307703,
+            "ideal_ratio": 0.25,
+            "nodes_ratio_to_m1": 0.3306919458295969,
+            "slower_than_ideal": true
+          },
+          "8": {
+            "distance_ratio_to_m1": 0.3249736692648614,
+            "ideal_ratio": 0.125,
+            "nodes_ratio_to_m1": 0.32559632885677753,
+            "slower_than_ideal": true
+          }
+        }
+      }
+    },
+    "slow_local_work_supported": false
+  },
+  "observed_mechanism_status": {
+    "aggregate_decomposition_identity": "SUPPORTED",
+    "kmeans_fanout_glove_200_angular": "SUPPORTED",
+    "kmeans_fanout_sift1m": "CONTRADICTED_NEARLY_CONSTANT_SMALL",
+    "physical_throughput_attribution": "INSUFFICIENT",
+    "random_fanout": "SUPPORTED",
+    "slow_local_work_decrease": "CONTRADICTED"
+  },
+  "record_type": "c1_cross_dataset_deterministic_final_summary",
+  "result_scope": {
+    "m_1_2_4": "measured_physical_scaleout",
+    "m_8_16_32": "logical_shard_mechanism_measurements_only",
+    "m_gt_4_throughput_projection": "withheld"
+  },
+  "section31_index_construction_status": "VERIFIED_DETERMINISTIC_SINGLE_BUILD_AUTHORITATIVE_RERUN",
+  "section31_proof_sha256": "ccea5798cd53722032773fb77ee80208b236f6af891c0743e985949cd9eabb32",
+  "sensitivity_source_sha256": {
+    "/users/dry/Orion/experiments/c1/runs/stage12-e2-deterministic-glove-200-angular-fanout-summary.json": "0421d3b77f8658f95a67bee78fc5b44d2139243fd4fcf39d7652519f199bb778",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e2-deterministic-sift1m-fanout-summary.json": "dde9a5b01201ff6f721984816f44a2a409f03e212c8a0d79d3d4bfae80aa2d08",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m16-tuning-pinned.json": "104b73f26238aa8a0ce620ba803cbe9de1b6978d49f3cb7cec7de932f172c08f",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-kmeans-m4-tuning-pinned.json": "8ca260c1e5a81c6ff9e274a47d99c9861126b0475373bf9d4dab2ff4034c40be",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m16-tuning-pinned.json": "2672c10e1fbc86403b08837ce7237b7ee26989115a39f073abd7ef087bf28ee1",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-glove-200-angular-random-m4-tuning-pinned.json": "02a87cd8f826ab88b54f4a28037b8a524a2c9b38a0f9a525954910094686c668",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m16-tuning-pinned.json": "3adabcb85aee5ecb0413ab0fa5b744d8c32390a703344f3b5886b0f538199c3c",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-kmeans-m4-tuning-pinned.json": "f87fa19e507f658e2d99a9135e863f4637e5544b624590bd7e8bea8967a15721",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m16-tuning-pinned.json": "c99f97cc7873c924b6328062075f6fd3be3942cbd0e345b3c94465a3aeb579ce",
+    "/users/dry/Orion/experiments/c1/runs/stage12-e3-deterministic-sift1m-random-m4-tuning-pinned.json": "88e7806770b3b5c72c9743cc0d7c86cd330fa445ef5e6abc5abad009e18c79d1"
+  },
+  "status": "C1_PROTOCOL_COMPLETE_RESULT_INSUFFICIENT",
+  "subclaim_status": {
+    "c1_a_physical_sublinear_scaling": "SUPPORTED",
+    "c1_b_high_logical_shard_fanout": "CONTRADICTED",
+    "c1_c_slow_local_work_decrease": "CONTRADICTED",
+    "c1_d_fanout_times_local_work_decomposition": "INSUFFICIENT"
+  },
+  "supersedes": {
+    "experiment_id": "stage11-c1-report-repair",
+    "reason": "section31_deterministic_e2_e3_e4_authoritative_rerun",
+    "record_path": "/users/dry/Orion/experiments/c1/runs/stage11-c1-report-repair-record.json",
+    "record_sha256": "351dffb00b652f194670461ef93a1795df8be39e0d3ecc70e853cfddbeca878c"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T06:08:42Z"
+}

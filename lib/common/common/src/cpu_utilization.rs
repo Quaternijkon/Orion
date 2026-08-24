@@ -53,14 +53,32 @@ impl CpuUtilization {
     ///
     /// 1.0 means pure CPU-bound, 0.0 means pure IO-bound (or no measurements).
     pub fn ratio(&self) -> f32 {
-        let wall_ns = self.inner.wall_time_ns.load(Ordering::Relaxed) as f64;
-        let cpu_ns = self.inner.cpu_time_ns.load(Ordering::Relaxed) as f64;
+        let wall_ns = self.wall_time_ns() as f64;
+        let cpu_ns = self.cpu_time_ns() as f64;
 
         if wall_ns > 0.0 {
             (cpu_ns / wall_ns).clamp(0.0, 1.0) as f32
         } else {
             0.0
         }
+    }
+
+    /// Accumulated thread CPU time across all measured request tasks.
+    pub fn cpu_time_ns(&self) -> u64 {
+        self.inner.cpu_time_ns.load(Ordering::Relaxed)
+    }
+
+    /// Accumulated wall time across all measured request tasks.
+    pub fn wall_time_ns(&self) -> u64 {
+        self.inner.wall_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn cpu_time_us(&self) -> u64 {
+        self.cpu_time_ns() / 1_000
+    }
+
+    pub fn wall_time_us(&self) -> u64 {
+        self.wall_time_ns() / 1_000
     }
 }
 

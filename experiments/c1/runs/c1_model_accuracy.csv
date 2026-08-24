@@ -1,0 +1,5 @@
+dataset,partition_method,configuration_count,pearson_model_vs_observed,spearman_model_vs_observed,mean_relative_error,maximum_relative_error,physical_point_count,pearson_physical_projection_vs_e1,spearman_physical_projection_vs_e1,physical_projection_mean_relative_error,physical_projection_trend_agreement,m_gt_4_projection_status,c1_d_aggregate_cost_status,physical_attribution_status
+sift1m,random,6,1.0,1.0,0.0,0.0,3,-0.9991765549854394,-0.9999999999999998,2.8872595842411406,False,WITHHELD_PHYSICAL_SANITY_CHECK_FAILED,SUPPORTS,INSUFFICIENT
+sift1m,kmeans,6,1.0,1.0,0.0,0.0,3,0.26543681895985305,0.4999999999999999,1.3925300332386101,True,WITHHELD_PHYSICAL_SANITY_CHECK_FAILED,SUPPORTS,INSUFFICIENT
+glove-200-angular,random,6,1.0,1.0,0.0,0.0,3,0.23635057896053335,0.4999999999999999,1.806336935873781,True,WITHHELD_PHYSICAL_SANITY_CHECK_FAILED,SUPPORTS,INSUFFICIENT
+glove-200-angular,kmeans,6,1.0,1.0,0.0,0.0,3,0.4641832424410294,0.4999999999999999,0.9468255683290859,True,WITHHELD_PHYSICAL_SANITY_CHECK_FAILED,SUPPORTS,INSUFFICIENT

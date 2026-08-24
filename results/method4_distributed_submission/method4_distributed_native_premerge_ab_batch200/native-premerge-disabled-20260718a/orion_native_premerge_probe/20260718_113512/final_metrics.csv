@@ -1,0 +1,2 @@
+upper_k,nprobe,base_ef,factor,query_count,top_k,recall_at_k,qps,wall_s,avg_visited_shards,avg_upper_hits,avg_assigned_ef_per_visited_shard,estimated_ef_sum_per_query,avg_physical_peers_per_query,latency_p50_ms,latency_p95_ms,latency_p99_ms,search_batch_calls,avg_search_requests_per_query,avg_candidate_groups_per_query,avg_returned_candidates_per_query
+104,,64,15,3000,10,0.9517333333333333,547.9411311986385,5.475040710007306,19.501,114.286,151.90779960002052,2962.3540000000003,2.9463333333333335,303.5706030059373,313.4803915003431,313.8680711007328,15,1.0,1.0,10.0

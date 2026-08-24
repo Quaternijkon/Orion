@@ -1216,6 +1216,72 @@ def test_validate_numeric_shard_round_robin_rejects_controller_or_wrong_peer():
         )
 
 
+def test_numeric_shard_round_robin_can_include_controller_explicitly():
+    module = load_module()
+    owners = {0: 101, 1: 202, 2: 303, 3: 404}
+
+    def fake_request_json(_base_url, method, path, body=None, timeout=300.0):
+        if method == "GET" and path == "/cluster":
+            return {
+                "result": {
+                    "peer_id": 101,
+                    "peers": {
+                        "101": {"uri": "http://10.10.1.1:6335"},
+                        "202": {"uri": "http://10.10.1.2:6335"},
+                        "303": {"uri": "http://10.10.1.3:6335"},
+                        "404": {"uri": "http://10.10.1.4:6335"},
+                    },
+                }
+            }
+        if method == "GET" and path == "/collections/native":
+            return {
+                "result": {
+                    "config": {
+                        "params": {
+                            "sharding_method": "auto",
+                            "shard_number": 4,
+                            "replication_factor": 1,
+                        }
+                    }
+                }
+            }
+        if method == "GET" and path == "/collections/native/cluster":
+            return {
+                "result": {
+                    "peer_id": 101,
+                    "shard_count": 4,
+                    "local_shards": [{"shard_id": 0, "state": "Active"}],
+                    "remote_shards": [
+                        {"shard_id": shard_id, "peer_id": peer_id, "state": "Active"}
+                        for shard_id, peer_id in owners.items()
+                        if peer_id != 101
+                    ],
+                    "shard_transfers": [],
+                }
+            }
+        raise AssertionError((method, path, body, timeout))
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+    try:
+        result = module.move_numeric_shards_round_robin(
+            "http://10.10.1.1:6333",
+            "native",
+            [101, 202, 303, 404],
+            expected_shard_count=4,
+            include_controller=True,
+            timeout_sec=5.0,
+            poll_interval_sec=0.0,
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result["valid"] is True
+    assert result["includes_controller"] is True
+    assert result["shards_per_worker"] == {101: 1, 202: 1, 303: 1, 404: 1}
+    assert result["moves"] == []
+
+
 def test_validate_numeric_shard_explicit_placement_requires_exact_balanced_workers():
     module = load_module()
     info = {

@@ -1,0 +1,1055 @@
+{
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_dist-20260717-initial_orion_s46",
+  "collection_routing_build_metadata": {
+    "status": "missing_unverified",
+    "verified": false,
+    "expected_fingerprint": "3659e5684f87c61ba642c689174f12f178b04368379d84e1a4f0bc95517b309d",
+    "actual_fingerprint": null,
+    "expected_fields": {
+      "schema_version": 1,
+      "routing_mode": "faithful_original_rest",
+      "routing_family": "orion_method4",
+      "num_shards": 31,
+      "effective_num_shards": 46,
+      "train_count": 1183514,
+      "distance": "Cosine",
+      "hnsw_m": 32,
+      "hnsw_ef_construct": 100,
+      "upper_hnsw_m": 32,
+      "upper_hnsw_ef_construction": 100,
+      "upper_hnsw_search_ef_during_routing_build": 400,
+      "upper_sample_seed": 100,
+      "kmeans_rand_seed": 1,
+      "kmeans_iters": 10,
+      "cpp_kmeans_train_size": 10000,
+      "sample_denominator": 32,
+      "k_overlap": 10,
+      "topology_iters": 50,
+      "multi_assign": {
+        "enabled": true,
+        "orion_enabled": true,
+        "orion_min_max_vote": 2,
+        "orion_vote_delta": 0,
+        "orion_max_shards": 0,
+        "simple_kmeans_enabled": false,
+        "simple_kmeans_alpha": 1.0,
+        "simple_kmeans_chunk_size": 50000
+      },
+      "fission": {
+        "enabled": true,
+        "claim_a_partition_family": "none",
+        "claim_a_random_seed": 12345
+      },
+      "legacy_centroid": {
+        "sample_size": 50000,
+        "seed": 42
+      }
+    },
+    "note": "The collection predates the routing-build metadata guard. Schema, point-count, and placement checks passed, but seed/partition semantics are unverified."
+  },
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "dataset_size_bytes": 962819488,
+  "repository": {
+    "root": "/users/dry/Orion",
+    "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+    "dirty": true
+  },
+  "image_tag": "orion-method4:1a5ac4c47237",
+  "image_digest": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+  "deployment_manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+  "deployment_manifest": {
+    "cluster_snapshot": {
+      "result": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-07-18T12:05:09.362172928Z"
+        },
+        "message_send_failures": {},
+        "peer_id": 987102789522726,
+        "peers": {
+          "1667891846572449": {
+            "uri": "http://10.10.1.4:6335/"
+          },
+          "7896541606624976": {
+            "uri": "http://10.10.1.3:6335/"
+          },
+          "8982479151082257": {
+            "uri": "http://10.10.1.2:6335/"
+          },
+          "987102789522726": {
+            "uri": "http://10.10.1.1:6335/"
+          }
+        },
+        "raft_info": {
+          "commit": 874,
+          "is_voter": true,
+          "leader": 8982479151082257,
+          "pending_operations": 0,
+          "role": "Follower",
+          "term": 13
+        },
+        "status": "enabled"
+      },
+      "status": "ok",
+      "time": 1.4747e-05
+    },
+    "container_ulimits": {
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      }
+    },
+    "controller_uri": "http://10.10.1.1:6335",
+    "controller_url": "http://10.10.1.1:6333",
+    "dataset": {
+      "hdf5_shapes": {
+        "neighbors": [
+          10000,
+          100
+        ],
+        "test": [
+          10000,
+          200
+        ],
+        "train": [
+          1183514,
+          200
+        ]
+      },
+      "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+      "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+      "size_bytes": 962819488,
+      "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+    },
+    "generated_at": "2026-07-18T12:05:06Z",
+    "image": {
+      "id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+      "tag": "orion-method4:1a5ac4c47237",
+      "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/orion-method4_1a5ac4c47237.tar",
+      "tar_sha256": "4aa116f056c6d13ab918535499f459dbd0b8000dad20f07da0d83f56263ec0de",
+      "tar_size_bytes": 70056448
+    },
+    "nodes": [
+      {
+        "advertised_uri": "http://10.10.1.1:6335",
+        "container_name": "orion-dist-dist-20260717-initial-controller",
+        "cpuset": "0-7",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-0.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.1:6333",
+        "max_search_threads": 8,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "enabled",
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/controller/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.2:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_1",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-1.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.2:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.2",
+        "role": "qdrant_shard_1",
+        "ssh_host": "hp052.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_1/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.3:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_2",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-2.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289415680
+        },
+        "http_url": "http://10.10.1.3:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.3",
+        "role": "qdrant_shard_2",
+        "ssh_host": "hp065.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_2/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.4:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_3",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-3.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289407488
+        },
+        "http_url": "http://10.10.1.4:6333",
+        "max_search_threads": 16,
+        "nofile": {
+          "hard": 65536,
+          "soft": 65536
+        },
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.4",
+        "role": "qdrant_shard_3",
+        "ssh_host": "hp076.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_3/storage"
+      }
+    ],
+    "peer_premerge": {
+      "current_mode": "enabled",
+      "disable_environment_variable": "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE",
+      "matches_requested": true,
+      "requested_mode": "enabled",
+      "scope": "controller"
+    },
+    "repository": {
+      "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+      "dirty": true,
+      "dirty_paths": [
+        "tests/tools/test_method4_benchmark_matrix.py",
+        "tests/tools/test_qdrant_two_level_routing_experiment.py",
+        "tools/method4_benchmark_matrix.py",
+        "tools/qdrant_two_level_routing_experiment.py",
+        "docs/experiments/2026-07-17-method4-four-node-distributed.md",
+        "results/method4_distributed/",
+        "results/method4_distributed_confirmation/",
+        "results/method4_distributed_smoke/",
+        "results/method4_distributed_submission/",
+        "results/method4_distributed_tuning/",
+        "tests/tools/test_method4_distributed_cluster.py",
+        "tools/benchmark_configs/method4_distributed_baseline_dense_batch200.json",
+        "tools/benchmark_configs/method4_distributed_baseline_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_fixed_ef_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_glove200_initial.json",
+        "tools/benchmark_configs/method4_distributed_high_recall_097_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_high_recall_097_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_native_premerge_ab_batch200.json",
+        "tools/benchmark_configs/method4_distributed_orion_debug.json",
+        "tools/benchmark_configs/method4_distributed_orion_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_strict_batch200.json",
+        "tools/benchmark_configs/method4_distributed_simple_seed1_095_sweep_batch200.json",
+        "tools/benchmark_configs/method4_distributed_smoke.json",
+        "tools/distributed/",
+        "tools/method4_distributed_cluster.py"
+      ],
+      "path": "/users/dry/Orion",
+      "short_commit": "1a5ac4c47237"
+    },
+    "run_id": "dist-20260717-initial",
+    "schema_version": 1,
+    "topology": {
+      "benchmark_client_cpuset": "8-19",
+      "controller": {
+        "cpuset": "0-7",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost"
+      },
+      "dataset": {
+        "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+      },
+      "local_storage_root": "/users/dry/orion-distributed",
+      "ports": {
+        "grpc": 6334,
+        "http": 6333,
+        "p2p": 6335
+      },
+      "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+      "workers": [
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.2",
+          "role": "qdrant_shard_1",
+          "ssh_host": "hp052.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.3",
+          "role": "qdrant_shard_2",
+          "ssh_host": "hp065.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.4",
+          "role": "qdrant_shard_3",
+          "ssh_host": "hp076.utah.cloudlab.us"
+        }
+      ]
+    },
+    "worker_uris": [
+      "http://10.10.1.2:6335",
+      "http://10.10.1.3:6335",
+      "http://10.10.1.4:6335"
+    ]
+  },
+  "runtime_log_since_epoch": 1784381233,
+  "container_log_tails": {
+    "controller": {
+      "returncode": 0,
+      "stdout": "2026-07-18T13:27:18.968914Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 725682 \"-\" \"Python-urllib/3.10\" 0.063566\n2026-07-18T13:27:19.046265Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062435\n2026-07-18T13:27:19.122423Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.061137\n2026-07-18T13:27:19.198875Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062104\n2026-07-18T13:27:19.261401Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 558193 \"-\" \"Python-urllib/3.10\" 0.047482\n2026-07-18T13:27:19.333672Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728575 \"-\" \"Python-urllib/3.10\" 0.061122\n2026-07-18T13:27:19.384356Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 439976 \"-\" \"Python-urllib/3.10\" 0.035483\n2026-07-18T13:27:19.454606Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728649 \"-\" \"Python-urllib/3.10\" 0.060591\n2026-07-18T13:27:19.500035Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 371990 \"-\" \"Python-urllib/3.10\" 0.031142\n2026-07-18T13:27:19.568051Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728357 \"-\" \"Python-urllib/3.10\" 0.059332\n2026-07-18T13:27:19.635764Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 654594 \"-\" \"Python-urllib/3.10\" 0.054035\n2026-07-18T13:27:19.699704Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728700 \"-\" \"Python-urllib/3.10\" 0.050469\n2026-07-18T13:27:19.743314Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 352569 \"-\" \"Python-urllib/3.10\" 0.029184\n2026-07-18T13:27:19.812860Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726523 \"-\" \"Python-urllib/3.10\" 0.061703\n2026-07-18T13:27:19.887750Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060621\n2026-07-18T13:27:19.962136Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059844\n2026-07-18T13:27:20.025263Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 590654 \"-\" \"Python-urllib/3.10\" 0.049244\n2026-07-18T13:27:20.099131Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726215 \"-\" \"Python-urllib/3.10\" 0.062176\n2026-07-18T13:27:20.258455Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060039\n2026-07-18T13:27:20.333792Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062249\n2026-07-18T13:27:20.407001Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 735016 \"-\" \"Python-urllib/3.10\" 0.060096\n2026-07-18T13:27:20.431132Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 115224 \"-\" \"Python-urllib/3.10\" 0.010275\n2026-07-18T13:27:20.503011Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726692 \"-\" \"Python-urllib/3.10\" 0.068646\n2026-07-18T13:27:20.574339Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.058811\n2026-07-18T13:27:20.659164Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730284 \"-\" \"Python-urllib/3.10\" 0.071255\n2026-07-18T13:27:20.704840Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 384658 \"-\" \"Python-urllib/3.10\" 0.031325\n2026-07-18T13:27:20.772559Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 709930 \"-\" \"Python-urllib/3.10\" 0.059727\n2026-07-18T13:27:20.843913Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727629 \"-\" \"Python-urllib/3.10\" 0.058562\n2026-07-18T13:27:20.917553Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059398\n2026-07-18T13:27:20.971901Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 501153 \"-\" \"Python-urllib/3.10\" 0.040204\n2026-07-18T13:27:21.041412Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 723658 \"-\" \"Python-urllib/3.10\" 0.059253\n2026-07-18T13:27:21.115165Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060844\n2026-07-18T13:27:21.184181Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.053050\n2026-07-18T13:27:21.259234Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060060\n2026-07-18T13:27:21.334894Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.061112\n2026-07-18T13:27:21.408731Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 731886 \"-\" \"Python-urllib/3.10\" 0.059475\n2026-07-18T13:27:21.478099Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 653574 \"-\" \"Python-urllib/3.10\" 0.055155\n2026-07-18T13:27:21.563156Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727728 \"-\" \"Python-urllib/3.10\" 0.071829\n2026-07-18T13:27:21.648715Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.071640\n2026-07-18T13:27:21.691947Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 324870 \"-\" \"Python-urllib/3.10\" 0.028237\n2026-07-18T13:27:21.738390Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 472433 \"-\" \"Python-urllib/3.10\" 0.038642\n2026-07-18T13:27:21.807753Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727867 \"-\" \"Python-urllib/3.10\" 0.059201\n2026-07-18T13:27:21.881057Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730645 \"-\" \"Python-urllib/3.10\" 0.058863\n2026-07-18T13:27:21.914590Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 228592 \"-\" \"Python-urllib/3.10\" 0.019383\n2026-07-18T13:27:21.985117Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726505 \"-\" \"Python-urllib/3.10\" 0.064885\n2026-07-18T13:27:22.057262Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059025\n2026-07-18T13:27:22.135432Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.064030\n2026-07-18T13:27:22.207479Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 647401 \"-\" \"Python-urllib/3.10\" 0.056798\n2026-07-18T13:27:22.287587Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727394 \"-\" \"Python-urllib/3.10\" 0.067692\n2026-07-18T13:27:22.364968Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062753\n2026-07-18T13:27:22.437661Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 631956 \"-\" \"Python-urllib/3.10\" 0.058173\n2026-07-18T13:27:22.511398Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 724148 \"-\" \"Python-urllib/3.10\" 0.060728\n2026-07-18T13:27:22.670307Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730082 \"-\" \"Python-urllib/3.10\" 0.062898\n2026-07-18T13:27:22.742275Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059311\n2026-07-18T13:27:22.815205Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059234\n2026-07-18T13:27:22.887056Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.058512\n2026-07-18T13:27:22.960101Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 737571 \"-\" \"Python-urllib/3.10\" 0.059754\n2026-07-18T13:27:22.988165Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 161104 \"-\" \"Python-urllib/3.10\" 0.014247\n2026-07-18T13:27:23.018852Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 318655 \"-\" \"Python-urllib/3.10\" 0.026497\n2026-07-18T13:27:23.077735Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727384 \"-\" \"Python-urllib/3.10\" 0.052672\n2026-07-18T13:27:23.150118Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059166\n2026-07-18T13:27:23.217593Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 643983 \"-\" \"Python-urllib/3.10\" 0.053727\n2026-07-18T13:27:23.289943Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728600 \"-\" \"Python-urllib/3.10\" 0.059361\n2026-07-18T13:27:23.338787Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 426099 \"-\" \"Python-urllib/3.10\" 0.034783\n2026-07-18T13:27:23.412421Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726681 \"-\" \"Python-urllib/3.10\" 0.065175\n2026-07-18T13:27:23.485368Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060014\n2026-07-18T13:27:23.558008Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059303\n2026-07-18T13:27:23.615582Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 543086 \"-\" \"Python-urllib/3.10\" 0.044248\n2026-07-18T13:27:23.685899Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726343 \"-\" \"Python-urllib/3.10\" 0.060125\n2026-07-18T13:27:23.762557Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.063587\n2026-07-18T13:27:23.838580Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062873\n2026-07-18T13:27:23.912201Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 734556 \"-\" \"Python-urllib/3.10\" 0.060160\n2026-07-18T13:27:23.998749Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 725749 \"-\" \"Python-urllib/3.10\" 0.072451\n2026-07-18T13:27:24.074215Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730083 \"-\" \"Python-urllib/3.10\" 0.062112\n2026-07-18T13:27:24.147480Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059620\n2026-07-18T13:27:24.223772Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 731607 \"-\" \"Python-urllib/3.10\" 0.061771\n2026-07-18T13:27:24.271442Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 409374 \"-\" \"Python-urllib/3.10\" 0.033258\n2026-07-18T13:27:24.342411Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726642 \"-\" \"Python-urllib/3.10\" 0.062244\n2026-07-18T13:27:24.423642Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.066989\n2026-07-18T13:27:24.498667Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.059819\n2026-07-18T13:27:24.551159Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 459313 \"-\" \"Python-urllib/3.10\" 0.038222\n2026-07-18T13:27:24.631209Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727275 \"-\" \"Python-urllib/3.10\" 0.069908\n2026-07-18T13:27:24.705505Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060294\n2026-07-18T13:27:24.780904Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 734455 \"-\" \"Python-urllib/3.10\" 0.060913\n2026-07-18T13:27:24.798736Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 16508 \"-\" \"Python-urllib/3.10\" 0.002646\n2026-07-18T13:27:24.846799Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 590525 \"-\" \"Python-urllib/3.10\" 0.046086\n2026-07-18T13:27:24.928827Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726077 \"-\" \"Python-urllib/3.10\" 0.070581\n2026-07-18T13:27:25.084464Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.058450\n2026-07-18T13:27:25.159847Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.062121\n2026-07-18T13:27:25.235273Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 734002 \"-\" \"Python-urllib/3.10\" 0.062311\n2026-07-18T13:27:25.266185Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 208020 \"-\" \"Python-urllib/3.10\" 0.017392\n2026-07-18T13:27:25.339598Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726340 \"-\" \"Python-urllib/3.10\" 0.068869\n2026-07-18T13:27:25.424793Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.072503\n2026-07-18T13:27:25.503078Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.064003\n2026-07-18T13:27:25.578048Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 707583 \"-\" \"Python-urllib/3.10\" 0.061303\n2026-07-18T13:27:25.651988Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 727950 \"-\" \"Python-urllib/3.10\" 0.060582\n2026-07-18T13:27:25.729835Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 731135 \"-\" \"Python-urllib/3.10\" 0.063289\n2026-07-18T13:27:25.759891Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 190556 \"-\" \"Python-urllib/3.10\" 0.016265\n2026-07-18T13:27:25.824406Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728577 \"-\" \"Python-urllib/3.10\" 0.059856\n2026-07-18T13:27:25.877862Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 494218 \"-\" \"Python-urllib/3.10\" 0.040293\n2026-07-18T13:27:25.953017Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728071 \"-\" \"Python-urllib/3.10\" 0.064360\n2026-07-18T13:27:26.040697Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 731260 \"-\" \"Python-urllib/3.10\" 0.073012\n2026-07-18T13:27:26.065907Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 161326 \"-\" \"Python-urllib/3.10\" 0.010467\n2026-07-18T13:27:26.131902Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 682851 \"-\" \"Python-urllib/3.10\" 0.061240\n2026-07-18T13:27:26.211998Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 724930 \"-\" \"Python-urllib/3.10\" 0.067271\n2026-07-18T13:27:26.287403Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060118\n2026-07-18T13:27:26.373932Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.071869\n2026-07-18T13:27:26.450449Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730083 \"-\" \"Python-urllib/3.10\" 0.061720\n2026-07-18T13:27:26.527259Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 733335 \"-\" \"Python-urllib/3.10\" 0.062424\n2026-07-18T13:27:26.574566Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 405822 \"-\" \"Python-urllib/3.10\" 0.032995\n2026-07-18T13:27:26.640533Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726675 \"-\" \"Python-urllib/3.10\" 0.057036\n2026-07-18T13:27:26.718861Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.064410\n2026-07-18T13:27:26.794677Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.060286\n2026-07-18T13:27:26.848677Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 471376 \"-\" \"Python-urllib/3.10\" 0.039532\n2026-07-18T13:27:26.926698Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728537 \"-\" \"Python-urllib/3.10\" 0.067985\n2026-07-18T13:27:26.982596Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 506448 \"-\" \"Python-urllib/3.10\" 0.042040\n2026-07-18T13:27:27.057170Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728103 \"-\" \"Python-urllib/3.10\" 0.064189\n2026-07-18T13:27:27.134024Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 732600 \"-\" \"Python-urllib/3.10\" 0.062091\n2026-07-18T13:27:27.156290Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 52916 \"-\" \"Python-urllib/3.10\" 0.006305\n2026-07-18T13:27:27.224084Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 725457 \"-\" \"Python-urllib/3.10\" 0.065159\n2026-07-18T13:27:27.300128Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.061936\n2026-07-18T13:27:27.376770Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.061064\n2026-07-18T13:27:27.455114Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.063773\n2026-07-18T13:27:27.607792Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 652126 \"-\" \"Python-urllib/3.10\" 0.054127\n2026-07-18T13:27:27.660816Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46 HTTP/1.1\" 200 867 \"-\" \"Python-urllib/3.10\" 0.003540\n2026-07-18T13:27:27.661583Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000093\n2026-07-18T13:27:27.662433Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000072\n2026-07-18T13:27:27.962576Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.202371\n2026-07-18T13:27:28.172016Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.199692\n2026-07-18T13:27:28.288253Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104282 \"-\" \"Python-urllib/3.10\" 0.107818\n2026-07-18T13:27:28.592999Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.201862\n2026-07-18T13:27:28.809285Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.207413\n2026-07-18T13:27:28.931648Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104282 \"-\" \"Python-urllib/3.10\" 0.114128\n2026-07-18T13:27:29.243736Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.211266\n2026-07-18T13:27:29.476507Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.223848\n2026-07-18T13:27:29.606792Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104282 \"-\" \"Python-urllib/3.10\" 0.121425\n2026-07-18T13:27:29.936844Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.228238\n2026-07-18T13:27:30.171872Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.224208\n2026-07-18T13:27:30.390895Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208470 \"-\" \"Python-urllib/3.10\" 0.206880\n2026-07-18T13:27:30.610256Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208552 \"-\" \"Python-urllib/3.10\" 0.207869\n2026-07-18T13:27:30.842291Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208653 \"-\" \"Python-urllib/3.10\" 0.219904\n2026-07-18T13:27:31.045365Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208582 \"-\" \"Python-urllib/3.10\" 0.192061\n2026-07-18T13:27:31.264228Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208792 \"-\" \"Python-urllib/3.10\" 0.208123\n2026-07-18T13:27:31.493065Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208757 \"-\" \"Python-urllib/3.10\" 0.218149\n2026-07-18T13:27:31.725065Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208626 \"-\" \"Python-urllib/3.10\" 0.219986\n2026-07-18T13:27:31.950335Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208763 \"-\" \"Python-urllib/3.10\" 0.212781\n2026-07-18T13:27:32.156535Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208590 \"-\" \"Python-urllib/3.10\" 0.195152\n2026-07-18T13:27:32.374725Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208707 \"-\" \"Python-urllib/3.10\" 0.207047\n2026-07-18T13:27:32.596433Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.210940\n2026-07-18T13:27:32.822709Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208585 \"-\" \"Python-urllib/3.10\" 0.213764\n2026-07-18T13:27:33.034618Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208696 \"-\" \"Python-urllib/3.10\" 0.200449\n2026-07-18T13:27:33.356413Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.213351\n2026-07-18T13:27:33.575025Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.209057\n2026-07-18T13:27:33.794875Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208470 \"-\" \"Python-urllib/3.10\" 0.211113\n2026-07-18T13:27:34.012265Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208551 \"-\" \"Python-urllib/3.10\" 0.208091\n2026-07-18T13:27:34.236658Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208654 \"-\" \"Python-urllib/3.10\" 0.214605\n2026-07-18T13:27:34.457229Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.210289\n2026-07-18T13:27:34.679588Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208793 \"-\" \"Python-urllib/3.10\" 0.212160\n2026-07-18T13:27:34.897184Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208757 \"-\" \"Python-urllib/3.10\" 0.208945\n2026-07-18T13:27:35.122752Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208626 \"-\" \"Python-urllib/3.10\" 0.216745\n2026-07-18T13:27:35.349052Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208764 \"-\" \"Python-urllib/3.10\" 0.215846\n2026-07-18T13:27:35.574744Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208590 \"-\" \"Python-urllib/3.10\" 0.214943\n2026-07-18T13:27:35.797615Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208707 \"-\" \"Python-urllib/3.10\" 0.212437\n2026-07-18T13:27:36.019083Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208580 \"-\" \"Python-urllib/3.10\" 0.212442\n2026-07-18T13:27:36.238941Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208585 \"-\" \"Python-urllib/3.10\" 0.210789\n2026-07-18T13:27:36.439599Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208696 \"-\" \"Python-urllib/3.10\" 0.191939\n2026-07-18T13:27:36.770923Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.222983\n2026-07-18T13:27:37.009339Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.227371\n2026-07-18T13:27:37.246252Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208470 \"-\" \"Python-urllib/3.10\" 0.226420\n2026-07-18T13:27:37.470291Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208552 \"-\" \"Python-urllib/3.10\" 0.214808\n2026-07-18T13:27:37.700750Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208653 \"-\" \"Python-urllib/3.10\" 0.221302\n2026-07-18T13:27:37.915422Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208582 \"-\" \"Python-urllib/3.10\" 0.205817\n2026-07-18T13:27:38.133640Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208793 \"-\" \"Python-urllib/3.10\" 0.208051\n2026-07-18T13:27:38.354660Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208756 \"-\" \"Python-urllib/3.10\" 0.210387\n2026-07-18T13:27:38.657489Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208626 \"-\" \"Python-urllib/3.10\" 0.209677\n2026-07-18T13:27:38.880283Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208764 \"-\" \"Python-urllib/3.10\" 0.213645\n2026-07-18T13:27:39.104006Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208590 \"-\" \"Python-urllib/3.10\" 0.213365\n2026-07-18T13:27:39.316455Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208707 \"-\" \"Python-urllib/3.10\" 0.201645\n2026-07-18T13:27:39.530241Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.203264\n2026-07-18T13:27:39.745640Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208585 \"-\" \"Python-urllib/3.10\" 0.205275\n2026-07-18T13:27:39.947828Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208696 \"-\" \"Python-urllib/3.10\" 0.193305\n2026-07-18T13:27:40.277350Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208628 \"-\" \"Python-urllib/3.10\" 0.220936\n2026-07-18T13:27:40.514167Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208559 \"-\" \"Python-urllib/3.10\" 0.226367\n2026-07-18T13:27:40.748117Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208469 \"-\" \"Python-urllib/3.10\" 0.223482\n2026-07-18T13:27:40.974122Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208552 \"-\" \"Python-urllib/3.10\" 0.215705\n2026-07-18T13:27:41.193589Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208654 \"-\" \"Python-urllib/3.10\" 0.210444\n2026-07-18T13:27:41.411251Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208582 \"-\" \"Python-urllib/3.10\" 0.208769\n2026-07-18T13:27:41.636651Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208793 \"-\" \"Python-urllib/3.10\" 0.216207\n2026-07-18T13:27:41.854181Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208757 \"-\" \"Python-urllib/3.10\" 0.207378\n2026-07-18T13:27:42.082413Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208626 \"-\" \"Python-urllib/3.10\" 0.217272\n2026-07-18T13:27:42.303150Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208764 \"-\" \"Python-urllib/3.10\" 0.211650\n2026-07-18T13:27:42.512303Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208590 \"-\" \"Python-urllib/3.10\" 0.199954\n2026-07-18T13:27:42.718800Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208707 \"-\" \"Python-urllib/3.10\" 0.197235\n2026-07-18T13:27:42.935158Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.206289\n2026-07-18T13:27:43.147897Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208585 \"-\" \"Python-urllib/3.10\" 0.202125\n2026-07-18T13:27:43.338565Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208696 \"-\" \"Python-urllib/3.10\" 0.181095\n2026-07-18T13:27:44.262521Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000098\n2026-07-18T13:27:44.445870Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46 HTTP/1.1\" 200 867 \"-\" \"Python-urllib/3.10\" 0.003283\n2026-07-18T13:27:44.446563Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000079\n2026-07-18T13:27:44.447237Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 562 \"-\" \"Python-urllib/3.10\" 0.000050\n",
+      "stderr": ""
+    },
+    "qdrant_shard_1": {
+      "returncode": 0,
+      "stdout": "2026-07-18T13:27:27.914624Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T13:27:38.095618Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_2": {
+      "returncode": 0,
+      "stdout": "2026-07-18T13:27:28.540519Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T13:27:38.069951Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_3": {
+      "returncode": 0,
+      "stdout": "2026-07-18T13:27:27.929498Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T13:27:37.196696Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    }
+  },
+  "runtime_health_audit": {
+    "valid": true,
+    "checks": {
+      "logs_clean": true,
+      "consensus_working": true,
+      "pending_operations_zero": true,
+      "message_send_failures_empty": true,
+      "collection_green": true,
+      "optimizer_ok": true,
+      "update_queue_empty": true,
+      "all_shards_active": true,
+      "controller_has_no_lower_local_shards": true,
+      "no_shard_transfers": true,
+      "transport_resources_clean": true
+    },
+    "log_audit": {
+      "valid": true,
+      "collection_errors": [],
+      "error_matches": {}
+    },
+    "message_send_failures": {},
+    "pending_operations": 0,
+    "consensus_thread_status": "working",
+    "optimizer_status": "ok",
+    "update_queue_length": 0,
+    "shard_transfers": [],
+    "transport_resources": {
+      "valid": true,
+      "checks": {
+        "start_p2p_within_clean_limit": true,
+        "end_p2p_within_clean_limit": true
+      },
+      "start": {
+        "available": true,
+        "host": "localhost",
+        "container": "orion-dist-dist-20260717-initial-controller",
+        "p2p_port": 6335,
+        "fd_count": 62,
+        "p2p_established": 6,
+        "worker_count": 3,
+        "expected_steady_state_p2p_connections": 6
+      },
+      "end": {
+        "available": true,
+        "host": "localhost",
+        "container": "orion-dist-dist-20260717-initial-controller",
+        "p2p_port": 6335,
+        "fd_count": 62,
+        "p2p_established": 6,
+        "worker_count": 3,
+        "expected_steady_state_p2p_connections": 6
+      },
+      "delta": {
+        "fd_count": 0,
+        "p2p_established": 0
+      },
+      "expected_steady_state_p2p_connections": 6,
+      "tolerance": 6,
+      "clean_limit": 12,
+      "note": "The current Qdrant transport pool maintains two steady-state channels per worker URI. The tolerance permits one additional pool-width while rejecting the hundreds of transient connections produced by ungrouped shard fan-out."
+    }
+  },
+  "command": [
+    "/users/dry/orion-distributed/venv/bin/python",
+    "tools/qdrant_two_level_routing_experiment.py",
+    "--base-url",
+    "http://10.10.1.1:6333",
+    "--hdf5-path",
+    "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "--cluster-topology",
+    "tools/distributed/cloudlab_orion_4node.json",
+    "--deployment-manifest",
+    "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "--require-clean-runtime",
+    "--vector-distance",
+    "cosine",
+    "--top-k",
+    "10",
+    "--hnsw-m",
+    "32",
+    "--ef-construct",
+    "100",
+    "--upper-m",
+    "32",
+    "--upper-ef-construction",
+    "100",
+    "--upper-search-ef",
+    "400",
+    "--sample-denominator",
+    "32",
+    "--k-overlap",
+    "10",
+    "--upper-sample-seed",
+    "100",
+    "--kmeans-rand-seed",
+    "1",
+    "--kmeans-iters",
+    "10",
+    "--tuning-query-count",
+    "500",
+    "--eval-query-count",
+    "3000",
+    "--warmup-query-count",
+    "500",
+    "--stability-repeats",
+    "3",
+    "--batch-size",
+    "200",
+    "--fixed-ef-shard-chunk-size",
+    "0",
+    "--write-per-query-metrics",
+    "--search-dispatch-mode",
+    "coordinator",
+    "--lower-execution-order",
+    "query_major",
+    "--shard-placement",
+    "round_robin",
+    "--reuse-existing",
+    "--routing-mode",
+    "faithful_original_rest",
+    "--routed-execution-mode",
+    "compact_multi_ep",
+    "--routed-planning-mode",
+    "pipelined",
+    "--routed-result-limit-mode",
+    "top_k",
+    "--target-recall",
+    "0.95",
+    "--collection",
+    "dist_dist-20260717-initial_orion_s46",
+    "--num-shards",
+    "31",
+    "--recover-routing-from-collection",
+    "--upper-k-candidates",
+    "104",
+    "--base-ef-candidates",
+    "64",
+    "--factor-candidates",
+    "15",
+    "--physical-execution-trace",
+    "--output-dir",
+    "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15"
+  ],
+  "process_affinity": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "cluster_topology_path": "tools/distributed/cloudlab_orion_4node.json",
+  "cluster_preflight": {
+    "peer_id": 987102789522726,
+    "peer_count": 4,
+    "peers": {
+      "987102789522726": "http://10.10.1.1:6335",
+      "1667891846572449": "http://10.10.1.4:6335",
+      "7896541606624976": "http://10.10.1.3:6335",
+      "8982479151082257": "http://10.10.1.2:6335"
+    },
+    "controller_peer_id": 987102789522726,
+    "worker_peer_ids": [
+      1667891846572449,
+      7896541606624976,
+      8982479151082257
+    ],
+    "pending_operations": 0,
+    "consensus_thread_status": "working",
+    "message_send_failures": {},
+    "raw": {
+      "status": "enabled",
+      "peer_id": 987102789522726,
+      "peers": {
+        "7896541606624976": {
+          "uri": "http://10.10.1.3:6335/"
+        },
+        "8982479151082257": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "987102789522726": {
+          "uri": "http://10.10.1.1:6335/"
+        },
+        "1667891846572449": {
+          "uri": "http://10.10.1.4:6335/"
+        }
+      },
+      "raft_info": {
+        "term": 13,
+        "commit": 874,
+        "pending_operations": 0,
+        "leader": 8982479151082257,
+        "role": "Follower",
+        "is_voter": true
+      },
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-07-18T13:27:13.350911668Z"
+      },
+      "message_send_failures": {}
+    }
+  },
+  "cluster_snapshot": {
+    "status": "enabled",
+    "peer_id": 987102789522726,
+    "peers": {
+      "8982479151082257": {
+        "uri": "http://10.10.1.2:6335/"
+      },
+      "987102789522726": {
+        "uri": "http://10.10.1.1:6335/"
+      },
+      "1667891846572449": {
+        "uri": "http://10.10.1.4:6335/"
+      },
+      "7896541606624976": {
+        "uri": "http://10.10.1.3:6335/"
+      }
+    },
+    "raft_info": {
+      "term": 13,
+      "commit": 874,
+      "pending_operations": 0,
+      "leader": 8982479151082257,
+      "role": "Follower",
+      "is_voter": true
+    },
+    "consensus_thread_status": {
+      "consensus_thread_status": "working",
+      "last_update": "2026-07-18T13:27:44.358542853Z"
+    },
+    "message_send_failures": {}
+  },
+  "vector_distance": "cosine",
+  "upper_hnsw_space": "cosine",
+  "qdrant_vector_distance": "Cosine",
+  "normalize_vectors": true,
+  "score_higher_is_better": true,
+  "train_limit": null,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 31,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "shard_placement_map": null,
+  "shard_placement_map_name": null,
+  "placement_peer_uri_contains": null,
+  "discovered_peer_ids": [
+    1667891846572449,
+    7896541606624976,
+    8982479151082257
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46,
+    "cluster_shards_per_peer": {
+      "1667891846572449": 16,
+      "7896541606624976": 15,
+      "8982479151082257": 15
+    },
+    "cluster_placement_valid": true
+  },
+  "collection_cluster_snapshot": {
+    "peer_id": 987102789522726,
+    "shard_count": 46,
+    "local_shards": [],
+    "remote_shards": [
+      {
+        "shard_id": 1,
+        "shard_key": "centroid_00",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 2,
+        "shard_key": "centroid_01",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 3,
+        "shard_key": "centroid_02",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 4,
+        "shard_key": "centroid_03",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 5,
+        "shard_key": "centroid_04",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 6,
+        "shard_key": "centroid_05",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 7,
+        "shard_key": "centroid_06",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 8,
+        "shard_key": "centroid_07",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 9,
+        "shard_key": "centroid_08",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 10,
+        "shard_key": "centroid_09",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 11,
+        "shard_key": "centroid_10",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 12,
+        "shard_key": "centroid_11",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 13,
+        "shard_key": "centroid_12",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 14,
+        "shard_key": "centroid_13",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 15,
+        "shard_key": "centroid_14",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 16,
+        "shard_key": "centroid_15",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 17,
+        "shard_key": "centroid_16",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 18,
+        "shard_key": "centroid_17",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 19,
+        "shard_key": "centroid_18",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 20,
+        "shard_key": "centroid_19",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 21,
+        "shard_key": "centroid_20",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 22,
+        "shard_key": "centroid_21",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 23,
+        "shard_key": "centroid_22",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 24,
+        "shard_key": "centroid_23",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 25,
+        "shard_key": "centroid_24",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 26,
+        "shard_key": "centroid_25",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 27,
+        "shard_key": "centroid_26",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 28,
+        "shard_key": "centroid_27",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 29,
+        "shard_key": "centroid_28",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 30,
+        "shard_key": "centroid_29",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 31,
+        "shard_key": "centroid_30",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 32,
+        "shard_key": "centroid_31",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 33,
+        "shard_key": "centroid_32",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 34,
+        "shard_key": "centroid_33",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 35,
+        "shard_key": "centroid_34",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 36,
+        "shard_key": "centroid_35",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 37,
+        "shard_key": "centroid_36",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 38,
+        "shard_key": "centroid_37",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 39,
+        "shard_key": "centroid_38",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 40,
+        "shard_key": "centroid_39",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 41,
+        "shard_key": "centroid_40",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 42,
+        "shard_key": "centroid_41",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 43,
+        "shard_key": "centroid_42",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 44,
+        "shard_key": "centroid_43",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 45,
+        "shard_key": "centroid_44",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 46,
+        "shard_key": "centroid_45",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      }
+    ],
+    "shard_transfers": []
+  },
+  "worker_shard_points": {
+    "1667891846572449": {
+      "shard_count": 16,
+      "points_count": 0
+    },
+    "7896541606624976": {
+      "shard_count": 15,
+      "points_count": 0
+    },
+    "8982479151082257": {
+      "shard_count": 15,
+      "points_count": 0
+    }
+  },
+  "placement_valid": true,
+  "warmup_query_count": 500,
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "concurrency_evaluation_mode": "preplanned_search",
+  "search_dispatch_mode": "coordinator",
+  "lower_execution_order": "query_major",
+  "fixed_ef_shard_chunk_size": 0,
+  "direct_peer_http_urls": null,
+  "direct_peer_local_premerge": false,
+  "routed_execution_mode": "compact_multi_ep",
+  "routed_planning_mode": "pipelined",
+  "pipelined_execution": {
+    "enabled": true,
+    "lookahead_batches": 1,
+    "preencoded_search_batch_body": true,
+    "note": "Planning and JSON encoding for batch N+1 run on the benchmark-client CPU set while the controller and workers execute lower search for batch N. Only one lower HTTP batch remains in flight, and routed shards, MultiEP, Dynamic EF, source-ID dedup, and final global top-k are unchanged."
+  },
+  "placement_simulation": null,
+  "physical_execution_trace": {
+    "query_count": 3000,
+    "top_k": 10,
+    "peer_count": 3,
+    "mapped_shard_count": 46,
+    "avg_logical_shards_per_query": 19.497,
+    "p95_logical_shards_per_query": 32.0,
+    "avg_physical_peers_per_query": 2.945666666666667,
+    "p95_physical_peers_per_query": 3.0,
+    "avg_controller_merge_stream_reduction_pct": 84.89169273905387,
+    "avg_controller_candidate_reduction_pct": 84.89169273905387,
+    "avg_assigned_ef_sum_per_query": 2961.923,
+    "p95_assigned_ef_sum_per_query": 3878.199999999999,
+    "avg_max_peer_assigned_ef_per_query": 1437.623,
+    "p95_max_peer_assigned_ef_per_query": 1780.0499999999997,
+    "placement_peer_loads": {
+      "query_count": 3000,
+      "avg_query_max_peer_load": 1437.623,
+      "p95_query_max_peer_load": 1780.0499999999997,
+      "max_query_max_peer_load": 2208.0,
+      "avg_active_peers_per_query": 2.945666666666667,
+      "max_total_peer_load": 3477030.0,
+      "min_total_peer_load": 2656842.0,
+      "peer_load_cv_pct": 12.366865625378724
+    }
+  },
+  "compact_ef_mode": null,
+  "routed_result_limit_mode": "top_k",
+  "routed_result_limit_multiplier": null,
+  "distributed_fixed_ef_peer_compaction": null,
+  "source_id_dedup_block_size": 1183515,
+  "multi_assign": true,
+  "orion_multi_assign_min_max_vote": 2,
+  "orion_multi_assign_vote_delta": 0,
+  "orion_multi_assign_max_shards": 0,
+  "fission_enabled": true,
+  "fair_architecture_note": "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same native physical-peer grouping path, and the same client result merge path. Simple and Naive express their one fixed EF as a uniform per-shard transport map; this does not make their EF dynamic. The intended algorithmic difference is shard selection: Orion routes to upper-selected shards with Method4 routing metadata, kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": "This patched Qdrant build accepts per-shard HNSW entry point IDs and per-shard dynamic EF, and lower-tier custom-entry searches use a base-layer MultiEP path matching hnswlib searchBaseLayerST_MultiEP. The remaining non-bit-identical gap is graph construction: bottom shards are still built by Qdrant's HNSW builder, so level RNG, parallel insertion scheduling, and neighbor-link tie behavior are not guaranteed to be byte-for-byte identical to hnswlib.",
+  "rng_equivalence_note": "The port preserves the original seed roles and algorithm order (upper sample seed 100, KMeans random initialization stream, weighted balanced assignment), but Python/NumPy RNG streams are not bit-identical to libstdc++ std::mt19937/std::shuffle or C rand().",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 400,
+    "sample_points": 36984
+  },
+  "kmeans_simple_nprobe": null,
+  "original_routing": {
+    "topology_iterations": null,
+    "total_assigned": 1401454,
+    "expansion_ratio": 1.1841465331208587,
+    "multi_assign_min_max_vote": 2,
+    "multi_assign_vote_delta": 0,
+    "multi_assign_max_shards": 0,
+    "fission_events": null,
+    "shard_count_min": null,
+    "shard_count_max": null,
+    "recovered_from_collection": true
+  },
+  "best_tuning_row": {
+    "upper_k": 104,
+    "nprobe": null,
+    "base_ef": 64,
+    "factor": 15,
+    "query_count": 500,
+    "top_k": 10,
+    "recall_at_k": 0.9538,
+    "qps": 777.8155723490858,
+    "wall_s": 0.6428259060048731,
+    "avg_visited_shards": 19.546,
+    "avg_upper_hits": 114.598,
+    "avg_assigned_ef_per_visited_shard": 151.94484805075209,
+    "estimated_ef_sum_per_query": 2969.914,
+    "avg_physical_peers_per_query": 2.964,
+    "latency_p50_ms": 208.34693599317688,
+    "latency_p95_ms": 213.4657921953476,
+    "latency_p99_ms": 213.92080163554056,
+    "search_batch_calls": 3,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "final_row": {
+    "upper_k": 104,
+    "nprobe": null,
+    "base_ef": 64,
+    "factor": 15,
+    "query_count": 3000,
+    "top_k": 10,
+    "recall_at_k": 0.9518666666666666,
+    "qps": 874.1722704618853,
+    "wall_s": 3.431817848002538,
+    "avg_visited_shards": 19.497,
+    "avg_upper_hits": 114.27433333333333,
+    "avg_assigned_ef_per_visited_shard": 151.91685900394933,
+    "estimated_ef_sum_per_query": 2961.9230000000002,
+    "avg_physical_peers_per_query": 2.945666666666667,
+    "latency_p50_ms": 218.81618999759667,
+    "latency_p95_ms": 232.857836902258,
+    "latency_p99_ms": 234.40857937617693,
+    "search_batch_calls": 15,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 874.1666123759059,
+    "qps_stdev": 16.148854544431764,
+    "recall_mean": 0.9518666666666666,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

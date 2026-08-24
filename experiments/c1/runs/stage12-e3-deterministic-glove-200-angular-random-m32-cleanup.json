@@ -1,0 +1,21 @@
+{
+  "collection": "c1v2_e3_glove_random_m32",
+  "controller_storage_absent": true,
+  "controller_storage_path": "/users/dry/orion-distributed/c1-20260821-v2/controller/storage/collections/c1v2_e3_glove_random_m32",
+  "peers": {
+    "10.10.1.1": {
+      "http_status": 404
+    },
+    "10.10.1.2": {
+      "http_status": 404
+    },
+    "10.10.1.3": {
+      "http_status": 404
+    },
+    "10.10.1.4": {
+      "http_status": 404
+    }
+  },
+  "status": "VERIFIED_DELETED",
+  "timestamp": "2026-08-21T05:47:15Z"
+}

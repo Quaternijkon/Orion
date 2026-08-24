@@ -1,0 +1,71 @@
+{
+  "benchmark_cpu_affinity": [
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "collection": "c1v1_glove_common_m1",
+  "competing_logical_shards": 0,
+  "dataset": "glove-200-angular",
+  "ef_search": 384,
+  "elapsed_seconds": 30.821641480957624,
+  "logical_shards": 1,
+  "mean_distance_computations_per_searched_shard": 12837.623222222222,
+  "mean_local_search_latency_us_per_searched_shard": 3379.6257556666665,
+  "mean_nodes_visited_per_searched_shard": 397.8228888888889,
+  "mean_shards_per_query": 1.0,
+  "mean_worker_cpu_time_us_per_searched_shard": 2833.190222222222,
+  "mean_worker_cpu_wall_time_us_per_searched_shard": 2829.089,
+  "p95_distance_computations_per_searched_shard": 18101.05,
+  "p95_local_search_latency_us_per_searched_shard": 4375.3084499999995,
+  "p95_nodes_visited_per_searched_shard": 408.0,
+  "partition_artifact_sha256": "c459b380050e2765667289ba2a55884ce3b4421a00ec49d0c9123bd2dc297c56",
+  "partition_method": "kmeans",
+  "physical_hosts": 1,
+  "query_concurrency_per_shard": 1,
+  "query_count": 9000,
+  "query_start": 1000,
+  "query_stop": 10000,
+  "result_status": "VALID_E3",
+  "searched_shard_events": 9000,
+  "selected_fanout": 1,
+  "selected_tuning_recall": 0.9148,
+  "shard_resources": {
+    "0": {
+      "graph_index_size_bytes": 145382363,
+      "graph_size_source": "controller_storage_files",
+      "machine_llc_size_bytes": 16777216,
+      "physical_host": "10.10.1.1",
+      "physical_peer_id": 2337108384097815,
+      "physical_shard_id": 1,
+      "point_count": 1183514,
+      "qdrant_resident_set_size_bytes": 294158336,
+      "total_local_index_size_bytes": 1092193563,
+      "vector_storage_size_bytes": 946811200
+    }
+  },
+  "shards": [
+    {
+      "mean_distance_computations": 12837.623222222222,
+      "mean_local_search_latency_us": 3379.6257556666665,
+      "mean_nodes_visited": 397.8228888888889,
+      "mean_worker_cpu_time_us": 2833.190222222222,
+      "mean_worker_cpu_wall_time_us": 2829.089,
+      "point_count": 1183514,
+      "searched_query_count": 9000,
+      "selection_frequency": 1.0,
+      "shard_id": 0
+    }
+  ],
+  "target_recall": 0.9,
+  "timestamp": "2026-08-20T22:00:06Z"
+}

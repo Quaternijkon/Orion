@@ -1,0 +1,116 @@
+{
+  "anomalies": [
+    "sift1m_kmeans_m4_reached_12_iteration_cap_without_convergence",
+    "sift1m_kmeans_m4_shard_counts_513838_138144_197753_150265"
+  ],
+  "bottleneck_validation": {
+    "all_configurations_unflagged": true,
+    "maximum_aggregator_cpu_pct": 9.560090776121973,
+    "maximum_aggregator_queue_depth": 0,
+    "maximum_network_utilization_pct": 0.08527668111693376,
+    "maximum_routing_share_pct": 15.097676801664088
+  },
+  "c1_a_status": "SUPPORTS",
+  "configuration_count": 6,
+  "dataset": "sift1m",
+  "dataset_checksum": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "evidence_sha256": {
+    "canonical_physical_scaleout": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+    "physical_scaleout_csv": "dafa7d99c1074934a9246b4f697abc058e69411369e8977c916fe15eaa197dec",
+    "protocol_physical_scaleout": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+    "protocol_scaling_efficiency": "4150d25392aad8dcbc060d38356fe5cd98648f0f55d6f52178728e00f09be9ba",
+    "source_results": {
+      "/users/dry/Orion/experiments/c1/runs/stage4-e1-sift1m-common-m1.json": "0a3f09518b2eb458c5e2ee54fb15be5dff779779123b1cd7d2c3663cd9387810",
+      "/users/dry/Orion/experiments/c1/runs/stage4-e1-sift1m-kmeans-m2.json": "d806d712592b4e8ed4e139387c0882c315c7ff8183e218ac67f13bf97e57667b",
+      "/users/dry/Orion/experiments/c1/runs/stage4-e1-sift1m-kmeans-m4.json": "7c3fef5716eafc5edbf0892c310d18a6967c86e85450d9762cb43b32aa1bf987",
+      "/users/dry/Orion/experiments/c1/runs/stage4-e1-sift1m-random-m2.json": "a2465ce328aa5d1dd6a54e19a8ea3901c4f04979a94b2fd782009c9884b8fee6",
+      "/users/dry/Orion/experiments/c1/runs/stage4-e1-sift1m-random-m4.json": "ab297b2135dc7388f62d9a6714a06f0974cad367fcaae67529912a726307494e"
+    },
+    "summary_json": "44c6d3fdbcc50545bc6a2efe4ea295c074bbfb5c922dbaf6dde55071fdc3f9f1"
+  },
+  "experiment_id": "stage4-e1-sift1m-physical-scaleout",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "measurement_recall": {
+    "kmeans": {
+      "1": 0.9142777777777779,
+      "2": 0.9125666666666667,
+      "4": 0.910488888888889
+    },
+    "random": {
+      "1": 0.9142777777777779,
+      "2": 0.9463,
+      "4": 0.9380666666666667
+    }
+  },
+  "normalized_qps": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 0.9875785545420257,
+      "4": 0.9599830124429427
+    },
+    "random": {
+      "1": 1.0,
+      "2": 0.5887929443546758,
+      "4": 0.32577848829749273
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "physical_machine_counts": [
+    1,
+    2,
+    4
+  ],
+  "qps_mean": {
+    "kmeans": {
+      "1": 1809.0317686035116,
+      "2": 1786.5609791580603,
+      "4": 1736.6397668289835
+    },
+    "random": {
+      "1": 1809.0317686035116,
+      "2": 1065.145141467208,
+      "4": 589.3436348577917
+    }
+  },
+  "qps_sample_std": {
+    "kmeans": {
+      "1": 11.991341616730772,
+      "2": 5.33329961509061,
+      "4": 10.154223612713798
+    },
+    "random": {
+      "1": 11.991341616730772,
+      "2": 9.781824426079531,
+      "4": 3.489771449823553
+    }
+  },
+  "record_type": "e1_physical_scaleout_analysis",
+  "repetition_counts": {
+    "kmeans-m1": 3,
+    "kmeans-m2": 3,
+    "kmeans-m4": 3,
+    "random-m1": 3,
+    "random-m2": 3,
+    "random-m4": 3
+  },
+  "scaling_efficiency": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 0.49378927727101285,
+      "4": 0.23999575311073568
+    },
+    "random": {
+      "1": 1.0,
+      "2": 0.2943964721773379,
+      "4": 0.08144462207437318
+    }
+  },
+  "shared_unsharded_baseline": true,
+  "status": "VALID_E1",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-20T20:19:35Z",
+  "unique_physical_layout_count": 5
+}

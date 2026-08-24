@@ -1,0 +1,42 @@
+{
+  "checked_files": {
+    "l0_edges": {
+      "path": "/users/dry/orion-distributed/c23-20260821-v1/smoke/reference-run/L0_edges.u32le",
+      "sha256": "d829c1ab5e072ff8686672746533b465d870dc4bf99fffc39ef48929a55c6f7d",
+      "size_bytes": 277976
+    },
+    "measurement_traces": {
+      "path": "/users/dry/orion-distributed/c23-20260821-v1/smoke/reference-run/measurement_traces.jsonl",
+      "sha256": "ad9ea4c86b023bda34e33c5492e8b60ab56fb753ee63ac7fbb47684123e537f9",
+      "size_bytes": 373379
+    },
+    "node_ids": {
+      "path": "/users/dry/orion-distributed/c23-20260821-v1/smoke/reference-run/node_ids.u32le",
+      "sha256": "f6aeea6827e0c23d93a2682eb159cac299816cd31b326e1a60251bc52b6435fa",
+      "size_bytes": 8000
+    },
+    "tuning": {
+      "path": "/users/dry/orion-distributed/c23-20260821-v1/smoke/reference-run/tuning.csv",
+      "sha256": "b01e831ccb2801d66b6bf18e577a230e2f0f9f362ef411ce60d0b47dbe995064",
+      "size_bytes": 179
+    }
+  },
+  "checks": {
+    "file_checksums": "PASS",
+    "graph_cardinality": "PASS",
+    "smallest_common_ef_selection": "PASS",
+    "trace_distance_counts": "PASS",
+    "trace_edge_order": "PASS",
+    "trace_recall_reproduction": "PASS",
+    "trace_schema": "PASS"
+  },
+  "l0_edge_count": 34747,
+  "manifest_sha256": "00ef84812591695cbd3ebd054da7b0cc53892610f7251624352340445e72f684",
+  "measurement_query_count": 20,
+  "measurement_recall_at_k": 0.985,
+  "point_count": 2000,
+  "protocol_version": "c23-20260821-v1",
+  "run_dir": "/users/dry/orion-distributed/c23-20260821-v1/smoke/reference-run",
+  "selected_ef_search": 10,
+  "timestamp": "2026-08-21T20:20:13.424955Z"
+}

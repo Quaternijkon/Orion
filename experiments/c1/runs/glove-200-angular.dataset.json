@@ -1,0 +1,46 @@
+{
+  "dataset": {
+    "distance": "angular",
+    "name": "glove-200-angular",
+    "normalize": true,
+    "qdrant_distance": "Cosine"
+  },
+  "hdf5_attrs": {
+    "distance": "angular"
+  },
+  "hdf5_dtypes": {
+    "neighbors": "int32",
+    "test": "float32",
+    "train": "float32"
+  },
+  "hdf5_shapes": {
+    "neighbors": [
+      10000,
+      100
+    ],
+    "test": [
+      10000,
+      200
+    ],
+    "train": [
+      1183514,
+      200
+    ]
+  },
+  "measurement_query_count": 9000,
+  "measurement_query_range": [
+    1000,
+    10000
+  ],
+  "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "protocol_version": 1,
+  "query_sets_disjoint": true,
+  "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "size_bytes": 962819488,
+  "timestamp": "2026-08-20T16:04:33Z",
+  "tuning_query_count": 1000,
+  "tuning_query_range": [
+    0,
+    1000
+  ]
+}

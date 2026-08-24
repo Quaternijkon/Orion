@@ -1,0 +1,1217 @@
+{
+  "cluster_snapshot": {
+    "result": {
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-08-20T17:17:54.814451969Z"
+      },
+      "message_send_failures": {},
+      "peer_id": 2337108384097815,
+      "peers": {
+        "2337108384097815": {
+          "uri": "http://10.10.1.1:6335/"
+        },
+        "4398084903156155": {
+          "uri": "http://10.10.1.4:6335/"
+        },
+        "6026846131499136": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "7382191725053194": {
+          "uri": "http://10.10.1.3:6335/"
+        }
+      },
+      "raft_info": {
+        "commit": 29,
+        "is_voter": true,
+        "leader": null,
+        "pending_operations": 0,
+        "role": null,
+        "term": 1
+      },
+      "status": "enabled"
+    },
+    "status": "ok",
+    "time": 1.5929e-05
+  },
+  "container_ulimits": {
+    "nofile": {
+      "hard": 65536,
+      "soft": 65536
+    }
+  },
+  "controller_uri": "http://10.10.1.1:6335",
+  "controller_url": "http://10.10.1.1:6333",
+  "dataset": {
+    "hdf5_shapes": {
+      "neighbors": [
+        10000,
+        100
+      ],
+      "test": [
+        10000,
+        128
+      ],
+      "train": [
+        1000000,
+        128
+      ]
+    },
+    "path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+    "sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+    "size_bytes": 525128288,
+    "url": "https://ann-benchmarks.com/sift-128-euclidean.hdf5"
+  },
+  "generated_at": "2026-08-20T17:17:57Z",
+  "image": {
+    "candidate_manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260820-v1/image-candidates/orion-c1_20260820-instrumented-dirty-744d27a7e629-wire-v2-9de4d84cd3e8.json",
+    "capabilities": {
+      "orion_compact_wire_max_version": "2"
+    },
+    "id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+    "source_fingerprint": "744d27a7e629cb20d84e394e6fd31f5902b0fee35a68eb28f96e892ce65dc967",
+    "tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+    "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260820-v1/image-candidates/orion-c1_20260820-instrumented-dirty-744d27a7e629-wire-v2-9de4d84cd3e8.tar",
+    "tar_sha256": "a8f165db2877d2e34f02237d1875e9d11c274ede12131277dbe34d6ca4414cf3",
+    "tar_size_bytes": 70583296
+  },
+  "image_transitions": [
+    {
+      "candidate_image": {
+        "id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+        "manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260820-v1/image-candidates/orion-c1_20260820-instrumented-dirty-744d27a7e629-wire-v2-9de4d84cd3e8.json",
+        "orion_compact_wire_version": "2",
+        "source_fingerprint": "744d27a7e629cb20d84e394e6fd31f5902b0fee35a68eb28f96e892ce65dc967",
+        "tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+        "tar_sha256": "a8f165db2877d2e34f02237d1875e9d11c274ede12131277dbe34d6ca4414cf3"
+      },
+      "cluster_after": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-08-20T17:17:54.814451969Z"
+        },
+        "message_send_failures": {},
+        "peer_count": 4,
+        "peer_id": 2337108384097815,
+        "peer_uris": [
+          "http://10.10.1.1:6335",
+          "http://10.10.1.2:6335",
+          "http://10.10.1.3:6335",
+          "http://10.10.1.4:6335"
+        ],
+        "peers": [
+          {
+            "peer_id": "2337108384097815",
+            "uri": "http://10.10.1.1:6335"
+          },
+          {
+            "peer_id": "4398084903156155",
+            "uri": "http://10.10.1.4:6335"
+          },
+          {
+            "peer_id": "6026846131499136",
+            "uri": "http://10.10.1.2:6335"
+          },
+          {
+            "peer_id": "7382191725053194",
+            "uri": "http://10.10.1.3:6335"
+          }
+        ],
+        "pending_operations": 0
+      },
+      "cluster_before": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-08-20T17:17:42.175668419Z"
+        },
+        "message_send_failures": {},
+        "peer_count": 4,
+        "peer_id": 2337108384097815,
+        "peer_uris": [
+          "http://10.10.1.1:6335",
+          "http://10.10.1.2:6335",
+          "http://10.10.1.3:6335",
+          "http://10.10.1.4:6335"
+        ],
+        "peers": [
+          {
+            "peer_id": "2337108384097815",
+            "uri": "http://10.10.1.1:6335"
+          },
+          {
+            "peer_id": "4398084903156155",
+            "uri": "http://10.10.1.4:6335"
+          },
+          {
+            "peer_id": "6026846131499136",
+            "uri": "http://10.10.1.2:6335"
+          },
+          {
+            "peer_id": "7382191725053194",
+            "uri": "http://10.10.1.3:6335"
+          }
+        ],
+        "pending_operations": 0
+      },
+      "collections_after": {
+        "dist_c1-20260820-v1_transition_sentinel": {
+          "config": {
+            "hnsw_config": {
+              "ef_construct": 100,
+              "full_scan_threshold": 10,
+              "m": 16,
+              "max_indexing_threads": 2,
+              "on_disk": false
+            },
+            "optimizer_config": {
+              "default_segment_number": 1,
+              "deleted_threshold": 0.2,
+              "flush_interval_sec": 5,
+              "indexing_threshold": 10,
+              "max_optimization_threads": 2,
+              "max_segment_size": null,
+              "memmap_threshold": null,
+              "prevent_unoptimized": null,
+              "vacuum_min_vector_number": 1000
+            },
+            "params": {
+              "on_disk_payload": true,
+              "replication_factor": 1,
+              "shard_number": 3,
+              "sharding_method": "auto",
+              "vectors": {
+                "distance": "Cosine",
+                "size": 16
+              },
+              "write_consistency_factor": 1
+            },
+            "quantization_config": null,
+            "wal_config": {
+              "wal_capacity_mb": 32,
+              "wal_retain_closed": 1,
+              "wal_segments_ahead": 0
+            }
+          },
+          "indexed_vectors_count": 3000,
+          "local_shards": [],
+          "optimizer_status": "ok",
+          "peer_id": 2337108384097815,
+          "points_count": 3000,
+          "remote_shards": [
+            {
+              "peer_id": 4398084903156155,
+              "shard_id": 0,
+              "state": "Active"
+            },
+            {
+              "peer_id": 6026846131499136,
+              "shard_id": 1,
+              "state": "Active"
+            },
+            {
+              "peer_id": 7382191725053194,
+              "shard_id": 2,
+              "state": "Active"
+            }
+          ],
+          "shard_transfers": [],
+          "status": "green",
+          "update_queue": {
+            "length": 0
+          }
+        }
+      },
+      "collections_before": {
+        "dist_c1-20260820-v1_transition_sentinel": {
+          "config": {
+            "hnsw_config": {
+              "ef_construct": 100,
+              "full_scan_threshold": 10,
+              "m": 16,
+              "max_indexing_threads": 2,
+              "on_disk": false
+            },
+            "optimizer_config": {
+              "default_segment_number": 1,
+              "deleted_threshold": 0.2,
+              "flush_interval_sec": 5,
+              "indexing_threshold": 10,
+              "max_optimization_threads": 2,
+              "max_segment_size": null,
+              "memmap_threshold": null,
+              "prevent_unoptimized": null,
+              "vacuum_min_vector_number": 1000
+            },
+            "params": {
+              "on_disk_payload": true,
+              "replication_factor": 1,
+              "shard_number": 3,
+              "sharding_method": "auto",
+              "vectors": {
+                "distance": "Cosine",
+                "size": 16
+              },
+              "write_consistency_factor": 1
+            },
+            "quantization_config": null,
+            "wal_config": {
+              "wal_capacity_mb": 32,
+              "wal_retain_closed": 1,
+              "wal_segments_ahead": 0
+            }
+          },
+          "indexed_vectors_count": 3000,
+          "local_shards": [],
+          "optimizer_status": "ok",
+          "peer_id": 2337108384097815,
+          "points_count": 3000,
+          "remote_shards": [
+            {
+              "peer_id": 4398084903156155,
+              "shard_id": 0,
+              "state": "Active"
+            },
+            {
+              "peer_id": 6026846131499136,
+              "shard_id": 1,
+              "state": "Active"
+            },
+            {
+              "peer_id": 7382191725053194,
+              "shard_id": 2,
+              "state": "Active"
+            }
+          ],
+          "shard_transfers": [],
+          "status": "green",
+          "update_queue": {
+            "length": 0
+          }
+        }
+      },
+      "containers_after": [
+        {
+          "command": [
+            "./qdrant",
+            "--uri",
+            "http://10.10.1.1:6335"
+          ],
+          "container_id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+          "container_name": "orion-dist-c1-20260820-v1-controller",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE=1",
+            "QDRANT_ORION_COMPACT_WIRE_VERSION=2",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+          "image_tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.compact_wire_version": "2",
+            "orion.distributed.controller_fingerprint": "sha256:95abf4a3cf7345b6cfe51159de8ca5be535d7c523ab31af31210f14b88603696",
+            "orion.distributed.image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.peer_premerge": "disabled",
+            "orion.distributed.private_ip": "10.10.1.1",
+            "orion.distributed.role": "controller",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/controller/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.1",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "controller"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.2:6335"
+          ],
+          "container_id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+          "image_tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.2",
+            "orion.distributed.role": "qdrant_shard_1",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_1/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.2",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_1"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.3:6335"
+          ],
+          "container_id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+          "image_tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.3",
+            "orion.distributed.role": "qdrant_shard_2",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_2/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.3",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_2"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.4:6335"
+          ],
+          "container_id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+          "image_tag": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.4",
+            "orion.distributed.role": "qdrant_shard_3",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_3/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.4",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_3"
+        }
+      ],
+      "containers_before": [
+        {
+          "command": [
+            "./qdrant",
+            "--uri",
+            "http://10.10.1.1:6335"
+          ],
+          "container_id": "c44a8f302a2ddfdc0ba0f8b996c6d3624f3d34d81cb2e338cd5e61a3b13d639e",
+          "container_name": "orion-dist-c1-20260820-v1-controller",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE=1",
+            "QDRANT_ORION_COMPACT_WIRE_VERSION=2",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+          "image_tag": "orion-c1:20260820-instrumented",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.compact_wire_version": "2",
+            "orion.distributed.controller_fingerprint": "sha256:06b9f968ab02c7a6ef8c5b6792b6e6f63395346478c211dc98955a0279aaa4cf",
+            "orion.distributed.image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.peer_premerge": "disabled",
+            "orion.distributed.private_ip": "10.10.1.1",
+            "orion.distributed.role": "controller",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/controller/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.1",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "controller"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.2:6335"
+          ],
+          "container_id": "6f3888de93601a74557f7890332992d59f163fcf796d16822bdae095dbce999e",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+          "image_tag": "orion-c1:20260820-instrumented",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.2",
+            "orion.distributed.role": "qdrant_shard_1",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_1/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.2",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_1"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.3:6335"
+          ],
+          "container_id": "e624fa77e9da8670c8c72c6c46fbd2c15e83640416c4ea80ec9bf6da3f156362",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+          "image_tag": "orion-c1:20260820-instrumented",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.3",
+            "orion.distributed.role": "qdrant_shard_2",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_2/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.3",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_2"
+        },
+        {
+          "command": [
+            "./qdrant",
+            "--bootstrap",
+            "http://10.10.1.1:6335",
+            "--uri",
+            "http://10.10.1.4:6335"
+          ],
+          "container_id": "c011173907657fbbc613fdcafbdf9fb903e504d4b1b4ea225320bcc8b20a036b",
+          "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+          "cpuset": "0-19",
+          "environment": [
+            "DIR=",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "QDRANT__CLUSTER__ENABLED=true",
+            "QDRANT__CLUSTER__P2P__PORT=6335",
+            "QDRANT__SERVICE__GRPC_PORT=6334",
+            "QDRANT__SERVICE__HARDWARE_REPORTING=true",
+            "QDRANT__SERVICE__HTTP_PORT=6333",
+            "QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS=16",
+            "QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET=4",
+            "RUN_MODE=production",
+            "TZ=Etc/UTC"
+          ],
+          "image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+          "image_tag": "orion-c1:20260820-instrumented",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.distributed.image_id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+            "orion.distributed.nofile": "65536:65536",
+            "orion.distributed.private_ip": "10.10.1.4",
+            "orion.distributed.role": "qdrant_shard_3",
+            "orion.distributed.run_id": "c1-20260820-v1"
+          },
+          "mounts": [
+            {
+              "Destination": "/qdrant/storage",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": true,
+              "Source": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_3/storage",
+              "Type": "bind"
+            }
+          ],
+          "network_mode": "host",
+          "nofile": {
+            "hard": 65536,
+            "soft": 65536
+          },
+          "private_ip": "10.10.1.4",
+          "restart_policy": {
+            "MaximumRetryCount": 0,
+            "Name": "unless-stopped"
+          },
+          "role": "qdrant_shard_3"
+        }
+      ],
+      "finished_at": "2026-08-20T17:17:57Z",
+      "old_image": {
+        "id": "sha256:e0465821ccb77bce7e54471689bbe1a525d469105aad699173b81154b55e33bc",
+        "orion_compact_wire_version": "2",
+        "tag": "orion-c1:20260820-instrumented",
+        "tar_sha256": "20ce45f7145248d3ad3b6188f6eaf137f8d407c73c3cb221d0f0671da9b35d0c"
+      },
+      "outcome": "success",
+      "rollback": {
+        "attempted": false
+      },
+      "run_id": "c1-20260820-v1",
+      "schema_version": 1,
+      "started_at": "2026-08-20T17:17:51Z",
+      "storage_preserved": true,
+      "strategy": "offline",
+      "transition_id": "c1-20260820-v1-image-0001"
+    }
+  ],
+  "last_image_transition": "c1-20260820-v1-image-0001",
+  "nodes": [
+    {
+      "advertised_uri": "http://10.10.1.1:6335",
+      "container_name": "orion-dist-c1-20260820-v1-controller",
+      "cpuset": "0-19",
+      "facts": {
+        "cpu_count": 32,
+        "hostname": "node-0.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "kernel": "5.15.0-177-generic",
+        "machine": "x86_64",
+        "memory_bytes": 134644711424
+      },
+      "http_url": "http://10.10.1.1:6333",
+      "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+      "max_search_threads": 16,
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      },
+      "optimizer_cpu_budget": 4,
+      "orion_compact_wire_max_version": "2",
+      "orion_compact_wire_version": "2",
+      "peer_premerge_mode": "disabled",
+      "peer_premerge_shards_per_rpc": "all",
+      "private_ip": "10.10.1.1",
+      "role": "controller",
+      "ssh_host": "localhost",
+      "storage_path": "/users/dry/orion-distributed/c1-20260820-v1/controller/storage"
+    },
+    {
+      "advertised_uri": "http://10.10.1.2:6335",
+      "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+      "cpuset": "0-19",
+      "facts": {
+        "cpu_count": 32,
+        "hostname": "node-1.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "kernel": "5.15.0-177-generic",
+        "machine": "x86_64",
+        "memory_bytes": 134644707328
+      },
+      "http_url": "http://10.10.1.2:6333",
+      "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+      "max_search_threads": 16,
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      },
+      "optimizer_cpu_budget": 4,
+      "orion_compact_wire_max_version": "2",
+      "orion_compact_wire_version": "not_applicable",
+      "peer_premerge_mode": "not_applicable",
+      "peer_premerge_shards_per_rpc": "not_applicable",
+      "private_ip": "10.10.1.2",
+      "role": "qdrant_shard_1",
+      "ssh_host": "10.10.1.2",
+      "storage_path": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_1/storage"
+    },
+    {
+      "advertised_uri": "http://10.10.1.3:6335",
+      "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+      "cpuset": "0-19",
+      "facts": {
+        "cpu_count": 32,
+        "hostname": "node-2.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "kernel": "5.15.0-177-generic",
+        "machine": "x86_64",
+        "memory_bytes": 134644584448
+      },
+      "http_url": "http://10.10.1.3:6333",
+      "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+      "max_search_threads": 16,
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      },
+      "optimizer_cpu_budget": 4,
+      "orion_compact_wire_max_version": "2",
+      "orion_compact_wire_version": "not_applicable",
+      "peer_premerge_mode": "not_applicable",
+      "peer_premerge_shards_per_rpc": "not_applicable",
+      "private_ip": "10.10.1.3",
+      "role": "qdrant_shard_2",
+      "ssh_host": "10.10.1.3",
+      "storage_path": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_2/storage"
+    },
+    {
+      "advertised_uri": "http://10.10.1.4:6335",
+      "container_name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+      "cpuset": "0-19",
+      "facts": {
+        "cpu_count": 32,
+        "hostname": "node-3.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "kernel": "5.15.0-177-generic",
+        "machine": "x86_64",
+        "memory_bytes": 134644707328
+      },
+      "http_url": "http://10.10.1.4:6333",
+      "image_id": "sha256:976ab5fd1c669fa971b5679fd5cdd6cf5d7882c976544771ad7e33ec35088a86",
+      "max_search_threads": 16,
+      "nofile": {
+        "hard": 65536,
+        "soft": 65536
+      },
+      "optimizer_cpu_budget": 4,
+      "orion_compact_wire_max_version": "2",
+      "orion_compact_wire_version": "not_applicable",
+      "peer_premerge_mode": "not_applicable",
+      "peer_premerge_shards_per_rpc": "not_applicable",
+      "private_ip": "10.10.1.4",
+      "role": "qdrant_shard_3",
+      "ssh_host": "10.10.1.4",
+      "storage_path": "/users/dry/orion-distributed/c1-20260820-v1/qdrant_shard_3/storage"
+    }
+  ],
+  "orion_compact_wire": {
+    "container_label": "orion.distributed.compact_wire_version",
+    "current_version": "2",
+    "environment_variable": "QDRANT_ORION_COMPACT_WIRE_VERSION",
+    "matches_requested": true,
+    "requested_version": "2",
+    "scope": "controller",
+    "v1_representation": "implicit"
+  },
+  "peer_premerge": {
+    "current_mode": "disabled",
+    "current_shards_per_rpc": "all",
+    "disable_environment_variable": "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE",
+    "matches_requested": true,
+    "mode_matches_requested": true,
+    "requested_mode": "disabled",
+    "requested_shards_per_rpc": "all",
+    "scope": "controller",
+    "shards_per_rpc_environment_variable": "QDRANT_ORION_PEER_PREMERGE_SHARDS_PER_RPC",
+    "shards_per_rpc_matches_requested": true
+  },
+  "repository": {
+    "commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+    "dirty": true,
+    "dirty_paths": [
+      "lib/api/src/grpc/conversions.rs",
+      "lib/api/src/grpc/ops.rs",
+      "lib/api/src/grpc/proto/points.proto",
+      "lib/api/src/grpc/qdrant.rs",
+      "lib/api/src/rest/models.rs",
+      "lib/common/common/src/counter/hardware_accumulator.rs",
+      "lib/common/common/src/counter/hardware_counter.rs",
+      "lib/common/common/src/counter/hardware_data.rs",
+      "lib/common/common/src/cpu_utilization.rs",
+      "lib/segment/src/index/hnsw_index/graph_layers.rs",
+      "lib/segment/src/index/hnsw_index/point_scorer.rs",
+      "lib/storage/src/content_manager/toc/mod.rs",
+      "lib/storage/src/content_manager/toc/request_hw_counter.rs",
+      "src/common/metrics.rs",
+      "tests/tools/test_method4_distributed_cluster.py",
+      "tests/tools/test_native_auto_shard_prepare.py",
+      "tests/tools/test_orion_native_runtime_profile.py",
+      "tests/tools/test_qdrant_two_level_routing_experiment.py",
+      "tools/method4_distributed_cluster.py",
+      "tools/native_auto_shard_prepare.py",
+      "tools/orion_native_runtime_profile.py",
+      "tools/qdrant_two_level_routing_experiment.py",
+      "experiments/",
+      "plan/",
+      "results/method4_distributed/",
+      "results/method4_distributed_confirmation/",
+      "results/method4_distributed_smoke/",
+      "results/method4_distributed_submission/claim_e_real_network_bytes_batch50/analysis_20260718_113054/claim_e_host_interface_latency_batches.csv",
+      "results/method4_distributed_submission/claim_h_semantic_audit/",
+      "results/method4_distributed_submission/final_report/semantic_guard/audit_20260718_133325/semantic_query_samples.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/summary.json",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_dynamic_u96_b64_f15/20260718_112806/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/summary.json",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256/20260718_112844/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_screen_batch200/",
+      "results/method4_distributed_submission/method4_distributed_claim_c_fixed_ef_refine_batch200/",
+      "results/method4_distributed_submission/method4_distributed_high_recall_097_confirmation_batch200/",
+      "results/method4_distributed_submission/method4_distributed_high_recall_097_screen_batch200/",
+      "results/method4_distributed_submission/method4_distributed_main_live_smoke_batch200/",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-final-20260718d/",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-peercompact-20260718c/",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_095_ef72/20260718_132821/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_095_ef72/20260718_132821/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_095_ef72/20260718_132821/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_095_ef72/20260718_132821/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_095_ef72/20260718_132821/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_097_ef100/20260718_133012/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_097_ef100/20260718_133012/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_097_ef100/20260718_133012/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_097_ef100/20260718_133012/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/naive_097_ef100/20260718_133012/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_095_u104_b64_f15/20260718_132713/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/orion_097_u144_b88_f20/20260718_132852/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/recall_estimated_ef_sum.png",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/recall_p95.png",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/recall_p99.png",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/recall_qps.png",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/recall_visited_shards.png",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_095_n32_ef180/20260718_132748/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_095_n32_ef180/20260718_132748/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_095_n32_ef180/20260718_132748/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_095_n32_ef180/20260718_132748/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_095_n32_ef180/20260718_132748/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280/20260718_132932/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280/20260718_132932/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280/20260718_132932/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280/20260718_132932/summary.json",
+      "results/method4_distributed_submission/method4_distributed_main_same_recall_confirmation_batch200/main-same-recall-pipelined-preencoded-final-20260718f/simple_seed1_097_n32_ef280/20260718_132932/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/summary.json",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-disabled-20260718a/orion_native_premerge_probe/20260718_113512/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/final_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/final_per_query_metrics.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/physical_execution_trace.json",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/routing_tuning.csv",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/summary.json",
+      "results/method4_distributed_submission/method4_distributed_native_premerge_ab_batch200/native-premerge-enabled-20260718a/orion_native_premerge_probe/20260718_113339/upper_sample_stats.csv",
+      "results/method4_distributed_submission/method4_distributed_simple_seed1_095_sweep_batch200/",
+      "results/method4_distributed_submission/orion_implementation_optimization/",
+      "results/method4_distributed_submission/transport_connection_diagnostic/",
+      "results/method4_distributed_tuning/",
+      "results/native-20260818-scale4-32-r080-095-v1/",
+      "tests/tools/test_c1_protocol.py"
+    ],
+    "image_affecting_dirty_paths": [
+      "experiments/c1/PLAN.md",
+      "experiments/c1/RESULTS.md",
+      "experiments/c1/STATUS.md",
+      "experiments/c1/figures/.gitkeep",
+      "experiments/c1/logs/.gitkeep",
+      "experiments/c1/logs/stage0-live-counter-smoke.json",
+      "experiments/c1/runs/deployment-manifest.json",
+      "experiments/c1/runs/glove-200-angular.dataset.json",
+      "experiments/c1/runs/manifest.jsonl",
+      "experiments/c1/runs/per_query/.gitkeep",
+      "experiments/c1/runs/sift1m.dataset.json",
+      "experiments/c1/runs/summary.csv",
+      "experiments/c1/scripts/c1_benchmark.py",
+      "experiments/c1/scripts/c1_live_counter_smoke.py",
+      "experiments/c1/scripts/c1_protocol.py",
+      "experiments/c1/topology-amd-4node.json",
+      "lib/api/src/grpc/conversions.rs",
+      "lib/api/src/grpc/ops.rs",
+      "lib/api/src/grpc/proto/points.proto",
+      "lib/api/src/grpc/qdrant.rs",
+      "lib/api/src/rest/models.rs",
+      "lib/common/common/src/counter/hardware_accumulator.rs",
+      "lib/common/common/src/counter/hardware_counter.rs",
+      "lib/common/common/src/counter/hardware_data.rs",
+      "lib/common/common/src/cpu_utilization.rs",
+      "lib/segment/src/index/hnsw_index/graph_layers.rs",
+      "lib/segment/src/index/hnsw_index/point_scorer.rs",
+      "lib/storage/src/content_manager/toc/mod.rs",
+      "lib/storage/src/content_manager/toc/request_hw_counter.rs",
+      "plan/C1 Experimental Protocol_ Scale-Out Bottleneck in Scatter-Gather Graph ANN Search.md",
+      "src/common/metrics.rs"
+    ],
+    "image_affecting_tracked_paths": [
+      "lib/api/src/grpc/conversions.rs",
+      "lib/api/src/grpc/ops.rs",
+      "lib/api/src/grpc/proto/points.proto",
+      "lib/api/src/grpc/qdrant.rs",
+      "lib/api/src/rest/models.rs",
+      "lib/common/common/src/counter/hardware_accumulator.rs",
+      "lib/common/common/src/counter/hardware_counter.rs",
+      "lib/common/common/src/counter/hardware_data.rs",
+      "lib/common/common/src/cpu_utilization.rs",
+      "lib/segment/src/index/hnsw_index/graph_layers.rs",
+      "lib/segment/src/index/hnsw_index/point_scorer.rs",
+      "lib/storage/src/content_manager/toc/mod.rs",
+      "lib/storage/src/content_manager/toc/request_hw_counter.rs",
+      "src/common/metrics.rs"
+    ],
+    "image_affecting_untracked_paths": [
+      "experiments/c1/PLAN.md",
+      "experiments/c1/RESULTS.md",
+      "experiments/c1/STATUS.md",
+      "experiments/c1/figures/.gitkeep",
+      "experiments/c1/logs/.gitkeep",
+      "experiments/c1/logs/stage0-live-counter-smoke.json",
+      "experiments/c1/runs/deployment-manifest.json",
+      "experiments/c1/runs/glove-200-angular.dataset.json",
+      "experiments/c1/runs/manifest.jsonl",
+      "experiments/c1/runs/per_query/.gitkeep",
+      "experiments/c1/runs/sift1m.dataset.json",
+      "experiments/c1/runs/summary.csv",
+      "experiments/c1/scripts/c1_benchmark.py",
+      "experiments/c1/scripts/c1_live_counter_smoke.py",
+      "experiments/c1/scripts/c1_protocol.py",
+      "experiments/c1/topology-amd-4node.json",
+      "plan/C1 Experimental Protocol_ Scale-Out Bottleneck in Scatter-Gather Graph ANN Search.md"
+    ],
+    "path": "/users/dry/Orion",
+    "short_commit": "fe61fdac6760",
+    "source_fingerprint": "744d27a7e629cb20d84e394e6fd31f5902b0fee35a68eb28f96e892ce65dc967",
+    "tracked_dirty": true,
+    "tracked_dirty_paths": [
+      "lib/api/src/grpc/conversions.rs",
+      "lib/api/src/grpc/ops.rs",
+      "lib/api/src/grpc/proto/points.proto",
+      "lib/api/src/grpc/qdrant.rs",
+      "lib/api/src/rest/models.rs",
+      "lib/common/common/src/counter/hardware_accumulator.rs",
+      "lib/common/common/src/counter/hardware_counter.rs",
+      "lib/common/common/src/counter/hardware_data.rs",
+      "lib/common/common/src/cpu_utilization.rs",
+      "lib/segment/src/index/hnsw_index/graph_layers.rs",
+      "lib/segment/src/index/hnsw_index/point_scorer.rs",
+      "lib/storage/src/content_manager/toc/mod.rs",
+      "lib/storage/src/content_manager/toc/request_hw_counter.rs",
+      "src/common/metrics.rs",
+      "tests/tools/test_method4_distributed_cluster.py",
+      "tests/tools/test_native_auto_shard_prepare.py",
+      "tests/tools/test_orion_native_runtime_profile.py",
+      "tests/tools/test_qdrant_two_level_routing_experiment.py",
+      "tools/method4_distributed_cluster.py",
+      "tools/native_auto_shard_prepare.py",
+      "tools/orion_native_runtime_profile.py",
+      "tools/qdrant_two_level_routing_experiment.py"
+    ],
+    "untracked_entry_count": 82
+  },
+  "run_id": "c1-20260820-v1",
+  "schema_version": 1,
+  "topology": {
+    "benchmark_client_cpuset": "20-31",
+    "controller": {
+      "cpuset": "0-19",
+      "max_search_threads": 16,
+      "optimizer_cpu_budget": 4,
+      "orion_compact_wire_version": 2,
+      "private_ip": "10.10.1.1",
+      "role": "controller",
+      "ssh_host": "localhost"
+    },
+    "dataset": {
+      "path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+      "url": "https://ann-benchmarks.com/sift-128-euclidean.hdf5"
+    },
+    "hardware_reporting": true,
+    "local_storage_root": "/users/dry/orion-distributed",
+    "ports": {
+      "grpc": 6334,
+      "http": 6333,
+      "p2p": 6335
+    },
+    "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+    "workers": [
+      {
+        "cpuset": "0-19",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.2",
+        "role": "qdrant_shard_1",
+        "ssh_host": "10.10.1.2"
+      },
+      {
+        "cpuset": "0-19",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.3",
+        "role": "qdrant_shard_2",
+        "ssh_host": "10.10.1.3"
+      },
+      {
+        "cpuset": "0-19",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.4",
+        "role": "qdrant_shard_3",
+        "ssh_host": "10.10.1.4"
+      }
+    ]
+  },
+  "worker_uris": [
+    "http://10.10.1.2:6335",
+    "http://10.10.1.3:6335",
+    "http://10.10.1.4:6335"
+  ]
+}

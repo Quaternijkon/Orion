@@ -1,0 +1,12 @@
+{
+  "cleanup_records_created_this_invocation": 8,
+  "configuration_count": 24,
+  "graph_build_seed": 20260821,
+  "max_indexing_threads": 1,
+  "max_optimization_threads": 1,
+  "record_type": "c1_deterministic_e3_matrix",
+  "run_id": "c1-20260821-v2",
+  "source_stem": "stage12-e3-deterministic",
+  "status": "COMPLETE",
+  "timestamp": "2026-08-21T05:57:12Z"
+}

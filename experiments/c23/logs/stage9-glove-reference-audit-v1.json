@@ -1,0 +1,43 @@
+{
+  "checked_files": {
+    "l0_edges": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/reference-run-v2/glove-200-angular/L0_edges.u32le",
+      "sha256": "9521edcf22a8d26bfcff068c03eb95396669bc9b3433f101347a1afd409a86db",
+      "size_bytes": 408275144
+    },
+    "measurement_traces": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/reference-run-v2/glove-200-angular/measurement_traces.jsonl",
+      "sha256": "4bfdec745a79b67d383ac1f60e6df3a9a1f1e0e89a611b1ae4b589a7561965f5",
+      "size_bytes": 8801781484
+    },
+    "node_ids": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/reference-run-v2/glove-200-angular/node_ids.u32le",
+      "sha256": "4bed54bd8d6419bba6a0b113e28e28a9a4efaba3602758719225c53611d06b40",
+      "size_bytes": 4734056
+    },
+    "tuning": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/reference-run-v2/glove-200-angular/tuning.csv",
+      "sha256": "2b8738ce2a886f8839015d336826e577922728087cc9b66e4fefa9ece61e4db2",
+      "size_bytes": 502
+    }
+  },
+  "checks": {
+    "file_checksums": "PASS",
+    "graph_cardinality": "PASS",
+    "production_entry_point_parameters": "PASS",
+    "smallest_common_ef_selection": "PASS",
+    "trace_distance_counts": "PASS",
+    "trace_edge_order": "PASS",
+    "trace_recall_reproduction": "PASS",
+    "trace_schema": "PASS"
+  },
+  "l0_edge_count": 51034393,
+  "manifest_sha256": "d39416c2dbf81bd3b165c3e43f74cb2e3a95cf99b9ed187525f1b76161813d79",
+  "measurement_query_count": 9000,
+  "measurement_recall_at_k": 0.9029999999999897,
+  "point_count": 1183514,
+  "protocol_version": "c23-20260821-v1",
+  "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/reference-run-v2/glove-200-angular",
+  "selected_ef_search": 320,
+  "timestamp": "2026-08-22T00:37:36.353171Z"
+}

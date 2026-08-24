@@ -37,6 +37,7 @@ PEER_PREMERGE_SHARDS_PER_RPC_LABEL = (
 )
 ORION_COMPACT_WIRE_VERSION_ENV = "QDRANT_ORION_COMPACT_WIRE_VERSION"
 ORION_COMPACT_WIRE_VERSION_LABEL = "orion.distributed.compact_wire_version"
+HNSW_GRAPH_BUILD_SEED_ENV = "QDRANT_HNSW_GRAPH_BUILD_SEED"
 ORION_COMPACT_WIRE_MAX_VERSION_LABEL = (
     "org.qdrant.orion.compact_wire.max_version"
 )
@@ -50,7 +51,14 @@ ORION_ARTIFACT_FORMAT_VERSION = 1
 SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
 IMAGE_CANDIDATE_SCHEMA_VERSION = 2
 IMAGE_TRANSITION_SCHEMA_VERSION = 1
-NON_IMAGE_SOURCE_PREFIXES = ("tools/", "tests/", "docs/", "results/")
+NON_IMAGE_SOURCE_PREFIXES = (
+    "tools/",
+    "tests/",
+    "docs/",
+    "results/",
+    "experiments/",
+    "plan/",
+)
 
 
 def normalize_peer_premerge_shards_per_rpc(value: Any) -> str:
@@ -86,6 +94,21 @@ def normalize_orion_compact_wire_version(value: Any) -> str:
     if normalized not in {"1", "2"}:
         raise ValueError("Orion compact wire version must be exactly 1 or 2")
     return normalized
+
+
+def normalize_hnsw_graph_build_seed(value: Any) -> str | None:
+    """Return an optional deterministic HNSW graph-build seed as a u64 string."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("HNSW graph-build seed must be an unsigned 64-bit integer")
+    normalized = str(value).strip()
+    if not re.fullmatch(r"[0-9]+", normalized):
+        raise ValueError("HNSW graph-build seed must be an unsigned 64-bit integer")
+    parsed = int(normalized, 10)
+    if parsed > (2**64 - 1):
+        raise ValueError("HNSW graph-build seed is too large for u64")
+    return str(parsed)
 
 
 def add_peer_premerge_chunk_argument(
@@ -274,6 +297,9 @@ def validate_topology(topology: dict[str, Any]) -> None:
         raise ValueError("every node requires an explicit cpuset")
     if topology.get("benchmark_client_cpuset") == controller.get("cpuset"):
         raise ValueError("benchmark client and controller cpusets must differ")
+    if not isinstance(topology.get("hardware_reporting", False), bool):
+        raise ValueError("hardware_reporting must be a boolean when provided")
+    normalize_hnsw_graph_build_seed(topology.get("hnsw_graph_build_seed"))
     normalize_orion_compact_wire_version(
         controller.get(
             "orion_compact_wire_version", DEFAULT_ORION_COMPACT_WIRE_VERSION
@@ -1139,6 +1165,15 @@ def docker_run_command(
             f"QDRANT__STORAGE__PERFORMANCE__OPTIMIZER_CPU_BUDGET={node['optimizer_cpu_budget']}",
         ]
     )
+    if topology.get("hardware_reporting", False):
+        command.extend(["-e", "QDRANT__SERVICE__HARDWARE_REPORTING=true"])
+    hnsw_graph_build_seed = normalize_hnsw_graph_build_seed(
+        topology.get("hnsw_graph_build_seed")
+    )
+    if hnsw_graph_build_seed is not None:
+        command.extend(
+            ["-e", f"{HNSW_GRAPH_BUILD_SEED_ENV}={hnsw_graph_build_seed}"]
+        )
     if role == "controller" and disable_peer_premerge:
         command.extend(["-e", f"{PEER_PREMERGE_DISABLE_ENV}=1"])
     if role == "controller":
@@ -2818,6 +2853,13 @@ def verify_peer_premerge_transition_identity(
             node["optimizer_cpu_budget"]
         ),
     }
+    if topology.get("hardware_reporting", False):
+        expected_environment["QDRANT__SERVICE__HARDWARE_REPORTING"] = "true"
+    hnsw_graph_build_seed = normalize_hnsw_graph_build_seed(
+        topology.get("hnsw_graph_build_seed")
+    )
+    if hnsw_graph_build_seed is not None:
+        expected_environment[HNSW_GRAPH_BUILD_SEED_ENV] = hnsw_graph_build_seed
     actual_environment = inspected_environment(inspected)
     for key, expected_value in expected_environment.items():
         if actual_environment.get(key) != expected_value:
@@ -3524,6 +3566,9 @@ def topology_runtime_identity(topology: dict[str, Any]) -> dict[str, Any]:
         ],
         "ports": dict(topology.get("ports") or {}),
         "local_storage_root": str(topology.get("local_storage_root") or ""),
+        "hnsw_graph_build_seed": normalize_hnsw_graph_build_seed(
+            topology.get("hnsw_graph_build_seed")
+        ),
     }
 
 

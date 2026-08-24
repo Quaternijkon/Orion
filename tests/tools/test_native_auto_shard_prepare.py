@@ -180,6 +180,16 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
 
     assert module.validate_faithful_orion_build_parameters(parameters, artifact) == 100
 
+    scaled_parameters = dict(parameters, initial_num_shards=13)
+    assert (
+        module.validate_faithful_orion_build_parameters(
+            scaled_parameters,
+            artifact,
+            allow_scaling_initial_num_shards=True,
+        )
+        == 100
+    )
+
     invalid_attachment = dict(parameters, attachment_search_ef=99)
     with pytest.raises(RuntimeError, match="attachment_search_ef must be 100"):
         module.validate_faithful_orion_build_parameters(
@@ -438,7 +448,11 @@ def test_routed_prepare_runs_importer_and_matching_installer(
         "checksums": {"generation-7.json": "a" * 64},
     }
     layout["artifact"] = {"layout_sha256": "b" * 64}
-    monkeypatch.setattr(module, "load_routed_layout", lambda *_args: layout)
+    monkeypatch.setattr(
+        module,
+        "load_routed_layout",
+        lambda *_args, **_kwargs: layout,
+    )
     monkeypatch.setattr(module, "optional_collection_info", lambda *_args: None)
     policy = {
         "type": method,
@@ -607,7 +621,11 @@ def test_existing_partial_routed_collection_can_resume_and_converge_placement(
         "checksums": {},
     }
     layout["artifact"] = {"layout_sha256": "e" * 64}
-    monkeypatch.setattr(module, "load_routed_layout", lambda *_args: layout)
+    monkeypatch.setattr(
+        module,
+        "load_routed_layout",
+        lambda *_args, **_kwargs: layout,
+    )
     provenance = module.build_provenance_metadata(
         method="orion",
         schema=layout["vector_schema"],

@@ -1,0 +1,156 @@
+{
+  "authoritative_e2_e4_rerun_complete": false,
+  "builds": [
+    {
+      "build_number": 1,
+      "collection_info": {
+        "config": {
+          "hnsw_config": {
+            "ef_construct": 200,
+            "full_scan_threshold": 10,
+            "m": 32,
+            "max_indexing_threads": 1,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "default_segment_number": 1,
+            "deleted_threshold": 0.2,
+            "flush_interval_sec": 1,
+            "indexing_threshold": 10,
+            "max_optimization_threads": 1,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "prevent_unoptimized": null,
+            "vacuum_min_vector_number": 1000
+          },
+          "params": {
+            "on_disk_payload": true,
+            "replication_factor": 1,
+            "shard_number": 1,
+            "vectors": {
+              "distance": "Euclid",
+              "size": 32
+            },
+            "write_consistency_factor": 1
+          },
+          "quantization_config": null,
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_retain_closed": 1,
+            "wal_segments_ahead": 0
+          }
+        },
+        "indexed_vectors_count": 10000,
+        "optimizer_status": "ok",
+        "payload_schema": {},
+        "points_count": 10000,
+        "segments_count": 2,
+        "status": "green",
+        "update_queue": {
+          "length": 0
+        }
+      },
+      "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+      "graph_files": [
+        {
+          "filename": "graph.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage/collections/c1_section31_deterministic_hnsw/0/segments/680e3da1-7ccb-428a-9e93-8eba24eb3147/vector_index/graph.bin",
+          "sha256": "a85902ea8e2ea03e36e0f761bda674083a57ddc1d68a4b75f69337990ac09955",
+          "size_bytes": 15060
+        },
+        {
+          "filename": "links_compressed.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage/collections/c1_section31_deterministic_hnsw/0/segments/680e3da1-7ccb-428a-9e93-8eba24eb3147/vector_index/links_compressed.bin",
+          "sha256": "2eac270993c01c09a0cd0034b1ca130fde7949dd370a4a585829af62676dac24",
+          "size_bytes": 538076
+        }
+      ],
+      "retained_storage": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-1/storage"
+    },
+    {
+      "build_number": 2,
+      "collection_info": {
+        "config": {
+          "hnsw_config": {
+            "ef_construct": 200,
+            "full_scan_threshold": 10,
+            "m": 32,
+            "max_indexing_threads": 1,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "default_segment_number": 1,
+            "deleted_threshold": 0.2,
+            "flush_interval_sec": 1,
+            "indexing_threshold": 10,
+            "max_optimization_threads": 1,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "prevent_unoptimized": null,
+            "vacuum_min_vector_number": 1000
+          },
+          "params": {
+            "on_disk_payload": true,
+            "replication_factor": 1,
+            "shard_number": 1,
+            "vectors": {
+              "distance": "Euclid",
+              "size": 32
+            },
+            "write_consistency_factor": 1
+          },
+          "quantization_config": null,
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_retain_closed": 1,
+            "wal_segments_ahead": 0
+          }
+        },
+        "indexed_vectors_count": 10000,
+        "optimizer_status": "ok",
+        "payload_schema": {},
+        "points_count": 10000,
+        "segments_count": 2,
+        "status": "green",
+        "update_queue": {
+          "length": 0
+        }
+      },
+      "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+      "graph_files": [
+        {
+          "filename": "graph.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage/collections/c1_section31_deterministic_hnsw/0/segments/24db9945-8178-4132-9585-97675c97acc0/vector_index/graph.bin",
+          "sha256": "a85902ea8e2ea03e36e0f761bda674083a57ddc1d68a4b75f69337990ac09955",
+          "size_bytes": 15060
+        },
+        {
+          "filename": "links_compressed.bin",
+          "path": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage/collections/c1_section31_deterministic_hnsw/0/segments/24db9945-8178-4132-9585-97675c97acc0/vector_index/links_compressed.bin",
+          "sha256": "2eac270993c01c09a0cd0034b1ca130fde7949dd370a4a585829af62676dac24",
+          "size_bytes": 538076
+        }
+      ],
+      "retained_storage": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z/build-2/storage"
+    }
+  ],
+  "deterministic_construction_verified": true,
+  "dimension": 32,
+  "distance_metric": "Euclid",
+  "graph_build_seed": 20260821,
+  "graph_content_sha256": "4ac14807fc025d64a58ba9403deff3d47db2a9c9b3c220be76de40d5f05668b8",
+  "hnsw_ef_construction": 200,
+  "hnsw_m": 32,
+  "identical_build_count": 2,
+  "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+  "image_tag": "orion-c1:20260821-deterministic-seed",
+  "max_indexing_threads": 1,
+  "max_optimization_threads": 1,
+  "point_count": 10000,
+  "record_type": "section31_deterministic_build_proof",
+  "retained_build_root": "/proj/intelisys-PG0/exp/orion-distributed/c1-20260821-v2/section31-builds/20260821T023129Z",
+  "source_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "status": "VERIFIED",
+  "timestamp": "2026-08-21T02:31:47Z",
+  "vector_generation_seed": 20260821
+}

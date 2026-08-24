@@ -1,0 +1,1057 @@
+{
+  "version": 1,
+  "source_root": "/users/dry/Orion/experiments/c1/figures",
+  "output_root": "/users/dry/Orion/experiments/c1/figures/annotated-zh",
+  "pdf_count": 131,
+  "footer_height_points": 250.0,
+  "entries": [
+    {
+      "source": "c1_combined_motivation.pdf",
+      "annotated": "c1_combined_motivation.pdf",
+      "family": "combined_motivation",
+      "pages": 1,
+      "source_sha256": "a704ae26a92b08e309d8f162e379d6cfcb1d74e23fd17b256f6748e3d0f65cc5",
+      "annotated_sha256": "477f28500707ea8913f8f41877082c8f24e89c8e9971079be7a2c2a1fc696b4b"
+    },
+    {
+      "source": "c1_fig1_physical_scaleout.pdf",
+      "annotated": "c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+      "annotated_sha256": "54e71b22e99ba58c86f452e48b67a48eea66efed0c5e98e4c38dd38f37275e8c"
+    },
+    {
+      "source": "c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97d3f43360c6d5e0ae82d68c22158df2d34b57064f8821742800952a58895811",
+      "annotated_sha256": "dbe18eaca5c6cb42a70dfbc83863b7a4916f7d0ffb602aac8bf0b556230b8d25"
+    },
+    {
+      "source": "c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+      "annotated_sha256": "c3715c34c4d05f7a60b76270ef60762358d5773eb819da9a02164afbd05b12d7"
+    },
+    {
+      "source": "c1_fig4_local_search_work.pdf",
+      "annotated": "c1_fig4_local_search_work.pdf",
+      "family": "local_search_work",
+      "pages": 1,
+      "source_sha256": "cc6fd1574ac124137e6214ffb081f59e43d83560946d229d4d61837fe82e360d",
+      "annotated_sha256": "d11e76f0e138c8b0a726d37bd68e81c9b6fb94d9eccafd916285e5e3e893e192"
+    },
+    {
+      "source": "c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "1607299ae4c7ce0b9c4533cc25d8ad7f298601be57188edca4ee8ad1b1d74551",
+      "annotated_sha256": "4b151135615eabd5548da55b1717c8b6a5f5b1dc1bad7a4011775fe30606b87a"
+    },
+    {
+      "source": "c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "7d10511667638b9abb89aa5528c4476171c14885c9099b70530304110fb104f8",
+      "annotated_sha256": "93a21c02806e6b08433def623ded3d94caf05d831b2a44879dc019d035ed0c32"
+    },
+    {
+      "source": "fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "1a47a33d7e5bc26c897a824ec14dccce62c2e5f8002e683f1238da9c79ed8ba0",
+      "annotated_sha256": "7c7f8f1113447cc34a1b87399b54c8c060dcc040d23551a98d5f959796b278eb"
+    },
+    {
+      "source": "fig_c1_aggregate_work.pdf",
+      "annotated": "fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "1607299ae4c7ce0b9c4533cc25d8ad7f298601be57188edca4ee8ad1b1d74551",
+      "annotated_sha256": "9b00cdd6d002d86049d531cb414bebb1e844ffbb56124ff7dbff4e17f3c9ef35"
+    },
+    {
+      "source": "fig_c1_fanout_vs_shards.pdf",
+      "annotated": "fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97d3f43360c6d5e0ae82d68c22158df2d34b57064f8821742800952a58895811",
+      "annotated_sha256": "77094016ccfa3fe1fc5ae64c686ba44a313367c8fbab6cd933de0de1b5ee457e"
+    },
+    {
+      "source": "fig_c1_local_cpu_time.pdf",
+      "annotated": "fig_c1_local_cpu_time.pdf",
+      "family": "local_cpu_time",
+      "pages": 1,
+      "source_sha256": "8687f69ebd919280d138548e7402deaf1af12c4dd06928108faa96f7806939d3",
+      "annotated_sha256": "147b6be2d71f4b08464aff77692fd958c17352e86abfe56ebf8b897d76ada695"
+    },
+    {
+      "source": "fig_c1_local_distance_computations.pdf",
+      "annotated": "fig_c1_local_distance_computations.pdf",
+      "family": "local_distance_computations",
+      "pages": 1,
+      "source_sha256": "23c5e0b62676e6ac1633803bac85f4cc1da20bc9b1aa4f03d227feab59eae6d7",
+      "annotated_sha256": "f9464ff31e80a09cfd7e4491e0162385d0954723a03a1e79606c2fdeff3230bd"
+    },
+    {
+      "source": "fig_c1_local_nodes_visited.pdf",
+      "annotated": "fig_c1_local_nodes_visited.pdf",
+      "family": "local_nodes_visited",
+      "pages": 1,
+      "source_sha256": "2e2a31db9d72d65cd3831bd8603e6ebce36c845f8c293a95c7cca6caec6d54e1",
+      "annotated_sha256": "121d460255ca952f56d1af10547e803a970776cf68e0a96cf6726d144a8ebf32"
+    },
+    {
+      "source": "fig_c1_local_search_work.pdf",
+      "annotated": "fig_c1_local_search_work.pdf",
+      "family": "local_search_work",
+      "pages": 1,
+      "source_sha256": "cc6fd1574ac124137e6214ffb081f59e43d83560946d229d4d61837fe82e360d",
+      "annotated_sha256": "884951e075efb03f4b93e93cb7c5bff67e3f2dc0b58757c52c8292a2d59befd5"
+    },
+    {
+      "source": "fig_c1_model_vs_observed.pdf",
+      "annotated": "fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "e1ed2b21c92b58da7cb26a9ef4ddce1e5d47cc24bd3b45b7bba15c7a513e1d5f",
+      "annotated_sha256": "fe727c8df387a0341ef9f9d6ac4d26252e1b454a622906b0517dbe80d07d3b84"
+    },
+    {
+      "source": "fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+      "annotated_sha256": "4ffc3a7a9a4d7152731618a2e4a1921c891182a853d2ea9ce44772fae97ca979"
+    },
+    {
+      "source": "fig_c1_physical_scaleout.pdf",
+      "annotated": "fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+      "annotated_sha256": "ca71af47334e23b0b9ddac7afea545c98c2436b76a18431a991b57ebbdb84de5"
+    },
+    {
+      "source": "fig_c1_projected_scaling.pdf",
+      "annotated": "fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "7d10511667638b9abb89aa5528c4476171c14885c9099b70530304110fb104f8",
+      "annotated_sha256": "5042fae3ffceeb40abd3409ed7f5700e6df2a318464c699c0d9baaf98403fca9"
+    },
+    {
+      "source": "fig_c1_scaling_efficiency.pdf",
+      "annotated": "fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "b39e3b81955644a0e1151e6b0fd216676d272938ebb5d48fc440abd02dbd6d35",
+      "annotated_sha256": "466c6734143f29d67d6e5aac081f7e6e65ae4e7fc390e3d65cfcc29cd15cb919"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_combined_motivation.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_combined_motivation.pdf",
+      "family": "combined_motivation",
+      "pages": 1,
+      "source_sha256": "40dd091af9cf6e8e79c34cdaa2c8055a112f6d8a382881d77ae13728fdee3583",
+      "annotated_sha256": "43d9e2c69885502299858502f141de0ebd544194d2357aa5e616b3a6650f4c1f"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+      "annotated_sha256": "351cc3dcc07662ec178740806fe28bc59c15d49e2e90f8e58f62409e4624af2c"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "44bea8a654e209143aa8ba186f6757e4df153dcf4d81a4168a3571d9ba2cecfa",
+      "annotated_sha256": "e56cc6e17117fd3d558e75160bafe85e111494e21df89bc18b31700a513e4511"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+      "annotated_sha256": "d20e6bd9badc9d58fe4e1c18aaf07e5e1daccc869aef07a61e139a8269d07c77"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig4_local_search_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig4_local_search_work.pdf",
+      "family": "local_search_work",
+      "pages": 1,
+      "source_sha256": "f15643a31906f7b763461251a76b5333956588b49ea196b526cc930d2129037c",
+      "annotated_sha256": "aad0b83437f235cb376dfd437802dffcc581240f1842501fc6e216fc67b7f443"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "bcbda83f9ac6630f4ac10e5b0f3e8e4eb41994cb868793a81c9bd66d0bece451",
+      "annotated_sha256": "4427f01fd53d1a41d8a2c13ed52bee4906d960fc70a3176ab0d8f7b1cbffed54"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "294c78ebc26e66be1452ee4c3c5b5e7fd8cc0b57691a55fa65a31dbdb5244995",
+      "annotated_sha256": "52689c1007aa8f54cb63ae0f84eca51285fa56f827e2ceec006bceb1e80d984e"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "60d3c89095b0e513616d61cd841c9c84b6dd8d81fb493b0d88fbfbefea58e319",
+      "annotated_sha256": "14ac91c33aeb826c10b3f5d7cd24c8727b5148298c7819e97f9166838debaf58"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "bcbda83f9ac6630f4ac10e5b0f3e8e4eb41994cb868793a81c9bd66d0bece451",
+      "annotated_sha256": "51c242dc1e23910175ddba90fbac6d2299cfcc34cb63a002de9c3b9632f0d21a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_fanout_vs_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "44bea8a654e209143aa8ba186f6757e4df153dcf4d81a4168a3571d9ba2cecfa",
+      "annotated_sha256": "19b12edf0bd96c48a3a3de5f234e7f12236e6d6a1e9fbcb77df5d190c6ae50a8"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_local_cpu_time.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_local_cpu_time.pdf",
+      "family": "local_cpu_time",
+      "pages": 1,
+      "source_sha256": "30873f6c089de00c3c27246e44ae924c2405470f7b1184c1bc6d1a43d4f0bab7",
+      "annotated_sha256": "31fe65a066ab3e53579f883872b2565bf2304a57ddf0a34c4b76430bdc123886"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_local_distance_computations.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_local_distance_computations.pdf",
+      "family": "local_distance_computations",
+      "pages": 1,
+      "source_sha256": "b4abe016115ae4a0c05139e3807622bad62deb335a25f24ac1ff18cd52190f85",
+      "annotated_sha256": "11430fa7737ec31f8e7c85ce3204faa43556caa1284732bec901f9c093221c56"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_local_nodes_visited.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_local_nodes_visited.pdf",
+      "family": "local_nodes_visited",
+      "pages": 1,
+      "source_sha256": "f2b8cbf36cdd172b275952f6322f631809b228caae1c58a17c548a52ffba5c68",
+      "annotated_sha256": "2577e978d427560f5308f53299637684149d4d40ad5c63fdbcfa03651b0c4b48"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_local_search_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_local_search_work.pdf",
+      "family": "local_search_work",
+      "pages": 1,
+      "source_sha256": "f15643a31906f7b763461251a76b5333956588b49ea196b526cc930d2129037c",
+      "annotated_sha256": "5e1163868cd199f61b8d00a247fc0163260edaa62ab21a84d3370ddd1f440716"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "02ac72ee4b45694fd9230ef0d39426c5ff01418da566e8ae209d363ee795c3ee",
+      "annotated_sha256": "cded4fcadba42f27bd5135cf90bec9c9f88dd6ae8ddf1dba83442021279f71d5"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+      "annotated_sha256": "624a805ac3bf9846668a11bd28df278450fe74ea57300cedcd13e0956a4adb64"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+      "annotated_sha256": "a18e5a4f693b4e268e87c0113f487f45f8ce3ef9cc536e9f5b6641987564cfb7"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "294c78ebc26e66be1452ee4c3c5b5e7fd8cc0b57691a55fa65a31dbdb5244995",
+      "annotated_sha256": "59449a5f791e3619ae5571be5cbad4ed3ee1cb23f4cf01bf852f956c29fd51b7"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/fig_c1_scaling_efficiency.pdf",
+      "annotated": "history/stage11-c1-report-repair/fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "b39e3b81955644a0e1151e6b0fd216676d272938ebb5d48fc440abd02dbd6d35",
+      "annotated_sha256": "2fe005a9d4cfacb750803ac2d3db68156840ef83aef09dcfd220b77b85d8cc1a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-glove-200-angular-c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-glove-200-angular-c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+      "annotated_sha256": "c76b3eef1b51c99cff15ac6ec1da90c3ac98cb4633eb5ecb65845204dc7b3a13"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-glove-200-angular-c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-glove-200-angular-c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "c42c48ba7fbaea0fa8e41aec03c2a883219df4a929c5ce9480f6ea4eb8ec6c9a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "47cc6c38f55c9fac0832692c19d0e367d105bae2294f241fc0a3002690dc6278",
+      "annotated_sha256": "5e607a9e8d989c65bc004e7447dda105e01b7e9fc5ece87d34cc7fe613464dbf"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_fanout_vs_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+      "annotated_sha256": "b1a7f25b504d7f27b4fd85d084e1127bfb6516d04902655b2dc44a0e07c0d10f"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-glove-200-angular-fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "ba2a5328bf3f8e92a58a693387e85a2a7cbdaf0076bf88c1747a6b6cd8c08380"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-sift1m-c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-sift1m-c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "a875e4e97eb404ccda6e1f4f09da236da227d859b4dfe155984a781ffbd2d34b"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-sift1m-c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-sift1m-c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "e89cb8c346804b5bedb58ca572d923fea75214699daacdf23ca6612dacf9c0cd"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "5dec6fee427c35227358704553814909cfd620245754c36f7befe6b676a0634b",
+      "annotated_sha256": "b2ceeb8d5d779ed5b4102108d0d61461f18ea1cb376b88552ed6138e1164d439"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_fanout_vs_shards.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "d54608b0bb1ecd5fe2716b65a13423bca5da7aebb113f77d0b1651713f183c3a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage3-sift1m-fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "4cfdb2fc85acf84fe0111e34954af508449d090461d5d219fc8526fd5fc24a22"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage4-original-c1_fig1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage4-original-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+      "annotated_sha256": "02e6e69965716b446dea5d5881b461503363fd6456fc8f367c30f3debde60485"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage4-original-fig_c1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage4-original-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+      "annotated_sha256": "0f3bc91189d175003d8a267a0d15e555903e79ea46a334c62bb0cb301f8ad892"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage4-original-fig_c1_scaling_efficiency.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage4-original-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "4150d25392aad8dcbc060d38356fe5cd98648f0f55d6f52178728e00f09be9ba",
+      "annotated_sha256": "8991f417c7c172c9f3568544a0e6025164f2c6ca81e21099b7c1a7f0babad443"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage5-original-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage5-original-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "f4e382e5712158b97ce65095b17a539146915b4058c870d89ae3a24b6d1854ab"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage5-original-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage5-original-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+      "annotated_sha256": "5313515893cf0e048c512c94b29b74a256fc3c3f1cd018caedae300c1ecbedfd"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage5-original-fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage5-original-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "3ca300411ed18ef43fd98b412b9d7bda4a0e6f9f24f6adb2556d6729e94c8d73"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage5-original-fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage5-original-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "5a2c99732aa33658ead971cf5e40270dee3066c37dc2264402bd384967299b6e",
+      "annotated_sha256": "8f9f94a7692312ab7a0e9ea2a08c61c69be2763c98b86da7649fd94371d9487e"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage5-original-fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage5-original-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+      "annotated_sha256": "972ab2d6ba2055160c1300a38fcd03008acbbb7e294f182ee70d1bd2d014d7ff"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage6-corrected-sift1m-c1_fig1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage6-corrected-sift1m-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+      "annotated_sha256": "4a53ca772db294a013f774d3088add20ddc02c36c54b956e7e90c3fba92b4571"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage6-corrected-sift1m-fig_c1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage6-corrected-sift1m-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+      "annotated_sha256": "d4fd0875b0aee112e512fd0197ea62c5ab78f00b4be84455af43a845570bc7cd"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage6-corrected-sift1m-fig_c1_scaling_efficiency.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage6-corrected-sift1m-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "fd954038e8ce02aa372a1fa0b892de2767ff901de75675a4f9171ee3eb3647de",
+      "annotated_sha256": "0c096b6954216422d0355cbd95534dd384329dd97dbb06cd7ee6e0694041fecf"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage7-corrected-sift1m-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage7-corrected-sift1m-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "60e66a56387adf0b855bb2cc88e175d3e7063a7b4282f246d3e19fb20f18e745"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage7-corrected-sift1m-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage7-corrected-sift1m-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "80d577b71e56ad861e8fabb0b19cb8e9edfe03346b44ccdd4d07bd376221d923",
+      "annotated_sha256": "8c5549c1f5b4fda7cfc6c2bb7d3a521f20c4dae4276e990441b277b00428e81c"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "e79110109b6559557a4acd22e73322b0abf30effbd1cfb44d12848567f07fa5d"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "5a2c99732aa33658ead971cf5e40270dee3066c37dc2264402bd384967299b6e",
+      "annotated_sha256": "27c21ebea9afc3a9c1426ef7b7150c52817e6e57054c7bfcfc5178408c585e4c"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage7-corrected-sift1m-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "80d577b71e56ad861e8fabb0b19cb8e9edfe03346b44ccdd4d07bd376221d923",
+      "annotated_sha256": "ab7a1a501c52e63517b591679dcd38c7ae7d4c4e4a9932a6ecf9237b92969b21"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-c1_fig1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+      "annotated_sha256": "23a9da010100e4e0284fc0209474e4d1ea8243d7e08a44d4402c9de6ed681271"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-fig_c1_physical_scaleout.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+      "annotated_sha256": "1ae65c9a14be4dfc206e1d022b964553b9a5bf3e6d5194a9a6d075a6777ed10d"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-fig_c1_scaling_efficiency.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage8-corrected-glove-200-angular-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "a43eef2b3191ecfe42170db5913529dcf1c0fafb189a6648e8fa6764e2475367",
+      "annotated_sha256": "0dd486b0fc90cbe540ba2401926651fa6b0c936f112e3eae161558544fe30a84"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage9-glove-200-angular-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage9-glove-200-angular-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "07e00bcaeee9c2cd43aa7e3470ee7f5ad319a087491abf887d8cd0449df276ab",
+      "annotated_sha256": "a1e0d30d35b4ec8f7c93187ee571dbb124819cf1640f6d54eb4d0a8708932e6e"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage9-glove-200-angular-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage9-glove-200-angular-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "770de40a928bda93085f2192d44592de69cd049bde165f3652066ca08c3391e6",
+      "annotated_sha256": "651fb4dbfa9095d583cc900a012b4b7fc4db4cb127f77cab80787975408aa97a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "07e00bcaeee9c2cd43aa7e3470ee7f5ad319a087491abf887d8cd0449df276ab",
+      "annotated_sha256": "b1dbda7845e75729e36c331292122319d5b587d1a0885ddcef1ef9be455fc42a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "43fa12872914db3a24ae72d9b4c79d86691994cde6d329453bcec1a3c3d67bf1",
+      "annotated_sha256": "fa48e11e62ce994b2f32c840ad175f3237b5df915432aa1304bb73069dd8a43a"
+    },
+    {
+      "source": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage11-c1-report-repair/stage9-glove-200-angular-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "770de40a928bda93085f2192d44592de69cd049bde165f3652066ca08c3391e6",
+      "annotated_sha256": "94d31275d05f01e334f7a5757aedbfa060ec3b8b5c53f08eb1f7d22ebc988218"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-glove-200-angular/c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "history/stage12-e2-deterministic-glove-200-angular/c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "face7616b613dbeddf6949f4ae120fc4c3150ec97cd9d7aa8d7c8a9fdfd71c0d",
+      "annotated_sha256": "65f78feab0f384911b1c9c790f3755d50cbeba8091822aea2f216ae5db6ade36"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-glove-200-angular/c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-glove-200-angular/c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "6a8470a30e6f2d6faf1b8e3fe6ad15038700cbc07801bf464665de560262407c"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "b33e5c633c30ae88eba9997b1dd9744aa383b7de61d2a53a705172676bec5f01",
+      "annotated_sha256": "341ec49191beae2a985aeed1f6a58052be58a9c8c56f5af3aeb9b10e2e9f938a"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_fanout_vs_shards.pdf",
+      "annotated": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "face7616b613dbeddf6949f4ae120fc4c3150ec97cd9d7aa8d7c8a9fdfd71c0d",
+      "annotated_sha256": "d38e604592cd84c1ae865a6289c235f48c1d9d9fda87cc0f9bac744714b74fbb"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-glove-200-angular/fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "fc0c7a4fdce27cbdad1e2cf52b0461830e469fc5999e75fc174aa07fdaf913ee"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-sift1m/c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "history/stage12-e2-deterministic-sift1m/c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "71a644cde5fe346fe8f4353e1b26529e94b612af859b61bede33226372cd1f30"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-sift1m/c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-sift1m/c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "c189f7267c026fe1646080079953d01e2e28248b75acbff27ba01a7b6996f3cb"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-sift1m/fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-sift1m/fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "5dec6fee427c35227358704553814909cfd620245754c36f7befe6b676a0634b",
+      "annotated_sha256": "204f2d091ad14c77e446c39a46c0a3ff266518100109595f8b9bec2a55160d52"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-sift1m/fig_c1_fanout_vs_shards.pdf",
+      "annotated": "history/stage12-e2-deterministic-sift1m/fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "99f496c7f6cefa40b8c03941cf4a30009e48128c28275b03bdb54722c95e3b38"
+    },
+    {
+      "source": "history/stage12-e2-deterministic-sift1m/fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "history/stage12-e2-deterministic-sift1m/fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "d867a2d44cd057320a416cefe4b12873d8bb59f1889fa5730982af9de1295e6e"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-glove-200-angular/c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage12-e4-deterministic-glove-200-angular/c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "6f5d930495892c0967367d177901abf28a5a777635b3759617afd2b50258770c",
+      "annotated_sha256": "d3c12306ab7e7443a6b5b71f574d226e84fa846034ce6919f46dbad1c5ba3df3"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-glove-200-angular/c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-glove-200-angular/c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "f93be9b655cea51cf5adb100160c52dd09c6d33c87bcf3e10591a7fb8cdc3b3c",
+      "annotated_sha256": "5b6e4da14c7304f2237a6d56c42be41c1bf54185708fb90cfb429ebfcf142452"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "6f5d930495892c0967367d177901abf28a5a777635b3759617afd2b50258770c",
+      "annotated_sha256": "61e369b35870957198a7c5c19ac6e1f53cc51789e30ef8b030cc0d640c462504"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "1b8da413d1efee366a186af9e00d4863e6d94979804f598e0fe9f3c95af07061",
+      "annotated_sha256": "cccb8291cdbd9b0827c9277f811c2b2b992341eedb51e209e5f1c9c0a0f6c7a7"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-glove-200-angular/fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "f93be9b655cea51cf5adb100160c52dd09c6d33c87bcf3e10591a7fb8cdc3b3c",
+      "annotated_sha256": "7ae888a5fe64670c2af9a5751cc274c8e35d8308c9f25b887f8c7b6e70c1f3d0"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-final/c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-final/c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+      "annotated_sha256": "bdc26fc787fbe0f45e050cc291464b0a92834253b82c5ebd03f84accd0dbbd88"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-final/c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-final/c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+      "annotated_sha256": "70e4ed28fa43d59e6d9ad0092331dcc84575e90d8ebe485886bed0c5c424d5c2"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-final/fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-final/fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+      "annotated_sha256": "69db032186b6a014d2cee91cbf36109ef4323e80c2cb6dc34a514ce852e62cb0"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-final/fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-final/fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "4edc33c98084d8b5bd11b6b5f1779846031fab00aecf2625636ca52acdb2f4ff",
+      "annotated_sha256": "01bb6a77259502fc4edd31174afec6ce244651e65017530b5a4f1182571d9e59"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-final/fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-final/fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+      "annotated_sha256": "b79c240024b88dba784cbcb4d696b522dc350979e2db4691fef030b68ea1ea9b"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-preliminary/c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-preliminary/c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+      "annotated_sha256": "e43a5cd4023779d8bc5a4c2a622d22d81c805987d0b349b86f5a9215b7c3529f"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-preliminary/c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-preliminary/c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+      "annotated_sha256": "5062c1a321817caffe86155efa0738287f17361e7a7c57cc3d9d5bcbbc550e1f"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_aggregate_work.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "a0055001c3a9b256ccbc8904d46cd96ea2f843d879321d7215e5c050c12b664d",
+      "annotated_sha256": "6495210d94a286785bb0989e3f599bea6ffb9fe08b1395bcac43502f3cda3a14"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_model_vs_observed.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "4edc33c98084d8b5bd11b6b5f1779846031fab00aecf2625636ca52acdb2f4ff",
+      "annotated_sha256": "e9b94867e997d262ae01a446af7bfae0122c03ae491561e8c3fee9b7d7522aaf"
+    },
+    {
+      "source": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_projected_scaling.pdf",
+      "annotated": "history/stage12-e4-deterministic-sift1m-preliminary/fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "ffabfb524b415423c9ae5840d1065017b49a27a28bb99f918f5a84af552700b2",
+      "annotated_sha256": "27635c019b1b1180e518b11edcb7ec91ebd9f430016eb5350d17b7646b53bee7"
+    },
+    {
+      "source": "stage3-glove-200-angular-c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "stage3-glove-200-angular-c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+      "annotated_sha256": "a4553768008df1307779007db801d589eebc31dd7f1d6ce576049863ac3bfb57"
+    },
+    {
+      "source": "stage3-glove-200-angular-c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "stage3-glove-200-angular-c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "a7e8e4ea5894ffa463f12521437244cc41bb29ca6f316ee7eff2da7c00b9d186"
+    },
+    {
+      "source": "stage3-glove-200-angular-fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "stage3-glove-200-angular-fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "47cc6c38f55c9fac0832692c19d0e367d105bae2294f241fc0a3002690dc6278",
+      "annotated_sha256": "e9afdc0b84acaad203bb269cebd7849ccd100d538e890e39b4740f3888094d68"
+    },
+    {
+      "source": "stage3-glove-200-angular-fig_c1_fanout_vs_shards.pdf",
+      "annotated": "stage3-glove-200-angular-fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "7019463fcd578cc020fea4e9c368ed72afa35495f86b9c9ba01c9f50b3ba3992",
+      "annotated_sha256": "60a1b88c8896a07846ecab7a36d1f2fd3edc51207da96281e0889d2e3745021a"
+    },
+    {
+      "source": "stage3-glove-200-angular-fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "stage3-glove-200-angular-fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "977a80ab22943f122c2d9876838f375486efa1fc0cecf6a9ab08572edcdde804",
+      "annotated_sha256": "32e7e12e0fac00a1454aac67a9e842347edbd8b6021938f459f8a83725ae439b"
+    },
+    {
+      "source": "stage3-sift1m-c1_fig2_fanout_vs_logical_shards.pdf",
+      "annotated": "stage3-sift1m-c1_fig2_fanout_vs_logical_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "c11513cacbe0b3978ad707d1198803567c89b712e8e7bfa8857cad6674f79ebf"
+    },
+    {
+      "source": "stage3-sift1m-c1_fig3_required_fanout_cdf.pdf",
+      "annotated": "stage3-sift1m-c1_fig3_required_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "9afa13c313cdf44f94cd48a8ceecf31580b84c344c57537f3f9377477002cb8c"
+    },
+    {
+      "source": "stage3-sift1m-fig_c1_actual_fanout_cdf.pdf",
+      "annotated": "stage3-sift1m-fig_c1_actual_fanout_cdf.pdf",
+      "family": "actual_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "5dec6fee427c35227358704553814909cfd620245754c36f7befe6b676a0634b",
+      "annotated_sha256": "0de9f775b9bf5677fada83d2dbb7419afd306c6c0817ae43d91e66aae1bae3f8"
+    },
+    {
+      "source": "stage3-sift1m-fig_c1_fanout_vs_shards.pdf",
+      "annotated": "stage3-sift1m-fig_c1_fanout_vs_shards.pdf",
+      "family": "fanout_vs_shards",
+      "pages": 1,
+      "source_sha256": "97bb7a559ad3148fd2b1fd414a052fbcfc816b23d4d001f17a91191ea1735ce0",
+      "annotated_sha256": "c83090f078134087f1cae9bdecb5bf8a42ea4dbecf6b361ee50ecc0ad7fd9429"
+    },
+    {
+      "source": "stage3-sift1m-fig_c1_oracle_fanout_cdf.pdf",
+      "annotated": "stage3-sift1m-fig_c1_oracle_fanout_cdf.pdf",
+      "family": "oracle_fanout_cdf",
+      "pages": 1,
+      "source_sha256": "ce3cf8529d2a8def49af0a3e8bfc01e389fa97877bddaee7386ec82bc6701297",
+      "annotated_sha256": "fde7621444bfbd7190e7feac57a8ed79203b72adeb030574880ce961f110684f"
+    },
+    {
+      "source": "stage4-original-c1_fig1_physical_scaleout.pdf",
+      "annotated": "stage4-original-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+      "annotated_sha256": "ee2d8d7876b0e24b25163cf46ebe693ccc7b2b45895d492d595d8627ef554104"
+    },
+    {
+      "source": "stage4-original-fig_c1_physical_scaleout.pdf",
+      "annotated": "stage4-original-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "68b2fbb1d477df1645275793f70d15c1963f956b2682d3654f81f750fe06696c",
+      "annotated_sha256": "00ba4a64611bb238cd423c861c678249d78a67d3be6b99627d5e55654c12fed5"
+    },
+    {
+      "source": "stage4-original-fig_c1_scaling_efficiency.pdf",
+      "annotated": "stage4-original-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "4150d25392aad8dcbc060d38356fe5cd98648f0f55d6f52178728e00f09be9ba",
+      "annotated_sha256": "cf44e71a12cfcee6999f50e25c31a6e517e9025bc453c646fe1d2afa8dc00d5b"
+    },
+    {
+      "source": "stage5-original-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "stage5-original-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "d43a733a2d1ee53c75fc1f97d2a29597d82f06c32493206d9127b0100f51f6aa"
+    },
+    {
+      "source": "stage5-original-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "stage5-original-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+      "annotated_sha256": "16ed0278bd486b5210bfb08e7953010695e579be7cb38425132e4b902b43c148"
+    },
+    {
+      "source": "stage5-original-fig_c1_aggregate_work.pdf",
+      "annotated": "stage5-original-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "05163b187535183bea694f583e3a46f8b31a164d3f974273fe2d55a92587b031"
+    },
+    {
+      "source": "stage5-original-fig_c1_model_vs_observed.pdf",
+      "annotated": "stage5-original-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "5a2c99732aa33658ead971cf5e40270dee3066c37dc2264402bd384967299b6e",
+      "annotated_sha256": "1080294773ffda5dc123e682ac07423adfbf3163a4bed454b1dfddd3b858edde"
+    },
+    {
+      "source": "stage5-original-fig_c1_projected_scaling.pdf",
+      "annotated": "stage5-original-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "84fdcd45c0f9a6f97dbeb2e49c089d2b271b2dd3988d625aa3db9511b4f8256e",
+      "annotated_sha256": "2ff1c86a340bcb6351b657276973514e4e60333d1d24b5b419c67ee1a3ece8ba"
+    },
+    {
+      "source": "stage6-corrected-sift1m-c1_fig1_physical_scaleout.pdf",
+      "annotated": "stage6-corrected-sift1m-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+      "annotated_sha256": "84fe3034d3449ff3c12e5614ef83d2ec635be6eac151fee3bc04a800a9f9c1e4"
+    },
+    {
+      "source": "stage6-corrected-sift1m-fig_c1_physical_scaleout.pdf",
+      "annotated": "stage6-corrected-sift1m-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+      "annotated_sha256": "07ced9d0d19609ac0c66d247f29f2b8d1c18bdb2918b8bf31cb3b12be06f2b87"
+    },
+    {
+      "source": "stage6-corrected-sift1m-fig_c1_scaling_efficiency.pdf",
+      "annotated": "stage6-corrected-sift1m-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "fd954038e8ce02aa372a1fa0b892de2767ff901de75675a4f9171ee3eb3647de",
+      "annotated_sha256": "fc68fe36aa988b997ae899ea48f46d9daaa3c14faf04a51d86b56a1a7b0bf3f8"
+    },
+    {
+      "source": "stage7-corrected-sift1m-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "stage7-corrected-sift1m-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "5eaa92c39adc1d14f1df1409ccb6286a8d9792894b0903dd23777cf03b24326f"
+    },
+    {
+      "source": "stage7-corrected-sift1m-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "stage7-corrected-sift1m-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "80d577b71e56ad861e8fabb0b19cb8e9edfe03346b44ccdd4d07bd376221d923",
+      "annotated_sha256": "e48a8039bb584c8c432ae66884f7b1d368f1372c568ca2239f158e7fcb665428"
+    },
+    {
+      "source": "stage7-corrected-sift1m-fig_c1_aggregate_work.pdf",
+      "annotated": "stage7-corrected-sift1m-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "315eedf1abcf61aa7b2adccd2b7ed54485b0da4edf58d56ca562a21a90131981",
+      "annotated_sha256": "070b2d41936ac4276f9f5fc3f938afd8e70292001acf867ff71c1194dbfd488b"
+    },
+    {
+      "source": "stage7-corrected-sift1m-fig_c1_model_vs_observed.pdf",
+      "annotated": "stage7-corrected-sift1m-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "5a2c99732aa33658ead971cf5e40270dee3066c37dc2264402bd384967299b6e",
+      "annotated_sha256": "2f6e48bb0209ef851be10ec18a3345d1bb2eb3d51847916f66254753f59f2364"
+    },
+    {
+      "source": "stage7-corrected-sift1m-fig_c1_projected_scaling.pdf",
+      "annotated": "stage7-corrected-sift1m-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "80d577b71e56ad861e8fabb0b19cb8e9edfe03346b44ccdd4d07bd376221d923",
+      "annotated_sha256": "f247e2bc5121cce727c723a226c518fa9e23b025890f62181f7dd4db8fe9b461"
+    },
+    {
+      "source": "stage8-corrected-glove-200-angular-c1_fig1_physical_scaleout.pdf",
+      "annotated": "stage8-corrected-glove-200-angular-c1_fig1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+      "annotated_sha256": "fb6c9679f53f1d328c5bc4a328429e44fe84de39466f61e5bf6f00bae10cd890"
+    },
+    {
+      "source": "stage8-corrected-glove-200-angular-fig_c1_physical_scaleout.pdf",
+      "annotated": "stage8-corrected-glove-200-angular-fig_c1_physical_scaleout.pdf",
+      "family": "physical_scaleout",
+      "pages": 1,
+      "source_sha256": "b499ff49321c499c52287e48377f8f335034aad7ec6f5925db94532fc17f1274",
+      "annotated_sha256": "e9efe24d0d48201ed267e280642ec21d3e7121f15afdf0335965daca9d360f11"
+    },
+    {
+      "source": "stage8-corrected-glove-200-angular-fig_c1_scaling_efficiency.pdf",
+      "annotated": "stage8-corrected-glove-200-angular-fig_c1_scaling_efficiency.pdf",
+      "family": "scaling_efficiency",
+      "pages": 1,
+      "source_sha256": "a43eef2b3191ecfe42170db5913529dcf1c0fafb189a6648e8fa6764e2475367",
+      "annotated_sha256": "18d91431f3d0bce6910806babac79663deef0b1819ec2cf395bb8cecda3cf9db"
+    },
+    {
+      "source": "stage9-glove-200-angular-c1_fig5_aggregate_work_decomposition.pdf",
+      "annotated": "stage9-glove-200-angular-c1_fig5_aggregate_work_decomposition.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "07e00bcaeee9c2cd43aa7e3470ee7f5ad319a087491abf887d8cd0449df276ab",
+      "annotated_sha256": "2a6934550ac0fc769e04081c893028b4a16eada9b2efab8e5cfd477a570f0585"
+    },
+    {
+      "source": "stage9-glove-200-angular-c1_fig6_projected_logical_scaling.pdf",
+      "annotated": "stage9-glove-200-angular-c1_fig6_projected_logical_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "770de40a928bda93085f2192d44592de69cd049bde165f3652066ca08c3391e6",
+      "annotated_sha256": "e33f491c893ec5efb923ab3d2cd4e1fb554616768ec558180ada3659afce6efe"
+    },
+    {
+      "source": "stage9-glove-200-angular-fig_c1_aggregate_work.pdf",
+      "annotated": "stage9-glove-200-angular-fig_c1_aggregate_work.pdf",
+      "family": "aggregate_work",
+      "pages": 1,
+      "source_sha256": "07e00bcaeee9c2cd43aa7e3470ee7f5ad319a087491abf887d8cd0449df276ab",
+      "annotated_sha256": "09dd5a56adb103001e172c5d0a0b1417aa29ca65f2238d7986b01a60a03d5d00"
+    },
+    {
+      "source": "stage9-glove-200-angular-fig_c1_model_vs_observed.pdf",
+      "annotated": "stage9-glove-200-angular-fig_c1_model_vs_observed.pdf",
+      "family": "model_vs_observed",
+      "pages": 1,
+      "source_sha256": "43fa12872914db3a24ae72d9b4c79d86691994cde6d329453bcec1a3c3d67bf1",
+      "annotated_sha256": "a5d03234e512862d819ae3db5cce91fb64da7663f276f94e6455dfa4a0eb1f72"
+    },
+    {
+      "source": "stage9-glove-200-angular-fig_c1_projected_scaling.pdf",
+      "annotated": "stage9-glove-200-angular-fig_c1_projected_scaling.pdf",
+      "family": "projected_scaling",
+      "pages": 1,
+      "source_sha256": "770de40a928bda93085f2192d44592de69cd049bde165f3652066ca08c3391e6",
+      "annotated_sha256": "710b343a2373b30452503fbd0a8c80fb422706fd68ea5bfd4d8f7135661387c4"
+    }
+  ]
+}

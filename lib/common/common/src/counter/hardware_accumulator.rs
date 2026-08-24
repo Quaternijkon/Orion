@@ -11,6 +11,9 @@ use crate::cpu_utilization::CpuUtilization;
 #[derive(Debug)]
 pub struct HwSharedDrain {
     pub(crate) cpu_counter: AtomicUsize,
+    pub(crate) cpu_time_us_counter: AtomicUsize,
+    pub(crate) cpu_wall_time_us_counter: AtomicUsize,
+    pub(crate) graph_nodes_visited_counter: AtomicUsize,
     pub(crate) payload_io_read_counter: AtomicUsize,
     pub(crate) payload_io_write_counter: AtomicUsize,
     pub(crate) payload_index_io_read_counter: AtomicUsize,
@@ -22,6 +25,18 @@ pub struct HwSharedDrain {
 impl HwSharedDrain {
     pub fn get_cpu(&self) -> usize {
         self.cpu_counter.load(Ordering::Relaxed)
+    }
+
+    pub fn get_cpu_time_us(&self) -> usize {
+        self.cpu_time_us_counter.load(Ordering::Relaxed)
+    }
+
+    pub fn get_cpu_wall_time_us(&self) -> usize {
+        self.cpu_wall_time_us_counter.load(Ordering::Relaxed)
+    }
+
+    pub fn get_graph_nodes_visited(&self) -> usize {
+        self.graph_nodes_visited_counter.load(Ordering::Relaxed)
     }
 
     pub fn get_payload_io_read(&self) -> usize {
@@ -52,6 +67,9 @@ impl HwSharedDrain {
     fn accumulate_from_hw_data(&self, src: HardwareData) {
         let HwSharedDrain {
             cpu_counter,
+            cpu_time_us_counter,
+            cpu_wall_time_us_counter,
+            graph_nodes_visited_counter,
             payload_io_read_counter,
             payload_io_write_counter,
             payload_index_io_read_counter,
@@ -61,6 +79,9 @@ impl HwSharedDrain {
         } = self;
 
         cpu_counter.fetch_add(src.cpu, Ordering::Relaxed);
+        cpu_time_us_counter.fetch_add(src.cpu_time_us, Ordering::Relaxed);
+        cpu_wall_time_us_counter.fetch_add(src.cpu_wall_time_us, Ordering::Relaxed);
+        graph_nodes_visited_counter.fetch_add(src.graph_nodes_visited, Ordering::Relaxed);
         payload_io_read_counter.fetch_add(src.payload_io_read, Ordering::Relaxed);
         payload_io_write_counter.fetch_add(src.payload_io_write, Ordering::Relaxed);
         payload_index_io_read_counter.fetch_add(src.payload_index_io_read, Ordering::Relaxed);
@@ -74,6 +95,9 @@ impl Default for HwSharedDrain {
     fn default() -> Self {
         Self {
             cpu_counter: AtomicUsize::new(0),
+            cpu_time_us_counter: AtomicUsize::new(0),
+            cpu_wall_time_us_counter: AtomicUsize::new(0),
+            graph_nodes_visited_counter: AtomicUsize::new(0),
             payload_io_read_counter: AtomicUsize::new(0),
             payload_io_write_counter: AtomicUsize::new(0),
             payload_index_io_read_counter: AtomicUsize::new(0),
@@ -164,6 +188,10 @@ impl HwMeasurementAcc {
         self.request_drain.get_cpu()
     }
 
+    pub fn get_graph_nodes_visited(&self) -> usize {
+        self.request_drain.get_graph_nodes_visited()
+    }
+
     pub fn get_payload_io_read(&self) -> usize {
         self.request_drain.get_payload_io_read()
     }
@@ -191,6 +219,9 @@ impl HwMeasurementAcc {
     pub fn hw_data(&self) -> HardwareData {
         let HwSharedDrain {
             cpu_counter,
+            cpu_time_us_counter,
+            cpu_wall_time_us_counter,
+            graph_nodes_visited_counter,
             payload_io_read_counter,
             payload_io_write_counter,
             payload_index_io_read_counter,
@@ -201,6 +232,11 @@ impl HwMeasurementAcc {
 
         HardwareData {
             cpu: cpu_counter.load(Ordering::Relaxed),
+            cpu_time_us: cpu_time_us_counter.load(Ordering::Relaxed)
+                + self.cpu_utilization.cpu_time_us() as usize,
+            cpu_wall_time_us: cpu_wall_time_us_counter.load(Ordering::Relaxed)
+                + self.cpu_utilization.wall_time_us() as usize,
+            graph_nodes_visited: graph_nodes_visited_counter.load(Ordering::Relaxed),
             payload_io_read: payload_io_read_counter.load(Ordering::Relaxed),
             payload_io_write: payload_io_write_counter.load(Ordering::Relaxed),
             vector_io_read: vector_io_read_counter.load(Ordering::Relaxed),
@@ -226,5 +262,22 @@ impl Clone for HwMeasurementAcc {
             disposable: self.disposable,
             cpu_utilization: self.cpu_utilization.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod graph_visit_tests {
+    use super::HwMeasurementAcc;
+
+    #[test]
+    fn graph_node_visits_accumulate_across_forked_cells() {
+        let accumulator = HwMeasurementAcc::new();
+        {
+            let parent = accumulator.get_counter_cell();
+            let child = parent.fork();
+            parent.graph_nodes_visited_counter().incr_delta(2);
+            child.graph_nodes_visited_counter().incr_delta(5);
+        }
+        assert_eq!(accumulator.get_graph_nodes_visited(), 7);
     }
 }

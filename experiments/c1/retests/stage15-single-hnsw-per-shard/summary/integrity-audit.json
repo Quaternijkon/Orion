@@ -1,0 +1,118 @@
+{
+  "affinity": {
+    "applied": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/worker-affinity-applied.json",
+    "applied_sha256": "1d93e57c31fed2cf070e604f106adddaca0bce0677cf0a63f636bfce1fb32e85",
+    "benchmark_test_cpuset": "8-15,24-31",
+    "preflight": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/preflight.json",
+    "preflight_sha256": "039ad83631b289538ad28b97c71f01c01256de23717b5b1d947e3fd8f3158c79",
+    "restored": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/worker-affinity-restored.json",
+    "restored_cpuset": "0-19",
+    "restored_sha256": "b8c0f1bfd63d92bad5f9d155e01a239dfb7d179f2e89b442c5ae56d7b0a31335",
+    "status": "PASS",
+    "worker_test_cpuset": "0-7,16-23"
+  },
+  "cleanup": {
+    "entries": [
+      {
+        "collection": "c1s15_glove_common_m1_baseline-a",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_common_m1_baseline-a.json",
+        "proof_sha256": "1be49b0f0113226acd4b45fcc5342b808bd83e2f0a5e9e1f1d28869f6a106d64",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_common_m1_baseline-b",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_common_m1_baseline-b.json",
+        "proof_sha256": "3d65ba979b7dcd8bc23fec8ec764ec782ccac1af2133be5455b47e49918948da",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_kmeans_m2",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_kmeans_m2.json",
+        "proof_sha256": "cf5c5f01f5f7c5109bd56c3d268ecb45872fac286214e1ec5172476649f44013",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_kmeans_m3",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_kmeans_m3.json",
+        "proof_sha256": "f36848f27ba7581f65b81b63e88ed62999b484a43cce475597b7f11d81a98147",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_kmeans_m4",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_kmeans_m4.json",
+        "proof_sha256": "13f24878414850b5829f99f116c03f659f243d1879b17da0727c279c6f30b71c",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_random_m2",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_random_m2.json",
+        "proof_sha256": "d46d8773c36686dfcda49d3cd2e2d6fa9328e9a1909f8b8f610914ffa818e317",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_random_m3",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_random_m3.json",
+        "proof_sha256": "23de9e642d4fc53d34c4c682f778f757877149fc9178d4c07f90e8a406365119",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_glove_random_m4",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_glove_random_m4.json",
+        "proof_sha256": "9e3d2f9631d4a8146261c240f29e0e3945d1a671f9e2bf930c2ba5ff6ffd9894",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_common_m1_baseline-a",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_common_m1_baseline-a.json",
+        "proof_sha256": "1f59a244b8e7c687e2a86bc32455cd309719ebd69755948f2e1e0266520735df",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_common_m1_baseline-b",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_common_m1_baseline-b.json",
+        "proof_sha256": "b490e8387ca13b52b5ea212ebb754855c7ddb210a597d4feca25e8464b1461a6",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_kmeans_m2",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_kmeans_m2.json",
+        "proof_sha256": "162917c6ed52d6c0222d4d8012d36c53d6254ce3fc442e7f3635f291c6067d5c",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_kmeans_m3",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_kmeans_m3.json",
+        "proof_sha256": "baa22e41198df91d785ab5169b24cf6aa5d8a2f581e2cf7ab10ad219ab4e5a76",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_kmeans_m4",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_kmeans_m4.json",
+        "proof_sha256": "ddae76c2b0f1c7b01ebf9649183151f87406240a93f371a46474544fde5ee857",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_random_m2",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_random_m2.json",
+        "proof_sha256": "c1d429d5c65e9c2724c3623a827a961632f58d46593dc320f54231d08555994e",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_random_m3",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_random_m3.json",
+        "proof_sha256": "366215ee419462bddd01bf921f8549dafd79fa8ad081e1a4f9b37407eec1753a",
+        "valid": true
+      },
+      {
+        "collection": "c1s15_sift1m_random_m4",
+        "proof": "/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/cleanup/c1s15_sift1m_random_m4.json",
+        "proof_sha256": "92c71bcb74cfd6a618662b4067ce24a42b07b65b6ddc005be3da93e19496411a",
+        "valid": true
+      }
+    ],
+    "proof_count": 16,
+    "status": "PASS"
+  },
+  "single_graph_prepare_gate_count": 16,
+  "status": "PASS"
+}

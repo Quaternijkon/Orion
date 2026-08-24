@@ -1,0 +1,925 @@
+{
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_dist-20260717-initial_orion_s46",
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "dataset_size_bytes": 962819488,
+  "repository": {
+    "root": "/users/dry/Orion",
+    "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+    "dirty": true
+  },
+  "image_tag": "orion-method4:1a5ac4c47237",
+  "image_digest": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+  "deployment_manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+  "deployment_manifest": {
+    "cluster_snapshot": {
+      "result": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-07-18T11:16:04.664453673Z"
+        },
+        "message_send_failures": {
+          "http://10.10.1.3:6335/": {
+            "count": 3,
+            "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.3:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+            "latest_error_timestamp": "2026-07-18T11:15:57.432078475Z"
+          },
+          "http://10.10.1.4:6335/": {
+            "count": 3,
+            "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.4:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+            "latest_error_timestamp": "2026-07-18T11:15:57.433091108Z"
+          }
+        },
+        "peer_id": 987102789522726,
+        "peers": {
+          "1667891846572449": {
+            "uri": "http://10.10.1.4:6335/"
+          },
+          "7896541606624976": {
+            "uri": "http://10.10.1.3:6335/"
+          },
+          "8982479151082257": {
+            "uri": "http://10.10.1.2:6335/"
+          },
+          "987102789522726": {
+            "uri": "http://10.10.1.1:6335/"
+          }
+        },
+        "raft_info": {
+          "commit": 696,
+          "is_voter": true,
+          "leader": 8982479151082257,
+          "pending_operations": 0,
+          "role": "Follower",
+          "term": 9
+        },
+        "status": "enabled"
+      },
+      "status": "ok",
+      "time": 9.346e-06
+    },
+    "controller_uri": "http://10.10.1.1:6335",
+    "controller_url": "http://10.10.1.1:6333",
+    "dataset": {
+      "hdf5_shapes": {
+        "neighbors": [
+          10000,
+          100
+        ],
+        "test": [
+          10000,
+          200
+        ],
+        "train": [
+          1183514,
+          200
+        ]
+      },
+      "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+      "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+      "size_bytes": 962819488,
+      "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+    },
+    "generated_at": "2026-07-18T11:16:04Z",
+    "image": {
+      "id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+      "tag": "orion-method4:1a5ac4c47237",
+      "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/orion-method4_1a5ac4c47237.tar",
+      "tar_sha256": "4aa116f056c6d13ab918535499f459dbd0b8000dad20f07da0d83f56263ec0de",
+      "tar_size_bytes": 70056448
+    },
+    "nodes": [
+      {
+        "advertised_uri": "http://10.10.1.1:6335",
+        "container_name": "orion-dist-dist-20260717-initial-controller",
+        "cpuset": "0-7",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-0.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.1:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/controller/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.2:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_1",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-1.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.2:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.2",
+        "role": "qdrant_shard_1",
+        "ssh_host": "hp052.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_1/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.3:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_2",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-2.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289415680
+        },
+        "http_url": "http://10.10.1.3:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.3",
+        "role": "qdrant_shard_2",
+        "ssh_host": "hp065.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_2/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.4:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_3",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-3.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289407488
+        },
+        "http_url": "http://10.10.1.4:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.4",
+        "role": "qdrant_shard_3",
+        "ssh_host": "hp076.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_3/storage"
+      }
+    ],
+    "repository": {
+      "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+      "dirty": true,
+      "dirty_paths": [
+        "tests/tools/test_method4_benchmark_matrix.py",
+        "tests/tools/test_qdrant_two_level_routing_experiment.py",
+        "tools/method4_benchmark_matrix.py",
+        "tools/qdrant_two_level_routing_experiment.py",
+        "docs/experiments/2026-07-17-method4-four-node-distributed.md",
+        "results/method4_distributed/",
+        "results/method4_distributed_confirmation/",
+        "results/method4_distributed_smoke/",
+        "results/method4_distributed_tuning/",
+        "tests/tools/test_method4_distributed_cluster.py",
+        "tools/benchmark_configs/method4_distributed_baseline_dense_batch200.json",
+        "tools/benchmark_configs/method4_distributed_baseline_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_glove200_initial.json",
+        "tools/benchmark_configs/method4_distributed_orion_debug.json",
+        "tools/benchmark_configs/method4_distributed_orion_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_strict_batch200.json",
+        "tools/benchmark_configs/method4_distributed_smoke.json",
+        "tools/distributed/",
+        "tools/method4_distributed_cluster.py"
+      ],
+      "path": "/users/dry/Orion",
+      "short_commit": "1a5ac4c47237"
+    },
+    "run_id": "dist-20260717-initial",
+    "schema_version": 1,
+    "topology": {
+      "benchmark_client_cpuset": "8-19",
+      "controller": {
+        "cpuset": "0-7",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost"
+      },
+      "dataset": {
+        "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+      },
+      "local_storage_root": "/users/dry/orion-distributed",
+      "ports": {
+        "grpc": 6334,
+        "http": 6333,
+        "p2p": 6335
+      },
+      "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+      "workers": [
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.2",
+          "role": "qdrant_shard_1",
+          "ssh_host": "hp052.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.3",
+          "role": "qdrant_shard_2",
+          "ssh_host": "hp065.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.4",
+          "role": "qdrant_shard_3",
+          "ssh_host": "hp076.utah.cloudlab.us"
+        }
+      ]
+    },
+    "worker_uris": [
+      "http://10.10.1.2:6335",
+      "http://10.10.1.3:6335",
+      "http://10.10.1.4:6335"
+    ]
+  },
+  "container_log_tails": {
+    "controller": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:28:57.666868Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728072 \"-\" \"Python-urllib/3.10\" 0.070943\n2026-07-18T11:28:57.751649Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 731260 \"-\" \"Python-urllib/3.10\" 0.070668\n2026-07-18T11:28:57.779900Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 161326 \"-\" \"Python-urllib/3.10\" 0.014230\n2026-07-18T11:28:57.846516Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 682851 \"-\" \"Python-urllib/3.10\" 0.062101\n2026-07-18T11:28:57.928119Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 724929 \"-\" \"Python-urllib/3.10\" 0.068226\n2026-07-18T11:28:58.009576Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.066600\n2026-07-18T11:28:58.095802Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.071965\n2026-07-18T11:28:58.179295Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.068055\n2026-07-18T11:28:58.259211Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 733335 \"-\" \"Python-urllib/3.10\" 0.065404\n2026-07-18T11:28:58.309319Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 405822 \"-\" \"Python-urllib/3.10\" 0.034913\n2026-07-18T11:28:58.392461Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 726676 \"-\" \"Python-urllib/3.10\" 0.073975\n2026-07-18T11:28:58.474536Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.067628\n2026-07-18T11:28:58.556386Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.066974\n2026-07-18T11:28:58.614955Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 471374 \"-\" \"Python-urllib/3.10\" 0.043146\n2026-07-18T11:28:58.698373Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728537 \"-\" \"Python-urllib/3.10\" 0.073268\n2026-07-18T11:28:58.751478Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 506448 \"-\" \"Python-urllib/3.10\" 0.037910\n2026-07-18T11:28:58.831514Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 728103 \"-\" \"Python-urllib/3.10\" 0.069047\n2026-07-18T11:28:58.919748Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 732600 \"-\" \"Python-urllib/3.10\" 0.073386\n2026-07-18T11:28:58.941279Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 52916 \"-\" \"Python-urllib/3.10\" 0.006087\n2026-07-18T11:28:59.015907Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 725456 \"-\" \"Python-urllib/3.10\" 0.071519\n2026-07-18T11:28:59.094044Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.064875\n2026-07-18T11:28:59.177172Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.067656\n2026-07-18T11:28:59.256603Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 730084 \"-\" \"Python-urllib/3.10\" 0.064700\n2026-07-18T11:28:59.420037Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/scroll HTTP/1.1\" 200 652126 \"-\" \"Python-urllib/3.10\" 0.055736\n2026-07-18T11:28:59.447871Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46 HTTP/1.1\" 200 867 \"-\" \"Python-urllib/3.10\" 0.003410\n2026-07-18T11:28:59.478505Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46 HTTP/1.1\" 200 867 \"-\" \"Python-urllib/3.10\" 0.001599\n2026-07-18T11:28:59.479134Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000076\n2026-07-18T11:28:59.479834Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000074\n2026-07-18T11:28:59.943422Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.280830\n2026-07-18T11:29:00.255654Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.273385\n2026-07-18T11:29:00.443494Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104291 \"-\" \"Python-urllib/3.10\" 0.165688\n2026-07-18T11:29:00.949727Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.289781\n2026-07-18T11:29:01.268895Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.281840\n2026-07-18T11:29:01.450930Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104290 \"-\" \"Python-urllib/3.10\" 0.159245\n2026-07-18T11:29:01.917681Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.275933\n2026-07-18T11:29:02.223658Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.266990\n2026-07-18T11:29:02.399554Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 104291 \"-\" \"Python-urllib/3.10\" 0.153662\n2026-07-18T11:29:03.590913Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208630 \"-\" \"Python-urllib/3.10\" 0.273829\n2026-07-18T11:29:03.905667Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.274189\n2026-07-18T11:29:04.212479Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208484 \"-\" \"Python-urllib/3.10\" 0.264670\n2026-07-18T11:29:04.520081Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208542 \"-\" \"Python-urllib/3.10\" 0.267825\n2026-07-18T11:29:04.835743Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.275181\n2026-07-18T11:29:05.146023Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208568 \"-\" \"Python-urllib/3.10\" 0.268884\n2026-07-18T11:29:05.456618Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208780 \"-\" \"Python-urllib/3.10\" 0.270892\n2026-07-18T11:29:05.769188Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208747 \"-\" \"Python-urllib/3.10\" 0.273250\n2026-07-18T11:29:06.094770Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208618 \"-\" \"Python-urllib/3.10\" 0.284933\n2026-07-18T11:29:06.413979Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208771 \"-\" \"Python-urllib/3.10\" 0.279262\n2026-07-18T11:29:06.726007Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208593 \"-\" \"Python-urllib/3.10\" 0.272295\n2026-07-18T11:29:07.037030Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208706 \"-\" \"Python-urllib/3.10\" 0.269631\n2026-07-18T11:29:07.326670Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208575 \"-\" \"Python-urllib/3.10\" 0.249548\n2026-07-18T11:29:07.622754Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.255983\n2026-07-18T11:29:07.933204Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208687 \"-\" \"Python-urllib/3.10\" 0.270167\n2026-07-18T11:29:09.165877Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.280159\n2026-07-18T11:29:09.482979Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.278562\n2026-07-18T11:29:09.788450Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208484 \"-\" \"Python-urllib/3.10\" 0.265430\n2026-07-18T11:29:10.100980Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208542 \"-\" \"Python-urllib/3.10\" 0.270849\n2026-07-18T11:29:10.414138Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.276177\n2026-07-18T11:29:10.710727Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208568 \"-\" \"Python-urllib/3.10\" 0.259265\n2026-07-18T11:29:11.020137Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208781 \"-\" \"Python-urllib/3.10\" 0.271280\n2026-07-18T11:29:11.330616Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208747 \"-\" \"Python-urllib/3.10\" 0.273472\n2026-07-18T11:29:11.646861Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208618 \"-\" \"Python-urllib/3.10\" 0.278643\n2026-07-18T11:29:11.948154Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208772 \"-\" \"Python-urllib/3.10\" 0.263624\n2026-07-18T11:29:12.260043Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208593 \"-\" \"Python-urllib/3.10\" 0.274527\n2026-07-18T11:29:12.561988Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208706 \"-\" \"Python-urllib/3.10\" 0.264603\n2026-07-18T11:29:12.866510Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208575 \"-\" \"Python-urllib/3.10\" 0.266390\n2026-07-18T11:29:13.156689Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.253578\n2026-07-18T11:29:13.465592Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208687 \"-\" \"Python-urllib/3.10\" 0.271248\n2026-07-18T11:29:14.783820Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.273995\n2026-07-18T11:29:15.094036Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.271400\n2026-07-18T11:29:15.403968Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208484 \"-\" \"Python-urllib/3.10\" 0.272208\n2026-07-18T11:29:15.710361Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208541 \"-\" \"Python-urllib/3.10\" 0.268600\n2026-07-18T11:29:16.028684Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.280868\n2026-07-18T11:29:16.334115Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208568 \"-\" \"Python-urllib/3.10\" 0.267538\n2026-07-18T11:29:16.635628Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208781 \"-\" \"Python-urllib/3.10\" 0.264317\n2026-07-18T11:29:16.935947Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208747 \"-\" \"Python-urllib/3.10\" 0.262486\n2026-07-18T11:29:17.257480Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208618 \"-\" \"Python-urllib/3.10\" 0.282004\n2026-07-18T11:29:17.572324Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208772 \"-\" \"Python-urllib/3.10\" 0.278053\n2026-07-18T11:29:17.890074Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208593 \"-\" \"Python-urllib/3.10\" 0.280284\n2026-07-18T11:29:18.200884Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208705 \"-\" \"Python-urllib/3.10\" 0.273348\n2026-07-18T11:29:18.503858Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208575 \"-\" \"Python-urllib/3.10\" 0.265730\n2026-07-18T11:29:18.793724Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.252436\n2026-07-18T11:29:19.095866Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208686 \"-\" \"Python-urllib/3.10\" 0.265119\n2026-07-18T11:29:20.315382Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208631 \"-\" \"Python-urllib/3.10\" 0.273162\n2026-07-18T11:29:20.611736Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208547 \"-\" \"Python-urllib/3.10\" 0.258003\n2026-07-18T11:29:20.926492Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208484 \"-\" \"Python-urllib/3.10\" 0.276386\n2026-07-18T11:29:21.232351Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208541 \"-\" \"Python-urllib/3.10\" 0.266520\n2026-07-18T11:29:21.546927Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208629 \"-\" \"Python-urllib/3.10\" 0.275412\n2026-07-18T11:29:21.844818Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208568 \"-\" \"Python-urllib/3.10\" 0.259921\n2026-07-18T11:29:22.146745Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208781 \"-\" \"Python-urllib/3.10\" 0.263471\n2026-07-18T11:29:22.456233Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208747 \"-\" \"Python-urllib/3.10\" 0.271536\n2026-07-18T11:29:22.770363Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208618 \"-\" \"Python-urllib/3.10\" 0.276858\n2026-07-18T11:29:23.084379Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208772 \"-\" \"Python-urllib/3.10\" 0.277006\n2026-07-18T11:29:23.398582Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208593 \"-\" \"Python-urllib/3.10\" 0.275867\n2026-07-18T11:29:23.709986Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208706 \"-\" \"Python-urllib/3.10\" 0.273717\n2026-07-18T11:29:24.013652Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208575 \"-\" \"Python-urllib/3.10\" 0.265678\n2026-07-18T11:29:24.314616Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208581 \"-\" \"Python-urllib/3.10\" 0.263769\n2026-07-18T11:29:24.626276Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208687 \"-\" \"Python-urllib/3.10\" 0.273897\n2026-07-18T11:29:25.532133Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000104\n2026-07-18T11:29:25.633371Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000100\n2026-07-18T11:29:25.634136Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 1198 \"-\" \"Python-urllib/3.10\" 0.000049\n",
+      "stderr": ""
+    },
+    "qdrant_shard_1": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:15:54.462411Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:54.488045Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/39: 0/1 (0%)\n2026-07-18T11:15:54.503414Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:54.519587Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/42: 0/1 (0%)\n2026-07-18T11:15:54.524401Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:54.537991Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/45: 0/1 (0%)\n2026-07-18T11:15:54.544340Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:54.544690Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_orion_s46\n2026-07-18T11:15:54.563895Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/3: 0/1 (0%)\n2026-07-18T11:15:54.570198Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.591654Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/6: 0/1 (0%)\n2026-07-18T11:15:54.595177Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.634643Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/9: 0/1 (0%)\n2026-07-18T11:15:54.642318Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.655756Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/12: 0/1 (0%)\n2026-07-18T11:15:54.666352Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.691875Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/15: 0/1 (0%)\n2026-07-18T11:15:54.694661Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.705148Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/18: 0/1 (0%)\n2026-07-18T11:15:54.712055Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.730199Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/21: 0/1 (0%)\n2026-07-18T11:15:54.742419Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.768005Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/24: 0/1 (0%)\n2026-07-18T11:15:54.781039Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.789280Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/27: 0/1 (0%)\n2026-07-18T11:15:54.793554Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.818667Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/30: 0/1 (0%)\n2026-07-18T11:15:54.825527Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.849902Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/33: 0/1 (0%)\n2026-07-18T11:15:54.855471Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.886191Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/36: 0/1 (0%)\n2026-07-18T11:15:54.898050Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.912450Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/39: 0/1 (0%)\n2026-07-18T11:15:54.917827Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.954651Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/42: 0/1 (0%)\n2026-07-18T11:15:54.958254Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.974673Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/45: 0/1 (0%)\n2026-07-18T11:15:54.978461Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:54.978846Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_naive_s46\n2026-07-18T11:15:54.997426Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/3: 0/1 (0%)\n2026-07-18T11:15:55.000213Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.018896Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/6: 0/1 (0%)\n2026-07-18T11:15:55.021492Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.040526Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/9: 0/1 (0%)\n2026-07-18T11:15:55.043373Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.062435Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/12: 0/1 (0%)\n2026-07-18T11:15:55.065101Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.084072Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/15: 0/1 (0%)\n2026-07-18T11:15:55.086815Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.105668Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/18: 0/1 (0%)\n2026-07-18T11:15:55.108328Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.127495Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/21: 0/1 (0%)\n2026-07-18T11:15:55.130165Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.148924Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/24: 0/1 (0%)\n2026-07-18T11:15:55.151531Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.170007Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/27: 0/1 (0%)\n2026-07-18T11:15:55.172653Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.191641Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/30: 0/1 (0%)\n2026-07-18T11:15:55.194338Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.213368Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/33: 0/1 (0%)\n2026-07-18T11:15:55.216028Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.234947Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/36: 0/1 (0%)\n2026-07-18T11:15:55.237542Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.256539Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/39: 0/1 (0%)\n2026-07-18T11:15:55.259164Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.278031Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/42: 0/1 (0%)\n2026-07-18T11:15:55.280766Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.299562Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/45: 0/1 (0%)\n2026-07-18T11:15:55.302114Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:55.331335Z  INFO qdrant: Telemetry reporting enabled, id: 1fac5543-c1ee-40ef-bd65-352efa42b1f2\n2026-07-18T11:15:55.331989Z  INFO qdrant::tonic: TLS disabled for internal gRPC API\n2026-07-18T11:15:55.347282Z  INFO qdrant::actix: REST transport settings: keep_alive=5s, client_request_timeout=5s, client_disconnect_timeout=5s\n2026-07-18T11:15:55.347297Z  INFO qdrant::actix: TLS disabled for REST API\n2026-07-18T11:15:55.347342Z  INFO qdrant::actix: Qdrant HTTP listening on 6333\n2026-07-18T11:15:55.347347Z  INFO actix_server::builder: starting 19 workers\n2026-07-18T11:15:55.347352Z  INFO actix_server::server: Actix runtime found; starting in Actix runtime\n2026-07-18T11:15:55.347357Z  INFO actix_server::server: starting service: \"actix-web-service-0.0.0.0:6333\", workers: 19, listening on: 0.0.0.0:6333\n2026-07-18T11:15:55.353854Z  INFO qdrant::tonic: Qdrant gRPC listening on 6334\n2026-07-18T11:15:55.353866Z  INFO qdrant::tonic: TLS disabled for gRPC API\n2026-07-18T11:15:56.534296Z ERROR qdrant::common::health: GetConsensusCommit request failed: Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.4:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }\n2026-07-18T11:15:56.602967Z ERROR qdrant::common::health: GetConsensusCommit request failed: Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.3:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }\n2026-07-18T11:16:01.092985Z  WARN storage::content_manager::consensus_manager: Failed to send message to http://10.10.1.4:6335/ with error: Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.4:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }\n2026-07-18T11:22:56.987174Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:06.654641Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:20.226678Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:30.963885Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:41.202246Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:51.349063Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:01.575476Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:28.845384Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:38.061255Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:48.562787Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:58.263406Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:28.621626Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:38.412478Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:20.409604Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:33.810370Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:59.834943Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:09.092910Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:19.036009Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_2": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:15:58.083603Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/32: 0/1 (0%)\n2026-07-18T11:15:58.096079Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:58.114474Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/35: 0/1 (0%)\n2026-07-18T11:15:58.122659Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:58.137381Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/38: 0/1 (0%)\n2026-07-18T11:15:58.141726Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:58.163469Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/41: 0/1 (0%)\n2026-07-18T11:15:58.165347Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:58.185720Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/44: 0/1 (0%)\n2026-07-18T11:15:58.197738Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:15:58.198245Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_orion_s46\n2026-07-18T11:15:58.212740Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/2: 0/1 (0%)\n2026-07-18T11:15:58.216744Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.225873Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/5: 0/1 (0%)\n2026-07-18T11:15:58.228889Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.269780Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/8: 0/1 (0%)\n2026-07-18T11:15:58.276607Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.290604Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/11: 0/1 (0%)\n2026-07-18T11:15:58.299142Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.313024Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/14: 0/1 (0%)\n2026-07-18T11:15:58.319482Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.343295Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/17: 0/1 (0%)\n2026-07-18T11:15:58.348865Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.386089Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/20: 0/1 (0%)\n2026-07-18T11:15:58.389855Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.407765Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/23: 0/1 (0%)\n2026-07-18T11:15:58.415337Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.455631Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/26: 0/1 (0%)\n2026-07-18T11:15:58.465522Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.479003Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/29: 0/1 (0%)\n2026-07-18T11:15:58.485257Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.518727Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/32: 0/1 (0%)\n2026-07-18T11:15:58.525347Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.535067Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/35: 0/1 (0%)\n2026-07-18T11:15:58.547602Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.564781Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/38: 0/1 (0%)\n2026-07-18T11:15:58.566692Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.576981Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/41: 0/1 (0%)\n2026-07-18T11:15:58.579673Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.593870Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/44: 0/1 (0%)\n2026-07-18T11:15:58.600960Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:15:58.601418Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_naive_s46\n2026-07-18T11:15:58.619847Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/2: 0/1 (0%)\n2026-07-18T11:15:58.622952Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.641511Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/5: 0/1 (0%)\n2026-07-18T11:15:58.644268Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.663394Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/8: 0/1 (0%)\n2026-07-18T11:15:58.666018Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.685013Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/11: 0/1 (0%)\n2026-07-18T11:15:58.687792Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.706826Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/14: 0/1 (0%)\n2026-07-18T11:15:58.709372Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.728209Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/17: 0/1 (0%)\n2026-07-18T11:15:58.730967Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.750315Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/20: 0/1 (0%)\n2026-07-18T11:15:58.752911Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.771714Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/23: 0/1 (0%)\n2026-07-18T11:15:58.774405Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.793705Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/26: 0/1 (0%)\n2026-07-18T11:15:58.796058Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.814834Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/29: 0/1 (0%)\n2026-07-18T11:15:58.817583Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.836666Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/32: 0/1 (0%)\n2026-07-18T11:15:58.839371Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.857778Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/35: 0/1 (0%)\n2026-07-18T11:15:58.860407Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.879355Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/38: 0/1 (0%)\n2026-07-18T11:15:58.881940Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.900711Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/41: 0/1 (0%)\n2026-07-18T11:15:58.903406Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.922142Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/44: 0/1 (0%)\n2026-07-18T11:15:58.924714Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:15:58.954142Z  INFO qdrant: Telemetry reporting enabled, id: 92d128a1-ff1f-459e-96d9-e0e7dac7da20\n2026-07-18T11:15:58.955083Z  INFO qdrant::tonic: TLS disabled for internal gRPC API\n2026-07-18T11:15:58.965040Z  INFO qdrant::actix: REST transport settings: keep_alive=5s, client_request_timeout=5s, client_disconnect_timeout=5s\n2026-07-18T11:15:58.965062Z  INFO qdrant::actix: TLS disabled for REST API\n2026-07-18T11:15:58.965125Z  INFO qdrant::actix: Qdrant HTTP listening on 6333\n2026-07-18T11:15:58.965135Z  INFO actix_server::builder: starting 19 workers\n2026-07-18T11:15:58.965144Z  INFO actix_server::server: Actix runtime found; starting in Actix runtime\n2026-07-18T11:15:58.965152Z  INFO actix_server::server: starting service: \"actix-web-service-0.0.0.0:6333\", workers: 19, listening on: 0.0.0.0:6333\n2026-07-18T11:15:58.971923Z  INFO qdrant::tonic: Qdrant gRPC listening on 6334\n2026-07-18T11:15:58.971934Z  INFO qdrant::tonic: TLS disabled for gRPC API\n2026-07-18T11:22:56.010980Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:06.289756Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:16.345592Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:26.156421Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:36.260045Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:46.782497Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:56.702781Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:24.174757Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:35.390911Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:46.292313Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:56.411361Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:28.176264Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:38.349419Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:20.410421Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:30.114648Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:59.837927Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:09.051849Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:19.000981Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_3": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:16:01.375351Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/40: 0/1 (0%)\n2026-07-18T11:16:01.379110Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:16:01.384020Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/43: 0/1 (0%)\n2026-07-18T11:16:01.391995Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:16:01.415690Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_simple_kmeans_s46/46: 0/1 (0%)\n2026-07-18T11:16:01.422535Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_simple_kmeans_s46: 1/1 (100%)\n2026-07-18T11:16:01.422708Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_orion_s46\n2026-07-18T11:16:01.437487Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/1: 0/1 (0%)\n2026-07-18T11:16:01.439813Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.458142Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/4: 0/1 (0%)\n2026-07-18T11:16:01.465365Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.479975Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/7: 0/1 (0%)\n2026-07-18T11:16:01.493202Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.515445Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/10: 0/1 (0%)\n2026-07-18T11:16:01.521568Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.536828Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/13: 0/1 (0%)\n2026-07-18T11:16:01.543647Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.570560Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/16: 0/1 (0%)\n2026-07-18T11:16:01.578917Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.591947Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/19: 0/1 (0%)\n2026-07-18T11:16:01.595302Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.604299Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/22: 0/1 (0%)\n2026-07-18T11:16:01.608981Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.629421Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/25: 0/1 (0%)\n2026-07-18T11:16:01.641629Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.661909Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/28: 0/1 (0%)\n2026-07-18T11:16:01.664046Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.690647Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/31: 0/1 (0%)\n2026-07-18T11:16:01.692284Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.706951Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/34: 0/1 (0%)\n2026-07-18T11:16:01.714092Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.731663Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/37: 0/1 (0%)\n2026-07-18T11:16:01.740856Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.757955Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/40: 0/1 (0%)\n2026-07-18T11:16:01.766920Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.790671Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/43: 0/1 (0%)\n2026-07-18T11:16:01.798035Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.832269Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_orion_s46/46: 0/1 (0%)\n2026-07-18T11:16:01.841701Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_orion_s46: 1/1 (100%)\n2026-07-18T11:16:01.841879Z  INFO storage::content_manager::toc: Loading collection: dist_dist-20260717-initial_naive_s46\n2026-07-18T11:16:01.860404Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/1: 0/1 (0%)\n2026-07-18T11:16:01.863138Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.882529Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/4: 0/1 (0%)\n2026-07-18T11:16:01.885200Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.903704Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/7: 0/1 (0%)\n2026-07-18T11:16:01.906417Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.924898Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/10: 0/1 (0%)\n2026-07-18T11:16:01.927526Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.946454Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/13: 0/1 (0%)\n2026-07-18T11:16:01.948958Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.968147Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/16: 0/1 (0%)\n2026-07-18T11:16:01.970959Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:01.989767Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/19: 0/1 (0%)\n2026-07-18T11:16:01.992360Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.011205Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/22: 0/1 (0%)\n2026-07-18T11:16:02.013835Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.032919Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/25: 0/1 (0%)\n2026-07-18T11:16:02.035508Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.054325Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/28: 0/1 (0%)\n2026-07-18T11:16:02.057018Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.075778Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/31: 0/1 (0%)\n2026-07-18T11:16:02.078665Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.097643Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/34: 0/1 (0%)\n2026-07-18T11:16:02.100229Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.119168Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/37: 0/1 (0%)\n2026-07-18T11:16:02.121767Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.176070Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/40: 0/1 (0%)\n2026-07-18T11:16:02.178759Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.197474Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/43: 0/1 (0%)\n2026-07-18T11:16:02.200077Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.219488Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/dist_dist-20260717-initial_naive_s46/46: 0/1 (0%)\n2026-07-18T11:16:02.222113Z  INFO collection::shards::local_shard: Recovered collection dist_dist-20260717-initial_naive_s46: 1/1 (100%)\n2026-07-18T11:16:02.222987Z  INFO qdrant: Telemetry reporting enabled, id: 2a4a6919-7984-4213-9cbe-e3715d02a204\n2026-07-18T11:16:02.223950Z  INFO qdrant::tonic: TLS disabled for internal gRPC API\n2026-07-18T11:16:02.234382Z  INFO qdrant::actix: REST transport settings: keep_alive=5s, client_request_timeout=5s, client_disconnect_timeout=5s\n2026-07-18T11:16:02.234403Z  INFO qdrant::actix: TLS disabled for REST API\n2026-07-18T11:16:02.234457Z  INFO qdrant::actix: Qdrant HTTP listening on 6333\n2026-07-18T11:16:02.234465Z  INFO actix_server::builder: starting 19 workers\n2026-07-18T11:16:02.234474Z  INFO actix_server::server: Actix runtime found; starting in Actix runtime\n2026-07-18T11:16:02.234482Z  INFO actix_server::server: starting service: \"actix-web-service-0.0.0.0:6333\", workers: 19, listening on: 0.0.0.0:6333\n2026-07-18T11:16:02.241086Z  INFO qdrant::tonic: Qdrant gRPC listening on 6334\n2026-07-18T11:16:02.241117Z  INFO qdrant::tonic: TLS disabled for gRPC API\n2026-07-18T11:22:56.399138Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:06.316786Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:16.366897Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:26.196144Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:36.295425Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:46.405427Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:23:56.000439Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:22.817070Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:32.181282Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:42.193972Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:24:52.176170Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:28.240279Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:26:38.462624Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:20.441991Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:30.142757Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:28:59.912309Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:09.129764Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:29:19.065315Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    }
+  },
+  "command": [
+    "/users/dry/orion-distributed/venv/bin/python",
+    "tools/qdrant_two_level_routing_experiment.py",
+    "--base-url",
+    "http://10.10.1.1:6333",
+    "--hdf5-path",
+    "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "--cluster-topology",
+    "tools/distributed/cloudlab_orion_4node.json",
+    "--deployment-manifest",
+    "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "--vector-distance",
+    "cosine",
+    "--top-k",
+    "10",
+    "--hnsw-m",
+    "32",
+    "--ef-construct",
+    "100",
+    "--upper-m",
+    "32",
+    "--upper-ef-construction",
+    "100",
+    "--upper-search-ef",
+    "400",
+    "--sample-denominator",
+    "32",
+    "--k-overlap",
+    "10",
+    "--upper-sample-seed",
+    "100",
+    "--kmeans-rand-seed",
+    "1",
+    "--kmeans-iters",
+    "10",
+    "--tuning-query-count",
+    "500",
+    "--eval-query-count",
+    "3000",
+    "--warmup-query-count",
+    "500",
+    "--stability-repeats",
+    "3",
+    "--batch-size",
+    "200",
+    "--target-recall",
+    "0.95",
+    "--write-per-query-metrics",
+    "--search-dispatch-mode",
+    "coordinator",
+    "--shard-placement",
+    "round_robin",
+    "--reuse-existing",
+    "--routing-mode",
+    "faithful_original_rest",
+    "--routed-execution-mode",
+    "compact_multi_ep",
+    "--routed-planning-mode",
+    "materialized",
+    "--routed-result-limit-mode",
+    "top_k",
+    "--collection",
+    "dist_dist-20260717-initial_orion_s46",
+    "--num-shards",
+    "31",
+    "--recover-routing-from-collection",
+    "--upper-k-candidates",
+    "96",
+    "--base-ef-candidates",
+    "256",
+    "--factor-candidates",
+    "0",
+    "--physical-execution-trace",
+    "--output-dir",
+    "results/method4_distributed_submission/method4_distributed_claim_c_dynamic_ef_confirmation_batch200/claim-c-confirm-20260718a/orion_fixed_u96_ef256"
+  ],
+  "process_affinity": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "cluster_topology_path": "tools/distributed/cloudlab_orion_4node.json",
+  "cluster_preflight": {
+    "peer_id": 987102789522726,
+    "peer_count": 4,
+    "peers": {
+      "987102789522726": "http://10.10.1.1:6335",
+      "1667891846572449": "http://10.10.1.4:6335",
+      "7896541606624976": "http://10.10.1.3:6335",
+      "8982479151082257": "http://10.10.1.2:6335"
+    },
+    "controller_peer_id": 987102789522726,
+    "worker_peer_ids": [
+      1667891846572449,
+      7896541606624976,
+      8982479151082257
+    ],
+    "raw": {
+      "status": "enabled",
+      "peer_id": 987102789522726,
+      "peers": {
+        "8982479151082257": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "1667891846572449": {
+          "uri": "http://10.10.1.4:6335/"
+        },
+        "7896541606624976": {
+          "uri": "http://10.10.1.3:6335/"
+        },
+        "987102789522726": {
+          "uri": "http://10.10.1.1:6335/"
+        }
+      },
+      "raft_info": {
+        "term": 9,
+        "commit": 696,
+        "pending_operations": 0,
+        "leader": 8982479151082257,
+        "role": "Follower",
+        "is_voter": true
+      },
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-07-18T11:28:44.531286601Z"
+      },
+      "message_send_failures": {
+        "http://10.10.1.4:6335/": {
+          "count": 3,
+          "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.4:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+          "latest_error_timestamp": "2026-07-18T11:15:57.433091108Z"
+        },
+        "http://10.10.1.3:6335/": {
+          "count": 3,
+          "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.3:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+          "latest_error_timestamp": "2026-07-18T11:15:57.432078475Z"
+        }
+      }
+    }
+  },
+  "cluster_snapshot": {
+    "status": "enabled",
+    "peer_id": 987102789522726,
+    "peers": {
+      "8982479151082257": {
+        "uri": "http://10.10.1.2:6335/"
+      },
+      "987102789522726": {
+        "uri": "http://10.10.1.1:6335/"
+      },
+      "1667891846572449": {
+        "uri": "http://10.10.1.4:6335/"
+      },
+      "7896541606624976": {
+        "uri": "http://10.10.1.3:6335/"
+      }
+    },
+    "raft_info": {
+      "term": 9,
+      "commit": 696,
+      "pending_operations": 0,
+      "leader": 8982479151082257,
+      "role": "Follower",
+      "is_voter": true
+    },
+    "consensus_thread_status": {
+      "consensus_thread_status": "working",
+      "last_update": "2026-07-18T11:29:25.454448325Z"
+    },
+    "message_send_failures": {
+      "http://10.10.1.4:6335/": {
+        "count": 3,
+        "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.4:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+        "latest_error_timestamp": "2026-07-18T11:15:57.433091108Z"
+      },
+      "http://10.10.1.3:6335/": {
+        "count": 3,
+        "latest_error": "Error in closure supplied to transport channel pool: status: Unavailable, message: \"Failed to connect to http://10.10.1.3:6335/, error: transport error\", details: [], metadata: MetadataMap { headers: {} }",
+        "latest_error_timestamp": "2026-07-18T11:15:57.432078475Z"
+      }
+    }
+  },
+  "vector_distance": "cosine",
+  "upper_hnsw_space": "cosine",
+  "qdrant_vector_distance": "Cosine",
+  "normalize_vectors": true,
+  "score_higher_is_better": true,
+  "train_limit": null,
+  "routing_mode": "faithful_original_rest",
+  "initial_num_shards": 31,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "shard_placement_map": null,
+  "shard_placement_map_name": null,
+  "placement_peer_uri_contains": null,
+  "discovered_peer_ids": [
+    1667891846572449,
+    7896541606624976,
+    8982479151082257
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46,
+    "cluster_shards_per_peer": {
+      "1667891846572449": 16,
+      "7896541606624976": 15,
+      "8982479151082257": 15
+    },
+    "cluster_placement_valid": true
+  },
+  "collection_cluster_snapshot": {
+    "peer_id": 987102789522726,
+    "shard_count": 46,
+    "local_shards": [],
+    "remote_shards": [
+      {
+        "shard_id": 1,
+        "shard_key": "centroid_00",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 2,
+        "shard_key": "centroid_01",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 3,
+        "shard_key": "centroid_02",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 4,
+        "shard_key": "centroid_03",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 5,
+        "shard_key": "centroid_04",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 6,
+        "shard_key": "centroid_05",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 7,
+        "shard_key": "centroid_06",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 8,
+        "shard_key": "centroid_07",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 9,
+        "shard_key": "centroid_08",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 10,
+        "shard_key": "centroid_09",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 11,
+        "shard_key": "centroid_10",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 12,
+        "shard_key": "centroid_11",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 13,
+        "shard_key": "centroid_12",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 14,
+        "shard_key": "centroid_13",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 15,
+        "shard_key": "centroid_14",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 16,
+        "shard_key": "centroid_15",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 17,
+        "shard_key": "centroid_16",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 18,
+        "shard_key": "centroid_17",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 19,
+        "shard_key": "centroid_18",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 20,
+        "shard_key": "centroid_19",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 21,
+        "shard_key": "centroid_20",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 22,
+        "shard_key": "centroid_21",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 23,
+        "shard_key": "centroid_22",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 24,
+        "shard_key": "centroid_23",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 25,
+        "shard_key": "centroid_24",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 26,
+        "shard_key": "centroid_25",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 27,
+        "shard_key": "centroid_26",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 28,
+        "shard_key": "centroid_27",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 29,
+        "shard_key": "centroid_28",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 30,
+        "shard_key": "centroid_29",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 31,
+        "shard_key": "centroid_30",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 32,
+        "shard_key": "centroid_31",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 33,
+        "shard_key": "centroid_32",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 34,
+        "shard_key": "centroid_33",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 35,
+        "shard_key": "centroid_34",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 36,
+        "shard_key": "centroid_35",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 37,
+        "shard_key": "centroid_36",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 38,
+        "shard_key": "centroid_37",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 39,
+        "shard_key": "centroid_38",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 40,
+        "shard_key": "centroid_39",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 41,
+        "shard_key": "centroid_40",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 42,
+        "shard_key": "centroid_41",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 43,
+        "shard_key": "centroid_42",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 44,
+        "shard_key": "centroid_43",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 45,
+        "shard_key": "centroid_44",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 46,
+        "shard_key": "centroid_45",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      }
+    ],
+    "shard_transfers": []
+  },
+  "worker_shard_points": {
+    "1667891846572449": {
+      "shard_count": 16,
+      "points_count": 0
+    },
+    "7896541606624976": {
+      "shard_count": 15,
+      "points_count": 0
+    },
+    "8982479151082257": {
+      "shard_count": 15,
+      "points_count": 0
+    }
+  },
+  "placement_valid": true,
+  "warmup_query_count": 500,
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "concurrency_evaluation_mode": "preplanned_search",
+  "search_dispatch_mode": "coordinator",
+  "lower_execution_order": "query_major",
+  "direct_peer_http_urls": null,
+  "direct_peer_local_premerge": false,
+  "routed_execution_mode": "compact_multi_ep",
+  "routed_planning_mode": "materialized",
+  "placement_simulation": null,
+  "physical_execution_trace": {
+    "query_count": 3000,
+    "top_k": 10,
+    "peer_count": 3,
+    "mapped_shard_count": 46,
+    "avg_logical_shards_per_query": 18.713666666666665,
+    "p95_logical_shards_per_query": 31.0,
+    "avg_physical_peers_per_query": 2.937333333333333,
+    "p95_physical_peers_per_query": 3.0,
+    "avg_controller_merge_stream_reduction_pct": 84.30380648723748,
+    "avg_controller_candidate_reduction_pct": 84.30380648723748,
+    "avg_assigned_ef_sum_per_query": 4790.698666666666,
+    "p95_assigned_ef_sum_per_query": 7936.0,
+    "avg_max_peer_assigned_ef_per_query": 2026.8373333333334,
+    "p95_max_peer_assigned_ef_per_query": 3328.0,
+    "placement_peer_loads": {
+      "query_count": 3000,
+      "avg_query_max_peer_load": 2026.8373333333334,
+      "p95_query_max_peer_load": 3328.0,
+      "max_query_max_peer_load": 3840.0,
+      "avg_active_peers_per_query": 2.937333333333333,
+      "max_total_peer_load": 5814272.0,
+      "min_total_peer_load": 4063744.0,
+      "peer_load_cv_pct": 15.546638610166818
+    }
+  },
+  "compact_ef_mode": null,
+  "routed_result_limit_mode": "top_k",
+  "routed_result_limit_multiplier": null,
+  "source_id_dedup_block_size": 1183515,
+  "multi_assign": true,
+  "orion_multi_assign_min_max_vote": 2,
+  "orion_multi_assign_vote_delta": 0,
+  "orion_multi_assign_max_shards": 0,
+  "fission_enabled": true,
+  "fair_architecture_note": "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: Orion routes to upper-selected shards with Method4 routing metadata, kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": "This patched Qdrant build accepts per-shard HNSW entry point IDs and per-shard dynamic EF, and lower-tier custom-entry searches use a base-layer MultiEP path matching hnswlib searchBaseLayerST_MultiEP. The remaining non-bit-identical gap is graph construction: bottom shards are still built by Qdrant's HNSW builder, so level RNG, parallel insertion scheduling, and neighbor-link tie behavior are not guaranteed to be byte-for-byte identical to hnswlib.",
+  "rng_equivalence_note": "The port preserves the original seed roles and algorithm order (upper sample seed 100, KMeans random initialization stream, weighted balanced assignment), but Python/NumPy RNG streams are not bit-identical to libstdc++ std::mt19937/std::shuffle or C rand().",
+  "upper_hnsw": {
+    "m": 32,
+    "ef_construction": 100,
+    "search_ef": 400,
+    "sample_points": 36984
+  },
+  "kmeans_simple_nprobe": null,
+  "original_routing": {
+    "topology_iterations": null,
+    "total_assigned": 1401454,
+    "expansion_ratio": 1.1841465331208587,
+    "multi_assign_min_max_vote": 2,
+    "multi_assign_vote_delta": 0,
+    "multi_assign_max_shards": 0,
+    "fission_events": null,
+    "shard_count_min": null,
+    "shard_count_max": null,
+    "recovered_from_collection": true
+  },
+  "best_tuning_row": {
+    "upper_k": 96,
+    "nprobe": null,
+    "base_ef": 256,
+    "factor": 0,
+    "query_count": 500,
+    "top_k": 10,
+    "recall_at_k": 0.9518,
+    "qps": 500.33680171978983,
+    "wall_s": 0.999326849996578,
+    "avg_visited_shards": 18.864,
+    "avg_upper_hits": 105.874,
+    "avg_assigned_ef_per_visited_shard": 256.0,
+    "estimated_ef_sum_per_query": 4829.184,
+    "avg_physical_peers_per_query": 2.956,
+    "latency_p50_ms": 317.96501600183547,
+    "latency_p95_ms": 325.86400461004814,
+    "latency_p99_ms": 326.56613693077816,
+    "search_batch_calls": 3,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "final_row": {
+    "upper_k": 96,
+    "nprobe": null,
+    "base_ef": 256,
+    "factor": 0,
+    "query_count": 3000,
+    "top_k": 10,
+    "recall_at_k": 0.9516,
+    "qps": 542.2585619279556,
+    "wall_s": 5.532416103000287,
+    "avg_visited_shards": 18.713666666666665,
+    "avg_upper_hits": 105.465,
+    "avg_assigned_ef_per_visited_shard": 256.0,
+    "estimated_ef_sum_per_query": 4790.698666666666,
+    "avg_physical_peers_per_query": 2.937333333333333,
+    "latency_p50_ms": 308.8577140006237,
+    "latency_p95_ms": 318.691443001444,
+    "latency_p99_ms": 322.43157099961536,
+    "search_batch_calls": 15,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 542.6939660913089,
+    "qps_stdev": 5.786566594976865,
+    "recall_mean": 0.9516,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

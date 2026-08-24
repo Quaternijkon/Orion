@@ -3251,6 +3251,9 @@ impl From<HwMeasurementAcc> for HardwareUsage {
     fn from(value: HwMeasurementAcc) -> Self {
         let HardwareData {
             cpu,
+            cpu_time_us,
+            cpu_wall_time_us,
+            graph_nodes_visited,
             payload_io_read,
             payload_io_write,
             payload_index_io_read,
@@ -3261,6 +3264,9 @@ impl From<HwMeasurementAcc> for HardwareUsage {
 
         Self {
             cpu: cpu as u64,
+            cpu_time_us: cpu_time_us as u64,
+            cpu_wall_time_us: cpu_wall_time_us as u64,
+            graph_nodes_visited: graph_nodes_visited as u64,
             payload_io_read: payload_io_read as u64,
             payload_io_write: payload_io_write as u64,
             payload_index_io_read: payload_index_io_read as u64,
@@ -3275,6 +3281,9 @@ impl From<HardwareUsage> for HardwareData {
     fn from(value: HardwareUsage) -> Self {
         let HardwareUsage {
             cpu,
+            cpu_time_us,
+            cpu_wall_time_us,
+            graph_nodes_visited,
             payload_io_read,
             payload_io_write,
             payload_index_io_read,
@@ -3285,6 +3294,9 @@ impl From<HardwareUsage> for HardwareData {
 
         HardwareData {
             cpu: cpu as usize,
+            cpu_time_us: cpu_time_us as usize,
+            cpu_wall_time_us: cpu_wall_time_us as usize,
+            graph_nodes_visited: graph_nodes_visited as usize,
             payload_io_read: payload_io_read as usize,
             payload_io_write: payload_io_write as usize,
             payload_index_io_read: payload_index_io_read as usize,

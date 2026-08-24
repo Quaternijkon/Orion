@@ -1,0 +1,119 @@
+{
+  "anomalies": [
+    "sift1m_kmeans_m4_reached_12_iteration_cap_without_convergence",
+    "sift1m_kmeans_m4_shard_counts_513838_138144_197753_150265"
+  ],
+  "bottleneck_validation": {
+    "all_configurations_unflagged": true,
+    "maximum_aggregator_cpu_pct": 81.05780696749456,
+    "maximum_aggregator_queue_depth": 0,
+    "maximum_network_utilization_pct": 0.9346671498725069,
+    "maximum_routing_share_pct": 11.560607050996971
+  },
+  "c1_a_status": "SUPPORTS",
+  "configuration_count": 6,
+  "correction_reason": "Stage 4 used a serialized single-process client and measured client throughput rather than distributed worker capacity.",
+  "dataset": "sift1m",
+  "dataset_checksum": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "evidence_sha256": {
+    "canonical_physical_scaleout": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+    "physical_scaleout_csv": "ef1047992fafbec45c79f2d5254e569ed9f79b180c37d5215868adc43e3893c6",
+    "protocol_physical_scaleout": "2530c3aee7762099e63a781206b4a77c4f6e03e4e1c1bed82ea6f8c73052e619",
+    "protocol_scaling_efficiency": "fd954038e8ce02aa372a1fa0b892de2767ff901de75675a4f9171ee3eb3647de",
+    "source_results": {
+      "/users/dry/Orion/experiments/c1/runs/stage6-e1-corrected-sift1m-common-m1.json": "2643c9644552b03ad0c000c04799f02d979cf742544294474e362b97870e4453",
+      "/users/dry/Orion/experiments/c1/runs/stage6-e1-corrected-sift1m-kmeans-m2.json": "be26e09ce6655e349f577f73b942c4cf8867eb780db49f032be4303323ab1eb3",
+      "/users/dry/Orion/experiments/c1/runs/stage6-e1-corrected-sift1m-kmeans-m4.json": "7b3719d1859b6c15215a255828002d6f3e455b9b5d91823f4367d78016865141",
+      "/users/dry/Orion/experiments/c1/runs/stage6-e1-corrected-sift1m-random-m2.json": "4ae6cb66ea2716b14d7dcd98618f513f00b467bdf73c9fd47eee9c37565ecc77",
+      "/users/dry/Orion/experiments/c1/runs/stage6-e1-corrected-sift1m-random-m4.json": "affaafe30fb397f1f36fb18d75bcefd19439fa35e33230f159f4c44d84646310"
+    },
+    "summary_json": "40a658d3025d089ad90c45ff28183fcdaadc9dd2536393159f7ec017f6daf090"
+  },
+  "experiment_id": "stage6-e1-corrected-sift1m-physical-scaleout",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "measurement_recall": {
+    "kmeans": {
+      "1": 0.9142777777777779,
+      "2": 0.9143777777777777,
+      "4": 0.9107777777777778
+    },
+    "random": {
+      "1": 0.9142777777777779,
+      "2": 0.9459111111111111,
+      "4": 0.9380888888888889
+    }
+  },
+  "normalized_qps": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 1.1175076316988564,
+      "4": 1.003456935014608
+    },
+    "random": {
+      "1": 1.0,
+      "2": 0.619233826921201,
+      "4": 0.39388956604255965
+    }
+  },
+  "partition_methods": [
+    "random",
+    "kmeans"
+  ],
+  "physical_machine_counts": [
+    1,
+    2,
+    4
+  ],
+  "qps_mean": {
+    "kmeans": {
+      "1": 17884.054161484284,
+      "2": 19985.56701117438,
+      "4": 17945.878174518268
+    },
+    "random": {
+      "1": 17884.054161484284,
+      "2": 11074.411299281943,
+      "4": 7044.342332748678
+    }
+  },
+  "qps_sample_std": {
+    "kmeans": {
+      "1": 751.8015514290222,
+      "2": 800.5580835294788,
+      "4": 575.4104286757337
+    },
+    "random": {
+      "1": 751.8015514290222,
+      "2": 190.750373109482,
+      "4": 96.66359417847825
+    }
+  },
+  "record_type": "e1_physical_scaleout_analysis",
+  "repetition_counts": {
+    "kmeans-m1": 3,
+    "kmeans-m2": 3,
+    "kmeans-m4": 3,
+    "random-m1": 3,
+    "random-m2": 3,
+    "random-m4": 3
+  },
+  "scaling_efficiency": {
+    "kmeans": {
+      "1": 1.0,
+      "2": 0.5587538158494282,
+      "4": 0.250864233753652
+    },
+    "random": {
+      "1": 1.0,
+      "2": 0.3096169134606005,
+      "4": 0.09847239151063991
+    }
+  },
+  "shared_unsharded_baseline": true,
+  "source_stem": "stage6-e1-corrected",
+  "status": "VALID_E1",
+  "supersedes_experiment_id": "stage4-e1-sift1m-physical-scaleout",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-20T21:04:24Z",
+  "unique_physical_layout_count": 5
+}

@@ -227,6 +227,7 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "multi_assign_min_max_vote": 3,
         "multi_assign_vote_delta": 1,
         "multi_assign_max_shards": 2,
+        "enable_topology_refinement": True,
     }
     upper_build_call = calls[2]
     assert upper_build_call[6] == 100
@@ -255,6 +256,7 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
     assert manifest["routing"]["fission_events"] == routing.fission_events
     assert manifest["parameters"]["attachment_search_ef"] == 100
     assert manifest["parameters"]["upper_search_ef"] == 2
+    assert manifest["parameters"]["enable_topology_refinement"] is True
     checksum_lines = (output_dir / module.CHECKSUMS_NAME).read_text().splitlines()
     assert any(line.endswith(f"  {module.GRAPHLESS_NAME}") for line in checksum_lines)
     assert any(line.endswith(f"  {module.BUILD_MANIFEST_NAME}") for line in checksum_lines)
@@ -387,6 +389,28 @@ def test_rust_builder_command_targets_collection_production_example(tmp_path):
         "--ef",
         "88",
     ]
+
+
+def test_no_refinement_ablation_is_forwarded_and_recorded(monkeypatch, tmp_path):
+    module = load_module()
+    hdf5_path = tmp_path / "ablation-smoke.hdf5"
+    output_dir = tmp_path / "ablation-layout"
+    write_train_hdf5(module, hdf5_path)
+    calls, _routing = patch_algorithm_pipeline(module, monkeypatch)
+    args = smoke_args(
+        module,
+        hdf5_path,
+        output_dir,
+        "--disable-topology-refinement",
+        "--graphless-only",
+    )
+
+    module.build(args)
+
+    routing_call = next(call for call in calls if call[0] == "build_original_routing_state")
+    assert routing_call[8]["enable_topology_refinement"] is False
+    manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
+    assert manifest["parameters"]["enable_topology_refinement"] is False
 
 
 def test_run_rust_builder_passes_external_cargo_target_dir(monkeypatch, tmp_path):

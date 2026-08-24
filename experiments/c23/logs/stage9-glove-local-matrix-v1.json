@@ -1,0 +1,173 @@
+{
+  "checks": {
+    "complete_sequential_local_matrix": "PASS"
+  },
+  "configuration_count": 20,
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "input_manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-input-v2/glove-200-angular/manifest.json",
+  "input_manifest_sha256": "46f99fed6229bb8b543b1603414044b651cd0f2dd4cb00790e6328e692411af1",
+  "protocol_version": "c23-20260821-v1",
+  "runs": [
+    {
+      "configuration_id": "random-m2-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m2-seed20260820-v1/manifest.json",
+      "manifest_sha256": "4c2ca3e840babd5362da43a5ee9a5e50425b4847768c03e3fb39ef1a97a56cd1",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m2-seed20260820-v1",
+      "total_seconds": 1779.746232615
+    },
+    {
+      "configuration_id": "random-m4-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m4-seed20260820-v1/manifest.json",
+      "manifest_sha256": "8ab087d0d42a9bad07b87fbd9cefb6073a1542b4823173c26943dca9d428f305",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m4-seed20260820-v1",
+      "total_seconds": 1637.78955024
+    },
+    {
+      "configuration_id": "random-m8-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m8-seed20260820-v1/manifest.json",
+      "manifest_sha256": "5a1c2066dbe1fdee17da4185d8e6dcba6ed1979583b71cc3d0427b2c7376eafd",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m8-seed20260820-v1",
+      "total_seconds": 1569.660935574
+    },
+    {
+      "configuration_id": "random-m16-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m16-seed20260820-v1/manifest.json",
+      "manifest_sha256": "5d50bd44801c27be793f9cbb88e96005fb546f17e7a7e4c320af6a768302dce1",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m16-seed20260820-v1",
+      "total_seconds": 1444.747714756
+    },
+    {
+      "configuration_id": "random-m32-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m32-seed20260820-v1/manifest.json",
+      "manifest_sha256": "b06c647d40f491850600c17b202d729afea49b8def765aa21b436359312e3f20",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/random-m32-seed20260820-v1",
+      "total_seconds": 1233.248399585
+    },
+    {
+      "configuration_id": "kmeans-m2-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m2-seed20260820-v1/manifest.json",
+      "manifest_sha256": "eb107372794b96548e28f011054e4afb80ad8ac85cbe9361a0053c7833ffb199",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m2-seed20260820-v1",
+      "total_seconds": 1762.786279408
+    },
+    {
+      "configuration_id": "kmeans-m4-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m4-seed20260820-v1/manifest.json",
+      "manifest_sha256": "5ca0db6ce8133ab7542de057bb359b165a5ac862d878a24bf3eaa110abfe25fc",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m4-seed20260820-v1",
+      "total_seconds": 1562.222204322
+    },
+    {
+      "configuration_id": "kmeans-m8-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m8-seed20260820-v1/manifest.json",
+      "manifest_sha256": "5cf0fd1d67f2c5376f19bf7593f4e032afa8d7bf7cbfd3b18ac6fc255112138d",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m8-seed20260820-v1",
+      "total_seconds": 1379.830385679
+    },
+    {
+      "configuration_id": "kmeans-m16-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m16-seed20260820-v1/manifest.json",
+      "manifest_sha256": "3c661b37442932ac189e92f1c00e9fb5484de637f87652a0c824325b9a9029d6",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m16-seed20260820-v1",
+      "total_seconds": 1252.829479439
+    },
+    {
+      "configuration_id": "kmeans-m32-seed20260820",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m32-seed20260820-v1/manifest.json",
+      "manifest_sha256": "252c3fde371e837dbe03f4e702124a9b24487e3e7c94eb6cbf1e7c9b18df056d",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/kmeans-m32-seed20260820-v1",
+      "total_seconds": 1052.990672565
+    },
+    {
+      "configuration_id": "orion-m2-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m2-seed1-v1/manifest.json",
+      "manifest_sha256": "fc7a9dd0ebcae0efb01f6e90199582751165553491fb3ad0487173da57c618f0",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m2-seed1-v1",
+      "total_seconds": 1799.353421886
+    },
+    {
+      "configuration_id": "orion-m4-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m4-seed1-v1/manifest.json",
+      "manifest_sha256": "1f138ce2bf015b457c960fb1ec00e526c733b45445407ca99cbcd0f0b1cf5d06",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m4-seed1-v1",
+      "total_seconds": 1484.835837502
+    },
+    {
+      "configuration_id": "orion-m8-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m8-seed1-v1/manifest.json",
+      "manifest_sha256": "ae0e4bc5107242891a6d20d5bbb48b1c426f142fce335313587fe665569475e9",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m8-seed1-v1",
+      "total_seconds": 1328.599431942
+    },
+    {
+      "configuration_id": "orion-m16-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m16-seed1-v1/manifest.json",
+      "manifest_sha256": "8a762cd89859c81ccd79def03b2071a5a5bdf2b758bf1640fe0695e8eb1b92f0",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m16-seed1-v1",
+      "total_seconds": 1173.227104486
+    },
+    {
+      "configuration_id": "orion-m32-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m32-seed1-v1/manifest.json",
+      "manifest_sha256": "825682d78f64ce6ed13b2ee7548b1dd37e3182a105f1743c0235118cb112de59",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion-m32-seed1-v1",
+      "total_seconds": 1023.731034842
+    },
+    {
+      "configuration_id": "orion_no_refinement-m2-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m2-seed1-v1/manifest.json",
+      "manifest_sha256": "1c943b4ae98a283c558bd470f9c4dbee3cc53900618dff58deb3c51cd0bfd371",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m2-seed1-v1",
+      "total_seconds": 1730.209051178
+    },
+    {
+      "configuration_id": "orion_no_refinement-m4-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m4-seed1-v1/manifest.json",
+      "manifest_sha256": "9ba760d2d0e3c33335d8504785b98dddda5459a452ebf626130d4f37dbc86d26",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m4-seed1-v1",
+      "total_seconds": 1529.52565135
+    },
+    {
+      "configuration_id": "orion_no_refinement-m8-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m8-seed1-v1/manifest.json",
+      "manifest_sha256": "d2e9f4d13c4f4bd0ab979d219ad4ffa5bacbe630e299a965ad77f555df717bc9",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m8-seed1-v1",
+      "total_seconds": 1396.079707003
+    },
+    {
+      "configuration_id": "orion_no_refinement-m16-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m16-seed1-v1/manifest.json",
+      "manifest_sha256": "cf2e42d8957b7ebb982375c3c98052212ae4a8da9132808009c989aa61877f69",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m16-seed1-v1",
+      "total_seconds": 1193.667251737
+    },
+    {
+      "configuration_id": "orion_no_refinement-m32-seed1",
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m32-seed1-v1/manifest.json",
+      "manifest_sha256": "1b15b61db1918ba00e410a53dc6b5a9ca2e40e266cfcd742e63ba8ea5814a8f6",
+      "run_dir": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/local-runs-v2/glove-200-angular/orion_no_refinement-m32-seed1-v1",
+      "total_seconds": 1033.131227982
+    }
+  ],
+  "settings": {
+    "dataset": "glove-200-angular",
+    "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+    "dimension": 200,
+    "e3_ef_values": [
+      10,
+      20,
+      40,
+      80,
+      160,
+      320
+    ],
+    "e4_ef": 320,
+    "full_scan_threshold_kb": 10,
+    "graph_seed": 20260821,
+    "hnsw_ef_construction": 200,
+    "hnsw_m": 32,
+    "measurement_count": 9000,
+    "measurement_start": 1000
+  },
+  "timestamp": "2026-08-22T08:41:15.062039Z"
+}

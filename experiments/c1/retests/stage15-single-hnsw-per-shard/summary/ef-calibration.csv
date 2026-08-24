@@ -1,0 +1,7 @@
+dataset,split,ef_search,recall_at_10,selected,source,source_sha256
+glove-200-angular,tuning,192,0.8719,False,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef192-tuning.json,286f8b8275dc4999690e09a7276a7b4b4e2c641c6b25eeef9e08a76e00f34d09
+glove-200-angular,tuning,224,0.8815,False,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef224-tuning.json,05af61d3acc732243945f3014d69f38df313c790228056db64e4629f01b9d76c
+glove-200-angular,tuning,256,0.8887,False,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef256-tuning.json,160a44634520fa9443a91c89eca4a8ab8a666ffa53e964f2f016ad45c8748de4
+glove-200-angular,tuning,320,0.9013,True,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef320-tuning.json,3fa5b2c8e18b88eafe0b27bc8d0d08e7581e4f8076082d4dbfd04b13a15bd3ff
+glove-200-angular,tuning,384,0.9126000000000001,False,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef384-tuning.json,aa6c381b8ef4dea25494302300170464b55ce98074f1b24380158f7fb6b1241d
+glove-200-angular,holdout,320,0.9026888888888889,True,/users/dry/Orion/experiments/c1/retests/stage15-single-hnsw-per-shard/ef-calibration/glove-m1-single-graph/glove-m1-ef320-holdout.json,53b0bbc04bb70e131d62b3053734835951d8b998d4f22fa967aeee3da9298933

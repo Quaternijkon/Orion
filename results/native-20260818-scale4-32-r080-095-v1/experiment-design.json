@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "run_id": "native-20260818-scale4-32-r080-095-v1",
+  "created_at": "2026-08-18T09:15:07Z",
+  "dataset": {
+    "name": "glove-200-angular",
+    "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+    "train_shape": [1183514, 200],
+    "test_shape": [10000, 200],
+    "distance": "cosine"
+  },
+  "methods": ["orion", "simple_kmeans", "hash_all"],
+  "recall_targets": [0.8, 0.85, 0.9, 0.95],
+  "same_recall_window": {
+    "minimum": "target",
+    "maximum": "target + 0.003"
+  },
+  "protocol": {
+    "top_k": 10,
+    "batch_size": 200,
+    "warmup_queries": 500,
+    "evaluation_queries": 3000,
+    "stability_repeats": 3,
+    "api": "search",
+    "benchmark_client_cpuset": "20-31",
+    "qdrant_cpuset_per_physical_node": "0-19",
+    "replication_factor": 1,
+    "peer_premerge": "disabled",
+    "compact_wire_version": 2
+  },
+  "physical_peers": [
+    {"role": "node-0", "host": "amd162", "ip": "10.10.1.1"},
+    {"role": "node-1", "host": "amd136", "ip": "10.10.1.2"},
+    {"role": "node-2", "host": "amd140", "ip": "10.10.1.3"},
+    {"role": "node-3", "host": "amd134", "ip": "10.10.1.4"}
+  ],
+  "placement": {
+    "mode": "all_four_qdrant_peers",
+    "node_0_is_both_request_entry_and_data_worker": true,
+    "logical_worker_simulation": "numeric auto-shards distributed across four physical Qdrant peers"
+  },
+  "orion_effective_shard_mapping": {
+    "4": {"initial_p": 3, "effective_shards": 4, "status": "exact"},
+    "8": {
+      "status": "no_exact_mapping_with_faithful_constants",
+      "observed_lower": {"initial_p": 5, "effective_shards": 7},
+      "observed_upper": {"initial_p": 7, "effective_shards": 10},
+      "decision": "pending; do not relabel 7 or 10 as exact 8"
+    },
+    "16": {
+      "status": "no_exact_mapping_with_faithful_constants",
+      "observed_lower": {"initial_p": 13, "effective_shards": 15},
+      "observed_upper": {"initial_p": 14, "effective_shards": 17},
+      "decision": "pending; do not relabel 15 or 17 as exact 16"
+    },
+    "32": {"initial_p": 24, "effective_shards": 32, "status": "exact"}
+  }
+}

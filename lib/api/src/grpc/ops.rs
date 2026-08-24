@@ -6,6 +6,9 @@ impl HardwareUsage {
     pub fn add(&mut self, other: Self) {
         let Self {
             cpu,
+            cpu_time_us,
+            cpu_wall_time_us,
+            graph_nodes_visited,
             payload_io_read,
             payload_io_write,
             payload_index_io_read,
@@ -15,6 +18,9 @@ impl HardwareUsage {
         } = other;
 
         self.cpu += cpu;
+        self.cpu_time_us += cpu_time_us;
+        self.cpu_wall_time_us += cpu_wall_time_us;
+        self.graph_nodes_visited += graph_nodes_visited;
         self.payload_io_read += payload_io_read;
         self.payload_io_write += payload_io_write;
         self.payload_index_io_read += payload_index_io_read;
@@ -26,6 +32,9 @@ impl HardwareUsage {
     pub fn is_empty(&self) -> bool {
         let Self {
             cpu,
+            cpu_time_us,
+            cpu_wall_time_us,
+            graph_nodes_visited,
             payload_io_read,
             payload_io_write,
             payload_index_io_read,
@@ -35,6 +44,9 @@ impl HardwareUsage {
         } = self;
 
         *cpu == 0
+            && *cpu_time_us == 0
+            && *cpu_wall_time_us == 0
+            && *graph_nodes_visited == 0
             && *payload_io_read == 0
             && *payload_io_write == 0
             && *payload_index_io_read == 0

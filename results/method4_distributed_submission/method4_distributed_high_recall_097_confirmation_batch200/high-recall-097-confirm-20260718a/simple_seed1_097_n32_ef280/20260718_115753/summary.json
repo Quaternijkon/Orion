@@ -1,0 +1,927 @@
+{
+  "base_url": "http://10.10.1.1:6333",
+  "collection": "dist_submission-20260718a_simple_kmeans_seed1_s46",
+  "collection_routing_build_metadata": {
+    "status": "verified",
+    "verified": true,
+    "expected_fingerprint": "7eef8ddbfb3f65d6b60dce4cbbc17c1e822d1ac74759b9093be7fb54b55f10a2",
+    "actual_fingerprint": "7eef8ddbfb3f65d6b60dce4cbbc17c1e822d1ac74759b9093be7fb54b55f10a2",
+    "expected_fields": {
+      "schema_version": 1,
+      "routing_mode": "kmeans_simple_nprobe",
+      "routing_family": "simple_kmeans",
+      "num_shards": 46,
+      "effective_num_shards": 46,
+      "train_count": 1183514,
+      "distance": "Cosine",
+      "hnsw_m": 32,
+      "hnsw_ef_construct": 100,
+      "upper_hnsw_m": 32,
+      "upper_hnsw_ef_construction": 100,
+      "upper_hnsw_search_ef_during_routing_build": 400,
+      "upper_sample_seed": 100,
+      "kmeans_rand_seed": 1,
+      "kmeans_iters": 10,
+      "cpp_kmeans_train_size": 10000,
+      "sample_denominator": 32,
+      "k_overlap": 10,
+      "topology_iters": 50,
+      "multi_assign": {
+        "enabled": false,
+        "orion_enabled": false,
+        "orion_min_max_vote": 2,
+        "orion_vote_delta": 0,
+        "orion_max_shards": 0,
+        "simple_kmeans_enabled": false,
+        "simple_kmeans_alpha": 1.0,
+        "simple_kmeans_chunk_size": 50000
+      },
+      "fission": {
+        "enabled": false,
+        "claim_a_partition_family": "none",
+        "claim_a_random_seed": 12345
+      },
+      "legacy_centroid": {
+        "sample_size": 50000,
+        "seed": 42
+      }
+    },
+    "note": "The live collection contains Orion harness routing-build metadata whose canonical fields and SHA-256 fingerprint exactly match this run."
+  },
+  "hdf5_path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+  "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+  "dataset_size_bytes": 962819488,
+  "repository": {
+    "root": "/users/dry/Orion",
+    "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+    "dirty": true
+  },
+  "image_tag": "orion-method4:1a5ac4c47237",
+  "image_digest": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+  "deployment_manifest_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+  "deployment_manifest": {
+    "cluster_snapshot": {
+      "result": {
+        "consensus_thread_status": {
+          "consensus_thread_status": "working",
+          "last_update": "2026-07-18T11:36:47.890266691Z"
+        },
+        "message_send_failures": {},
+        "peer_id": 987102789522726,
+        "peers": {
+          "1667891846572449": {
+            "uri": "http://10.10.1.4:6335/"
+          },
+          "7896541606624976": {
+            "uri": "http://10.10.1.3:6335/"
+          },
+          "8982479151082257": {
+            "uri": "http://10.10.1.2:6335/"
+          },
+          "987102789522726": {
+            "uri": "http://10.10.1.1:6335/"
+          }
+        },
+        "raft_info": {
+          "commit": 696,
+          "is_voter": true,
+          "leader": 8982479151082257,
+          "pending_operations": 0,
+          "role": "Follower",
+          "term": 9
+        },
+        "status": "enabled"
+      },
+      "status": "ok",
+      "time": 8.753e-06
+    },
+    "controller_uri": "http://10.10.1.1:6335",
+    "controller_url": "http://10.10.1.1:6333",
+    "dataset": {
+      "hdf5_shapes": {
+        "neighbors": [
+          10000,
+          100
+        ],
+        "test": [
+          10000,
+          200
+        ],
+        "train": [
+          1183514,
+          200
+        ]
+      },
+      "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+      "sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+      "size_bytes": 962819488,
+      "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+    },
+    "generated_at": "2026-07-18T11:36:47Z",
+    "image": {
+      "id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+      "tag": "orion-method4:1a5ac4c47237",
+      "tar_path": "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/orion-method4_1a5ac4c47237.tar",
+      "tar_sha256": "4aa116f056c6d13ab918535499f459dbd0b8000dad20f07da0d83f56263ec0de",
+      "tar_size_bytes": 70056448
+    },
+    "nodes": [
+      {
+        "advertised_uri": "http://10.10.1.1:6335",
+        "container_name": "orion-dist-dist-20260717-initial-controller",
+        "cpuset": "0-7",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-0.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.1:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "enabled",
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/controller/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.2:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_1",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-1.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289399296
+        },
+        "http_url": "http://10.10.1.2:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.2",
+        "role": "qdrant_shard_1",
+        "ssh_host": "hp052.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_1/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.3:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_2",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-2.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289415680
+        },
+        "http_url": "http://10.10.1.3:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.3",
+        "role": "qdrant_shard_2",
+        "ssh_host": "hp065.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_2/storage"
+      },
+      {
+        "advertised_uri": "http://10.10.1.4:6335",
+        "container_name": "orion-dist-dist-20260717-initial-qdrant_shard_3",
+        "cpuset": "0-19",
+        "facts": {
+          "cpu_count": 20,
+          "hostname": "node-3.qdrant-4node.intelisys-pg0.utah.cloudlab.us",
+          "kernel": "5.15.0-177-generic",
+          "machine": "x86_64",
+          "memory_bytes": 67289407488
+        },
+        "http_url": "http://10.10.1.4:6333",
+        "image_id": "sha256:219d98992e52e2a06d9a5692e601669aff3cf1f8ffd049a077f662c1c4df29f0",
+        "max_search_threads": 16,
+        "optimizer_cpu_budget": 4,
+        "peer_premerge_mode": "not_applicable",
+        "private_ip": "10.10.1.4",
+        "role": "qdrant_shard_3",
+        "ssh_host": "hp076.utah.cloudlab.us",
+        "storage_path": "/users/dry/orion-distributed/dist-20260717-initial/qdrant_shard_3/storage"
+      }
+    ],
+    "peer_premerge": {
+      "current_mode": "enabled",
+      "disable_environment_variable": "QDRANT_DISABLE_SHARD_MAJOR_PEER_PREMERGE",
+      "matches_requested": true,
+      "requested_mode": "enabled",
+      "scope": "controller"
+    },
+    "repository": {
+      "commit": "1a5ac4c47237b9224ae3e4ca28c2cefb2b514352",
+      "dirty": true,
+      "dirty_paths": [
+        "tests/tools/test_method4_benchmark_matrix.py",
+        "tests/tools/test_qdrant_two_level_routing_experiment.py",
+        "tools/method4_benchmark_matrix.py",
+        "tools/qdrant_two_level_routing_experiment.py",
+        "docs/experiments/2026-07-17-method4-four-node-distributed.md",
+        "results/method4_distributed/",
+        "results/method4_distributed_confirmation/",
+        "results/method4_distributed_smoke/",
+        "results/method4_distributed_submission/",
+        "results/method4_distributed_tuning/",
+        "tests/tools/test_method4_distributed_cluster.py",
+        "tools/benchmark_configs/method4_distributed_baseline_dense_batch200.json",
+        "tools/benchmark_configs/method4_distributed_baseline_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_dynamic_ef_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_claim_c_fixed_ef_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_glove200_initial.json",
+        "tools/benchmark_configs/method4_distributed_high_recall_097_screen_batch200.json",
+        "tools/benchmark_configs/method4_distributed_native_premerge_ab_batch200.json",
+        "tools/benchmark_configs/method4_distributed_orion_debug.json",
+        "tools/benchmark_configs/method4_distributed_orion_refine_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_batch200.json",
+        "tools/benchmark_configs/method4_distributed_same_recall_confirmation_strict_batch200.json",
+        "tools/benchmark_configs/method4_distributed_smoke.json",
+        "tools/distributed/",
+        "tools/method4_distributed_cluster.py"
+      ],
+      "path": "/users/dry/Orion",
+      "short_commit": "1a5ac4c47237"
+    },
+    "run_id": "dist-20260717-initial",
+    "schema_version": 1,
+    "topology": {
+      "benchmark_client_cpuset": "8-19",
+      "controller": {
+        "cpuset": "0-7",
+        "max_search_threads": 8,
+        "optimizer_cpu_budget": 4,
+        "private_ip": "10.10.1.1",
+        "role": "controller",
+        "ssh_host": "localhost"
+      },
+      "dataset": {
+        "path": "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+        "url": "https://ann-benchmarks.com/glove-200-angular.hdf5"
+      },
+      "local_storage_root": "/users/dry/orion-distributed",
+      "ports": {
+        "grpc": 6334,
+        "http": 6333,
+        "p2p": 6335
+      },
+      "shared_root": "/proj/intelisys-PG0/exp/orion-distributed",
+      "workers": [
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.2",
+          "role": "qdrant_shard_1",
+          "ssh_host": "hp052.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.3",
+          "role": "qdrant_shard_2",
+          "ssh_host": "hp065.utah.cloudlab.us"
+        },
+        {
+          "cpuset": "0-19",
+          "max_search_threads": 16,
+          "optimizer_cpu_budget": 4,
+          "private_ip": "10.10.1.4",
+          "role": "qdrant_shard_3",
+          "ssh_host": "hp076.utah.cloudlab.us"
+        }
+      ]
+    },
+    "worker_uris": [
+      "http://10.10.1.2:6335",
+      "http://10.10.1.3:6335",
+      "http://10.10.1.4:6335"
+    ]
+  },
+  "container_log_tails": {
+    "controller": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:57:47.053503Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208595 \"-\" \"Python-urllib/3.10\" 0.273414\n2026-07-18T11:57:47.365883Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208712 \"-\" \"Python-urllib/3.10\" 0.273529\n2026-07-18T11:57:47.672409Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208583 \"-\" \"Python-urllib/3.10\" 0.267490\n2026-07-18T11:57:47.971541Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208591 \"-\" \"Python-urllib/3.10\" 0.259741\n2026-07-18T11:57:48.282640Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_dist-20260717-initial_orion_s46/points/search/batch HTTP/1.1\" 200 208687 \"-\" \"Python-urllib/3.10\" 0.271768\n2026-07-18T11:57:49.379106Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000101\n2026-07-18T11:57:49.500964Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_dist-20260717-initial_orion_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000102\n2026-07-18T11:57:49.501809Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 561 \"-\" \"Python-urllib/3.10\" 0.000050\n2026-07-18T11:57:53.278588Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 561 \"-\" \"Python-urllib/3.10\" 0.000073\n2026-07-18T11:57:54.460093Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 561 \"-\" \"Python-urllib/3.10\" 0.000074\n2026-07-18T11:57:55.503941Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.003482\n2026-07-18T11:57:55.506770Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002220\n2026-07-18T11:57:55.507481Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000073\n2026-07-18T11:57:55.510450Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002224\n2026-07-18T11:57:55.511077Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000062\n2026-07-18T11:57:56.515910Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002890\n2026-07-18T11:57:56.516723Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000088\n2026-07-18T11:57:57.521667Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002969\n2026-07-18T11:57:57.522555Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000095\n2026-07-18T11:57:58.527449Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002953\n2026-07-18T11:57:58.528256Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000088\n2026-07-18T11:57:59.533380Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.003162\n2026-07-18T11:57:59.534324Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000106\n2026-07-18T11:58:00.539746Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.003530\n2026-07-18T11:58:00.540581Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000084\n2026-07-18T11:58:00.541587Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000080\n2026-07-18T11:58:00.550202Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46 HTTP/1.1\" 200 1835 \"-\" \"Python-urllib/3.10\" 0.002709\n2026-07-18T11:58:00.551124Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000087\n2026-07-18T11:58:00.552150Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000104\n2026-07-18T11:58:01.132497Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.510607\n2026-07-18T11:58:01.670248Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.502879\n2026-07-18T11:58:01.946770Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71467 \"-\" \"Python-urllib/3.10\" 0.257413\n2026-07-18T11:58:02.519406Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.503116\n2026-07-18T11:58:03.050829Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.499323\n2026-07-18T11:58:03.324509Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71467 \"-\" \"Python-urllib/3.10\" 0.253895\n2026-07-18T11:58:03.891537Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.501533\n2026-07-18T11:58:04.421169Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.497136\n2026-07-18T11:58:04.698550Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 71467 \"-\" \"Python-urllib/3.10\" 0.258196\n2026-07-18T11:58:05.448144Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.505808\n2026-07-18T11:58:05.980186Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142853 \"-\" \"Python-urllib/3.10\" 0.497055\n2026-07-18T11:58:06.521038Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.505555\n2026-07-18T11:58:07.055500Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142916 \"-\" \"Python-urllib/3.10\" 0.499563\n2026-07-18T11:58:07.616404Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.526827\n2026-07-18T11:58:08.162432Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.512001\n2026-07-18T11:58:08.704271Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.508260\n2026-07-18T11:58:09.237360Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.498855\n2026-07-18T11:58:09.779580Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.505452\n2026-07-18T11:58:10.315518Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.502061\n2026-07-18T11:58:10.877849Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.528345\n2026-07-18T11:58:11.407014Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.495227\n2026-07-18T11:58:11.948830Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142929 \"-\" \"Python-urllib/3.10\" 0.507020\n2026-07-18T11:58:12.489803Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142936 \"-\" \"Python-urllib/3.10\" 0.505402\n2026-07-18T11:58:13.030673Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.505694\n2026-07-18T11:58:13.801824Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.506921\n2026-07-18T11:58:14.340933Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.506106\n2026-07-18T11:58:14.877372Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.503697\n2026-07-18T11:58:15.414936Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.503955\n2026-07-18T11:58:15.953901Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.506681\n2026-07-18T11:58:16.557654Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.569214\n2026-07-18T11:58:17.093241Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.504414\n2026-07-18T11:58:17.633960Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.509553\n2026-07-18T11:58:18.174372Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.508194\n2026-07-18T11:58:18.711253Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.505050\n2026-07-18T11:58:19.270533Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.524971\n2026-07-18T11:58:19.811778Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.509571\n2026-07-18T11:58:20.340613Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.496954\n2026-07-18T11:58:20.877313Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142935 \"-\" \"Python-urllib/3.10\" 0.505211\n2026-07-18T11:58:21.411749Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.501608\n2026-07-18T11:58:22.196023Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.508537\n2026-07-18T11:58:22.727079Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.497981\n2026-07-18T11:58:23.267013Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.508091\n2026-07-18T11:58:23.811007Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.510743\n2026-07-18T11:58:24.401498Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143017 \"-\" \"Python-urllib/3.10\" 0.558539\n2026-07-18T11:58:24.938123Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142895 \"-\" \"Python-urllib/3.10\" 0.505258\n2026-07-18T11:58:25.476707Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.506496\n2026-07-18T11:58:26.008069Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.499343\n2026-07-18T11:58:26.566471Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.525914\n2026-07-18T11:58:27.106242Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.507639\n2026-07-18T11:58:27.647479Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142897 \"-\" \"Python-urllib/3.10\" 0.508675\n2026-07-18T11:58:28.181283Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.500988\n2026-07-18T11:58:28.713720Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142929 \"-\" \"Python-urllib/3.10\" 0.501218\n2026-07-18T11:58:29.254543Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142936 \"-\" \"Python-urllib/3.10\" 0.507540\n2026-07-18T11:58:29.790700Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.504116\n2026-07-18T11:58:30.549747Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142949 \"-\" \"Python-urllib/3.10\" 0.503223\n2026-07-18T11:58:31.087631Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142854 \"-\" \"Python-urllib/3.10\" 0.505064\n2026-07-18T11:58:31.621696Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142801 \"-\" \"Python-urllib/3.10\" 0.502093\n2026-07-18T11:58:32.212094Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142917 \"-\" \"Python-urllib/3.10\" 0.556130\n2026-07-18T11:58:32.746358Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143016 \"-\" \"Python-urllib/3.10\" 0.501806\n2026-07-18T11:58:33.282703Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142894 \"-\" \"Python-urllib/3.10\" 0.505116\n2026-07-18T11:58:33.817373Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143001 \"-\" \"Python-urllib/3.10\" 0.502650\n2026-07-18T11:58:34.358015Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143013 \"-\" \"Python-urllib/3.10\" 0.508983\n2026-07-18T11:58:34.889000Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.498710\n2026-07-18T11:58:35.436290Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 143027 \"-\" \"Python-urllib/3.10\" 0.515799\n2026-07-18T11:58:35.972288Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142896 \"-\" \"Python-urllib/3.10\" 0.503913\n2026-07-18T11:58:36.526494Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142932 \"-\" \"Python-urllib/3.10\" 0.505130\n2026-07-18T11:58:37.058140Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142930 \"-\" \"Python-urllib/3.10\" 0.499097\n2026-07-18T11:58:37.597570Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142935 \"-\" \"Python-urllib/3.10\" 0.507443\n2026-07-18T11:58:38.143618Z  INFO actix_web::middleware::logger: 10.10.1.1 \"POST /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/points/search/batch HTTP/1.1\" 200 142968 \"-\" \"Python-urllib/3.10\" 0.513705\n2026-07-18T11:58:38.191112Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /collections/dist_submission-20260718a_simple_kmeans_seed1_s46/cluster HTTP/1.1\" 200 4092 \"-\" \"Python-urllib/3.10\" 0.000107\n2026-07-18T11:58:38.191846Z  INFO actix_web::middleware::logger: 10.10.1.1 \"GET /cluster HTTP/1.1\" 200 561 \"-\" \"Python-urllib/3.10\" 0.000048\n",
+      "stderr": ""
+    },
+    "qdrant_shard_1": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:40:20.001109Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:30.092192Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:40.101419Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:50.328569Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:00.058766Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:10.286922Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:20.155843Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:30.505762Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:40.304313Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:50.070358Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:00.759550Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:10.051282Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:19.144845Z  INFO storage::content_manager::toc::collection_meta_ops: Deleting collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.207169Z  INFO storage::content_manager::toc::collection_meta_ops: Creating collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.939985Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.941330Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.963559Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.964460Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.769014Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.770068Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.935359Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.958132Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.782760Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.783635Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.784451Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.785430Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.806573Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.982637Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.983751Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.006599Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.007503Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.808228Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.809370Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.832263Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.214886Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.216056Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.932578Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.933427Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.921388Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.922222Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.723280Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.724125Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.203993Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.205050Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.991825Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.015277Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.016359Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.190477Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.191537Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.214504Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.215365Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.003999Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.027968Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.410203Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.411043Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.133833Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.134994Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.136113Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.157403Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.338214Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.339130Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.148237Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.149296Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.150181Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.171247Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.348531Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.349470Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.960833Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.961654Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.983807Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.984748Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.149419Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.172724Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.985085Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.986129Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.987170Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:41.008445Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.186409Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.187255Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.991433Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:43.015595Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.411620Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.412498Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.113813Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.137562Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.138624Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.517631Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.518670Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.129900Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.130904Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.321436Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.322281Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.918250Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.942389Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.943371Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.121593Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.122495Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:57:22.492411Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:32.177382Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:42.154031Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_2": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:40:21.393184Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:31.215359Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:41.162901Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:51.035192Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:01.205539Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:11.736855Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:21.348280Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:31.111324Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:41.021418Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:51.095056Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:01.006140Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:11.544077Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:19.158660Z  INFO storage::content_manager::toc::collection_meta_ops: Deleting collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.220790Z  INFO storage::content_manager::toc::collection_meta_ops: Creating collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.952508Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.953674Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.977421Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.978580Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.782756Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.783955Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.947894Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.971513Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.796011Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.797186Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.798200Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.799310Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.820387Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.995719Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.996738Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.020111Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.021370Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.821423Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.822674Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.845975Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.228750Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.229601Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.946236Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.947206Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.935012Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.936122Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.737105Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.738306Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.217796Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.218993Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.004230Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.028998Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.030098Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.202732Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.204087Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.227869Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.228780Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.016884Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.041481Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.423623Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.424518Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.145607Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.146506Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.147463Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.171203Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.351832Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.352690Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.160747Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.161832Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.162769Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.183424Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.362048Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.362851Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.973110Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.974226Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.997517Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.998643Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.161747Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.186101Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.997332Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.998259Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.999222Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:41.022068Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.199836Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.200724Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:43.003963Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:43.029292Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.425271Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.426189Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.126486Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.151086Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.152355Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.531087Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.532132Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.143535Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.144532Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.335069Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.335942Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.931837Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.955944Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.957103Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.135097Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.136007Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:57:22.444239Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:32.132188Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:42.113908Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    },
+    "qdrant_shard_3": {
+      "returncode": 0,
+      "stdout": "2026-07-18T11:40:20.026786Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:30.123511Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:40.054964Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:40:50.019087Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:00.010345Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:10.234804Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:20.109179Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:30.440901Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:40.000561Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:41:50.022460Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:00.019767Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:10.094318Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:42:19.158206Z  INFO storage::content_manager::toc::collection_meta_ops: Deleting collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.219996Z  INFO storage::content_manager::toc::collection_meta_ops: Creating collection dist_submission-20260718a_simple_kmeans_seed1_s46\n2026-07-18T11:42:19.950563Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.951634Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.975540Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:19.976430Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 1 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.781954Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:20.782980Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 2 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.947104Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:21.970886Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 4 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.795515Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.796374Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.797243Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.798347Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:22.819110Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 5 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.994530Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:23.995589Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.019556Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.020453Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 7 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.819830Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.821052Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:24.845454Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 8 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.228114Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.229011Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 10 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.945944Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:26.947018Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 11 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.933776Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:27.934635Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 13 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.736568Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:28.737534Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 14 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.217248Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:30.218128Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 16 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.003475Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.028315Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:31.029227Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 17 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.203199Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.204015Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.226552Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:32.227443Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 19 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.016494Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:33.041285Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 20 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.423176Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:34.423971Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 22 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.146067Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.147132Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.148244Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:35.170692Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 23 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.351365Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:36.352432Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 25 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.160458Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.161540Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.162472Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:37.184429Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 26 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.360642Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.361698Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 28 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.972812Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.973867Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.996968Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:38.997872Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 29 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.162375Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.185818Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 31 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.997030Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.997992Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:40.999113Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:41.021316Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 32 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.199469Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:42.200469Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 34 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:43.003280Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:43.028683Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 35 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.424805Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:44.425678Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 37 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.125658Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.150489Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:45.151558Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 38 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.530781Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:46.531656Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 40 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.142963Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:47.143980Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 41 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.333599Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.334444Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 43 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.930971Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.955627Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:48.956409Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 7896541606624976 of shard 44 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.134685Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:42:50.135494Z  WARN storage::content_manager::consensus_manager: Failed to apply collection meta operation entry with user error: Wrong input: Replica 1667891846572449 of shard 46 has state Some(Active), but expected Some(Initializing)\n2026-07-18T11:57:22.517735Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:32.206967Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n2026-07-18T11:57:42.172613Z  WARN collection::profiling::slow_requests_collector: Failed to send message: no available capacity\n",
+      "stderr": ""
+    }
+  },
+  "command": [
+    "/users/dry/orion-distributed/venv/bin/python",
+    "tools/qdrant_two_level_routing_experiment.py",
+    "--base-url",
+    "http://10.10.1.1:6333",
+    "--hdf5-path",
+    "/users/dry/orion-distributed/datasets/glove-200-angular.hdf5",
+    "--cluster-topology",
+    "tools/distributed/cloudlab_orion_4node.json",
+    "--deployment-manifest",
+    "/proj/intelisys-PG0/exp/orion-distributed/dist-20260717-initial/manifest.json",
+    "--vector-distance",
+    "cosine",
+    "--top-k",
+    "10",
+    "--hnsw-m",
+    "32",
+    "--ef-construct",
+    "100",
+    "--upper-m",
+    "32",
+    "--upper-ef-construction",
+    "100",
+    "--upper-search-ef",
+    "400",
+    "--sample-denominator",
+    "32",
+    "--k-overlap",
+    "10",
+    "--upper-sample-seed",
+    "100",
+    "--kmeans-rand-seed",
+    "1",
+    "--kmeans-iters",
+    "10",
+    "--tuning-query-count",
+    "500",
+    "--eval-query-count",
+    "3000",
+    "--warmup-query-count",
+    "500",
+    "--stability-repeats",
+    "3",
+    "--batch-size",
+    "200",
+    "--target-recall",
+    "0.97",
+    "--write-per-query-metrics",
+    "--search-dispatch-mode",
+    "coordinator",
+    "--shard-placement",
+    "round_robin",
+    "--reuse-existing",
+    "--routing-mode",
+    "kmeans_simple_nprobe",
+    "--collection",
+    "dist_submission-20260718a_simple_kmeans_seed1_s46",
+    "--num-shards",
+    "46",
+    "--nprobe-candidates",
+    "32",
+    "--upper-k-candidates",
+    "32",
+    "--base-ef-candidates",
+    "280",
+    "--factor-candidates",
+    "0",
+    "--simple-kmeans-multi-assign-alpha",
+    "1.0",
+    "--output-dir",
+    "results/method4_distributed_submission/method4_distributed_high_recall_097_confirmation_batch200/high-recall-097-confirm-20260718a/simple_seed1_097_n32_ef280"
+  ],
+  "process_affinity": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "cluster_topology_path": "tools/distributed/cloudlab_orion_4node.json",
+  "cluster_preflight": {
+    "peer_id": 987102789522726,
+    "peer_count": 4,
+    "peers": {
+      "987102789522726": "http://10.10.1.1:6335",
+      "1667891846572449": "http://10.10.1.4:6335",
+      "7896541606624976": "http://10.10.1.3:6335",
+      "8982479151082257": "http://10.10.1.2:6335"
+    },
+    "controller_peer_id": 987102789522726,
+    "worker_peer_ids": [
+      1667891846572449,
+      7896541606624976,
+      8982479151082257
+    ],
+    "raw": {
+      "status": "enabled",
+      "peer_id": 987102789522726,
+      "peers": {
+        "8982479151082257": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "987102789522726": {
+          "uri": "http://10.10.1.1:6335/"
+        },
+        "1667891846572449": {
+          "uri": "http://10.10.1.4:6335/"
+        },
+        "7896541606624976": {
+          "uri": "http://10.10.1.3:6335/"
+        }
+      },
+      "raft_info": {
+        "term": 9,
+        "commit": 873,
+        "pending_operations": 0,
+        "leader": 8982479151082257,
+        "role": "Follower",
+        "is_voter": true
+      },
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-07-18T11:57:53.115018239Z"
+      },
+      "message_send_failures": {}
+    }
+  },
+  "cluster_snapshot": {
+    "status": "enabled",
+    "peer_id": 987102789522726,
+    "peers": {
+      "1667891846572449": {
+        "uri": "http://10.10.1.4:6335/"
+      },
+      "8982479151082257": {
+        "uri": "http://10.10.1.2:6335/"
+      },
+      "7896541606624976": {
+        "uri": "http://10.10.1.3:6335/"
+      },
+      "987102789522726": {
+        "uri": "http://10.10.1.1:6335/"
+      }
+    },
+    "raft_info": {
+      "term": 9,
+      "commit": 873,
+      "pending_operations": 0,
+      "leader": 8982479151082257,
+      "role": "Follower",
+      "is_voter": true
+    },
+    "consensus_thread_status": {
+      "consensus_thread_status": "working",
+      "last_update": "2026-07-18T11:58:38.142860544Z"
+    },
+    "message_send_failures": {}
+  },
+  "vector_distance": "cosine",
+  "upper_hnsw_space": "cosine",
+  "qdrant_vector_distance": "Cosine",
+  "normalize_vectors": true,
+  "score_higher_is_better": true,
+  "train_limit": null,
+  "routing_mode": "kmeans_simple_nprobe",
+  "initial_num_shards": 46,
+  "num_shards": 46,
+  "shard_placement": "round_robin",
+  "shard_placement_map": null,
+  "shard_placement_map_name": null,
+  "placement_peer_uri_contains": null,
+  "discovered_peer_ids": [
+    1667891846572449,
+    7896541606624976,
+    8982479151082257
+  ],
+  "collection_cluster": {
+    "cluster_shard_count": 46,
+    "cluster_peer_count": 4,
+    "cluster_local_shards": 0,
+    "cluster_remote_shards": 46,
+    "cluster_active_shards": 46,
+    "cluster_shards_per_peer": {
+      "1667891846572449": 16,
+      "7896541606624976": 15,
+      "8982479151082257": 15
+    },
+    "cluster_placement_valid": true
+  },
+  "collection_cluster_snapshot": {
+    "peer_id": 987102789522726,
+    "shard_count": 46,
+    "local_shards": [],
+    "remote_shards": [
+      {
+        "shard_id": 1,
+        "shard_key": "centroid_00",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 2,
+        "shard_key": "centroid_01",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 3,
+        "shard_key": "centroid_02",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 4,
+        "shard_key": "centroid_03",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 5,
+        "shard_key": "centroid_04",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 6,
+        "shard_key": "centroid_05",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 7,
+        "shard_key": "centroid_06",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 8,
+        "shard_key": "centroid_07",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 9,
+        "shard_key": "centroid_08",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 10,
+        "shard_key": "centroid_09",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 11,
+        "shard_key": "centroid_10",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 12,
+        "shard_key": "centroid_11",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 13,
+        "shard_key": "centroid_12",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 14,
+        "shard_key": "centroid_13",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 15,
+        "shard_key": "centroid_14",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 16,
+        "shard_key": "centroid_15",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 17,
+        "shard_key": "centroid_16",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 18,
+        "shard_key": "centroid_17",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 19,
+        "shard_key": "centroid_18",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 20,
+        "shard_key": "centroid_19",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 21,
+        "shard_key": "centroid_20",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 22,
+        "shard_key": "centroid_21",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 23,
+        "shard_key": "centroid_22",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 24,
+        "shard_key": "centroid_23",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 25,
+        "shard_key": "centroid_24",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 26,
+        "shard_key": "centroid_25",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 27,
+        "shard_key": "centroid_26",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 28,
+        "shard_key": "centroid_27",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 29,
+        "shard_key": "centroid_28",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 30,
+        "shard_key": "centroid_29",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 31,
+        "shard_key": "centroid_30",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 32,
+        "shard_key": "centroid_31",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 33,
+        "shard_key": "centroid_32",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 34,
+        "shard_key": "centroid_33",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 35,
+        "shard_key": "centroid_34",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 36,
+        "shard_key": "centroid_35",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 37,
+        "shard_key": "centroid_36",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 38,
+        "shard_key": "centroid_37",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 39,
+        "shard_key": "centroid_38",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 40,
+        "shard_key": "centroid_39",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 41,
+        "shard_key": "centroid_40",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 42,
+        "shard_key": "centroid_41",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 43,
+        "shard_key": "centroid_42",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      },
+      {
+        "shard_id": 44,
+        "shard_key": "centroid_43",
+        "peer_id": 7896541606624976,
+        "state": "Active"
+      },
+      {
+        "shard_id": 45,
+        "shard_key": "centroid_44",
+        "peer_id": 8982479151082257,
+        "state": "Active"
+      },
+      {
+        "shard_id": 46,
+        "shard_key": "centroid_45",
+        "peer_id": 1667891846572449,
+        "state": "Active"
+      }
+    ],
+    "shard_transfers": []
+  },
+  "worker_shard_points": {
+    "1667891846572449": {
+      "shard_count": 16,
+      "points_count": 400261
+    },
+    "7896541606624976": {
+      "shard_count": 15,
+      "points_count": 389726
+    },
+    "8982479151082257": {
+      "shard_count": 15,
+      "points_count": 393527
+    }
+  },
+  "placement_valid": true,
+  "warmup_query_count": 500,
+  "sample_denominator": 32,
+  "k_overlap": 10,
+  "search_all_shards": false,
+  "concurrency_evaluation_mode": "preplanned_search",
+  "search_dispatch_mode": "coordinator",
+  "lower_execution_order": "query_major",
+  "direct_peer_http_urls": null,
+  "direct_peer_local_premerge": false,
+  "routed_execution_mode": "grouped_by_ef",
+  "routed_planning_mode": "per_batch",
+  "placement_simulation": null,
+  "physical_execution_trace": null,
+  "compact_ef_mode": null,
+  "routed_result_limit_mode": "top_k",
+  "routed_result_limit_multiplier": null,
+  "source_id_dedup_block_size": null,
+  "multi_assign": false,
+  "orion_multi_assign_min_max_vote": null,
+  "orion_multi_assign_vote_delta": null,
+  "orion_multi_assign_max_shards": null,
+  "fission_enabled": false,
+  "fair_architecture_note": "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant custom shard keys, the same Docker cluster shape, the same batch search endpoint, and the same client result merge path. The intended algorithmic difference is shard selection: Orion routes to upper-selected shards with Method4 routing metadata, kmeans_simple_nprobe probes the nearest centroid shards by nprobe, and naive_hash_all_shards searches every shard.",
+  "qdrant_rest_equivalence_gap": null,
+  "rng_equivalence_note": null,
+  "upper_hnsw": null,
+  "kmeans_simple_nprobe": {
+    "centroid_count": 46,
+    "nprobe": 32,
+    "hnsw_ef": 280,
+    "cpp_kmeans_train_size": 10000,
+    "kmeans_iters": 10,
+    "kmeans_rand_seed": 1,
+    "multi_assign": false,
+    "multi_assign_alpha": 1.0,
+    "total_assigned": 1183514,
+    "expansion_ratio": 1.0,
+    "shard_count_min": 8824,
+    "shard_count_max": 57840,
+    "dynamic_ef": false,
+    "upper_hnsw_entry_points": false,
+    "source_id_dedup": false
+  },
+  "original_routing": null,
+  "best_tuning_row": {
+    "upper_k": 32,
+    "nprobe": 32,
+    "base_ef": 280,
+    "factor": 0,
+    "query_count": 500,
+    "top_k": 10,
+    "recall_at_k": 0.9708,
+    "qps": 364.1626801454206,
+    "wall_s": 1.3730127419985365,
+    "avg_visited_shards": 32.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 280.0,
+    "estimated_ef_sum_per_query": 8960.0,
+    "avg_physical_peers_per_query": 3.0,
+    "latency_p50_ms": 532.2453459957615,
+    "latency_p95_ms": 535.4699721938232,
+    "latency_p99_ms": 535.7566056336509,
+    "search_batch_calls": 3,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "final_row": {
+    "upper_k": 32,
+    "nprobe": 32,
+    "base_ef": 280,
+    "factor": 0,
+    "query_count": 3000,
+    "top_k": 10,
+    "recall_at_k": 0.9708666666666667,
+    "qps": 360.08050799524943,
+    "wall_s": 8.331470139004523,
+    "avg_visited_shards": 32.0,
+    "avg_upper_hits": 0.0,
+    "avg_assigned_ef_per_visited_shard": 280.0,
+    "estimated_ef_sum_per_query": 8960.0,
+    "avg_physical_peers_per_query": 3.0,
+    "latency_p50_ms": 538.8693510030862,
+    "latency_p95_ms": 559.2264348073513,
+    "latency_p99_ms": 559.9123541641166,
+    "search_batch_calls": 15,
+    "avg_search_requests_per_query": 1.0,
+    "avg_candidate_groups_per_query": 1.0,
+    "avg_returned_candidates_per_query": 10.0
+  },
+  "stability_summary": {
+    "runs": 3,
+    "qps_mean": 359.627125377304,
+    "qps_stdev": 0.9411322796053943,
+    "recall_mean": 0.9708666666666667,
+    "recall_stdev": 0.0
+  },
+  "concurrency_rows": [],
+  "concurrency_note": null
+}

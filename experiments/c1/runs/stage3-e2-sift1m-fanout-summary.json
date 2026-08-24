@@ -1,0 +1,2426 @@
+{
+  "configuration_count": 12,
+  "configuration_summaries": [
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m1.csv",
+      "e3_per_search_sha256": "433f7d882818f7bae2671f5657a22f602f8cf1ee947c8a009ccfeccadf5914bf",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m1-summary.json",
+      "e3_summary_sha256": "fd97cb512b3c044464f72c4e3592577f6de6d279e0471631f6472de7c24effb3",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 1,
+      "measurement_recall": 0.9142777777777777,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m1.npz",
+      "partition_artifact_sha256": "db73cdae50455554573db49ca7e94d8525c79d12e1dfd419c23d6d65289bee42",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 1,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          1000000
+        ],
+        "timestamp": "2026-08-20T17:19:50Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 1,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 24,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9098999999999999,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9098999999999999
+        },
+        "0.90": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9098999999999999
+        },
+        "0.91": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9351
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-random-m1-tuning-pinned.json",
+      "tuning_artifact_sha256": "a922cf22f0294a3c9f41dc9684b96e873675989690a45899a37dcb71cb1537d8"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "2": 9000
+        },
+        "max": 2.0,
+        "mean": 2.0,
+        "median": 2.0,
+        "min": 2.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m2.csv",
+      "e3_per_search_sha256": "55868c8695348afc2ab3e2d34bf10ddd3ff24ed61b554236580ed5364be7e26e",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m2-summary.json",
+      "e3_summary_sha256": "f2b82fa260c404d9e1b29d87f39444a5c1d6c03f044389d8b67dcaa318ecd215",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 2,
+      "measurement_recall": 0.9463888888888888,
+      "minimum_feasible_fanout": 2,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 202,
+          "2": 8798
+        },
+        "max": 2.0,
+        "mean": 1.9775555555555555,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.1481239054238872
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m2.npz",
+      "partition_artifact_sha256": "31670ad7fd9bbc2e0dd64bfdff0c35a8c254e757ebfc1be068278ee633b9007e",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 2,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          500516,
+          499484
+        ],
+        "timestamp": "2026-08-20T17:19:51Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 2,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 24,
+      "selected_fanout": 2,
+      "selected_tuning_recall": 0.9381,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 202,
+              "2": 8798
+            },
+            "max": 2.0,
+            "mean": 1.9775555555555555,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.1481239054238872
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8923
+        },
+        "0.90": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 202,
+              "2": 8798
+            },
+            "max": 2.0,
+            "mean": 1.9775555555555555,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.1481239054238872
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9381
+        },
+        "0.91": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 17,
+              "2": 8983
+            },
+            "max": 2.0,
+            "mean": 1.9981111111111112,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.0434202831365057
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9381
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-random-m2-tuning-pinned.json",
+      "tuning_artifact_sha256": "15732797218826cd8bb32ea62773c28e785acdaa61c094227fb874621acd4f50"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "4": 9000
+        },
+        "max": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "min": 4.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m4.csv",
+      "e3_per_search_sha256": "e57d39089c1361183531e700ac0cdf11f10c8da1a41f3c2a705dbf37b39cb477",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m4-summary.json",
+      "e3_summary_sha256": "4a7732555d86f8994533ed5877e4429b491791c906446971c95701f3af150011",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 4,
+      "measurement_recall": 0.9382666666666666,
+      "minimum_feasible_fanout": 4,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "2": 608,
+          "3": 6450,
+          "4": 1942
+        },
+        "max": 4.0,
+        "mean": 3.148222222222222,
+        "median": 3.0,
+        "min": 2.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.511237230816418
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m4.npz",
+      "partition_artifact_sha256": "ef477487ea0ae8b81e1ed65a6d90741a2808e2283e5869a236f732d5216e0ffd",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 4,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          250042,
+          250474,
+          249934,
+          249550
+        ],
+        "timestamp": "2026-08-20T17:19:51Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 16,
+      "selected_fanout": 4,
+      "selected_tuning_recall": 0.9374,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 608,
+              "3": 6450,
+              "4": 1942
+            },
+            "max": 4.0,
+            "mean": 3.148222222222222,
+            "median": 3.0,
+            "min": 2.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.511237230816418
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9374
+        },
+        "0.90": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 608,
+              "3": 6450,
+              "4": 1942
+            },
+            "max": 4.0,
+            "mean": 3.148222222222222,
+            "median": 3.0,
+            "min": 2.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.511237230816418
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9374
+        },
+        "0.91": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 4,
+          "minimum_feasible_fanout": 4,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 55,
+              "3": 1949,
+              "4": 6996
+            },
+            "max": 4.0,
+            "mean": 3.7712222222222223,
+            "median": 4.0,
+            "min": 2.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.43435092770139416
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9374
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-random-m4-tuning-pinned.json",
+      "tuning_artifact_sha256": "8ae6720562dede84a0ca646f099d9ab5224278f6e64e4315dccfcc19dbff9045"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "8": 9000
+        },
+        "max": 8.0,
+        "mean": 8.0,
+        "median": 8.0,
+        "min": 8.0,
+        "p95": 8.0,
+        "p99": 8.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m8.csv",
+      "e3_per_search_sha256": "f10b600d97657356af704f8bc320f080f16de4a8db3395297e849512ef3d4199",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m8-summary.json",
+      "e3_summary_sha256": "b167f8c566ff9cedac3b0a79a6e1086b8b7ed60690abec8e784da7efb0ce5ffb",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 8,
+      "measurement_recall": 0.9619333333333333,
+      "minimum_feasible_fanout": 8,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "2": 5,
+          "3": 427,
+          "4": 2501,
+          "5": 3831,
+          "6": 1978,
+          "7": 258
+        },
+        "max": 7.0,
+        "mean": 4.902666666666667,
+        "median": 5.0,
+        "min": 2.0,
+        "p95": 6.0,
+        "p99": 7.0,
+        "query_population_std": 0.8931054435694217
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m8.npz",
+      "partition_artifact_sha256": "a4dbff780e389512828c70c95a5de8168f3a03fd7581cbc7d5f10042ecd6a3aa",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 8,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          125487,
+          124555,
+          125527,
+          124947,
+          124947,
+          124987,
+          124536,
+          125014
+        ],
+        "timestamp": "2026-08-20T18:06:40Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 16,
+      "selected_fanout": 8,
+      "selected_tuning_recall": 0.9599,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 5,
+              "3": 427,
+              "4": 2501,
+              "5": 3831,
+              "6": 1978,
+              "7": 258
+            },
+            "max": 7.0,
+            "mean": 4.902666666666667,
+            "median": 5.0,
+            "min": 2.0,
+            "p95": 6.0,
+            "p99": 7.0,
+            "query_population_std": 0.8931054435694217
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9599
+        },
+        "0.90": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "2": 5,
+              "3": 427,
+              "4": 2501,
+              "5": 3831,
+              "6": 1978,
+              "7": 258
+            },
+            "max": 7.0,
+            "mean": 4.902666666666667,
+            "median": 5.0,
+            "min": 2.0,
+            "p95": 6.0,
+            "p99": 7.0,
+            "query_population_std": 0.8931054435694217
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9599
+        },
+        "0.91": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 8,
+          "minimum_feasible_fanout": 8,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 30,
+              "4": 527,
+              "5": 2438,
+              "6": 3769,
+              "7": 1978,
+              "8": 258
+            },
+            "max": 8.0,
+            "mean": 5.879111111111111,
+            "median": 6.0,
+            "min": 3.0,
+            "p95": 7.0,
+            "p99": 8.0,
+            "query_population_std": 0.9246304300090742
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9599
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m8-tuning-pinned.json",
+      "tuning_artifact_sha256": "a4e960c576d82487330388078367d89053f9894c4611705966f1c5737b3e485c"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "16": 9000
+        },
+        "max": 16.0,
+        "mean": 16.0,
+        "median": 16.0,
+        "min": 16.0,
+        "p95": 16.0,
+        "p99": 16.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m16.csv",
+      "e3_per_search_sha256": "3456dca86bc56e23007acbe21f749ae60fae987fc4f5b41940c790b60690f02b",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m16-summary.json",
+      "e3_summary_sha256": "27a34fd1f03e3c78d36f89aefe6a175764f75af5b1d9511259e6b7cdf51dddbe",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 16,
+      "measurement_recall": 0.9776444444444443,
+      "minimum_feasible_fanout": 16,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "3": 11,
+          "4": 199,
+          "5": 1112,
+          "6": 2788,
+          "7": 3123,
+          "8": 1525,
+          "9": 242
+        },
+        "max": 9.0,
+        "mean": 6.595111111111111,
+        "median": 7.0,
+        "min": 3.0,
+        "p95": 8.0,
+        "p99": 9.0,
+        "query_population_std": 1.0656549831957227
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m16.npz",
+      "partition_artifact_sha256": "be620f8bb2f04e3acc0554ba6b7cd9b3e4530e0bc89866ddf856f00c1e1dd5a7",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 16,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          62901,
+          62586,
+          62060,
+          62495,
+          62770,
+          62757,
+          62684,
+          62263,
+          62412,
+          62535,
+          62583,
+          62404,
+          62276,
+          62260,
+          62417,
+          62597
+        ],
+        "timestamp": "2026-08-20T18:06:41Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 16,
+      "selected_fanout": 16,
+      "selected_tuning_recall": 0.9765,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 11,
+              "4": 199,
+              "5": 1112,
+              "6": 2788,
+              "7": 3123,
+              "8": 1525,
+              "9": 242
+            },
+            "max": 9.0,
+            "mean": 6.595111111111111,
+            "median": 7.0,
+            "min": 3.0,
+            "p95": 8.0,
+            "p99": 9.0,
+            "query_population_std": 1.0656549831957227
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9765
+        },
+        "0.90": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "3": 11,
+              "4": 199,
+              "5": 1112,
+              "6": 2788,
+              "7": 3123,
+              "8": 1525,
+              "9": 242
+            },
+            "max": 9.0,
+            "mean": 6.595111111111111,
+            "median": 7.0,
+            "min": 3.0,
+            "p95": 8.0,
+            "p99": 9.0,
+            "query_population_std": 1.0656549831957227
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9765
+        },
+        "0.91": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 16,
+          "minimum_feasible_fanout": 16,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "10": 242,
+              "4": 14,
+              "5": 202,
+              "6": 1106,
+              "7": 2788,
+              "8": 3123,
+              "9": 1525
+            },
+            "max": 10.0,
+            "mean": 7.594111111111111,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 10.0,
+            "query_population_std": 1.0679309116692735
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9765
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m16-tuning-pinned.json",
+      "tuning_artifact_sha256": "6a918239f319e5f3a57e7e6c0b530ae3395c327b34c81311d680e66b403cd75f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "32": 9000
+        },
+        "max": 32.0,
+        "mean": 32.0,
+        "median": 32.0,
+        "min": 32.0,
+        "p95": 32.0,
+        "p99": 32.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-random-m32.csv",
+      "e3_per_search_sha256": "cf6b2822e713e929929bec44f4af2b4d1e5259cf248245e68d05b07b8abe1c00",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m32-summary.json",
+      "e3_summary_sha256": "377d800940cbcb7da64c4ebcec6d3ebce1e165f78320fee90a578fc8918c6b2e",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 32,
+      "measurement_recall": 0.9875999999999999,
+      "minimum_feasible_fanout": 32,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "4": 6,
+          "5": 134,
+          "6": 812,
+          "7": 2543,
+          "8": 3613,
+          "9": 1892
+        },
+        "max": 9.0,
+        "mean": 7.699888888888889,
+        "median": 8.0,
+        "min": 4.0,
+        "p95": 9.0,
+        "p99": 9.0,
+        "query_population_std": 0.9530302483767173
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/random-m32.npz",
+      "partition_artifact_sha256": "fef487e8e847d637e35d28840e8736e78095bca6d0975e2a74b068f9c17269e5",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": null,
+        "logical_shards": 32,
+        "method": "random",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          31639,
+          31262,
+          31306,
+          31280,
+          30946,
+          31114,
+          31262,
+          31233,
+          31449,
+          31321,
+          31451,
+          31306,
+          31243,
+          31441,
+          31047,
+          31216,
+          31329,
+          31083,
+          31236,
+          31299,
+          31079,
+          31504,
+          31294,
+          31110,
+          31100,
+          31176,
+          30937,
+          31323,
+          31096,
+          31321,
+          31450,
+          31147
+        ],
+        "timestamp": "2026-08-20T18:06:41Z"
+      },
+      "partition_method": "random",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 16,
+      "selected_fanout": 32,
+      "selected_tuning_recall": 0.9843,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "4": 6,
+              "5": 134,
+              "6": 812,
+              "7": 2543,
+              "8": 3613,
+              "9": 1892
+            },
+            "max": 9.0,
+            "mean": 7.699888888888889,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 9.0,
+            "query_population_std": 0.9530302483767173
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9843
+        },
+        "0.90": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "4": 6,
+              "5": 134,
+              "6": 812,
+              "7": 2543,
+              "8": 3613,
+              "9": 1892
+            },
+            "max": 9.0,
+            "mean": 7.699888888888889,
+            "median": 8.0,
+            "min": 4.0,
+            "p95": 9.0,
+            "p99": 9.0,
+            "query_population_std": 0.9530302483767173
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9843
+        },
+        "0.91": {
+          "globally_selected_ef_search": 16,
+          "globally_selected_fanout": 32,
+          "minimum_feasible_fanout": 32,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "10": 1892,
+              "5": 7,
+              "6": 133,
+              "7": 812,
+              "8": 2543,
+              "9": 3613
+            },
+            "max": 10.0,
+            "mean": 8.699777777777777,
+            "median": 9.0,
+            "min": 5.0,
+            "p95": 10.0,
+            "p99": 10.0,
+            "query_population_std": 0.953403234940527
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9843
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m32-tuning-pinned.json",
+      "tuning_artifact_sha256": "84e92b3f07d61523ad09df2a12a244835caf4057ff0d0d5f2d22cc59a4adf02f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 1.0,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m1.csv",
+      "e3_per_search_sha256": "5bf2eed85a99ac6d0ff51f3a68f081eed8bfa9a1c6bce33102502ad0dbd51bda",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m1-summary.json",
+      "e3_summary_sha256": "99b810c93721b93dda79d226531394e82390f398c61eeb36f275ac46a23f82e6",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 1,
+      "measurement_recall": 0.9142777777777777,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m1.npz",
+      "partition_artifact_sha256": "8330e789199ee63b8ff62f53ac1da057daedf17ed9b2905404afe17be2067d8a",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 365.5480041503906,
+              "max_cluster_size": 1000000,
+              "min_cluster_size": 1000000
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 0.0,
+              "max_cluster_size": 1000000,
+              "min_cluster_size": 1000000
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 1,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          1000000
+        ],
+        "timestamp": "2026-08-20T17:22:34Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 1,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 24,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9098999999999999,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9098999999999999
+        },
+        "0.90": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9098999999999999
+        },
+        "0.91": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 9000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.0
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9351
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-kmeans-m1-tuning-pinned.json",
+      "tuning_artifact_sha256": "7a3ce1ee55513114a43c57563884bbda7ea1848345a6019cdf2bb96ba017f886"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9988222222222222,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m2.csv",
+      "e3_per_search_sha256": "0850bae75d8558b63c3b7496f36db7cb07c3fb3e7dd43ec0ad5d5fe8b2967e73",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m2-summary.json",
+      "e3_summary_sha256": "e5c5efc393081fef85ca12a256ad79d57a2ea6ff72d2498bf8b4282605bcd3dd",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 2,
+      "measurement_recall": 0.9135555555555556,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 8990,
+          "2": 10
+        },
+        "max": 2.0,
+        "mean": 1.001111111111111,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.033314809667922114
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m2.npz",
+      "partition_artifact_sha256": "70a47acdc80ffa75b5fff4b5bbda0fe9ae1366ee74479185db0ef10fde188eb7",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 359.9194641113281,
+              "max_cluster_size": 529261,
+              "min_cluster_size": 470739
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 9.66890811920166,
+              "max_cluster_size": 514410,
+              "min_cluster_size": 485590
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 0.11107642203569412,
+              "max_cluster_size": 514180,
+              "min_cluster_size": 485820
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 0.0013360006269067526,
+              "max_cluster_size": 514178,
+              "min_cluster_size": 485822
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 0.0,
+              "max_cluster_size": 514178,
+              "min_cluster_size": 485822
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 2,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          514178,
+          485822
+        ],
+        "timestamp": "2026-08-20T17:23:06Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 2,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 24,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9047999999999999,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 8990,
+              "2": 10
+            },
+            "max": 2.0,
+            "mean": 1.001111111111111,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.033314809667922114
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9047999999999999
+        },
+        "0.90": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 8990,
+              "2": 10
+            },
+            "max": 2.0,
+            "mean": 1.001111111111111,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.033314809667922114
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9047999999999999
+        },
+        "0.91": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 8974,
+              "2": 26
+            },
+            "max": 2.0,
+            "mean": 1.002888888888889,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 1.0,
+            "p99": 1.0,
+            "query_population_std": 0.05367069228057844
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9381
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-kmeans-m2-tuning-pinned.json",
+      "tuning_artifact_sha256": "8881171d8d254591dc30559eea0ac704e1e8c0755bb9434323b4a70e6260560f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "1": 9000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9351666666666667,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m4.csv",
+      "e3_per_search_sha256": "7dd0b9bddc3c49b00ad09e37cc2a9c9e4fb7185c8890fc869f4104479352199c",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m4-summary.json",
+      "e3_summary_sha256": "b07d41a8d16c1f8ffe596a0d5ff759733a8e3c51e9f171d02a39351f0aed2ab9",
+      "execution_scope": "physical_layout",
+      "logical_shard_count": 4,
+      "measurement_recall": 0.9104,
+      "minimum_feasible_fanout": 1,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 7696,
+          "2": 1235,
+          "3": 69
+        },
+        "max": 3.0,
+        "mean": 1.1525555555555556,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.3802836985173368
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m4.npz",
+      "partition_artifact_sha256": "b4e5e9559708296b1509d8aa51b9826cee8356dc795c1a24e4cdd9072030a259",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 300.54693603515625,
+              "max_cluster_size": 507843,
+              "min_cluster_size": 84747
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 27.304887771606445,
+              "max_cluster_size": 513709,
+              "min_cluster_size": 101725
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 15.55461311340332,
+              "max_cluster_size": 513779,
+              "min_cluster_size": 118390
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 10.260542869567871,
+              "max_cluster_size": 513751,
+              "min_cluster_size": 130148
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 9.974058151245117,
+              "max_cluster_size": 513729,
+              "min_cluster_size": 133245
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 10.964612007141113,
+              "max_cluster_size": 513730,
+              "min_cluster_size": 131295
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 12.701594352722168,
+              "max_cluster_size": 513728,
+              "min_cluster_size": 129729
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 14.46853256225586,
+              "max_cluster_size": 513749,
+              "min_cluster_size": 128965
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 15.290399551391602,
+              "max_cluster_size": 513785,
+              "min_cluster_size": 130064
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 15.570426940917969,
+              "max_cluster_size": 513825,
+              "min_cluster_size": 133104
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 14.955077171325684,
+              "max_cluster_size": 513831,
+              "min_cluster_size": 137694
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 13.611688613891602,
+              "max_cluster_size": 513838,
+              "min_cluster_size": 139226
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 4,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          513838,
+          138144,
+          197753,
+          150265
+        ],
+        "timestamp": "2026-08-20T17:24:27Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 48,
+      "selected_fanout": 1,
+      "selected_tuning_recall": 0.9048999999999999,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 48,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 7696,
+              "2": 1235,
+              "3": 69
+            },
+            "max": 3.0,
+            "mean": 1.1525555555555556,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.3802836985173368
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9048999999999999
+        },
+        "0.90": {
+          "globally_selected_ef_search": 48,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 7696,
+              "2": 1235,
+              "3": 69
+            },
+            "max": 3.0,
+            "mean": 1.1525555555555556,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 2.0,
+            "query_population_std": 0.3802836985173368
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9048999999999999
+        },
+        "0.91": {
+          "globally_selected_ef_search": 64,
+          "globally_selected_fanout": 1,
+          "minimum_feasible_fanout": 1,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 7232,
+              "2": 1530,
+              "3": 238
+            },
+            "max": 3.0,
+            "mean": 1.222888888888889,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 3.0,
+            "query_population_std": 0.4754979715915245
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9166
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-kmeans-m4-tuning-pinned.json",
+      "tuning_artifact_sha256": "c856a9b7029063b0e6c8d2a5a6a2e3c14c9d3dabbc4cbaa7175af2c6a2233a68"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "2": 9000
+        },
+        "max": 2.0,
+        "mean": 2.0,
+        "median": 2.0,
+        "min": 2.0,
+        "p95": 2.0,
+        "p99": 2.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9780777777777778,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m8.csv",
+      "e3_per_search_sha256": "7d2e83761c0f7ed23a1b55a99b98e32e8c381e525837a0bc0828f2c9f91ee983",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m8-summary.json",
+      "e3_summary_sha256": "436dacad634474cd46d769fc1c6533a64b9608e7414c4627485a8be70e65877b",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 8,
+      "measurement_recall": 0.9370444444444445,
+      "minimum_feasible_fanout": 2,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 5882,
+          "2": 2833,
+          "3": 281,
+          "4": 4
+        },
+        "max": 4.0,
+        "mean": 1.3785555555555555,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 2.0,
+        "p99": 3.0,
+        "query_population_std": 0.5480532437863053
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m8.npz",
+      "partition_artifact_sha256": "f9f0fdf7bad7ad33a17b1495af6dc449f53a7885512e11ed9dc20a854807df7c",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 286.0312194824219,
+              "max_cluster_size": 295061,
+              "min_cluster_size": 30835
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 44.47283172607422,
+              "max_cluster_size": 284937,
+              "min_cluster_size": 56126
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 29.865371704101562,
+              "max_cluster_size": 257455,
+              "min_cluster_size": 63658
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 24.307662963867188,
+              "max_cluster_size": 230983,
+              "min_cluster_size": 65720
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 20.338993072509766,
+              "max_cluster_size": 216460,
+              "min_cluster_size": 67498
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 14.677123069763184,
+              "max_cluster_size": 222581,
+              "min_cluster_size": 68954
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 10.248003959655762,
+              "max_cluster_size": 224808,
+              "min_cluster_size": 70146
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 7.842043876647949,
+              "max_cluster_size": 225471,
+              "min_cluster_size": 71160
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 5.929444789886475,
+              "max_cluster_size": 225168,
+              "min_cluster_size": 72106
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 5.21934175491333,
+              "max_cluster_size": 224659,
+              "min_cluster_size": 72984
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 5.209074974060059,
+              "max_cluster_size": 224014,
+              "min_cluster_size": 73836
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 5.249912738800049,
+              "max_cluster_size": 223447,
+              "min_cluster_size": 74748
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 8,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          223116,
+          104587,
+          112062,
+          75637,
+          110826,
+          137504,
+          153280,
+          82988
+        ],
+        "timestamp": "2026-08-20T18:08:41Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 32,
+      "selected_fanout": 2,
+      "selected_tuning_recall": 0.9244,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 5882,
+              "2": 2833,
+              "3": 281,
+              "4": 4
+            },
+            "max": 4.0,
+            "mean": 1.3785555555555555,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 3.0,
+            "query_population_std": 0.5480532437863053
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8977
+        },
+        "0.90": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 5882,
+              "2": 2833,
+              "3": 281,
+              "4": 4
+            },
+            "max": 4.0,
+            "mean": 1.3785555555555555,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 2.0,
+            "p99": 3.0,
+            "query_population_std": 0.5480532437863053
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9244
+        },
+        "0.91": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4774,
+              "2": 3448,
+              "3": 715,
+              "4": 63
+            },
+            "max": 4.0,
+            "mean": 1.563,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 3.0,
+            "query_population_std": 0.6685206719981731
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9244
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m8-tuning-pinned.json",
+      "tuning_artifact_sha256": "8a512629baed8302ac78178185b589d13f8a8237db420acd64730c6897830140"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "3": 9000
+        },
+        "max": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "min": 3.0,
+        "p95": 3.0,
+        "p99": 3.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9793555555555556,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m16.csv",
+      "e3_per_search_sha256": "daa1c0572654cb3abac556fb5ef1bf1884b2d877be448a0c62f0073447dd73cb",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m16-summary.json",
+      "e3_summary_sha256": "aeb3342ab900d0b8dfb444f815e30acbad91e375c6940e9e7581c77da678eaeb",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 16,
+      "measurement_recall": 0.9274,
+      "minimum_feasible_fanout": 2,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 4633,
+          "2": 3342,
+          "3": 931,
+          "4": 88,
+          "5": 6
+        },
+        "max": 5.0,
+        "mean": 1.6102222222222222,
+        "median": 1.0,
+        "min": 1.0,
+        "p95": 3.0,
+        "p99": 4.0,
+        "query_population_std": 0.7151269938157493
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m16.npz",
+      "partition_artifact_sha256": "e7a05d63144efef0b9b2eb5904f044e2b59eb30a701bad0bb44d32c97f686520",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 292.52679443359375,
+              "max_cluster_size": 133717,
+              "min_cluster_size": 6832
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 67.97029113769531,
+              "max_cluster_size": 120872,
+              "min_cluster_size": 21161
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 37.516822814941406,
+              "max_cluster_size": 107669,
+              "min_cluster_size": 30981
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 32.87969207763672,
+              "max_cluster_size": 96894,
+              "min_cluster_size": 38134
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 29.845680236816406,
+              "max_cluster_size": 88509,
+              "min_cluster_size": 40838
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 21.907588958740234,
+              "max_cluster_size": 90023,
+              "min_cluster_size": 40502
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 16.453977584838867,
+              "max_cluster_size": 94015,
+              "min_cluster_size": 40132
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 15.449851989746094,
+              "max_cluster_size": 95051,
+              "min_cluster_size": 39904
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 14.577981948852539,
+              "max_cluster_size": 94181,
+              "min_cluster_size": 39837
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 12.98216724395752,
+              "max_cluster_size": 92195,
+              "min_cluster_size": 39848
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 11.238724708557129,
+              "max_cluster_size": 89887,
+              "min_cluster_size": 39958
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 9.110777854919434,
+              "max_cluster_size": 91155,
+              "min_cluster_size": 40036
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 16,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          57745,
+          64265,
+          72222,
+          40145,
+          85336,
+          57867,
+          92138,
+          48005,
+          51861,
+          53970,
+          53496,
+          59306,
+          54330,
+          85504,
+          68908,
+          54902
+        ],
+        "timestamp": "2026-08-20T18:10:29Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 24,
+      "selected_fanout": 3,
+      "selected_tuning_recall": 0.9184,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 2,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4633,
+              "2": 3342,
+              "3": 931,
+              "4": 88,
+              "5": 6
+            },
+            "max": 5.0,
+            "mean": 1.6102222222222222,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 4.0,
+            "query_population_std": 0.7151269938157493
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8964
+        },
+        "0.90": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 4633,
+              "2": 3342,
+              "3": 931,
+              "4": 88,
+              "5": 6
+            },
+            "max": 5.0,
+            "mean": 1.6102222222222222,
+            "median": 1.0,
+            "min": 1.0,
+            "p95": 3.0,
+            "p99": 4.0,
+            "query_population_std": 0.7151269938157493
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9184
+        },
+        "0.91": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 2,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3497,
+              "2": 3334,
+              "3": 1641,
+              "4": 465,
+              "5": 57,
+              "6": 6
+            },
+            "max": 6.0,
+            "mean": 1.9187777777777777,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.9157648021405421
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9184
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m16-tuning-prefix-pinned.json",
+      "tuning_artifact_sha256": "fbef605e036c809eac7d85caef25a4c9d4aec77ffa1d00ce4251d4a365832d8f"
+    },
+    {
+      "actual_fanout": {
+        "distribution_counts": {
+          "3": 9000
+        },
+        "max": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "min": 3.0,
+        "p95": 3.0,
+        "p99": 3.0,
+        "query_population_std": 0.0
+      },
+      "actual_ground_truth_shard_coverage_mean": 0.9443777777777778,
+      "between_repetition_std": null,
+      "dataset": "sift1m",
+      "deterministic_repetition_count": 1,
+      "e3_per_search": "/users/dry/Orion/experiments/c1/runs/per_query/stage2-e3-sift1m-kmeans-m32.csv",
+      "e3_per_search_sha256": "a84dd0d58f7ea7a38b3aba69d8e55faaa8ddbe37d2ecafd2731d1a3fd2fb0a59",
+      "e3_summary": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m32-summary.json",
+      "e3_summary_sha256": "ed619a83521304c0abc5969e86700dfd617b2ecfe052cf94fa8253608b8f9e11",
+      "execution_scope": "logical_shard_simulation",
+      "logical_shard_count": 32,
+      "measurement_recall": 0.9200444444444444,
+      "minimum_feasible_fanout": 3,
+      "oracle_fanout": {
+        "distribution_counts": {
+          "1": 3701,
+          "2": 3312,
+          "3": 1517,
+          "4": 394,
+          "5": 66,
+          "6": 9,
+          "7": 1
+        },
+        "max": 7.0,
+        "mean": 1.8714444444444445,
+        "median": 2.0,
+        "min": 1.0,
+        "p95": 4.0,
+        "p99": 4.0,
+        "query_population_std": 0.9072707070122287
+      },
+      "partition_artifact": "/users/dry/orion-distributed/c1-20260820-v1/partitions/sift1m/kmeans-m32.npz",
+      "partition_artifact_sha256": "029e078796de780acabe63b3902b4cfbc60c3b9a0bd61be376346b4b0010f549",
+      "partition_metadata": {
+        "dataset": {
+          "distance": "euclidean",
+          "name": "sift1m",
+          "normalize": false,
+          "qdrant_distance": "Euclid"
+        },
+        "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+        "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+        "dimension": 128,
+        "kmeans": {
+          "batch_size": 16384,
+          "history": [
+            {
+              "empty_clusters": 0,
+              "iteration": 1,
+              "max_centroid_movement": 278.675537109375,
+              "max_cluster_size": 90279,
+              "min_cluster_size": 2674
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 2,
+              "max_centroid_movement": 70.0741195678711,
+              "max_cluster_size": 68386,
+              "min_cluster_size": 7696
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 3,
+              "max_centroid_movement": 58.09140396118164,
+              "max_cluster_size": 58285,
+              "min_cluster_size": 9800
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 4,
+              "max_centroid_movement": 32.64677429199219,
+              "max_cluster_size": 53860,
+              "min_cluster_size": 11070
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 5,
+              "max_centroid_movement": 20.680156707763672,
+              "max_cluster_size": 49643,
+              "min_cluster_size": 11519
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 6,
+              "max_centroid_movement": 24.206897735595703,
+              "max_cluster_size": 45342,
+              "min_cluster_size": 11678
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 7,
+              "max_centroid_movement": 24.274581909179688,
+              "max_cluster_size": 44309,
+              "min_cluster_size": 11720
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 8,
+              "max_centroid_movement": 26.694597244262695,
+              "max_cluster_size": 45163,
+              "min_cluster_size": 11723
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 9,
+              "max_centroid_movement": 22.877506256103516,
+              "max_cluster_size": 46985,
+              "min_cluster_size": 11692
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 10,
+              "max_centroid_movement": 14.699257850646973,
+              "max_cluster_size": 48649,
+              "min_cluster_size": 11661
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 11,
+              "max_centroid_movement": 9.060726165771484,
+              "max_cluster_size": 49939,
+              "min_cluster_size": 11655
+            },
+            {
+              "empty_clusters": 0,
+              "iteration": 12,
+              "max_centroid_movement": 7.548426151275635,
+              "max_cluster_size": 50861,
+              "min_cluster_size": 11635
+            }
+          ],
+          "maximum_iterations": 12,
+          "sample_size": 100000,
+          "tolerance": 0.0001
+        },
+        "logical_shards": 32,
+        "method": "kmeans",
+        "partition_seed": 20260820,
+        "point_count": 1000000,
+        "protocol_version": 1,
+        "shard_counts": [
+          37380,
+          33954,
+          27010,
+          22969,
+          43855,
+          36659,
+          19025,
+          32276,
+          37539,
+          30513,
+          19889,
+          29167,
+          35549,
+          30023,
+          29281,
+          32494,
+          30382,
+          31740,
+          39075,
+          35999,
+          35879,
+          24785,
+          29362,
+          51413,
+          11607,
+          32051,
+          33798,
+          26500,
+          30241,
+          25755,
+          29892,
+          33938
+        ],
+        "timestamp": "2026-08-20T18:12:14Z"
+      },
+      "partition_method": "kmeans",
+      "physical_machine_count": 4,
+      "query_count": 9000,
+      "query_range": [
+        1000,
+        10000
+      ],
+      "selected_ef_search": 32,
+      "selected_fanout": 3,
+      "selected_tuning_recall": 0.9136,
+      "sensitivity": {
+        "0.89": {
+          "globally_selected_ef_search": 24,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3701,
+              "2": 3312,
+              "3": 1517,
+              "4": 394,
+              "5": 66,
+              "6": 9,
+              "7": 1
+            },
+            "max": 7.0,
+            "mean": 1.8714444444444445,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.9072707070122287
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.8984
+        },
+        "0.90": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 3701,
+              "2": 3312,
+              "3": 1517,
+              "4": 394,
+              "5": 66,
+              "6": 9,
+              "7": 1
+            },
+            "max": 7.0,
+            "mean": 1.8714444444444445,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 4.0,
+            "query_population_std": 0.9072707070122287
+          },
+          "required_ground_truth_hits": 9,
+          "selected_tuning_recall": 0.9136
+        },
+        "0.91": {
+          "globally_selected_ef_search": 32,
+          "globally_selected_fanout": 3,
+          "minimum_feasible_fanout": 3,
+          "oracle_fanout": {
+            "distribution_counts": {
+              "1": 2643,
+              "2": 2875,
+              "3": 2062,
+              "4": 1014,
+              "5": 332,
+              "6": 64,
+              "7": 9,
+              "8": 1
+            },
+            "max": 8.0,
+            "mean": 2.3055555555555554,
+            "median": 2.0,
+            "min": 1.0,
+            "p95": 4.0,
+            "p99": 5.0,
+            "query_population_std": 1.1639836874678948
+          },
+          "required_ground_truth_hits": 10,
+          "selected_tuning_recall": 0.9136
+        }
+      },
+      "target_recall": 0.9,
+      "tuning_artifact": "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m32-tuning-pinned.json",
+      "tuning_artifact_sha256": "fbdf1cbb2ce3097f8103ec266e762de5a432e68a1868c4d570c053870a8f3877"
+    }
+  ],
+  "dataset": "sift1m",
+  "dataset_path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+  "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "experiment_id": "stage3-e2-sift1m-fanout",
+  "per_query_row_count": 108000,
+  "qualitative_sensitivity_checks": {
+    "0.89": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_non_decreasing": true,
+      "kmeans_actual_series": [
+        1,
+        1,
+        1,
+        2,
+        2,
+        3
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.001111111111111,
+        1.1525555555555556,
+        1.3785555555555555,
+        1.6102222222222222,
+        1.8714444444444445
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9775555555555555,
+        3.148222222222222,
+        4.902666666666667,
+        6.595111111111111,
+        7.699888888888889
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "0.90": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_non_decreasing": true,
+      "kmeans_actual_series": [
+        1,
+        1,
+        1,
+        2,
+        3,
+        3
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.001111111111111,
+        1.1525555555555556,
+        1.3785555555555555,
+        1.6102222222222222,
+        1.8714444444444445
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9775555555555555,
+        3.148222222222222,
+        4.902666666666667,
+        6.595111111111111,
+        7.699888888888889
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "0.91": {
+      "kmeans_actual_m32_at_least_three": true,
+      "kmeans_actual_non_decreasing": true,
+      "kmeans_actual_series": [
+        1,
+        1,
+        1,
+        2,
+        3,
+        3
+      ],
+      "kmeans_oracle_mean_series": [
+        1.0,
+        1.002888888888889,
+        1.222888888888889,
+        1.563,
+        1.9187777777777777,
+        2.3055555555555554
+      ],
+      "kmeans_oracle_non_decreasing": true,
+      "passed": true,
+      "random_actual_equals_broadcast": true,
+      "random_actual_series": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "random_oracle_mean_series": [
+        1.0,
+        1.9981111111111112,
+        3.7712222222222223,
+        5.879111111111111,
+        7.594111111111111,
+        8.699777777777777
+      ],
+      "random_oracle_non_decreasing": true
+    },
+    "all_thresholds_passed": true
+  },
+  "query_count_per_configuration": 9000,
+  "query_range": [
+    1000,
+    10000
+  ],
+  "record_type": "e2_fanout_analysis",
+  "sensitivity_targets": [
+    0.89,
+    0.9,
+    0.91
+  ],
+  "status": "VALID_E2",
+  "target_recall": 0.9,
+  "timestamp": "2026-08-20T19:42:30Z"
+}

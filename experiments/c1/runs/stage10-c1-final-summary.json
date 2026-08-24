@@ -1,0 +1,147 @@
+{
+  "anomalies": [
+    "sift1m_random_work_bound_projection_anticorrelates_with_measured_e1",
+    "cross_dataset_m_gt_4_throughput_projection_withheld",
+    "glove_random_m4_automatic_c32_formal_repetitions_exceeded_client_cpu_gate",
+    "kmeans_partitions_reached_iteration_cap_without_convergence"
+  ],
+  "c1_status": "SUPPORTED",
+  "cross_dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "dataset_projection_status": {
+    "glove-200-angular": "AVAILABLE",
+    "sift1m": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED"
+  },
+  "datasets": [
+    "sift1m",
+    "glove-200-angular"
+  ],
+  "e5_checks": {
+    "glove-200-angular": {
+      "kmeans": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5482973900567021,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5500132173390493,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.7536860402949271,
+          "qualitative_c1_trend_preserved": true
+        }
+      },
+      "random": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5611193858390251,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5611193858390251,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5542852184928314,
+          "qualitative_c1_trend_preserved": true
+        }
+      }
+    },
+    "sift1m": {
+      "kmeans": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.6803099879506486,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.5636748824763963,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.4544640831186838,
+          "qualitative_c1_trend_preserved": true
+        }
+      },
+      "random": {
+        "0.89": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8473958634660057,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.90": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8473958634660057,
+          "qualitative_c1_trend_preserved": true
+        },
+        "0.91": {
+          "aggregate_work_non_decreasing_m4_to_m16": true,
+          "fanout_non_decreasing_m4_to_m16": true,
+          "ideal_m16_to_m4_local_work_ratio": 0.25,
+          "local_work_decreases_slower_than_ideal": true,
+          "m16_to_m4_local_work_ratio": 0.8473958634660057,
+          "qualitative_c1_trend_preserved": true
+        }
+      }
+    }
+  },
+  "e5_recall_sensitivity_status": "SUPPORTED",
+  "experiment_id": "stage10-c1-final-cross-dataset",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "paper_ready_claim": "At 90% Recall@10, conventional scatter-gather HNSW exhibits sub-linear throughput scaling from one to four physical workers on both SIFT1M and glove-200-angular. Increasing the logical shard count does not proportionally reduce per-shard graph-search work, while queries continue to access multiple shards. Consequently, aggregate graph-search work per query remains high as the index is further partitioned. A decomposition based on shard fan-out and per-shard distance computations exactly tracks the observed aggregate work.",
+  "record_type": "c1_final_cross_dataset_summary",
+  "result_scope": {
+    "m_1_2_4": "measured_physical_scaleout",
+    "m_8_16_32": "logical_shard_mechanism_measurements_only",
+    "m_gt_4_throughput_projection": "withheld"
+  },
+  "status": "VALID_C1_FINAL",
+  "subclaim_status": {
+    "c1_a_physical_sublinear_scaling": "SUPPORTED",
+    "c1_b_high_logical_shard_fanout": "SUPPORTED",
+    "c1_c_slow_local_work_decrease": "SUPPORTED",
+    "c1_d_fanout_times_local_work_decomposition": "SUPPORTED"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T01:23:28Z"
+}

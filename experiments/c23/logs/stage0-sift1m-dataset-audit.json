@@ -1,0 +1,39 @@
+{
+  "dataset": {
+    "dimension": 128,
+    "expected_query_rows": 10000,
+    "expected_train_rows": 1000000,
+    "filename": "sift-128-euclidean.hdf5",
+    "hnsw_space": "l2",
+    "metric": "euclid",
+    "name": "sift1m",
+    "sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984"
+  },
+  "measurement_count_note": "The official dataset exposes 10,000 total queries. A disjoint 1,000-query tuning split therefore leaves 9,000 measurement queries; no additional official queries are available.",
+  "measurement_query_count": 9000,
+  "measurement_query_range": [
+    1000,
+    10000
+  ],
+  "neighbors_shape": [
+    10000,
+    100
+  ],
+  "path": "/users/dry/orion-distributed/datasets/sift-128-euclidean.hdf5",
+  "protocol_version": "c23-20260821-v1",
+  "sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "size_bytes": 525128288,
+  "test_shape": [
+    10000,
+    128
+  ],
+  "timestamp": "2026-08-21T20:04:17.425900Z",
+  "train_shape": [
+    1000000,
+    128
+  ],
+  "tuning_query_range": [
+    0,
+    1000
+  ]
+}

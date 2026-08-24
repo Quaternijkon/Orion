@@ -1,0 +1,163 @@
+# C1 Protocol Completion Audit
+
+Overall status: `PASS`
+
+Requirements: 22 total, 22 pass, 0 fail.
+
+| ID | Section | Status | Requirement | Detail |
+|---|---:|---|---|---|
+| `S01-objective-scope` | 1-2 | PASS | Objective, causal chain, and physical-versus-logical scope are preserved. | Final record distinguishes measured physical scale-out, logical-shard mechanism measurements, and withheld projections. |
+| `S03-datasets-and-split` | 3 | PASS | Exactly SIFT1M and glove-200-angular use disjoint 1,000-query tuning and 9,000-query measurement sets. | Both audited dataset manifests retain exact checksums and disjoint official-query splits. |
+| `S04-baselines` | 4 | PASS | Only deterministic Random and centroid-ranked K-Means baselines are used; Random broadcasts. | The complete matrix uses only seeded Random/K-Means layouts, every Random serving row broadcasts, and normalized authoritative records contain no Orion-specific fields. |
+| `S05-configurations-placement` | 5 | PASS | Physical M=1,2,4 and logical M=1,2,4,8,16,32 matrices are complete with deterministic round-robin placement. | E1 has 12 physical rows and E3 has 24 logical rows; every source hash, distinct physical placement, deterministic round-robin mapping, fixed affinity, and isolated shard count validates. |
+| `S06-continuous-recording` | 6 | PASS | PLAN, STATUS, RESULTS, runs, figures, scripts, and logs are maintained without overwriting corrections. | Required directory contract exists; PLAN matches the authoritative protocol and RESULTS retains the superseding correction. |
+| `S07-instrumentation` | 7 | PASS | Distributed per-query and isolated per-shard evidence contains routing, work, CPU, bytes, and latency counters. | Validated all mandatory fields and recorded hashes for 30 E1 raw query files (540000 rows) and 24 isolated E3 event files (1476000 rows). |
+| `S08-tuning` | 8 | PASS | All selected configurations meet Recall@10 >= 0.90 and tuning candidates are retained. | Replayed the Random/K-Means tuning rule for 36 artifacts and verified all 1716 candidates are retained verbatim in the manifest; every selected measurement point passes recall. |
+| `E1-physical-scaleout` | 9-13 | PASS | Closed-loop physical scale-out evidence is statistically valid and not aggregator/network limited. | Validated all 12 E1 rows against 10 unique closed-loop sweep records and 30 formal repetitions, including warmup, >=10,000 measurements, recall, CV/CI inputs, offered/completed QPS, and bottleneck gates. |
+| `E2-fanout` | 14-17 | PASS | Oracle and actual fan-out distributions are complete for M=1..32. | Recomputed all 24 actual/oracle distributions and held-out recalls from 216000 E2 rows; 20 groups have heterogeneous oracle fan-out. |
+| `E3-local-work` | 18-23 | PASS | Isolated fixed-quality local graph work, resource sizes, cache regime, and reference trends are complete, including contradictory trends. | E3 covers all 24 isolated configurations and all 252 shard-resource records with fixed affinity/concurrency, deterministic construction, positive distance/node work, and cache-regime evidence; C1-c=CONTRADICTED from 34 above-ideal and 6 at-or-below-ideal comparisons. |
+| `E4-decomposition` | 24-28 | PASS | Observed aggregate work, fan-out x local-work model, accuracy statistics, and projection boundaries are complete. | Recomputed all 24 observed/model means from 216000 E4 rows; distance/node/CPU means and p95 fields are present, model error is effectively zero, physical sanity statistics are complete, and M>4 projections are withheld. |
+| `E5-sensitivity` | 29 | PASS | M=4 and M=16 neighborhoods at recall 0.89, 0.90, and 0.91 are complete and any qualitative reversal is reported. | E5 has 24 valid neighborhood rows and records CONTRADICTED_QUALITATIVE_TREND_REVERSAL with contradicted checks=['sift1m/kmeans/0.89']. |
+| `S30-execution-order` | 30 | PASS | Stages execute in protocol order and contradictions are recorded before finalization. | RESULTS preserves the ordered SIFT validation, GloVe replication, contradiction correction, deterministic rerun, and final audit checkpoints without overwriting history. |
+| `S31-statistical-treatment` | 31 | PASS | E1 repetitions and deterministic E2-E4 construction satisfy the statistical protocol. | Section 31 proof verifies equal graph/file hashes for two independent green builds and revalidates every recorded E2/E3/E4/metadata/cleanup evidence hash in the authoritative rerun. |
+| `S32-run-metadata` | 32 | PASS | Every authoritative run saves every required metadata field or an explicit non-applicable value. | Normalized metadata rows=36; types={'normalized_e1_physical_configuration': 12, 'normalized_e3_local_search_configuration': 24}; missing={} |
+| `S33-contradiction-handling` | 33 | PASS | SIFT K-Means small fan-out, measured local-work contradictions, and failed physical attribution are reported without changing the baseline. | The superseding record applies Section 33 without generalizing K-Means or physical causality, records measured C1-c as CONTRADICTED, and records E5 as CONTRADICTED_QUALITATIVE_TREND_REVERSAL; the failed GloVe K-Means M=2 ef=128 run remains INVALID_RECALL with raw evidence while the retuned ef=192 point passes. |
+| `S34-final-figures` | 13,17,23,28,34 | PASS | All protocol and publication-ready figures exist with required panels, M values, references, and labels. | All 18 PDFs are single-page and contain the required CDF, reference, ideal, and projection labels. |
+| `S35-final-tables` | 35 | PASS | All five CSV tables and the compact LaTeX table exist and are non-empty. | All five CSVs have the required schemas and exact 12/24/24/24/4 row counts; the compact LaTeX table has all eight required columns and 12 physical M=1,2,4 rows. |
+| `S36-final-decision` | 36 | PASS | Final decision contains explicit C1-a through C1-d statuses and never marks complete C1 supported when a subclaim fails. | The superseding record has all four explicit statuses and complete C1 remains INSUFFICIENT. |
+| `S37-paper-claim` | 37 | PASS | The paper-ready template is withheld or weakened wherever a subclaim is unsupported. | No unsupported paper-ready causal claim is emitted while C1-b and C1-d remain unresolved. |
+| `LIFECYCLE-final-cleanup` | 5,30 | PASS | The final experiment collection is deleted and verified absent on all four peers. | Final collection is absent on all four peers and from controller storage. |
+| `PROVENANCE-manifest-supersession` | 6,33,36 | PASS | Historical and superseding final records are unique, hash-linked, and preserved. | Manifest counts: stage10=1, stage11=1, stage12=1 |
+
+## Evidence
+
+### S01-objective-scope
+
+- `runs/stage12-c1-deterministic-final-record.json sha256=c2cc7f0f20299636593320327ddf81010bc71fb5645d3b7148cf375edfdaf2c0`
+
+### S03-datasets-and-split
+
+- `runs/sift1m.dataset.json sha256=a7b75a109f89cd93f47d15bbdf1dd08b885c5e91eec148626c80780fefe60fba`
+- `runs/glove-200-angular.dataset.json sha256=f69595fbbcfcd92fc0f7965a51594dff6d2f55699d485849cea6288ae4a879db`
+
+### S04-baselines
+
+- `runs/c1_fanout_summary.csv sha256=2580d73eb092dd6bb5ff455270c8ed684025443acb049d4f28eb2dc9f41c60a4`
+- `runs/c1_run_metadata.jsonl sha256=ebe881be3bb1b72953bb7e63c8a74193528e2fe997e10c96a5931319a066c960`
+
+### S05-configurations-placement
+
+- `runs/c1_physical_scaleout.csv sha256=9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b`
+- `runs/c1_local_work_summary.csv sha256=68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd`
+
+### S06-continuous-recording
+
+- `PLAN.md sha256=5012df685b2c0d0044bcaffacaa7326345a876b4d1cca05485112d1bb6d10385`
+- `STATUS.md sha256=31cc41e87b84cd6f3d22525f0feb2d4a6ee67e16d8ca6923493c87f7e8d1aa93`
+- `RESULTS.md sha256=a4ff154ba0c96d59fdc262ee9da205fb30b34a4ab8de4847cef002483f0e9cb6`
+
+### S07-instrumentation
+
+- `runs/c1_physical_scaleout.csv sha256=9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b`
+- `runs/c1_aggregate_work_summary.csv sha256=27f2ea4cfe73bdbf981e2c0b66b29bb227a2bd73c3017c8ea33a9c98c81529b6`
+
+### S08-tuning
+
+- `runs/manifest.jsonl sha256=9e2179e450f3686e546e03cd56f62673dbd8cd4e9e0ba07ce6fca8c12b1e5426`
+- `runs/c1_physical_scaleout.csv sha256=9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b`
+- `runs/c1_local_work_summary.csv sha256=68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd`
+
+### E1-physical-scaleout
+
+- `runs/c1_physical_scaleout.csv sha256=9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b`
+
+### E2-fanout
+
+- `runs/c1_fanout_summary.csv sha256=2580d73eb092dd6bb5ff455270c8ed684025443acb049d4f28eb2dc9f41c60a4`
+
+### E3-local-work
+
+- `runs/c1_local_work_summary.csv sha256=68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd`
+
+### E4-decomposition
+
+- `runs/c1_aggregate_work_summary.csv sha256=27f2ea4cfe73bdbf981e2c0b66b29bb227a2bd73c3017c8ea33a9c98c81529b6`
+- `runs/c1_model_accuracy.csv sha256=0021c4d622fee8403263631e34a470287e5d5b9f98886e227c3551f6db2cb4f3`
+
+### E5-sensitivity
+
+- `runs/c1_recall_sensitivity.csv sha256=88962800a87b01f7b8ffd316550fbbde7823ca1bdeab5d6532dbd019e3e9d716`
+- `runs/stage12-c1-deterministic-final-record.json sha256=c2cc7f0f20299636593320327ddf81010bc71fb5645d3b7148cf375edfdaf2c0`
+
+### S30-execution-order
+
+- `RESULTS.md sha256=a4ff154ba0c96d59fdc262ee9da205fb30b34a4ab8de4847cef002483f0e9cb6`
+
+### S31-statistical-treatment
+
+- `runs/section31-deterministic-build-proof.json sha256=ccea5798cd53722032773fb77ee80208b236f6af891c0743e985949cd9eabb32`
+
+### S32-run-metadata
+
+- `runs/c1_run_metadata.jsonl sha256=ebe881be3bb1b72953bb7e63c8a74193528e2fe997e10c96a5931319a066c960`
+
+### S33-contradiction-handling
+
+- `runs/stage12-c1-deterministic-final-record.json sha256=c2cc7f0f20299636593320327ddf81010bc71fb5645d3b7148cf375edfdaf2c0`
+- `runs/c1_local_work_summary.csv sha256=68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd`
+- `runs/c1_recall_sensitivity.csv sha256=88962800a87b01f7b8ffd316550fbbde7823ca1bdeab5d6532dbd019e3e9d716`
+- `RESULTS.md sha256=a4ff154ba0c96d59fdc262ee9da205fb30b34a4ab8de4847cef002483f0e9cb6`
+- `runs/stage12-e3-deterministic-glove-200-angular-kmeans-m2-invalid-recall-ef128-summary.json sha256=d731727b5134b51f3f0df24639931cd88f44913fa55d84d43df2a217eb15c38e`
+- `runs/stage12-e3-deterministic-glove-200-angular-kmeans-m2-invalid-recall-selection-ef128-tuning-pinned.json sha256=9408ed9a03d227a1d40ef5d69ae140c65c2079c37f6b1a7363be4600837c4064`
+- `runs/per_query/stage12-e3-deterministic-glove-200-angular-kmeans-m2-invalid-recall-ef128.csv sha256=357996f4b49ea1810107e45e6d003c682f345d258288d844b00b5605f8a14696`
+
+### S34-final-figures
+
+- `figures/c1_fig1_physical_scaleout.pdf sha256=ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2`
+- `figures/c1_fig2_fanout_vs_logical_shards.pdf sha256=97d3f43360c6d5e0ae82d68c22158df2d34b57064f8821742800952a58895811`
+- `figures/c1_fig3_required_fanout_cdf.pdf sha256=41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42`
+- `figures/c1_fig4_local_search_work.pdf sha256=cc6fd1574ac124137e6214ffb081f59e43d83560946d229d4d61837fe82e360d`
+- `figures/c1_fig5_aggregate_work_decomposition.pdf sha256=1607299ae4c7ce0b9c4533cc25d8ad7f298601be57188edca4ee8ad1b1d74551`
+- `figures/c1_fig6_projected_logical_scaling.pdf sha256=7d10511667638b9abb89aa5528c4476171c14885c9099b70530304110fb104f8`
+- `figures/c1_combined_motivation.pdf sha256=a704ae26a92b08e309d8f162e379d6cfcb1d74e23fd17b256f6748e3d0f65cc5`
+- `figures/fig_c1_physical_scaleout.pdf sha256=ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2`
+- `figures/fig_c1_scaling_efficiency.pdf sha256=b39e3b81955644a0e1151e6b0fd216676d272938ebb5d48fc440abd02dbd6d35`
+- `figures/fig_c1_fanout_vs_shards.pdf sha256=97d3f43360c6d5e0ae82d68c22158df2d34b57064f8821742800952a58895811`
+- `figures/fig_c1_oracle_fanout_cdf.pdf sha256=41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42`
+- `figures/fig_c1_actual_fanout_cdf.pdf sha256=1a47a33d7e5bc26c897a824ec14dccce62c2e5f8002e683f1238da9c79ed8ba0`
+- `figures/fig_c1_local_distance_computations.pdf sha256=23c5e0b62676e6ac1633803bac85f4cc1da20bc9b1aa4f03d227feab59eae6d7`
+- `figures/fig_c1_local_nodes_visited.pdf sha256=2e2a31db9d72d65cd3831bd8603e6ebce36c845f8c293a95c7cca6caec6d54e1`
+- `figures/fig_c1_local_cpu_time.pdf sha256=8687f69ebd919280d138548e7402deaf1af12c4dd06928108faa96f7806939d3`
+- `figures/fig_c1_aggregate_work.pdf sha256=1607299ae4c7ce0b9c4533cc25d8ad7f298601be57188edca4ee8ad1b1d74551`
+- `figures/fig_c1_model_vs_observed.pdf sha256=e1ed2b21c92b58da7cb26a9ef4ddce1e5d47cc24bd3b45b7bba15c7a513e1d5f`
+- `figures/fig_c1_projected_scaling.pdf sha256=7d10511667638b9abb89aa5528c4476171c14885c9099b70530304110fb104f8`
+
+### S35-final-tables
+
+- `runs/c1_physical_scaleout.csv sha256=9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b`
+- `runs/c1_fanout_summary.csv sha256=2580d73eb092dd6bb5ff455270c8ed684025443acb049d4f28eb2dc9f41c60a4`
+- `runs/c1_local_work_summary.csv sha256=68fb11e5f2f5d558d94de073b35daf333553c53d20c0fcaa5f86c1653aae42cd`
+- `runs/c1_aggregate_work_summary.csv sha256=27f2ea4cfe73bdbf981e2c0b66b29bb227a2bd73c3017c8ea33a9c98c81529b6`
+- `runs/c1_model_accuracy.csv sha256=0021c4d622fee8403263631e34a470287e5d5b9f98886e227c3551f6db2cb4f3`
+- `runs/c1_physical_scale_table.tex sha256=3289ec04d9e229466530670c574ab379abdb4c505859c642a9530a0d535a75f2`
+
+### S36-final-decision
+
+- `runs/stage12-c1-deterministic-final-record.json sha256=c2cc7f0f20299636593320327ddf81010bc71fb5645d3b7148cf375edfdaf2c0`
+- `RESULTS.md sha256=a4ff154ba0c96d59fdc262ee9da205fb30b34a4ab8de4847cef002483f0e9cb6`
+
+### S37-paper-claim
+
+- `runs/stage12-c1-deterministic-final-summary.json sha256=111fb56140bdf2306a9ca9d8263583a383b5888d40e0204d799c81ca109ddd69`
+
+### LIFECYCLE-final-cleanup
+
+- `runs/c1_final_cleanup-proof.json sha256=b31f17f48edf5bede8bec278fa66fc0eceb0e112f5ea1edf3edcd99813de8495`
+
+### PROVENANCE-manifest-supersession
+
+- `runs/manifest.jsonl sha256=9e2179e450f3686e546e03cd56f62673dbd8cd4e9e0ba07ce6fca8c12b1e5426`
+- `runs/stage10-c1-final-record.json sha256=258c43b71e680f9098630a05578fb7f9976f882e63333cbbafa590c2b885e399`
+- `runs/stage11-c1-report-repair-record.json sha256=351dffb00b652f194670461ef93a1795df8be39e0d3ecc70e853cfddbeca878c`
+- `runs/stage12-c1-deterministic-final-record.json sha256=c2cc7f0f20299636593320327ddf81010bc71fb5645d3b7148cf375edfdaf2c0`
+

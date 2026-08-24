@@ -1,0 +1,95 @@
+{
+  "anomalies": [
+    "sift1m_random_work_bound_projection_anticorrelates_with_measured_e1",
+    "cross_dataset_m_gt_4_throughput_projection_withheld",
+    "sift1m_kmeans_fanout_is_nearly_constant_and_small",
+    "e2_e4_use_one_unseeded_hnsw_index_instance_per_configuration",
+    "glove_random_m4_automatic_c32_formal_repetitions_exceeded_client_cpu_gate",
+    "kmeans_partitions_reached_iteration_cap_without_convergence"
+  ],
+  "c1_status": "INSUFFICIENT",
+  "configuration_counts": {
+    "aggregate_work_e4": 24,
+    "fanout_e2": 24,
+    "local_work_e3": 24,
+    "physical_e1": 12,
+    "recall_sensitivity_e5": 24
+  },
+  "cross_dataset_m_gt_4_projection_status": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED",
+  "dataset_projection_status": {
+    "glove-200-angular": "AVAILABLE",
+    "sift1m": "WITHHELD_PHYSICAL_SANITY_CHECK_FAILED"
+  },
+  "datasets": [
+    "sift1m",
+    "glove-200-angular"
+  ],
+  "e5_recall_sensitivity_status": "OBSERVED_TREND_STABLE_PENDING_SECTION31",
+  "evidence_sha256": {
+    "aggregate_work_summary_csv": "90ea87e165efd23ce79d0e596829ba9064ac4bc2ec7e500c6f9ecb4fe4e0e0ea",
+    "c1_combined_motivation": "40dd091af9cf6e8e79c34cdaa2c8055a112f6d8a382881d77ae13728fdee3583",
+    "c1_fig1_physical_scaleout": "ecfea1df41ad2823d5f149f3c8c3f0e23abcc70aa05dde1f0b59023aad23cbb2",
+    "c1_fig2_fanout_vs_logical_shards": "44bea8a654e209143aa8ba186f6757e4df153dcf4d81a4168a3571d9ba2cecfa",
+    "c1_fig3_required_fanout_cdf": "41afac360a24216c6487310527557a7639fa3eada23a52a1e8951c7a41b31a42",
+    "c1_fig4_local_search_work": "f15643a31906f7b763461251a76b5333956588b49ea196b526cc930d2129037c",
+    "c1_fig5_aggregate_work_decomposition": "bcbda83f9ac6630f4ac10e5b0f3e8e4eb41994cb868793a81c9bd66d0bece451",
+    "c1_fig6_projected_logical_scaling": "294c78ebc26e66be1452ee4c3c5b5e7fd8cc0b57691a55fa65a31dbdb5244995",
+    "fanout_summary_csv": "26aea75a85aec3567a3bc7a7bc0ac8b21ff055b6f7fcb466bcb0a698d2893cfd",
+    "fig_c1_actual_fanout_cdf": "60d3c89095b0e513616d61cd841c9c84b6dd8d81fb493b0d88fbfbefea58e319",
+    "fig_c1_local_cpu_time": "30873f6c089de00c3c27246e44ae924c2405470f7b1184c1bc6d1a43d4f0bab7",
+    "fig_c1_local_distance_computations": "b4abe016115ae4a0c05139e3807622bad62deb335a25f24ac1ff18cd52190f85",
+    "fig_c1_local_nodes_visited": "f2b8cbf36cdd172b275952f6322f631809b228caae1c58a17c548a52ffba5c68",
+    "fig_c1_model_vs_observed": "02ac72ee4b45694fd9230ef0d39426c5ff01418da566e8ae209d363ee795c3ee",
+    "fig_c1_scaling_efficiency": "b39e3b81955644a0e1151e6b0fd216676d272938ebb5d48fc440abd02dbd6d35",
+    "local_work_summary_csv": "1a72bb87368bd32c2177d00b5921b6b9d2e9b52bff9fdd66f9c73d4a776af43f",
+    "model_accuracy_csv": "38a53e10b4c5f30de70bf6aa162a1734381e0d3adc7e3a56de121d4788b739a9",
+    "physical_scale_latex": "0ce5b2ef8c4bd6789ed80d28fdfc2f4a471b0b0d9fb518c9b23c9f6f4713e439",
+    "physical_scaleout_csv": "9d04bb0940340e00774e4a19461929951cc34ea0ba773a558d0c3e5f96ba5e3b",
+    "recall_sensitivity_csv": "8c94c6c94d4347134fd565f608fcacb8bf2b8c2053769b6edd256c1b3b25066a",
+    "summary_json": "508cd493f15b81e0c00f825c9501bec2edaa4fc160d6468dfcd8ca5278a0373a"
+  },
+  "experiment_id": "stage11-c1-report-repair",
+  "git_commit": "fe61fdac6760bc4d2bcd00cc512218d5fbd7e424",
+  "observed_mechanism_status": {
+    "aggregate_decomposition_identity": "SUPPORTED_PENDING_SECTION31",
+    "kmeans_fanout_glove_200_angular": "SUPPORTED",
+    "kmeans_fanout_sift1m": "CONTRADICTED_NEARLY_CONSTANT_SMALL",
+    "physical_throughput_attribution": "INSUFFICIENT",
+    "random_fanout": "SUPPORTED",
+    "slow_local_work_decrease": "SUPPORTED_PENDING_SECTION31"
+  },
+  "record_type": "c1_cross_dataset_report_repair_summary",
+  "result_scope": {
+    "m_1_2_4": "measured_physical_scaleout",
+    "m_8_16_32": "logical_shard_mechanism_measurements_only",
+    "m_gt_4_throughput_projection": "withheld"
+  },
+  "section31_index_construction_status": "UNRESOLVED_NONDETERMINISTIC_SINGLE_BUILD",
+  "sensitivity_source_sha256": {
+    "/users/dry/Orion/experiments/c1/runs/stage1-glove-200-angular-kmeans-m16-tuning-pinned.json": "5bd1c765a71fed57499d135fa62042a5575729f68fd4c2344c3793723986ddc6",
+    "/users/dry/Orion/experiments/c1/runs/stage1-glove-200-angular-kmeans-m4-tuning-pinned.json": "d61af0919f7e51935089b1eda9fd2a226c13f4c2c4c3f78a7db7347b9aad58bd",
+    "/users/dry/Orion/experiments/c1/runs/stage1-glove-200-angular-random-m16-tuning-pinned.json": "051eb2eca9f0611c4180cc068bfebbefff1451a3e0fd536022e933a83b38d435",
+    "/users/dry/Orion/experiments/c1/runs/stage1-glove-200-angular-random-m4-tuning-pinned.json": "55a09b29f2ca737a415a459759f289956f9e87bce2b385e01f612a39cce64441",
+    "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-kmeans-m4-tuning-pinned.json": "c856a9b7029063b0e6c8d2a5a6a2e3c14c9d3dabbc4cbaa7175af2c6a2233a68",
+    "/users/dry/Orion/experiments/c1/runs/stage1-sift1m-random-m4-tuning-pinned.json": "8ae6720562dede84a0ca646f099d9ab5224278f6e64e4315dccfcc19dbff9045",
+    "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-kmeans-m16-tuning-prefix-pinned.json": "fbef605e036c809eac7d85caef25a4c9d4aec77ffa1d00ce4251d4a365832d8f",
+    "/users/dry/Orion/experiments/c1/runs/stage2-e3-sift1m-random-m16-tuning-pinned.json": "6a918239f319e5f3a57e7e6c0b530ae3395c327b34c81311d680e66b403cd75f",
+    "/users/dry/Orion/experiments/c1/runs/stage3-e2-glove-200-angular-fanout-summary.json": "83095ace8a53bb0a5192c85ba32316bc3c420c8bde5cb456fabcba88743ac4dd",
+    "/users/dry/Orion/experiments/c1/runs/stage3-e2-sift1m-fanout-summary.json": "2633af85a0d963043a3eca534988422eb077d133e1f878cbeef516ad63592374"
+  },
+  "status": "C1_REPORT_REPAIRED_SECTION31_UNRESOLVED",
+  "subclaim_status": {
+    "c1_a_physical_sublinear_scaling": "SUPPORTED",
+    "c1_b_high_logical_shard_fanout": "CONTRADICTED",
+    "c1_c_slow_local_work_decrease": "INSUFFICIENT",
+    "c1_d_fanout_times_local_work_decomposition": "INSUFFICIENT"
+  },
+  "supersedes": {
+    "experiment_id": "stage10-c1-final-cross-dataset",
+    "reason": "strict_sections_1_through_37_completion_audit",
+    "record_path": "/users/dry/Orion/experiments/c1/runs/stage10-c1-final-record.json",
+    "record_sha256": "258c43b71e680f9098630a05578fb7f9976f882e63333cbbafa590c2b885e399"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-08-21T02:04:49Z"
+}

@@ -174,6 +174,8 @@ def matching_node_inspect(
             f"{node['optimizer_cpu_budget']}"
         ),
     ]
+    if value.get("hardware_reporting", False):
+        env.append("QDRANT__SERVICE__HARDWARE_REPORTING=true")
     if node["role"] == "controller" and disable_peer_premerge:
         env.append(f"{module.PEER_PREMERGE_DISABLE_ENV}=1")
     if node["role"] == "controller" and normalized_shards_per_rpc != "all":
@@ -656,6 +658,15 @@ def test_topology_rejects_worker_compact_wire_metadata():
         module.validate_topology(value)
 
 
+def test_topology_rejects_non_boolean_hardware_reporting():
+    module = load_module()
+    value = topology(module)
+    value["hardware_reporting"] = "true"
+
+    with pytest.raises(ValueError, match="hardware_reporting"):
+        module.validate_topology(value)
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -688,6 +699,24 @@ def test_peer_premerge_shards_per_rpc_rejects_invalid_values(value):
         module.normalize_peer_premerge_shards_per_rpc(value)
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, None), (0, "0"), ("20260821", "20260821"), (2**64 - 1, str(2**64 - 1))],
+)
+def test_hnsw_graph_build_seed_normalization(value, expected):
+    module = load_module()
+
+    assert module.normalize_hnsw_graph_build_seed(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "-1", -1, "1.0", 1.0, True, False, 2**64])
+def test_hnsw_graph_build_seed_rejects_invalid_values(value):
+    module = load_module()
+
+    with pytest.raises(ValueError, match="graph-build seed"):
+        module.normalize_hnsw_graph_build_seed(value)
+
+
 def test_qdrant_commands_advertise_private_uri_and_workers_bootstrap_controller():
     module = load_module()
     value = topology(module)
@@ -715,6 +744,34 @@ def test_qdrant_commands_advertise_private_uri_and_workers_bootstrap_controller(
         "http://10.10.1.2:6335",
     ]
     assert "0-19" in worker
+
+
+def test_hardware_reporting_topology_flag_reaches_every_qdrant_process():
+    module = load_module()
+    value = topology(module)
+    value["hardware_reporting"] = True
+
+    for node in module.all_nodes(value):
+        command = module.docker_run_command(
+            value, node, "run-1", "image:test", "sha256:abc"
+        )
+        assert "QDRANT__SERVICE__HARDWARE_REPORTING=true" in option_values(
+            command, "-e"
+        )
+
+
+def test_hnsw_graph_build_seed_reaches_every_qdrant_process():
+    module = load_module()
+    value = topology(module)
+    value["hnsw_graph_build_seed"] = 20260821
+
+    for node in module.all_nodes(value):
+        command = module.docker_run_command(
+            value, node, "run-1", "image:test", "sha256:abc"
+        )
+        assert f"{module.HNSW_GRAPH_BUILD_SEED_ENV}=20260821" in option_values(
+            command, "-e"
+        )
 
 
 def test_peer_premerge_is_enabled_by_default_and_disabled_only_on_controller():

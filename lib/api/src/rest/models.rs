@@ -81,6 +81,12 @@ fn is_usage_none_or_empty(u: &Option<Usage>) -> bool {
 #[anonymize(false)]
 pub struct HardwareUsage {
     pub cpu: usize,
+    /// Measured worker thread CPU time in microseconds.
+    pub cpu_time_us: usize,
+    /// Wall time inside measured worker tasks in microseconds.
+    pub cpu_wall_time_us: usize,
+    /// HNSW graph-node expansion events observed while serving the request.
+    pub graph_nodes_visited: usize,
     pub payload_io_read: usize,
     pub payload_io_write: usize,
     pub payload_index_io_read: usize,

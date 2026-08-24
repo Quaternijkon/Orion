@@ -1,0 +1,266 @@
+{
+  "approximate": {
+    "distance_computations": 1248,
+    "hardware": {
+      "cpu": 638976,
+      "cpu_time_us": 434,
+      "cpu_wall_time_us": 428,
+      "graph_nodes_visited": 70,
+      "payload_index_io_read": 0,
+      "payload_index_io_write": 0,
+      "payload_io_read": 0,
+      "payload_io_write": 0,
+      "vector_io_read": 0,
+      "vector_io_write": 0
+    },
+    "response": {
+      "result": [
+        {
+          "id": 0,
+          "score": 1.0,
+          "shard_key": "c1_smoke_shard",
+          "version": 1
+        },
+        {
+          "id": 1671,
+          "score": 0.28830126,
+          "shard_key": "c1_smoke_shard",
+          "version": 7
+        },
+        {
+          "id": 99,
+          "score": 0.2765072,
+          "shard_key": "c1_smoke_shard",
+          "version": 1
+        },
+        {
+          "id": 1084,
+          "score": 0.27201858,
+          "shard_key": "c1_smoke_shard",
+          "version": 5
+        },
+        {
+          "id": 881,
+          "score": 0.24834436,
+          "shard_key": "c1_smoke_shard",
+          "version": 4
+        },
+        {
+          "id": 1334,
+          "score": 0.23008034,
+          "shard_key": "c1_smoke_shard",
+          "version": 6
+        },
+        {
+          "id": 1394,
+          "score": 0.22661129,
+          "shard_key": "c1_smoke_shard",
+          "version": 6
+        },
+        {
+          "id": 710,
+          "score": 0.2253361,
+          "shard_key": "c1_smoke_shard",
+          "version": 3
+        },
+        {
+          "id": 1982,
+          "score": 0.22477517,
+          "shard_key": "c1_smoke_shard",
+          "version": 8
+        },
+        {
+          "id": 1865,
+          "score": 0.22426268,
+          "shard_key": "c1_smoke_shard",
+          "version": 8
+        }
+      ],
+      "status": "ok",
+      "time": 0.000798317,
+      "usage": {
+        "hardware": {
+          "cpu": 638976,
+          "cpu_time_us": 434,
+          "cpu_wall_time_us": 428,
+          "graph_nodes_visited": 70,
+          "payload_index_io_read": 0,
+          "payload_index_io_write": 0,
+          "payload_io_read": 0,
+          "payload_io_write": 0,
+          "vector_io_read": 0,
+          "vector_io_write": 0
+        },
+        "inference": null
+      }
+    },
+    "result_count": 10
+  },
+  "base_url": "http://10.10.1.1:6333",
+  "checks": {
+    "approximate_cpu_divides_exactly": true,
+    "approximate_distance_computations_positive": true,
+    "approximate_graph_nodes_positive": true,
+    "approximate_usage_present": true,
+    "exact_cpu_divides_exactly": true,
+    "exact_distance_computations_positive": true,
+    "exact_graph_nodes_zero": true
+  },
+  "collection": "c1_stage0_cpu_counter_smoke",
+  "created_response": {
+    "result": true,
+    "status": "ok",
+    "time": 0.142511806
+  },
+  "dimension": 128,
+  "exact": {
+    "distance_computations": 2000,
+    "hardware": {
+      "cpu": 1024000,
+      "cpu_time_us": 352,
+      "cpu_wall_time_us": 346,
+      "graph_nodes_visited": 0,
+      "payload_index_io_read": 0,
+      "payload_index_io_write": 0,
+      "payload_io_read": 0,
+      "payload_io_write": 0,
+      "vector_io_read": 0,
+      "vector_io_write": 0
+    },
+    "response": {
+      "result": [
+        {
+          "id": 0,
+          "score": 1.0,
+          "shard_key": "c1_smoke_shard",
+          "version": 1
+        },
+        {
+          "id": 1671,
+          "score": 0.28830126,
+          "shard_key": "c1_smoke_shard",
+          "version": 7
+        },
+        {
+          "id": 99,
+          "score": 0.2765072,
+          "shard_key": "c1_smoke_shard",
+          "version": 1
+        },
+        {
+          "id": 1084,
+          "score": 0.27201858,
+          "shard_key": "c1_smoke_shard",
+          "version": 5
+        },
+        {
+          "id": 881,
+          "score": 0.24834436,
+          "shard_key": "c1_smoke_shard",
+          "version": 4
+        },
+        {
+          "id": 1334,
+          "score": 0.23008034,
+          "shard_key": "c1_smoke_shard",
+          "version": 6
+        },
+        {
+          "id": 1394,
+          "score": 0.22661129,
+          "shard_key": "c1_smoke_shard",
+          "version": 6
+        },
+        {
+          "id": 710,
+          "score": 0.2253361,
+          "shard_key": "c1_smoke_shard",
+          "version": 3
+        },
+        {
+          "id": 1982,
+          "score": 0.22477517,
+          "shard_key": "c1_smoke_shard",
+          "version": 8
+        },
+        {
+          "id": 1865,
+          "score": 0.22426268,
+          "shard_key": "c1_smoke_shard",
+          "version": 8
+        }
+      ],
+      "status": "ok",
+      "time": 0.000532278,
+      "usage": {
+        "hardware": {
+          "cpu": 1024000,
+          "cpu_time_us": 352,
+          "cpu_wall_time_us": 346,
+          "graph_nodes_visited": 0,
+          "payload_index_io_read": 0,
+          "payload_index_io_write": 0,
+          "payload_io_read": 0,
+          "payload_io_write": 0,
+          "vector_io_read": 0,
+          "vector_io_write": 0
+        },
+        "inference": null
+      }
+    },
+    "result_count": 10
+  },
+  "indexed_collection": {
+    "config": {
+      "hnsw_config": {
+        "ef_construct": 100,
+        "full_scan_threshold": 10,
+        "m": 16,
+        "max_indexing_threads": 2,
+        "on_disk": false
+      },
+      "optimizer_config": {
+        "default_segment_number": 1,
+        "deleted_threshold": 0.2,
+        "flush_interval_sec": 5,
+        "indexing_threshold": 1,
+        "max_optimization_threads": 2,
+        "max_segment_size": null,
+        "memmap_threshold": null,
+        "prevent_unoptimized": null,
+        "vacuum_min_vector_number": 1000
+      },
+      "params": {
+        "on_disk_payload": true,
+        "replication_factor": 1,
+        "shard_number": 1,
+        "sharding_method": "custom",
+        "vectors": {
+          "distance": "Cosine",
+          "size": 128
+        },
+        "write_consistency_factor": 1
+      },
+      "quantization_config": null,
+      "wal_config": {
+        "wal_capacity_mb": 32,
+        "wal_retain_closed": 1,
+        "wal_segments_ahead": 0
+      }
+    },
+    "indexed_vectors_count": 2000,
+    "optimizer_status": "ok",
+    "payload_schema": {},
+    "points_count": 2000,
+    "segments_count": 2,
+    "status": "green",
+    "update_queue": {
+      "length": 0
+    }
+  },
+  "passed": true,
+  "peer_id": 2337108384097815,
+  "point_count": 2000,
+  "seed": 20260820,
+  "timestamp": "2026-08-20T17:18:09Z"
+}
