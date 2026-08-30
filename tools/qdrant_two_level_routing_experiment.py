@@ -17,10 +17,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from bisect import bisect_left
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from math import ceil
+from math import ceil, floor
 from typing import Any
 
 import h5py
@@ -325,6 +326,50 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--disable-fission", action="store_true")
     parser.add_argument(
+        "--orion-balance-mode",
+        choices=[
+            "none",
+            "capacity_constrained",
+            "post_layout_capacity_constrained",
+        ],
+        default="none",
+        help=(
+            "Optional offline load balancing. capacity_constrained starts from a "
+            "fixed P, constrains L1 membership refinement, balances final physical "
+            "L0 copies, and disables fission. post_layout_capacity_constrained first "
+            "runs the original Orion topology/fission/multi-assignment path, then "
+            "freezes its final P and minimally repairs physical-copy placement. Both "
+            "modes keep the production upper graph and online route path unchanged."
+        ),
+    )
+    parser.add_argument("--orion-balance-min-load-ratio", type=float, default=0.99)
+    parser.add_argument("--orion-balance-max-load-ratio", type=float, default=1.01)
+    parser.add_argument("--orion-balance-max-passes", type=int, default=8)
+    parser.add_argument(
+        "--orion-balance-max-vote-loss",
+        type=int,
+        default=3,
+        help=(
+            "Shared default navigation-vote loss for L1 membership and L0 physical-copy "
+            "placement. The stage-specific options override it."
+        ),
+    )
+    parser.add_argument(
+        "--orion-balance-l1-max-vote-loss",
+        type=int,
+        default=None,
+        help="Optional L1 topology vote-loss override.",
+    )
+    parser.add_argument(
+        "--orion-balance-l0-max-vote-loss",
+        type=int,
+        default=None,
+        help=(
+            "Optional L0 physical-copy vote-loss override. Multi-assignment vote delta "
+            "remains an implicit floor."
+        ),
+    )
+    parser.add_argument(
         "--claim-a-partition-family",
         choices=[
             "none",
@@ -476,6 +521,24 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--warmup-query-count must be non-negative")
     if int(getattr(args, "fixed_ef_shard_chunk_size", 0)) < 0:
         raise ValueError("--fixed-ef-shard-chunk-size must be non-negative")
+    validate_capacity_balance_parameters(
+        float(getattr(args, "orion_balance_min_load_ratio", 0.99)),
+        float(getattr(args, "orion_balance_max_load_ratio", 1.01)),
+        int(getattr(args, "orion_balance_max_passes", 8)),
+        int(getattr(args, "orion_balance_max_vote_loss", 3)),
+    )
+    l1_vote_loss, l0_vote_loss = resolve_capacity_balance_vote_losses(
+        int(getattr(args, "orion_balance_max_vote_loss", 3)),
+        getattr(args, "orion_balance_l1_max_vote_loss", None),
+        getattr(args, "orion_balance_l0_max_vote_loss", None),
+    )
+    for stage_vote_loss in (l1_vote_loss, l0_vote_loss):
+        validate_capacity_balance_parameters(
+            float(getattr(args, "orion_balance_min_load_ratio", 0.99)),
+            float(getattr(args, "orion_balance_max_load_ratio", 1.01)),
+            int(getattr(args, "orion_balance_max_passes", 8)),
+            stage_vote_loss,
+        )
 
 
 def vector_distance_config(vector_distance: str) -> dict[str, Any]:
@@ -774,6 +837,7 @@ class OriginalRoutingState:
         fission_events: list[dict[str, Any]],
         claim_a_partition_family: str | None = None,
         claim_a_partition_note: str | None = None,
+        balance_diagnostics: dict[str, Any] | None = None,
     ) -> None:
         self.initial_num_shards = initial_num_shards
         self.num_shards = num_shards
@@ -789,6 +853,7 @@ class OriginalRoutingState:
         self.fission_events = fission_events
         self.claim_a_partition_family = claim_a_partition_family
         self.claim_a_partition_note = claim_a_partition_note
+        self.balance_diagnostics = balance_diagnostics
 
 
 def global_upper_indices(num_points: int, denominator: int, seed: int) -> np.ndarray:
@@ -862,6 +927,7 @@ def cpp_style_predict_balanced(
     indices: np.ndarray | list[int],
     point_weights: np.ndarray | list[int],
     centroids: np.ndarray,
+    max_load_ratio: float = 1.5,
 ) -> np.ndarray:
     indices_arr = np.asarray(indices, dtype=np.int64)
     weights = np.asarray(point_weights, dtype=np.int64)
@@ -870,12 +936,14 @@ def cpp_style_predict_balanced(
         raise ValueError("indices and point_weights must have the same length")
     if k <= 0:
         raise ValueError("centroids must not be empty")
+    if float(max_load_ratio) < 1.0:
+        raise ValueError("max_load_ratio must be >= 1")
 
     distances = squared_l2_distances(data[indices_arr].astype(np.float32, copy=False), centroids)
     assignments = np.full(len(indices_arr), -1, dtype=np.int32)
     cluster_weight = np.zeros(k, dtype=np.int64)
     target_weight = int(np.sum(weights) // k + 1)
-    max_cluster_weight = target_weight * 1.5
+    max_cluster_weight = target_weight * float(max_load_ratio)
 
     for flat_pos in np.argsort(distances.ravel(), kind="stable"):
         point_pos = int(flat_pos // k)
@@ -908,8 +976,20 @@ def compute_point_to_l1s(
     labels_rows: list[list[int]] = []
     k = min(k_overlap, upper_index.get_current_count())
     for start in range(0, len(train), batch_size):
-        labels, _distances = upper_index.knn_query(train[start : start + batch_size], k=k)
-        labels_rows.extend([[int(label) for label in row] for row in labels.tolist()])
+        labels, distances = upper_index.knn_query(
+            train[start : start + batch_size],
+            k=k,
+        )
+        for label_row, distance_row in zip(
+            labels.tolist(),
+            distances.tolist(),
+            strict=True,
+        ):
+            ranked = sorted(
+                zip(distance_row, label_row, strict=True),
+                key=lambda item: (float(item[0]), int(item[1])),
+            )
+            labels_rows.append([int(label) for _distance, label in ranked])
     return labels_rows
 
 
@@ -920,6 +1000,7 @@ def initial_l1_shards_by_balanced_kmeans(
     num_shards: int,
     kmeans_iters: int,
     seed: int,
+    max_load_ratio: float = 1.5,
 ) -> list[int]:
     centroids = cpp_style_kmeans_train(
         train,
@@ -928,7 +1009,13 @@ def initial_l1_shards_by_balanced_kmeans(
         max_iter=kmeans_iters,
         seed=seed,
     )
-    assignments = cpp_style_predict_balanced(train, upper_indices, up_tier_weights, centroids)
+    assignments = cpp_style_predict_balanced(
+        train,
+        upper_indices,
+        up_tier_weights,
+        centroids,
+        max_load_ratio=max_load_ratio,
+    )
     l1_to_shard = [-1] * len(train)
     for point_id, shard_id in zip(upper_indices.tolist(), assignments.tolist()):
         l1_to_shard[int(point_id)] = int(shard_id)
@@ -988,6 +1075,684 @@ def converge_l1_topology(
             break
 
     return current_shard, iteration_count
+
+
+def validate_capacity_balance_parameters(
+    min_load_ratio: float,
+    max_load_ratio: float,
+    max_passes: int,
+    max_vote_loss: int,
+) -> None:
+    if not 0.0 < float(min_load_ratio) <= 1.0:
+        raise ValueError("balance min_load_ratio must be in (0, 1]")
+    if float(max_load_ratio) < 1.0:
+        raise ValueError("balance max_load_ratio must be >= 1")
+    if float(min_load_ratio) > float(max_load_ratio):
+        raise ValueError("balance min_load_ratio must not exceed max_load_ratio")
+    if int(max_passes) <= 0:
+        raise ValueError("balance max_passes must be positive")
+    if int(max_vote_loss) < 0:
+        raise ValueError("balance max_vote_loss must be non-negative")
+
+
+def resolve_capacity_balance_vote_losses(
+    shared_max_vote_loss: int,
+    l1_max_vote_loss: int | None,
+    l0_max_vote_loss: int | None,
+) -> tuple[int, int]:
+    shared = int(shared_max_vote_loss)
+    return (
+        shared if l1_max_vote_loss is None else int(l1_max_vote_loss),
+        shared if l0_max_vote_loss is None else int(l0_max_vote_loss),
+    )
+
+
+def require_capacity_balance_bounds(
+    stage: str,
+    diagnostics: dict[str, Any] | None,
+) -> None:
+    """Reject incomplete or unsatisfied capacity proofs at build boundaries."""
+
+    if not isinstance(diagnostics, dict):
+        raise RuntimeError(f"capacity-constrained Orion is missing {stage} diagnostics")
+    over_upper = diagnostics.get("over_upper_shards")
+    under_lower = diagnostics.get("under_lower_shards")
+    if not isinstance(over_upper, list) or not isinstance(under_lower, list):
+        raise RuntimeError(
+            f"capacity-constrained Orion {stage} diagnostics lack explicit residual lists"
+        )
+    if (
+        diagnostics.get("bounds_satisfied") is not True
+        or over_upper != []
+        or under_lower != []
+    ):
+        raise RuntimeError(
+            f"capacity-constrained Orion {stage} bounds are not satisfied: "
+            f"bounds_satisfied={diagnostics.get('bounds_satisfied')!r}, "
+            f"over_upper_shards={over_upper!r}, "
+            f"under_lower_shards={under_lower!r}"
+        )
+
+
+def capacity_load_bounds(
+    total_load: int,
+    num_shards: int,
+    min_load_ratio: float,
+    max_load_ratio: float,
+) -> tuple[float, int, int]:
+    if int(total_load) < 0:
+        raise ValueError("total_load must be non-negative")
+    if int(num_shards) <= 0:
+        raise ValueError("num_shards must be positive")
+    ideal_load = float(total_load) / float(num_shards)
+    lower_load = int(floor(ideal_load * float(min_load_ratio)))
+    upper_load = int(ceil(ideal_load * float(max_load_ratio)))
+    lower_load = min(lower_load, int(total_load // num_shards))
+    upper_load = max(upper_load, int(ceil(ideal_load)))
+    return ideal_load, lower_load, upper_load
+
+
+def load_balance_summary(loads: np.ndarray | list[int]) -> dict[str, Any]:
+    values = np.asarray(loads, dtype=np.int64)
+    if values.ndim != 1 or len(values) == 0:
+        raise ValueError("loads must be a non-empty one-dimensional sequence")
+    mean = float(np.mean(values))
+    std = float(np.std(values))
+    return {
+        "loads": [int(value) for value in values.tolist()],
+        "min": int(np.min(values)),
+        "max": int(np.max(values)),
+        "mean": mean,
+        "std": std,
+        "cv": float(std / mean) if mean > 0.0 else 0.0,
+        "max_over_mean": float(np.max(values) / mean) if mean > 0.0 else 0.0,
+        "min_over_mean": float(np.min(values) / mean) if mean > 0.0 else 0.0,
+    }
+
+
+def navigation_shard_votes(
+    l1s: list[int],
+    reference_l1_shard: list[int],
+) -> Counter[int]:
+    votes: Counter[int] = Counter()
+    for ep_l1 in l1s:
+        ep_l1 = int(ep_l1)
+        shard_id = reference_l1_shard[ep_l1] if ep_l1 < len(reference_l1_shard) else -1
+        if shard_id != -1:
+            votes[int(shard_id)] += 1
+    return votes
+
+
+def eligible_navigation_shards(
+    votes: Counter[int],
+    max_vote_loss: int,
+) -> list[int]:
+    if not votes:
+        return []
+    max_vote = max(votes.values())
+    min_vote = max(1, int(max_vote) - int(max_vote_loss))
+    return [
+        int(shard_id)
+        for shard_id, vote in sorted(votes.items(), key=lambda item: (-item[1], item[0]))
+        if int(vote) >= min_vote
+    ]
+
+
+def capacity_band_residual(
+    loads: np.ndarray,
+    lower_load: int,
+    upper_load: int,
+) -> dict[str, Any]:
+    under_by_shard = [
+        max(0, int(lower_load) - int(load)) for load in loads.tolist()
+    ]
+    over_by_shard = [
+        max(0, int(load) - int(upper_load)) for load in loads.tolist()
+    ]
+    under_total = int(sum(under_by_shard))
+    over_total = int(sum(over_by_shard))
+    return {
+        "under_lower_total": under_total,
+        "over_upper_total": over_total,
+        "total": int(under_total + over_total),
+        "under_lower_shards": [
+            int(shard_id)
+            for shard_id, residual in enumerate(under_by_shard)
+            if residual > 0
+        ],
+        "over_upper_shards": [
+            int(shard_id)
+            for shard_id, residual in enumerate(over_by_shard)
+            if residual > 0
+        ],
+    }
+
+
+def repair_l1_topology_with_weighted_swaps(
+    point_to_l1s: list[list[int]],
+    upper_rows: list[int],
+    weights_by_l1: dict[int, int],
+    current_shard: list[int],
+    current_loads: np.ndarray,
+    lower_load: int,
+    upper_load: int,
+    max_vote_loss: int,
+    max_rounds: int,
+) -> dict[str, Any]:
+    """Repair indivisible L1 capacity residuals with atomic reciprocal swaps.
+
+    A direct move can be impossible even when a feasible weighted assignment
+    exists: the incoming node may overflow the target while moving it out would
+    drop the source below its floor. A reciprocal two-node swap transfers only
+    the weight difference and can therefore cross that granularity barrier.
+
+    Both legs must independently target a shard supported by the pre-swap
+    navigation votes and remain inside ``max_vote_loss``. Every accepted swap
+    strictly decreases the total capacity-band residual, so the repair cannot
+    oscillate. Candidate and tie ordering is deterministic.
+    """
+
+    before_residual = capacity_band_residual(current_loads, lower_load, upper_load)
+    attempted = bool(before_residual["total"])
+    swap_count = 0
+    moved_l1_count = 0
+    rounds = 0
+    candidate_pair_count = 0
+    navigation_vote_delta = 0
+    maximum_observed_vote_loss = 0
+    maximum_target_vote_loss = 0
+    stop_reason = "greedy_satisfied_bounds"
+
+    # (l1 id, source, target, weight, source vote, target vote, best vote)
+    MoveOption = tuple[int, int, int, int, int, int, int]
+
+    for round_index in (range(int(max_rounds)) if attempted else []):
+        residual_before_round = capacity_band_residual(
+            current_loads, lower_load, upper_load
+        )
+        if int(residual_before_round["total"]) == 0:
+            stop_reason = "bounds_satisfied"
+            break
+
+        # Only one deterministic representative is needed for each weight on a
+        # directed shard edge. If it is consumed, the next round will expose the
+        # next-best node of the same weight.
+        edge_options: dict[tuple[int, int], dict[int, MoveOption]] = defaultdict(dict)
+        for l1_idx in upper_rows:
+            source_shard = int(current_shard[l1_idx])
+            if source_shard == -1:
+                continue
+            votes = navigation_shard_votes(point_to_l1s[l1_idx], current_shard)
+            if not votes:
+                continue
+            source_vote = int(votes.get(source_shard, 0))
+            best_vote = int(max(votes.values()))
+            weight = int(weights_by_l1[l1_idx])
+            for target_shard in eligible_navigation_shards(votes, max_vote_loss):
+                target_shard = int(target_shard)
+                if target_shard == source_shard:
+                    continue
+                target_vote = int(votes[target_shard])
+                option: MoveOption = (
+                    int(l1_idx),
+                    source_shard,
+                    target_shard,
+                    weight,
+                    source_vote,
+                    target_vote,
+                    best_vote,
+                )
+                by_weight = edge_options[(source_shard, target_shard)]
+                previous = by_weight.get(weight)
+                option_key = (
+                    best_vote - target_vote,
+                    max(0, source_vote - target_vote),
+                    -target_vote,
+                    int(l1_idx),
+                )
+                if previous is None:
+                    by_weight[weight] = option
+                else:
+                    previous_key = (
+                        previous[6] - previous[5],
+                        max(0, previous[4] - previous[5]),
+                        -previous[5],
+                        previous[0],
+                    )
+                    if option_key < previous_key:
+                        by_weight[weight] = option
+
+        candidates: list[tuple[tuple[Any, ...], MoveOption, MoveOption]] = []
+        global_residual = int(residual_before_round["total"])
+        for source_shard in range(len(current_loads)):
+            for target_shard in range(source_shard + 1, len(current_loads)):
+                forward = edge_options.get((source_shard, target_shard))
+                reverse = edge_options.get((target_shard, source_shard))
+                if not forward or not reverse:
+                    continue
+                reverse_weights = sorted(reverse)
+                load_source = int(current_loads[source_shard])
+                load_target = int(current_loads[target_shard])
+                before_pair_residual = int(
+                    max(0, int(lower_load) - load_source)
+                    + max(0, load_source - int(upper_load))
+                    + max(0, int(lower_load) - load_target)
+                    + max(0, load_target - int(upper_load))
+                )
+                # The pair residual is convex in transferred weight d=wa-wb.
+                # A discrete minimum lies next to one of these band breakpoints.
+                transfer_breakpoints = (
+                    load_source - int(upper_load),
+                    load_source - int(lower_load),
+                    int(lower_load) - load_target,
+                    int(upper_load) - load_target,
+                )
+                best_for_pair: tuple[
+                    tuple[Any, ...], MoveOption, MoveOption
+                ] | None = None
+                for forward_weight, forward_option in sorted(forward.items()):
+                    reverse_positions: set[int] = {0, len(reverse_weights) - 1}
+                    for breakpoint in transfer_breakpoints:
+                        desired_reverse_weight = int(forward_weight) - int(breakpoint)
+                        position = bisect_left(reverse_weights, desired_reverse_weight)
+                        reverse_positions.update((position - 1, position, position + 1))
+                    for position in sorted(reverse_positions):
+                        if position < 0 or position >= len(reverse_weights):
+                            continue
+                        reverse_weight = int(reverse_weights[position])
+                        reverse_option = reverse[reverse_weight]
+                        transferred = int(forward_weight) - reverse_weight
+                        new_source_load = load_source - transferred
+                        new_target_load = load_target + transferred
+                        after_pair_residual = int(
+                            max(0, int(lower_load) - new_source_load)
+                            + max(0, new_source_load - int(upper_load))
+                            + max(0, int(lower_load) - new_target_load)
+                            + max(0, new_target_load - int(upper_load))
+                        )
+                        improvement = before_pair_residual - after_pair_residual
+                        if improvement <= 0:
+                            continue
+                        forward_target_loss = int(forward_option[6] - forward_option[5])
+                        reverse_target_loss = int(reverse_option[6] - reverse_option[5])
+                        forward_actual_loss = max(
+                            0, int(forward_option[4] - forward_option[5])
+                        )
+                        reverse_actual_loss = max(
+                            0, int(reverse_option[4] - reverse_option[5])
+                        )
+                        vote_delta = int(
+                            forward_option[5]
+                            - forward_option[4]
+                            + reverse_option[5]
+                            - reverse_option[4]
+                        )
+                        key = (
+                            global_residual - improvement,
+                            max(forward_target_loss, reverse_target_loss),
+                            forward_target_loss + reverse_target_loss,
+                            max(forward_actual_loss, reverse_actual_loss),
+                            forward_actual_loss + reverse_actual_loss,
+                            -vote_delta,
+                            forward_option[0],
+                            reverse_option[0],
+                            source_shard,
+                            target_shard,
+                        )
+                        candidate = (key, forward_option, reverse_option)
+                        if best_for_pair is None or key < best_for_pair[0]:
+                            best_for_pair = candidate
+                if best_for_pair is not None:
+                    candidates.append(best_for_pair)
+
+        candidate_pair_count += len(candidates)
+        candidates.sort(key=lambda item: item[0])
+        moved_this_round: set[int] = set()
+        swaps_this_round = 0
+        for _key, forward_option, reverse_option in candidates:
+            forward_l1, source_shard, target_shard, forward_weight, *_ = forward_option
+            reverse_l1, reverse_source, reverse_target, reverse_weight, *_ = reverse_option
+            if forward_l1 in moved_this_round or reverse_l1 in moved_this_round:
+                continue
+            if reverse_source != target_shard or reverse_target != source_shard:
+                raise RuntimeError("weighted swap candidate is not reciprocal")
+            if int(current_shard[forward_l1]) != source_shard or int(
+                current_shard[reverse_l1]
+            ) != target_shard:
+                continue
+
+            # Earlier swaps in this round may have changed attachment votes or
+            # shard loads, so revalidate both legs immediately before the atomic
+            # commit.
+            forward_votes = navigation_shard_votes(
+                point_to_l1s[forward_l1], current_shard
+            )
+            reverse_votes = navigation_shard_votes(
+                point_to_l1s[reverse_l1], current_shard
+            )
+            if target_shard not in eligible_navigation_shards(
+                forward_votes, max_vote_loss
+            ) or source_shard not in eligible_navigation_shards(
+                reverse_votes, max_vote_loss
+            ):
+                continue
+            load_source = int(current_loads[source_shard])
+            load_target = int(current_loads[target_shard])
+            before_pair_residual = int(
+                max(0, int(lower_load) - load_source)
+                + max(0, load_source - int(upper_load))
+                + max(0, int(lower_load) - load_target)
+                + max(0, load_target - int(upper_load))
+            )
+            transferred = int(forward_weight) - int(reverse_weight)
+            new_source_load = load_source - transferred
+            new_target_load = load_target + transferred
+            after_pair_residual = int(
+                max(0, int(lower_load) - new_source_load)
+                + max(0, new_source_load - int(upper_load))
+                + max(0, int(lower_load) - new_target_load)
+                + max(0, new_target_load - int(upper_load))
+            )
+            if after_pair_residual >= before_pair_residual:
+                continue
+
+            forward_source_vote = int(forward_votes.get(source_shard, 0))
+            forward_target_vote = int(forward_votes[target_shard])
+            reverse_source_vote = int(reverse_votes.get(target_shard, 0))
+            reverse_target_vote = int(reverse_votes[source_shard])
+            current_shard[forward_l1] = target_shard
+            current_shard[reverse_l1] = source_shard
+            current_loads[source_shard] = new_source_load
+            current_loads[target_shard] = new_target_load
+            moved_this_round.update((forward_l1, reverse_l1))
+            swaps_this_round += 1
+            swap_count += 1
+            moved_l1_count += 2
+            vote_delta = int(
+                forward_target_vote
+                - forward_source_vote
+                + reverse_target_vote
+                - reverse_source_vote
+            )
+            navigation_vote_delta += vote_delta
+            maximum_observed_vote_loss = max(
+                maximum_observed_vote_loss,
+                forward_source_vote - forward_target_vote,
+                reverse_source_vote - reverse_target_vote,
+            )
+            maximum_target_vote_loss = max(
+                maximum_target_vote_loss,
+                max(forward_votes.values()) - forward_target_vote,
+                max(reverse_votes.values()) - reverse_target_vote,
+            )
+
+        rounds = round_index + 1
+        if swaps_this_round == 0:
+            stop_reason = "no_improving_reciprocal_swap"
+            break
+        if int(
+            capacity_band_residual(current_loads, lower_load, upper_load)["total"]
+        ) == 0:
+            stop_reason = "bounds_satisfied"
+            break
+    else:
+        if attempted:
+            stop_reason = "round_limit_reached"
+
+    after_residual = capacity_band_residual(current_loads, lower_load, upper_load)
+    feasible = int(after_residual["total"]) == 0
+    if feasible and attempted:
+        stop_reason = "bounds_satisfied"
+    return {
+        "attempted": attempted,
+        "feasible": feasible,
+        "reason": stop_reason,
+        "rounds": int(rounds),
+        "swap_count": int(swap_count),
+        "cycle_count": 0,
+        "moved_l1_count": int(moved_l1_count),
+        "candidate_pair_count": int(candidate_pair_count),
+        "navigation_vote_delta": int(navigation_vote_delta),
+        "maximum_observed_vote_loss": int(maximum_observed_vote_loss),
+        "maximum_target_vote_loss": int(maximum_target_vote_loss),
+        "before_residual": before_residual,
+        "after_residual": after_residual,
+    }
+
+
+def converge_l1_topology_capacity_constrained(
+    point_to_l1s: list[list[int]],
+    upper_indices: np.ndarray,
+    up_tier_weights: np.ndarray,
+    l1_to_shard: list[int],
+    num_shards: int,
+    max_iters: int,
+    min_load_ratio: float,
+    max_load_ratio: float,
+    max_vote_loss: int,
+) -> tuple[list[int], int, dict[str, Any]]:
+    """Refine L1 ownership sequentially without allowing majority-vote collapse.
+
+    Every target shard must occur in the node's immutable upper-navigation
+    attachments. Topology-improving moves are admitted inside the capacity band;
+    an overloaded shard may also make a bounded vote-loss repair when that move
+    reduces total absolute load error.
+    """
+
+    validate_capacity_balance_parameters(
+        min_load_ratio,
+        max_load_ratio,
+        max_iters,
+        max_vote_loss,
+    )
+    if len(upper_indices) != len(up_tier_weights):
+        raise ValueError("upper_indices and up_tier_weights must have the same length")
+
+    current_shard = list(l1_to_shard)
+    upper_rows = [int(value) for value in upper_indices.tolist()]
+    weights_by_l1 = {
+        l1_idx: int(up_tier_weights[local_idx])
+        for local_idx, l1_idx in enumerate(upper_rows)
+    }
+    current_loads = np.zeros(int(num_shards), dtype=np.int64)
+    for l1_idx in upper_rows:
+        shard_id = int(current_shard[l1_idx])
+        if shard_id != -1:
+            current_loads[shard_id] += weights_by_l1[l1_idx]
+
+    ideal_load, lower_load, upper_load = capacity_load_bounds(
+        int(np.sum(current_loads)),
+        int(num_shards),
+        min_load_ratio,
+        max_load_ratio,
+    )
+    initial_summary = load_balance_summary(current_loads)
+    iteration_count = 0
+    move_counts = Counter()
+    rejected_counts = Counter()
+    navigation_vote_delta = 0
+    maximum_observed_vote_loss = 0
+
+    for iteration in range(int(max_iters)):
+        proposals: list[tuple[tuple[Any, ...], int, int, int, int, int, str]] = []
+        for l1_idx in upper_rows:
+            source_shard = int(current_shard[l1_idx])
+            if source_shard == -1:
+                continue
+            weight = int(weights_by_l1[l1_idx])
+            votes = navigation_shard_votes(point_to_l1s[l1_idx], current_shard)
+            if not votes:
+                rejected_counts["no_navigation_evidence"] += 1
+                continue
+            source_vote = int(votes.get(source_shard, 0))
+            best_vote = int(max(votes.values()))
+            best: tuple[tuple[Any, ...], int, int, int, int, int, str] | None = None
+            for target_shard, raw_target_vote in votes.items():
+                target_shard = int(target_shard)
+                target_vote = int(raw_target_vote)
+                if target_shard == source_shard:
+                    continue
+                if best_vote - target_vote > int(max_vote_loss):
+                    rejected_counts["vote_loss_bound"] += 1
+                    continue
+                if int(current_loads[target_shard]) + weight > upper_load:
+                    rejected_counts["target_capacity"] += 1
+                    continue
+                if int(current_loads[source_shard]) - weight < lower_load:
+                    rejected_counts["source_floor"] += 1
+                    continue
+
+                before_error = abs(float(current_loads[source_shard]) - ideal_load) + abs(
+                    float(current_loads[target_shard]) - ideal_load
+                )
+                after_error = abs(
+                    float(current_loads[source_shard] - weight) - ideal_load
+                ) + abs(float(current_loads[target_shard] + weight) - ideal_load)
+                imbalance_improvement = before_error - after_error
+                vote_gain = target_vote - source_vote
+
+                reason: str | None = None
+                needs_balance_repair = (
+                    int(current_loads[source_shard]) > upper_load
+                    or int(current_loads[target_shard]) < lower_load
+                )
+                if needs_balance_repair and imbalance_improvement > 0.0:
+                    reason = "balance_repair"
+                    key = (
+                        0,
+                        max(0, -vote_gain) / float(max(1, weight)),
+                        -imbalance_improvement,
+                        -target_vote,
+                        target_shard,
+                    )
+                elif vote_gain > 0:
+                    reason = "topology_gain"
+                    key = (
+                        1,
+                        -vote_gain / float(max(1, weight)),
+                        -vote_gain,
+                        int(current_loads[target_shard]),
+                        target_shard,
+                    )
+                else:
+                    rejected_counts["no_objective_improvement"] += 1
+                    continue
+
+                proposal = (
+                    key,
+                    l1_idx,
+                    source_shard,
+                    target_shard,
+                    source_vote,
+                    target_vote,
+                    reason,
+                )
+                if best is None or proposal[0] < best[0]:
+                    best = proposal
+            if best is not None:
+                proposals.append(best)
+
+        proposals.sort(key=lambda item: (item[0], item[1]))
+        changed_count = 0
+        moved_l1s: set[int] = set()
+        for (
+            _key,
+            l1_idx,
+            proposed_source,
+            target_shard,
+            source_vote,
+            target_vote,
+            reason,
+        ) in proposals:
+            if l1_idx in moved_l1s:
+                continue
+            source_shard = int(current_shard[l1_idx])
+            if source_shard != int(proposed_source):
+                rejected_counts["stale_source"] += 1
+                continue
+            weight = int(weights_by_l1[l1_idx])
+            if int(current_loads[target_shard]) + weight > upper_load:
+                rejected_counts["target_capacity_after_prior_move"] += 1
+                continue
+            if int(current_loads[source_shard]) - weight < lower_load:
+                rejected_counts["source_floor_after_prior_move"] += 1
+                continue
+            if reason == "balance_repair" and int(current_loads[source_shard]) <= upper_load:
+                if int(target_vote) <= int(source_vote):
+                    rejected_counts["repair_no_longer_needed"] += 1
+                    continue
+                reason = "topology_gain"
+
+            current_shard[l1_idx] = int(target_shard)
+            current_loads[source_shard] -= weight
+            current_loads[target_shard] += weight
+            moved_l1s.add(l1_idx)
+            changed_count += 1
+            move_counts[reason] += 1
+            vote_delta = int(target_vote) - int(source_vote)
+            navigation_vote_delta += vote_delta
+            maximum_observed_vote_loss = max(maximum_observed_vote_loss, -vote_delta)
+
+        iteration_count = iteration + 1
+        if changed_count == 0:
+            break
+
+    weighted_repair = repair_l1_topology_with_weighted_swaps(
+        point_to_l1s,
+        upper_rows,
+        weights_by_l1,
+        current_shard,
+        current_loads,
+        int(lower_load),
+        int(upper_load),
+        int(max_vote_loss),
+        int(max_iters),
+    )
+    if int(weighted_repair["moved_l1_count"]) > 0:
+        move_counts["weighted_swap_repair"] += int(
+            weighted_repair["moved_l1_count"]
+        )
+    navigation_vote_delta += int(weighted_repair["navigation_vote_delta"])
+    maximum_observed_vote_loss = max(
+        maximum_observed_vote_loss,
+        int(weighted_repair["maximum_observed_vote_loss"]),
+    )
+
+    final_summary = load_balance_summary(current_loads)
+    diagnostics = {
+        "mode": "capacity_constrained",
+        "ideal_load": ideal_load,
+        "lower_load": int(lower_load),
+        "upper_load": int(upper_load),
+        "min_load_ratio": float(min_load_ratio),
+        "max_load_ratio": float(max_load_ratio),
+        "max_vote_loss": int(max_vote_loss),
+        "iterations": int(iteration_count),
+        "move_counts": {key: int(value) for key, value in sorted(move_counts.items())},
+        "rejected_counts": {
+            key: int(value) for key, value in sorted(rejected_counts.items())
+        },
+        "navigation_vote_delta": int(navigation_vote_delta),
+        "maximum_observed_vote_loss": int(maximum_observed_vote_loss),
+        "moves_without_navigation_evidence": 0,
+        "weighted_repair": weighted_repair,
+        "initial": initial_summary,
+        "final": final_summary,
+        "over_upper_shards": [
+            int(shard_id)
+            for shard_id, load in enumerate(current_loads.tolist())
+            if int(load) > upper_load
+        ],
+        "under_lower_shards": [
+            int(shard_id)
+            for shard_id, load in enumerate(current_loads.tolist())
+            if int(load) < lower_load
+        ],
+    }
+    diagnostics["bounds_satisfied"] = not diagnostics["over_upper_shards"] and not diagnostics[
+        "under_lower_shards"
+    ]
+    return current_shard, iteration_count, diagnostics
 
 
 def weighted_random_l1_shards(
@@ -1190,6 +1955,643 @@ def assign_points_by_l1_vote(
         primary_shards[point_index] = int(target_shards[0])
         point_to_shards.append([int(shard_id) for shard_id in target_shards])
     return primary_shards, point_to_shards
+
+
+def requested_copy_count_from_votes(
+    votes: Counter[int],
+    use_multi_assign: bool,
+    multi_assign_min_max_vote: int,
+    multi_assign_vote_delta: int,
+    multi_assign_max_shards: int,
+) -> int:
+    if not votes:
+        return 1
+    max_vote = int(max(votes.values()))
+    if not use_multi_assign or max_vote < int(multi_assign_min_max_vote):
+        return 1
+    min_vote = max(1, max_vote - int(multi_assign_vote_delta))
+    count = sum(1 for vote in votes.values() if int(vote) >= min_vote)
+    if int(multi_assign_max_shards) > 0:
+        count = min(count, int(multi_assign_max_shards))
+    return max(1, int(count))
+
+
+class _DinicCapacityFlow:
+    def __init__(self, node_count: int) -> None:
+        self.graph: list[list[list[int]]] = [[] for _ in range(int(node_count))]
+
+    def add_edge(self, source: int, target: int, capacity: int) -> tuple[int, int]:
+        if int(capacity) < 0:
+            raise ValueError("flow capacity must be non-negative")
+        forward = [int(target), len(self.graph[int(target)]), int(capacity), int(capacity)]
+        reverse = [int(source), len(self.graph[int(source)]), 0, 0]
+        self.graph[int(source)].append(forward)
+        self.graph[int(target)].append(reverse)
+        return int(source), len(self.graph[int(source)]) - 1
+
+    def edge_flow(self, reference: tuple[int, int]) -> int:
+        source, edge_index = reference
+        edge = self.graph[int(source)][int(edge_index)]
+        return int(edge[3] - edge[2])
+
+    def max_flow(self, source: int, sink: int) -> int:
+        source = int(source)
+        sink = int(sink)
+        total_flow = 0
+        node_count = len(self.graph)
+        while True:
+            level = [-1] * node_count
+            level[source] = 0
+            queue = [source]
+            for node in queue:
+                for target, _reverse, capacity, _original in self.graph[node]:
+                    if capacity > 0 and level[target] < 0:
+                        level[target] = level[node] + 1
+                        queue.append(target)
+            if level[sink] < 0:
+                break
+            edge_cursor = [0] * node_count
+
+            def send(node: int, available: int) -> int:
+                if node == sink:
+                    return int(available)
+                while edge_cursor[node] < len(self.graph[node]):
+                    edge_index = edge_cursor[node]
+                    edge = self.graph[node][edge_index]
+                    target, reverse_index, capacity, _original = edge
+                    if capacity > 0 and level[target] == level[node] + 1:
+                        pushed = send(target, min(int(available), int(capacity)))
+                        if pushed > 0:
+                            edge[2] -= pushed
+                            self.graph[target][reverse_index][2] += pushed
+                            return int(pushed)
+                    edge_cursor[node] += 1
+                return 0
+
+            while True:
+                pushed = send(source, 1 << 60)
+                if pushed == 0:
+                    break
+                total_flow += int(pushed)
+        return int(total_flow)
+
+
+def capacity_flow_rebalance_point_assignments(
+    point_to_l1s: list[list[int]],
+    reference_l1_shard: list[int],
+    point_to_shards: list[list[int]],
+    required_copies: np.ndarray,
+    num_shards: int,
+    lower_load: int,
+    upper_load: int,
+    effective_vote_loss: int,
+) -> tuple[list[list[int]], np.ndarray, dict[str, Any]]:
+    """Solve the residual balance problem as a grouped capacitated circulation.
+
+    Points with the same eligible shard set and copy count share one flow node.
+    Group-to-shard capacity is capped by group size, which preserves the invariant
+    that a point cannot place two copies in the same shard. The resulting integral
+    flow is decomposed deterministically back into per-point memberships.
+    """
+
+    started = time.perf_counter()
+    grouped_points: dict[tuple[tuple[int, ...], int], list[int]] = defaultdict(list)
+    for point_id, l1s in enumerate(point_to_l1s):
+        votes = navigation_shard_votes(l1s, reference_l1_shard)
+        if votes:
+            candidates = tuple(
+                sorted(eligible_navigation_shards(votes, int(effective_vote_loss)))
+            )
+        else:
+            candidates = tuple(range(int(num_shards)))
+        copies = int(required_copies[point_id])
+        if len(candidates) < copies:
+            return point_to_shards, shard_counts_from_point_to_shards(
+                point_to_shards, num_shards
+            ), {
+                "attempted": True,
+                "feasible": False,
+                "reason": "candidate_count_below_requested_copy_count",
+                "point_id": int(point_id),
+                "elapsed_seconds": float(time.perf_counter() - started),
+            }
+        grouped_points[(candidates, copies)].append(int(point_id))
+
+    groups = sorted(
+        grouped_points.items(),
+        key=lambda item: (len(item[0][0]), item[0][0], item[0][1]),
+    )
+    group_count = len(groups)
+    source_node = group_count + int(num_shards)
+    sink_node = source_node + 1
+    super_source = sink_node + 1
+    super_sink = super_source + 1
+    flow = _DinicCapacityFlow(super_sink + 1)
+    demands = [0] * (sink_node + 1)
+    group_shard_edges: list[dict[int, tuple[int, int]]] = []
+
+    def add_bounded_edge(source: int, target: int, lower: int, upper: int) -> None:
+        if int(lower) < 0 or int(upper) < int(lower):
+            raise ValueError("invalid bounded flow edge")
+        flow.add_edge(source, target, int(upper) - int(lower))
+        demands[source] -= int(lower)
+        demands[target] += int(lower)
+
+    for group_id, ((candidates, copies), point_ids_in_group) in enumerate(groups):
+        group_size = len(point_ids_in_group)
+        add_bounded_edge(
+            source_node,
+            group_id,
+            group_size * int(copies),
+            group_size * int(copies),
+        )
+        references: dict[int, tuple[int, int]] = {}
+        for shard_id in candidates:
+            shard_node = group_count + int(shard_id)
+            references[int(shard_id)] = flow.add_edge(
+                group_id,
+                shard_node,
+                group_size,
+            )
+        group_shard_edges.append(references)
+
+    for shard_id in range(int(num_shards)):
+        add_bounded_edge(
+            group_count + shard_id,
+            sink_node,
+            int(lower_load),
+            int(upper_load),
+        )
+    flow.add_edge(sink_node, source_node, sum(len(shards) for shards in point_to_shards))
+
+    required_super_flow = 0
+    for node, demand in enumerate(demands):
+        if demand > 0:
+            flow.add_edge(super_source, node, int(demand))
+            required_super_flow += int(demand)
+        elif demand < 0:
+            flow.add_edge(node, super_sink, -int(demand))
+    achieved_super_flow = flow.max_flow(super_source, super_sink)
+    if achieved_super_flow != required_super_flow:
+        return point_to_shards, shard_counts_from_point_to_shards(
+            point_to_shards, num_shards
+        ), {
+            "attempted": True,
+            "feasible": False,
+            "reason": "capacity_circulation_infeasible",
+            "group_count": int(group_count),
+            "required_super_flow": int(required_super_flow),
+            "achieved_super_flow": int(achieved_super_flow),
+            "elapsed_seconds": float(time.perf_counter() - started),
+        }
+
+    rebalanced: list[list[int]] = [[] for _ in point_to_shards]
+    for group_id, ((candidates, copies), point_ids_in_group) in enumerate(groups):
+        remaining = {
+            int(shard_id): int(flow.edge_flow(group_shard_edges[group_id][int(shard_id)]))
+            for shard_id in candidates
+        }
+        remaining_points = len(point_ids_in_group)
+        for point_id in sorted(point_ids_in_group):
+            votes = navigation_shard_votes(
+                point_to_l1s[point_id], reference_l1_shard
+            )
+            selectable = [shard_id for shard_id in candidates if remaining[shard_id] > 0]
+            selectable.sort(
+                key=lambda shard_id: (
+                    -remaining[shard_id],
+                    -int(votes.get(shard_id, 0)),
+                    int(shard_id),
+                )
+            )
+            selected = [int(shard_id) for shard_id in selectable[: int(copies)]]
+            if len(selected) != int(copies):
+                raise RuntimeError(
+                    "failed to decompose grouped capacity flow into unique point copies"
+                )
+            rebalanced[point_id] = selected
+            for shard_id in selected:
+                remaining[shard_id] -= 1
+            remaining_points -= 1
+            if any(value > remaining_points for value in remaining.values()):
+                raise RuntimeError("grouped capacity flow decomposition became non-graphical")
+        if any(value != 0 for value in remaining.values()):
+            raise RuntimeError("grouped capacity flow decomposition left residual copies")
+
+    shard_loads = shard_counts_from_point_to_shards(rebalanced, int(num_shards))
+    return rebalanced, shard_loads, {
+        "attempted": True,
+        "feasible": True,
+        "reason": None,
+        "group_count": int(group_count),
+        "required_super_flow": int(required_super_flow),
+        "achieved_super_flow": int(achieved_super_flow),
+        "final": load_balance_summary(shard_loads),
+        "elapsed_seconds": float(time.perf_counter() - started),
+    }
+
+
+def assign_points_by_l1_vote_capacity_constrained(
+    point_to_l1s: list[list[int]],
+    reference_l1_shard: list[int],
+    num_shards: int,
+    use_multi_assign: bool,
+    multi_assign_min_max_vote: int = 2,
+    multi_assign_vote_delta: int = 0,
+    multi_assign_max_shards: int = 0,
+    min_load_ratio: float = 0.99,
+    max_load_ratio: float = 1.01,
+    max_passes: int = 8,
+    max_vote_loss: int = 3,
+    initial_point_to_shards: list[list[int]] | None = None,
+) -> tuple[np.ndarray, list[list[int]], dict[str, Any]]:
+    """Place every physical L0 copy under deterministic capacity constraints.
+
+    The number of copies requested by the existing multi-assignment policy is
+    preserved. Their shard locations may change, but only among shards supported
+    by this point's immutable L1 navigation attachments and within the configured
+    vote-loss bound. No non-evidence shard is used unless the input itself has no
+    usable L1 membership, which is reported explicitly.
+    """
+
+    if multi_assign_min_max_vote <= 0:
+        raise ValueError("multi_assign_min_max_vote must be positive")
+    if multi_assign_vote_delta < 0:
+        raise ValueError("multi_assign_vote_delta must be non-negative")
+    if multi_assign_max_shards < 0:
+        raise ValueError("multi_assign_max_shards must be non-negative")
+    validate_capacity_balance_parameters(
+        min_load_ratio,
+        max_load_ratio,
+        max_passes,
+        max_vote_loss,
+    )
+    if int(num_shards) <= 0:
+        raise ValueError("num_shards must be positive")
+
+    started = time.perf_counter()
+    point_count = len(point_to_l1s)
+    effective_vote_loss = max(int(max_vote_loss), int(multi_assign_vote_delta))
+    required_copies = np.ones(point_count, dtype=np.int16)
+    candidate_slack = np.zeros(point_count, dtype=np.int16)
+    max_votes = np.zeros(point_count, dtype=np.int16)
+    vote_margins = np.zeros(point_count, dtype=np.int16)
+    navigation_point_coverage = np.zeros(int(num_shards), dtype=np.int64)
+    eligible_point_coverage = np.zeros(int(num_shards), dtype=np.int64)
+    no_evidence_points = 0
+
+    for point_id, l1s in enumerate(point_to_l1s):
+        votes = navigation_shard_votes(l1s, reference_l1_shard)
+        if not votes:
+            no_evidence_points += 1
+            continue
+        for shard_id in votes:
+            navigation_point_coverage[int(shard_id)] += 1
+        requested = requested_copy_count_from_votes(
+            votes,
+            use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
+        )
+        eligible = eligible_navigation_shards(votes, effective_vote_loss)
+        for shard_id in eligible:
+            eligible_point_coverage[int(shard_id)] += 1
+        if len(eligible) < requested:
+            raise RuntimeError(
+                "capacity-constrained assignment has fewer eligible evidence shards "
+                f"than requested copies for point {point_id}: {len(eligible)} < {requested}"
+            )
+        ranked_votes = sorted((int(value) for value in votes.values()), reverse=True)
+        max_votes[point_id] = ranked_votes[0]
+        vote_margins[point_id] = ranked_votes[0] - (
+            ranked_votes[1] if len(ranked_votes) > 1 else 0
+        )
+        required_copies[point_id] = int(requested)
+        candidate_slack[point_id] = int(len(eligible) - requested)
+
+    requested_total_copies = int(np.sum(required_copies, dtype=np.int64))
+    ideal_load, lower_load, upper_load = capacity_load_bounds(
+        requested_total_copies,
+        int(num_shards),
+        min_load_ratio,
+        max_load_ratio,
+    )
+    point_ids = np.arange(point_count, dtype=np.int64)
+    assignment_order = np.lexsort(
+        (
+            point_ids,
+            -max_votes.astype(np.int32),
+            -vote_margins.astype(np.int32),
+            candidate_slack.astype(np.int32),
+        )
+    )
+
+    shard_loads = np.zeros(int(num_shards), dtype=np.int64)
+    point_to_shards: list[list[int]] = [[] for _ in range(point_count)]
+    initial_capacity_overflow_copies = 0
+    non_evidence_assignment_count = 0
+
+    if initial_point_to_shards is not None:
+        if len(initial_point_to_shards) != point_count:
+            raise ValueError(
+                "initial_point_to_shards length must match point_to_l1s length"
+            )
+        for point_id, initial_shards in enumerate(initial_point_to_shards):
+            votes = navigation_shard_votes(
+                point_to_l1s[point_id], reference_l1_shard
+            )
+            eligible = set(eligible_navigation_shards(votes, effective_vote_loss))
+            selected = [int(shard_id) for shard_id in initial_shards]
+            if len(selected) != int(required_copies[point_id]):
+                raise ValueError(
+                    "initial assignment does not preserve requested copy count for "
+                    f"point {point_id}: {len(selected)} != {required_copies[point_id]}"
+                )
+            if len(set(selected)) != len(selected):
+                raise ValueError(
+                    f"initial assignment contains duplicate shards for point {point_id}"
+                )
+            if any(shard_id < 0 or shard_id >= int(num_shards) for shard_id in selected):
+                raise ValueError(
+                    f"initial assignment contains an invalid shard for point {point_id}"
+                )
+            if votes and any(shard_id not in eligible for shard_id in selected):
+                raise ValueError(
+                    "initial assignment is outside the navigation vote-loss bound for "
+                    f"point {point_id}: {selected}"
+                )
+            if not votes:
+                non_evidence_assignment_count += len(selected)
+            point_to_shards[point_id] = selected
+            for shard_id in selected:
+                shard_loads[shard_id] += 1
+        initial_capacity_overflow_copies = int(
+            np.sum(np.maximum(shard_loads - int(upper_load), 0), dtype=np.int64)
+        )
+    else:
+        for raw_point_id in assignment_order.tolist():
+            point_id = int(raw_point_id)
+            votes = navigation_shard_votes(
+                point_to_l1s[point_id], reference_l1_shard
+            )
+            requested = int(required_copies[point_id])
+            if not votes:
+                for _copy_index in range(requested):
+                    target_shard = min(
+                        range(int(num_shards)),
+                        key=lambda shard_id: (int(shard_loads[shard_id]), shard_id),
+                    )
+                    point_to_shards[point_id].append(int(target_shard))
+                    shard_loads[target_shard] += 1
+                    non_evidence_assignment_count += 1
+                continue
+
+            eligible = eligible_navigation_shards(votes, effective_vote_loss)
+            available = [
+                shard_id
+                for shard_id in eligible
+                if int(shard_loads[shard_id]) < upper_load
+            ]
+            available.sort(
+                key=lambda shard_id: (
+                    -int(votes[shard_id]),
+                    int(shard_loads[shard_id]),
+                    int(shard_id),
+                )
+            )
+            selected = [int(shard_id) for shard_id in available[:requested]]
+            if len(selected) < requested:
+                overflow_candidates = [
+                    shard_id
+                    for shard_id in eligible
+                    if int(shard_id) not in set(selected)
+                ]
+                overflow_candidates.sort(
+                    key=lambda shard_id: (
+                        int(shard_loads[shard_id]),
+                        -int(votes[shard_id]),
+                        int(shard_id),
+                    )
+                )
+                needed = requested - len(selected)
+                selected.extend(
+                    int(shard_id) for shard_id in overflow_candidates[:needed]
+                )
+                initial_capacity_overflow_copies += needed
+            if len(selected) != requested or len(set(selected)) != len(selected):
+                raise RuntimeError(
+                    "invalid capacity-constrained assignment for point "
+                    f"{point_id}: {selected}"
+                )
+            point_to_shards[point_id] = selected
+            for shard_id in selected:
+                shard_loads[shard_id] += 1
+
+    initial_summary = load_balance_summary(shard_loads)
+    repair_counts = Counter()
+    repair_vote_delta = 0
+    maximum_observed_vote_loss = 0
+    repair_passes = 0
+
+    def repair_phase(phase: str) -> int:
+        nonlocal repair_vote_delta, maximum_observed_vote_loss
+        moved = 0
+        for point_id, l1s in enumerate(point_to_l1s):
+            votes = navigation_shard_votes(l1s, reference_l1_shard)
+            if not votes:
+                continue
+            eligible = eligible_navigation_shards(votes, effective_vote_loss)
+            assigned = point_to_shards[point_id]
+            assigned_set = set(assigned)
+            if phase == "overload":
+                sources = [
+                    shard_id for shard_id in assigned if int(shard_loads[shard_id]) > upper_load
+                ]
+                targets = [
+                    shard_id
+                    for shard_id in eligible
+                    if shard_id not in assigned_set and int(shard_loads[shard_id]) < upper_load
+                ]
+            else:
+                sources = [
+                    shard_id for shard_id in assigned if int(shard_loads[shard_id]) > lower_load
+                ]
+                targets = [
+                    shard_id
+                    for shard_id in eligible
+                    if shard_id not in assigned_set and int(shard_loads[shard_id]) < lower_load
+                ]
+            if not sources or not targets:
+                continue
+
+            source_shard, target_shard = min(
+                (
+                    (int(source), int(target))
+                    for source in sources
+                    for target in targets
+                ),
+                key=lambda pair: (
+                    int(votes.get(pair[0], 0)) - int(votes.get(pair[1], 0)),
+                    int(shard_loads[pair[1]]),
+                    -int(shard_loads[pair[0]]),
+                    pair[1],
+                    pair[0],
+                ),
+            )
+            source_position = assigned.index(source_shard)
+            assigned[source_position] = target_shard
+            shard_loads[source_shard] -= 1
+            shard_loads[target_shard] += 1
+            moved += 1
+            vote_delta = int(votes.get(target_shard, 0)) - int(
+                votes.get(source_shard, 0)
+            )
+            repair_vote_delta += vote_delta
+            maximum_observed_vote_loss = max(maximum_observed_vote_loss, -vote_delta)
+        return moved
+
+    for _pass_index in range(int(max_passes)):
+        overload_moves = repair_phase("overload")
+        underfill_moves = repair_phase("underfill")
+        repair_counts["overload"] += int(overload_moves)
+        repair_counts["underfill"] += int(underfill_moves)
+        repair_passes += 1
+        over_upper = bool(np.any(shard_loads > upper_load))
+        under_lower = bool(np.any(shard_loads < lower_load))
+        if (not over_upper and not under_lower) or (
+            overload_moves == 0 and underfill_moves == 0
+        ):
+            break
+
+    capacity_flow_diagnostics: dict[str, Any] = {
+        "attempted": False,
+        "feasible": None,
+        "reason": "greedy_and_direct_repair_satisfied_bounds",
+    }
+    if bool(np.any(shard_loads > upper_load)) or bool(np.any(shard_loads < lower_load)):
+        point_to_shards, shard_loads, capacity_flow_diagnostics = (
+            capacity_flow_rebalance_point_assignments(
+                point_to_l1s,
+                reference_l1_shard,
+                point_to_shards,
+                required_copies,
+                int(num_shards),
+                int(lower_load),
+                int(upper_load),
+                int(effective_vote_loss),
+            )
+        )
+
+    primary_shards = np.full(point_count, -1, dtype=np.int32)
+    assignments_changed_from_unconstrained = 0
+    all_assignments_have_navigation_evidence = True
+    per_point_copy_count_preserved = True
+    assignment_target_vote_loss_histogram = Counter()
+    assignment_target_vote_loss_total = 0
+    for point_id, l1s in enumerate(point_to_l1s):
+        votes = navigation_shard_votes(l1s, reference_l1_shard)
+        assigned = point_to_shards[point_id]
+        assigned.sort(key=lambda shard_id: (-int(votes.get(shard_id, 0)), int(shard_id)))
+        if len(assigned) != int(required_copies[point_id]):
+            per_point_copy_count_preserved = False
+        if votes and any(shard_id not in votes for shard_id in assigned):
+            all_assignments_have_navigation_evidence = False
+        if not votes:
+            all_assignments_have_navigation_evidence = False
+        else:
+            best_vote = int(max(votes.values()))
+            for shard_id in assigned:
+                if shard_id in votes:
+                    target_vote_loss = best_vote - int(votes[shard_id])
+                    assignment_target_vote_loss_histogram[target_vote_loss] += 1
+                    assignment_target_vote_loss_total += target_vote_loss
+        primary_shards[point_id] = int(assigned[0])
+        unconstrained = target_shards_from_votes(
+            l1s,
+            reference_l1_shard,
+            point_id,
+            int(num_shards),
+            use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
+        )
+        if assigned != unconstrained:
+            assignments_changed_from_unconstrained += 1
+
+    final_summary = load_balance_summary(shard_loads)
+    over_upper_shards = [
+        int(shard_id)
+        for shard_id, load in enumerate(shard_loads.tolist())
+        if int(load) > upper_load
+    ]
+    under_lower_shards = [
+        int(shard_id)
+        for shard_id, load in enumerate(shard_loads.tolist())
+        if int(load) < lower_load
+    ]
+    diagnostics = {
+        "mode": "capacity_constrained",
+        "initialization": (
+            "existing_orion_layout"
+            if initial_point_to_shards is not None
+            else "capacity_aware_greedy"
+        ),
+        "ideal_load": ideal_load,
+        "lower_load": int(lower_load),
+        "upper_load": int(upper_load),
+        "min_load_ratio": float(min_load_ratio),
+        "max_load_ratio": float(max_load_ratio),
+        "configured_max_vote_loss": int(max_vote_loss),
+        "effective_max_vote_loss": int(effective_vote_loss),
+        "requested_total_copies": int(requested_total_copies),
+        "navigation_point_coverage_by_shard": [
+            int(value) for value in navigation_point_coverage.tolist()
+        ],
+        "eligible_point_coverage_by_shard": [
+            int(value) for value in eligible_point_coverage.tolist()
+        ],
+        "eligible_coverage_below_lower_bound_shards": [
+            int(shard_id)
+            for shard_id, coverage in enumerate(eligible_point_coverage.tolist())
+            if int(coverage) < lower_load
+        ],
+        "copy_count_preserved": bool(per_point_copy_count_preserved),
+        "initial_capacity_overflow_copies": int(initial_capacity_overflow_copies),
+        "no_evidence_points": int(no_evidence_points),
+        "non_evidence_assignment_count": int(non_evidence_assignment_count),
+        "all_assignments_have_navigation_evidence": bool(
+            all_assignments_have_navigation_evidence
+        ),
+        "assignments_changed_from_unconstrained": int(
+            assignments_changed_from_unconstrained
+        ),
+        "repair_passes": int(repair_passes),
+        "repair_counts": {
+            key: int(value) for key, value in sorted(repair_counts.items())
+        },
+        "repair_navigation_vote_delta": int(repair_vote_delta),
+        "maximum_observed_vote_loss": int(maximum_observed_vote_loss),
+        "assignment_target_vote_loss_histogram": {
+            str(loss): int(count)
+            for loss, count in sorted(assignment_target_vote_loss_histogram.items())
+        },
+        "maximum_assignment_target_vote_loss": int(
+            max(assignment_target_vote_loss_histogram, default=0)
+        ),
+        "mean_assignment_target_vote_loss": float(
+            assignment_target_vote_loss_total / max(1, requested_total_copies)
+        ),
+        "capacity_flow": capacity_flow_diagnostics,
+        "initial": initial_summary,
+        "final": final_summary,
+        "over_upper_shards": over_upper_shards,
+        "under_lower_shards": under_lower_shards,
+        "bounds_satisfied": not over_upper_shards and not under_lower_shards,
+        "elapsed_seconds": float(time.perf_counter() - started),
+    }
+    return primary_shards, point_to_shards, diagnostics
 
 
 def total_assigned_points(point_to_shards: list[list[int]]) -> int:
@@ -1855,7 +3257,41 @@ def build_original_routing_state(
     multi_assign_vote_delta: int = 0,
     multi_assign_max_shards: int = 0,
     enable_topology_refinement: bool = True,
+    balance_mode: str = "none",
+    balance_min_load_ratio: float = 0.99,
+    balance_max_load_ratio: float = 1.01,
+    balance_max_passes: int = 8,
+    balance_max_vote_loss: int = 3,
+    balance_l1_max_vote_loss: int | None = None,
+    balance_l0_max_vote_loss: int | None = None,
 ) -> OriginalRoutingState:
+    normalized_balance_mode = str(balance_mode).strip().lower()
+    if normalized_balance_mode not in {
+        "none",
+        "capacity_constrained",
+        "post_layout_capacity_constrained",
+    }:
+        raise ValueError(f"unsupported Orion balance mode: {balance_mode}")
+    balance_enabled = normalized_balance_mode != "none"
+    fixed_p_balance = normalized_balance_mode == "capacity_constrained"
+    post_layout_balance = (
+        normalized_balance_mode == "post_layout_capacity_constrained"
+    )
+    effective_l1_vote_loss, effective_l0_vote_loss = (
+        resolve_capacity_balance_vote_losses(
+            balance_max_vote_loss,
+            balance_l1_max_vote_loss,
+            balance_l0_max_vote_loss,
+        )
+    )
+    if balance_enabled:
+        for stage_vote_loss in (effective_l1_vote_loss, effective_l0_vote_loss):
+            validate_capacity_balance_parameters(
+                balance_min_load_ratio,
+                balance_max_load_ratio,
+                balance_max_passes,
+                stage_vote_loss,
+            )
     nearest_l1 = np.asarray([l1s[0] for l1s in point_to_l1s], dtype=np.int64)
     l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
     up_tier_weights = l1_weights_map[upper_indices].astype(np.int64, copy=False)
@@ -1867,33 +3303,56 @@ def build_original_routing_state(
         initial_num_shards,
         kmeans_iters,
         kmeans_seed,
+        max_load_ratio=(
+            float(balance_max_load_ratio)
+            if fixed_p_balance
+            else 1.5
+        ),
     )
     topology_iteration_count = 0
+    l1_balance_diagnostics: dict[str, Any] | None = None
     if enable_topology_refinement:
-        l1_to_shard, topology_iteration_count = converge_l1_topology(
-            point_to_l1s,
-            upper_indices,
-            up_tier_weights,
-            l1_to_shard,
-            len(train),
-            initial_num_shards,
-            topology_iters,
-        )
-
-    recalibrated_weights = recalibrate_l1_weights_by_voting(
-        point_to_l1s,
-        upper_indices,
-        l1_to_shard,
-        initial_num_shards,
-        use_multi_assign,
-        multi_assign_min_max_vote,
-        multi_assign_vote_delta,
-        multi_assign_max_shards,
-    )
+        if fixed_p_balance:
+            l1_to_shard, topology_iteration_count, l1_balance_diagnostics = (
+                converge_l1_topology_capacity_constrained(
+                    point_to_l1s,
+                    upper_indices,
+                    up_tier_weights,
+                    l1_to_shard,
+                    initial_num_shards,
+                    min(int(topology_iters), int(balance_max_passes)),
+                    balance_min_load_ratio,
+                    balance_max_load_ratio,
+                    effective_l1_vote_loss,
+                )
+            )
+            require_capacity_balance_bounds("L1 topology", l1_balance_diagnostics)
+        else:
+            l1_to_shard, topology_iteration_count = converge_l1_topology(
+                point_to_l1s,
+                upper_indices,
+                up_tier_weights,
+                l1_to_shard,
+                len(train),
+                initial_num_shards,
+                topology_iters,
+            )
+    elif fixed_p_balance:
+        require_capacity_balance_bounds("L1 topology", l1_balance_diagnostics)
 
     fission_events: list[dict[str, Any]] = []
     num_shards = initial_num_shards
-    if enable_fission:
+    if enable_fission and not fixed_p_balance:
+        recalibrated_weights = recalibrate_l1_weights_by_voting(
+            point_to_l1s,
+            upper_indices,
+            l1_to_shard,
+            initial_num_shards,
+            use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
+        )
         l1_to_shard, num_shards, fission_events = apply_fission_simulator(
             train,
             upper_indices,
@@ -1904,21 +3363,75 @@ def build_original_routing_state(
             kmeans_seed,
         )
 
-    primary_shards, point_to_shards = assign_points_by_l1_vote(
-        point_to_l1s,
-        l1_to_shard,
-        num_shards,
-        use_multi_assign,
-        multi_assign_min_max_vote,
-        multi_assign_vote_delta,
-        multi_assign_max_shards,
-    )
+    point_balance_diagnostics: dict[str, Any] | None = None
+    if fixed_p_balance:
+        primary_shards, point_to_shards, point_balance_diagnostics = (
+            assign_points_by_l1_vote_capacity_constrained(
+                point_to_l1s,
+                l1_to_shard,
+                num_shards,
+                use_multi_assign,
+                multi_assign_min_max_vote,
+                multi_assign_vote_delta,
+                multi_assign_max_shards,
+                min_load_ratio=balance_min_load_ratio,
+                max_load_ratio=balance_max_load_ratio,
+                max_passes=balance_max_passes,
+                max_vote_loss=effective_l0_vote_loss,
+            )
+        )
+        require_capacity_balance_bounds("L0 physical-copy", point_balance_diagnostics)
+    else:
+        primary_shards, point_to_shards = assign_points_by_l1_vote(
+            point_to_l1s,
+            l1_to_shard,
+            num_shards,
+            use_multi_assign,
+            multi_assign_min_max_vote,
+            multi_assign_vote_delta,
+            multi_assign_max_shards,
+        )
+        if post_layout_balance:
+            primary_shards, point_to_shards, point_balance_diagnostics = (
+                assign_points_by_l1_vote_capacity_constrained(
+                    point_to_l1s,
+                    l1_to_shard,
+                    num_shards,
+                    use_multi_assign,
+                    multi_assign_min_max_vote,
+                    multi_assign_vote_delta,
+                    multi_assign_max_shards,
+                    min_load_ratio=balance_min_load_ratio,
+                    max_load_ratio=balance_max_load_ratio,
+                    max_passes=balance_max_passes,
+                    max_vote_loss=effective_l0_vote_loss,
+                    initial_point_to_shards=point_to_shards,
+                )
+            )
+            require_capacity_balance_bounds("L0 physical-copy", point_balance_diagnostics)
     shard_counts = np.zeros(num_shards, dtype=np.int64)
     for shards in point_to_shards:
         for shard_id in shards:
             shard_counts[int(shard_id)] += 1
 
     total_assigned = int(np.sum(shard_counts))
+    balance_diagnostics = None
+    if balance_enabled:
+        balance_diagnostics = {
+            "mode": normalized_balance_mode,
+            "fixed_num_shards": True,
+            "l1_max_vote_loss": int(effective_l1_vote_loss),
+            "l0_max_vote_loss": int(effective_l0_vote_loss),
+            "fission_requested": bool(enable_fission),
+            "fission_applied": bool(fission_events),
+            "fission_disabled_reason": (
+                "capacity_constrained_balance_preserves_fixed_P"
+                if enable_fission and fixed_p_balance
+                else None
+            ),
+            "l1_topology": l1_balance_diagnostics,
+            "l0_physical_copies": point_balance_diagnostics,
+        }
     return OriginalRoutingState(
         initial_num_shards=initial_num_shards,
         num_shards=num_shards,
@@ -1932,6 +3445,7 @@ def build_original_routing_state(
         expansion_ratio=float(total_assigned / len(train)),
         topology_iterations=topology_iteration_count,
         fission_events=fission_events,
+        balance_diagnostics=balance_diagnostics,
     )
 
 
@@ -2346,12 +3860,24 @@ def build_upper_index(
     ef_construction: int,
     ef_search: int,
     hnsw_space: str = "cosine",
+    *,
+    random_seed: int = 100,
+    construction_threads: int = -1,
 ) -> Any:
     import hnswlib
 
+    if int(random_seed) <= 0:
+        raise ValueError("upper-index random_seed must be positive")
+    if int(construction_threads) == 0 or int(construction_threads) < -1:
+        raise ValueError("upper-index construction_threads must be -1 or positive")
     index = hnswlib.Index(space=hnsw_space, dim=dim)
-    index.init_index(max_elements=len(labels), ef_construction=ef_construction, M=m)
-    index.add_items(vectors, labels)
+    index.init_index(
+        max_elements=len(labels),
+        ef_construction=ef_construction,
+        M=m,
+        random_seed=int(random_seed),
+    )
+    index.add_items(vectors, labels, num_threads=int(construction_threads))
     index.set_ef(ef_search)
     return index
 
@@ -2436,6 +3962,7 @@ def build_routing_build_metadata(
         is_orion
         and claim_a_family == "none"
         and not bool(getattr(args, "disable_fission", False))
+        and str(getattr(args, "orion_balance_mode", "none")) == "none"
     )
 
     return {
@@ -2478,6 +4005,29 @@ def build_routing_build_metadata(
             "enabled": bool(fission_enabled),
             "claim_a_partition_family": claim_a_family,
             "claim_a_random_seed": int(getattr(args, "claim_a_random_seed", 12345)),
+        },
+        "orion_balance": {
+            "mode": str(getattr(args, "orion_balance_mode", "none")),
+            "min_load_ratio": float(
+                getattr(args, "orion_balance_min_load_ratio", 0.99)
+            ),
+            "max_load_ratio": float(
+                getattr(args, "orion_balance_max_load_ratio", 1.01)
+            ),
+            "max_passes": int(getattr(args, "orion_balance_max_passes", 8)),
+            "max_vote_loss": int(
+                getattr(args, "orion_balance_max_vote_loss", 3)
+            ),
+            "l1_max_vote_loss": resolve_capacity_balance_vote_losses(
+                int(getattr(args, "orion_balance_max_vote_loss", 3)),
+                getattr(args, "orion_balance_l1_max_vote_loss", None),
+                getattr(args, "orion_balance_l0_max_vote_loss", None),
+            )[0],
+            "l0_max_vote_loss": resolve_capacity_balance_vote_losses(
+                int(getattr(args, "orion_balance_max_vote_loss", 3)),
+                getattr(args, "orion_balance_l1_max_vote_loss", None),
+                getattr(args, "orion_balance_l0_max_vote_loss", None),
+            )[1],
         },
         "legacy_centroid": {
             "sample_size": int(getattr(args, "sample_size", 50000)),
@@ -2711,6 +4261,9 @@ def create_numeric_auto_shard_collection(
     write_consistency_factor: int = 1,
     full_scan_threshold: int = 10,
     indexing_threshold: int = 10,
+    max_indexing_threads: int = 0,
+    max_optimization_threads: int | None = None,
+    max_segment_size_kb: int | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a numeric, automatically sharded collection for native routing.
@@ -2734,6 +4287,20 @@ def create_numeric_auto_shard_collection(
             raise ValueError(f"{field_name} must be a positive integer")
     if write_consistency_factor > replication_factor:
         raise ValueError("write_consistency_factor cannot exceed replication_factor")
+    if (
+        isinstance(max_indexing_threads, bool)
+        or not isinstance(max_indexing_threads, int)
+        or max_indexing_threads < 0
+    ):
+        raise ValueError("max_indexing_threads must be a non-negative integer")
+    for field_name, value in (
+        ("max_optimization_threads", max_optimization_threads),
+        ("max_segment_size_kb", max_segment_size_kb),
+    ):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        ):
+            raise ValueError(f"{field_name} must be a positive integer when set")
 
     policy = normalized_auto_shard_policy(auto_shard_policy)
     if metadata is not None and not isinstance(metadata, dict):
@@ -2748,13 +4315,19 @@ def create_numeric_auto_shard_collection(
             "m": m,
             "ef_construct": ef_construct,
             "full_scan_threshold": full_scan_threshold,
-            "max_indexing_threads": 0,
+            "max_indexing_threads": max_indexing_threads,
         },
         "optimizers_config": {
             "default_segment_number": 1,
             "indexing_threshold": indexing_threshold,
         },
     }
+    if max_optimization_threads is not None:
+        body["optimizers_config"]["max_optimization_threads"] = (
+            max_optimization_threads
+        )
+    if max_segment_size_kb is not None:
+        body["optimizers_config"]["max_segment_size_kb"] = max_segment_size_kb
     if policy is not None:
         body["auto_shard_policy"] = policy
     if metadata is not None:
@@ -7869,6 +9442,13 @@ def main() -> int:
                     multi_assign_min_max_vote=args.orion_multi_assign_min_max_vote,
                     multi_assign_vote_delta=args.orion_multi_assign_vote_delta,
                     multi_assign_max_shards=args.orion_multi_assign_max_shards,
+                    balance_mode=args.orion_balance_mode,
+                    balance_min_load_ratio=args.orion_balance_min_load_ratio,
+                    balance_max_load_ratio=args.orion_balance_max_load_ratio,
+                    balance_max_passes=args.orion_balance_max_passes,
+                    balance_max_vote_loss=args.orion_balance_max_vote_loss,
+                    balance_l1_max_vote_loss=args.orion_balance_l1_max_vote_loss,
+                    balance_l0_max_vote_loss=args.orion_balance_l0_max_vote_loss,
                 )
             point_to_shards = routing_state.point_to_shards
             effective_num_shards = routing_state.num_shards
@@ -8962,9 +10542,34 @@ def main() -> int:
             args.orion_multi_assign_max_shards if args.routing_mode == "faithful_original_rest" else None
         ),
         "fission_enabled": (
-            args.claim_a_partition_family == "none" and not args.disable_fission
+            args.claim_a_partition_family == "none"
+            and not args.disable_fission
+            and args.orion_balance_mode == "none"
             if args.routing_mode == "faithful_original_rest"
             else False
+        ),
+        "orion_balance": (
+            {
+                "mode": args.orion_balance_mode,
+                "min_load_ratio": args.orion_balance_min_load_ratio,
+                "max_load_ratio": args.orion_balance_max_load_ratio,
+                "max_passes": args.orion_balance_max_passes,
+                "max_vote_loss": args.orion_balance_max_vote_loss,
+                "l1_max_vote_loss": resolve_capacity_balance_vote_losses(
+                    args.orion_balance_max_vote_loss,
+                    args.orion_balance_l1_max_vote_loss,
+                    args.orion_balance_l0_max_vote_loss,
+                )[0],
+                "l0_max_vote_loss": resolve_capacity_balance_vote_losses(
+                    args.orion_balance_max_vote_loss,
+                    args.orion_balance_l1_max_vote_loss,
+                    args.orion_balance_l0_max_vote_loss,
+                )[1],
+                "online_path_changed": False,
+                "fixed_num_shards": args.orion_balance_mode == "capacity_constrained",
+            }
+            if args.routing_mode == "faithful_original_rest"
+            else None
         ),
         "fair_architecture_note": (
             "faithful_original_rest, kmeans_simple_nprobe, and naive_hash_all_shards all use Qdrant "
@@ -9041,6 +10646,7 @@ def main() -> int:
                 "shard_count_max": int(np.max(routing_state.shard_counts)),
                 "claim_a_partition_family": routing_state.claim_a_partition_family,
                 "claim_a_partition_note": routing_state.claim_a_partition_note,
+                "balance_diagnostics": routing_state.balance_diagnostics,
                 "claim_a_random_seed": (
                     args.claim_a_random_seed
                     if routing_state.claim_a_partition_family == "random_balanced_46"

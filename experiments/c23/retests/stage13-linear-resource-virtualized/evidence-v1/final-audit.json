@@ -1,0 +1,551 @@
+{
+  "bootstrap_replicates": 10000,
+  "bootstrap_seed": 20260824,
+  "checks": {
+    "C2_and_C3_have_independent_data_driven_verdicts": "PASS",
+    "E3_common_ef_reproduces_E4_per_shard_measurements": "PASS",
+    "M32_variance_has_three_seeds_per_method_per_dataset": "PASS",
+    "P_exact_P_HNSW_Delta_P_and_W90_reproduce_from_raw_arrays": "PASS",
+    "accepted_structural_metrics_bind_to_identical_partition_checksums": "PASS",
+    "all_client_affinity_and_container_cleanup_restore_gates_pass": "PASS",
+    "all_configuration_manifests_and_raw_checksums_pass": "PASS",
+    "all_configurations_have_one_nonempty_HNSW_per_logical_shard": "PASS",
+    "all_five_phase_cgroup_snapshots_have_monotonic_CPU_no_OOM_and_memory_within_cap": "PASS",
+    "all_resource_contracts_equal_M_physical_cores_and_M_over_32_capacity": "PASS",
+    "matrix_has_exactly_42_passed_configurations": "PASS",
+    "paired_bootstrap_uses_9000_queries_and_10000_replicates": "PASS",
+    "preflight_smokes_calibrations_and_implementation_files_pass": "PASS",
+    "table_row_counts_match_protocol": "PASS",
+    "ten_required_PDF_figures_are_valid": "PASS"
+  },
+  "configuration_count": 42,
+  "files": {
+    "figures": {
+      "fig10_p_hnsw_paired_ci.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig10_p_hnsw_paired_ci.pdf",
+        "sha256": "894d0d18eaf3a05ae126e619a3e8d27ba092ee673a17ff4b9cb9d178af137b13"
+      },
+      "fig1_twcut.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig1_twcut.pdf",
+        "sha256": "56e6caf88d27ab45e1ae4648cebaa282f3809945402558ada87adaefef99f0d8"
+      },
+      "fig2_common_ef_local_recall.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig2_common_ef_local_recall.pdf",
+        "sha256": "6cb80bc87bd220803da53c7b18c8de0f31d330385d8e0a55d91323d5a471434a"
+      },
+      "fig3_exact_fanout.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig3_exact_fanout.pdf",
+        "sha256": "34c4f428e9043ca5394521263e440d06b09c1db619ac22d052c2e65e053f9177"
+      },
+      "fig4_hnsw_fanout.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig4_hnsw_fanout.pdf",
+        "sha256": "0ff9f470496d6b8a6e7a713b518e4c87a78472267a6040d1946c793a0beb3ada"
+      },
+      "fig5_work_to_90.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig5_work_to_90.pdf",
+        "sha256": "0e492e9dab5501debd21484f73aa0af14bc1d9af1dce6832bad854d1b53b16e3"
+      },
+      "fig6_closed_loop_qps.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig6_closed_loop_qps.pdf",
+        "sha256": "4338efe5c024c1be03c1de79e7deff72afc328d90c92647121be3006f02e506c"
+      },
+      "fig7_full_fanout_wall.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig7_full_fanout_wall.pdf",
+        "sha256": "d252334cc9c70c99034186705e39b1b3a7a892bcec551465e2c5b6afbd9cc2d3"
+      },
+      "fig8_partition_imbalance.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig8_partition_imbalance.pdf",
+        "sha256": "524f3c0453469ebb76e4958a2cdf467cadb81f6b76551e22809fbf4737b9bf4b"
+      },
+      "fig9_local_navigability_curves.pdf": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/figures/fig9_local_navigability_curves.pdf",
+        "sha256": "11271e4be7b1d9ecff5a13e472eba92c2299fe079f6f36a6b17e6de0daf1224a"
+      }
+    },
+    "tables": {
+      "configuration_summary.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/configuration_summary.csv",
+        "rows": 42,
+        "sha256": "6fd6a83f9fe976b97a5b0ee23a071d312f30f3a1621fb0ecdb70474800e23a67"
+      },
+      "correlation_diagnostics.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/correlation_diagnostics.csv",
+        "rows": 18,
+        "sha256": "858142c78034e71db1a47682df91b75787afe1ffc31b48c60a5bd7b37fa82b4f"
+      },
+      "e3_local_navigability.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/e3_local_navigability.csv",
+        "rows": 378,
+        "sha256": "e4cc08aa2829173f2f34144cb6a3b4e0291f11e08a4a50b21217c812244086d3"
+      },
+      "fixed_recall_work.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/fixed_recall_work.csv",
+        "rows": 126,
+        "sha256": "720d01423cbdac7fde30bc0aadd727ea2c385b3683d27a9df5df35790033427f"
+      },
+      "orion_refinement_ablation.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/orion_refinement_ablation.csv",
+        "rows": 10,
+        "sha256": "8d9a1df6ed7ed78ff0f17883eb13c1672581915e34fe24b6c77cff8d3846090c"
+      },
+      "paired_bootstrap_ci.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/paired_bootstrap_ci.csv",
+        "rows": 130,
+        "sha256": "e96a7d08016cebd28affad869d60c621d5e316496cfceb9601e315748eaa0e47"
+      },
+      "partition_balance.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/partition_balance.csv",
+        "rows": 498,
+        "sha256": "7a7d230bdf77dd441e54299235c2bd7e65fe6120c7b7441f5e5a1475d14783c4"
+      },
+      "resource_phase_counters.csv": {
+        "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/tables/resource_phase_counters.csv",
+        "rows": 2490,
+        "sha256": "8900d7f9485dcf2b0f3143e4a9a9824b1999331d4c052d08577d0f4fa38c8fc8"
+      }
+    },
+    "verdicts": {
+      "path": "/users/dry/Orion/experiments/c23/retests/stage13-linear-resource-virtualized/evidence-v1/verdicts.json",
+      "sha256": "5e23bdbadf841d2c47c062aa80277c1f7aa981861468f1f24857c3b1c9087e6b"
+    }
+  },
+  "git_commit": "7468366bdffddebf9b938ebb7217360e10944da1",
+  "legacy_structural_analysis_root": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis",
+  "matrix_registry": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/matrix/registry.json",
+  "matrix_registry_sha256": "19b4472225dbf8ca8a5374f73011eb4f1b2f816fd62a0cbf63ecbdf674808b27",
+  "protocol_version": "c23-linear-20260824-v1",
+  "raw_root": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1",
+  "record_type": "c23_linear_resource_final_synthesis",
+  "stage_inputs": {
+    "calibrations": {
+      "glove-200-angular": {
+        "candidate_files": [
+          {
+            "ef_search": 10,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef10.npz",
+            "sha256": "28a4099fbdcfa068b0c79e07c05620ab6653c20346f34e341919753ab3cfe67c"
+          },
+          {
+            "ef_search": 16,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef16.npz",
+            "sha256": "5e18e20ecb6aa5a222e36a6046567c9629ec61cd4fd16e50f6e752c28baa7bdf"
+          },
+          {
+            "ef_search": 20,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef20.npz",
+            "sha256": "deb7e7001ac6c501e3f92dfd7460211ed397f1a398162e764f7b3bf373da8061"
+          },
+          {
+            "ef_search": 24,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef24.npz",
+            "sha256": "7ee6d0604c02fb990712b0383cb24d47837a3e9aaa1937527aad675f5462e0ed"
+          },
+          {
+            "ef_search": 32,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef32.npz",
+            "sha256": "83124dd953384fa6fa6af0aa263426d7b945cd3edab5d6283422ce549b515fbb"
+          },
+          {
+            "ef_search": 40,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef40.npz",
+            "sha256": "9cd8ae7aef408ba5fb9d60654b300cdd5adc2a575716969cee81a965357792d8"
+          },
+          {
+            "ef_search": 80,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef80.npz",
+            "sha256": "6b2e9ab8394e1380ffb25475fdd93c97e71f704722251ade35f3e58632edc63d"
+          },
+          {
+            "ef_search": 160,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef160.npz",
+            "sha256": "70641d599adf7dc28558099eb13c133c600237ae73f89253adf92d765f32423d"
+          },
+          {
+            "ef_search": 320,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/tuning-ef320.npz",
+            "sha256": "182d3f8bdb6a2a9013fb42fbc4b7695a258cb82f656a05fda3ea712eb32f05a4"
+          }
+        ],
+        "checks": {
+          "raw_checksums": "PASS",
+          "selection": "PASS"
+        },
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/glove-200-angular-v1/manifest.json",
+        "selected_ef_search": 320,
+        "sha256": "356e41c7514584e4f759360cbb8f747cab56e7bf3ec92aa8540861ff8b22a53d"
+      },
+      "sift1m": {
+        "candidate_files": [
+          {
+            "ef_search": 10,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef10.npz",
+            "sha256": "a3163a8507fcc6e639e32bbbb3a6c9607104fd6eef59a582093f8282d92bbf8e"
+          },
+          {
+            "ef_search": 16,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef16.npz",
+            "sha256": "8ea4e348e1c394ee39100ae0d1f6fd6baf94eaed6baf2b23f4252805f4ae7fb1"
+          },
+          {
+            "ef_search": 20,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef20.npz",
+            "sha256": "4a6ea45298d7833161d82c95aa270807336d05c3b834ce8411f2a5c520b8e9d3"
+          },
+          {
+            "ef_search": 24,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef24.npz",
+            "sha256": "81b1da03d343ff5bc0bc901757eb2d9284b99741ebdce720404faa284a2fb2fa"
+          },
+          {
+            "ef_search": 32,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef32.npz",
+            "sha256": "fbeb865de5dd4a7d171479ec2e078519ad5ab849c0f4450cd8a876358b171546"
+          },
+          {
+            "ef_search": 40,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef40.npz",
+            "sha256": "7bfe8fc2217dbd8fc891a2585ab2987848447b30dd3366fc25eaa892547018d4"
+          },
+          {
+            "ef_search": 80,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef80.npz",
+            "sha256": "9474522f1e98f8dde6f26fc7f983778580692a57fb407d6d168ef9fb76b21dce"
+          },
+          {
+            "ef_search": 160,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef160.npz",
+            "sha256": "c7ad93a77d9b3ac228177b40a89622165b6294649d6bd625f4190eb036b221df"
+          },
+          {
+            "ef_search": 320,
+            "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/tuning-ef320.npz",
+            "sha256": "c0ab084944add0b06852c3395cb1939f2f5ce077386bf7bc211bc085bf28c19b"
+          }
+        ],
+        "checks": {
+          "raw_checksums": "PASS",
+          "selection": "PASS"
+        },
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/calibration/sift1m-v2/manifest.json",
+        "selected_ef_search": 24,
+        "sha256": "682f96c2710e552bf359b0a8831225b8907f2d2bfbdf5fed41274b1af6b29362"
+      }
+    },
+    "checks": {
+      "common_ef_calibrations": "PASS",
+      "implementation_files_hashed": "PASS",
+      "preflight": "PASS",
+      "resource_smoke_m1": "PASS",
+      "resource_smoke_m32": "PASS"
+    },
+    "git_commit": "7468366bdffddebf9b938ebb7217360e10944da1",
+    "static_files": {
+      "experiments/c23/retests/stage13-linear-resource-virtualized/PROTOCOL.md": "ec0a9a0d39920ed45d69c63f8a29a8ea01ffd273fa9f22f1a2df7a2f1a7a8328",
+      "experiments/c23/retests/stage13-linear-resource-virtualized/preflight.json": "2f87167c673ae2dcfa6845d3edff917ec6483d0d9dcb12bde10ffd7907f22599",
+      "experiments/c23/retests/stage13-linear-resource-virtualized/resource-smoke-m1.json": "7b32c11124da8d2c329e922f7f8e4c9e96dff4477c4d423ec3b4c009e346def9",
+      "experiments/c23/retests/stage13-linear-resource-virtualized/resource-smoke-m32.json": "e0de1b78c46a6702dfad1bec0302b9c37ae89e70e2a7e622a4ae8ba955ef087a",
+      "experiments/c23/retests/stage13-linear-resource-virtualized/topology.json": "9249d776982457329dcd5d2e47bed6a67bea7d8717bdd12a628fe83e440cf815",
+      "experiments/c23/scripts/c23_linear_e3e4.py": "83770991c238a5b28c4264f948dc996f7d583cf1ce0f1f4ac9b25aaec4ff3cb0",
+      "experiments/c23/scripts/c23_linear_matrix.py": "9134d742ac1a0aeb770581f77812d8739e933aa1d4ed7eb2915a7ce91d818cd1",
+      "experiments/c23/scripts/c23_linear_resources.py": "7790708648f8ffff5bb30a8356451b3101321603ba1addfe18185aa193b60234",
+      "experiments/c23/scripts/c23_linear_synthesis.py": "ab40cec6b7680a9f8727e5c4eb35dcc319d6ebe0f7ba9768dee8362699fb60b8"
+    }
+  },
+  "structural_inputs": {
+    "glove-200-angular": {
+      "e1_metrics": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/glove-200-angular/e1-v1/e1_metrics.csv",
+        "sha256": "22472f78fca03b8c25de439ff5682a5d896d4f555ff593a038a3334b16636aab"
+      },
+      "e2_summary": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/glove-200-angular/e2-v1/e2_summary.csv",
+        "sha256": "1d57df61b3e9c08708e70f28c4bd8c61f64f06447e6c97145146548913de9b0c"
+      }
+    },
+    "sift1m": {
+      "e1_metrics": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/sift1m/e1-v1/e1_metrics.csv",
+        "sha256": "dd042b6c0d295047df1f13cb13755be4f44ce86d4d6e8fabb3d660047bb9a5e6"
+      },
+      "e2_summary": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/sift1m/e2-v1/e2_summary.csv",
+        "sha256": "976fdb5c6281662c3af70ea3a5aae9828bb1477f8a3e4c15b8997dbb3b060016"
+      }
+    }
+  },
+  "structural_reuse_reason": "The partition assignments and datasets are byte-identical; the Stage 13 intervention changes execution/resource isolation, so accepted E1/E2 metrics are reused only after per-configuration checksum binding.",
+  "timestamp": "2026-08-24T23:52:37.710709Z",
+  "variance": {
+    "glove-200-angular": {
+      "checks": {
+        "artifact_checksums": "PASS",
+        "coverage": "PASS",
+        "primary_seed_stage13_binding": "PASS",
+        "summary_reproduction": "PASS"
+      },
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/glove-200-angular/variance-v1/manifest.json",
+      "manifest_sha256": "cc25fd1ed4da773a89fc0443b11cfa5ec8290edf7103ef9a24f8dce931380895",
+      "metrics": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/glove-200-angular/variance-v1/variance_metrics.csv",
+      "metrics_sha256": "60a1c10f271adf4175adcef30224ba74bf400b9b31b5052f1c40cf06fee829cd",
+      "seed_count_per_method": 3,
+      "summary": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/glove-200-angular/variance-v1/variance_summary.csv",
+      "summary_sha256": "4a118dd394cd4957d745eb5c75801da3b3487531f071aa2fa981860efe55353c"
+    },
+    "sift1m": {
+      "checks": {
+        "artifact_checksums": "PASS",
+        "coverage": "PASS",
+        "primary_seed_stage13_binding": "PASS",
+        "summary_reproduction": "PASS"
+      },
+      "manifest": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/sift1m/variance-v1/manifest.json",
+      "manifest_sha256": "7a2f8c7ca2dad5eebf5200384e382f5ffd8117221c43748e5c361538e5222199",
+      "metrics": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/sift1m/variance-v1/variance_metrics.csv",
+      "metrics_sha256": "d043e474fbddec41c1141268f6a3c6ab2322f638a3f8baf39beed4ee1bd2d3f3",
+      "seed_count_per_method": 3,
+      "summary": "/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/sift1m/variance-v1/variance_summary.csv",
+      "summary_sha256": "d70a92112457798d1f1ea6f1cb3fdfa6ac4b8a54cb23041defff6e15d09776b8"
+    }
+  },
+  "verdicts": {
+    "C2": {
+      "kmeans_lower_twcut_points": 8,
+      "orion_lower_twcut_points": 2,
+      "status": "CONTRADICTED",
+      "total_points": 10
+    },
+    "C3": {
+      "fully_supporting_points": 0,
+      "kmeans_favored_P_HNSW_points": 8,
+      "status": "CONTRADICTED",
+      "total_points": 10
+    },
+    "ablation": {
+      "topology_refinement_improves_P_HNSW_points": 6,
+      "topology_refinement_improves_twcut_points": 10,
+      "total_points": 10
+    },
+    "dataset_evidence": {
+      "glove-200-angular": {
+        "C2_structural_counts": {
+          "kmeans_lower_twcut_points": 4,
+          "orion_lower_twcut_points": 1
+        },
+        "points": [
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.016777777777777777,
+              0.04300277777777774
+            ],
+            "W90_relative_difference_vs_kmeans": 0.010426915325202117,
+            "fixed_recall_090_favors_orion": true,
+            "fixed_recall_090_required_work_difference": -197.62121704495667,
+            "fixed_recall_090_success_fraction_difference": 0.03827079091473318,
+            "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+            "logical_shards": 2,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 1.5914285762568081,
+            "orion_minus_kmeans_twcut": -0.007238079539251235,
+            "severe_imbalance": false,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.10877777777777778,
+              0.1545583333333333
+            ],
+            "W90_relative_difference_vs_kmeans": 0.03363463626552006,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": 17.97989855206788,
+            "fixed_recall_090_success_fraction_difference": 0.0029506697357978284,
+            "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+            "logical_shards": 4,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 1.5341837950374901,
+            "orion_minus_kmeans_twcut": 0.143409942597311,
+            "severe_imbalance": false,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.14522222222222222,
+              0.23133333333333334
+            ],
+            "W90_relative_difference_vs_kmeans": 0.010582876673302226,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": -145.70371817219666,
+            "fixed_recall_090_success_fraction_difference": -0.007822534265208736,
+            "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+            "logical_shards": 8,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 2.1302189919172902,
+            "orion_minus_kmeans_twcut": 0.07189082912766043,
+            "severe_imbalance": true,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.29977499999999996,
+              0.46633611111111106
+            ],
+            "W90_relative_difference_vs_kmeans": 0.05495300832430802,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": 9.837521781282703,
+            "fixed_recall_090_success_fraction_difference": -0.02330015151710707,
+            "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+            "logical_shards": 16,
+            "material_W90_regression": true,
+            "orion_max_size_over_mean": 2.6106121262612865,
+            "orion_minus_kmeans_twcut": 0.06062555482509219,
+            "severe_imbalance": true,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              1.448886111111111,
+              1.7807833333333332
+            ],
+            "W90_relative_difference_vs_kmeans": 0.3642870264493678,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": -166.26413549730842,
+            "fixed_recall_090_success_fraction_difference": -0.032951377792231784,
+            "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+            "logical_shards": 32,
+            "material_W90_regression": true,
+            "orion_max_size_over_mean": 5.886875862896425,
+            "orion_minus_kmeans_twcut": 0.05321861674114431,
+            "severe_imbalance": true,
+            "severe_imbalance_threshold": 2.0
+          }
+        ]
+      },
+      "sift1m": {
+        "C2_structural_counts": {
+          "kmeans_lower_twcut_points": 4,
+          "orion_lower_twcut_points": 1
+        },
+        "points": [
+          {
+            "C3_point_contradicted": false,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "INCONCLUSIVE",
+            "P_HNSW_ci95": [
+              -0.006111111111111111,
+              0.012444444444444444
+            ],
+            "W90_relative_difference_vs_kmeans": -0.0028891335893983486,
+            "fixed_recall_090_favors_orion": true,
+            "fixed_recall_090_required_work_difference": -0.46120780498449676,
+            "fixed_recall_090_success_fraction_difference": 0.0,
+            "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+            "logical_shards": 2,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 1.028584,
+            "orion_minus_kmeans_twcut": -0.00021962276087122892,
+            "severe_imbalance": false,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.06044166666666667,
+              0.117
+            ],
+            "W90_relative_difference_vs_kmeans": 0.05563922508112741,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": -31.766183912212455,
+            "fixed_recall_090_success_fraction_difference": -0.00029180396321648594,
+            "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+            "logical_shards": 4,
+            "material_W90_regression": true,
+            "orion_max_size_over_mean": 1.526492,
+            "orion_minus_kmeans_twcut": 0.08676411592806925,
+            "severe_imbalance": false,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": false,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "INCONCLUSIVE",
+            "P_HNSW_ci95": [
+              -0.03578055555555555,
+              0.07300277777777774
+            ],
+            "W90_relative_difference_vs_kmeans": -0.016724052376490023,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": -13.96690332624189,
+            "fixed_recall_090_success_fraction_difference": -0.00028839049925899474,
+            "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+            "logical_shards": 8,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 1.753976,
+            "orion_minus_kmeans_twcut": 0.038781221032375135,
+            "severe_imbalance": false,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.156775,
+              0.37355833333333327
+            ],
+            "W90_relative_difference_vs_kmeans": -0.009074188319551377,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": 14.78020874329161,
+            "fixed_recall_090_success_fraction_difference": -0.0002651993222256843,
+            "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+            "logical_shards": 16,
+            "material_W90_regression": false,
+            "orion_max_size_over_mean": 3.120416,
+            "orion_minus_kmeans_twcut": 0.023977087498097793,
+            "severe_imbalance": true,
+            "severe_imbalance_threshold": 2.0
+          },
+          {
+            "C3_point_contradicted": true,
+            "C3_point_supported": false,
+            "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+            "P_HNSW_ci95": [
+              0.5872194444444444,
+              1.0141111111111112
+            ],
+            "W90_relative_difference_vs_kmeans": 0.054599893177293524,
+            "fixed_recall_090_favors_orion": false,
+            "fixed_recall_090_required_work_difference": 17.39978855912716,
+            "fixed_recall_090_success_fraction_difference": -3.280978640485266e-05,
+            "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+            "logical_shards": 32,
+            "material_W90_regression": true,
+            "orion_max_size_over_mean": 4.92976,
+            "orion_minus_kmeans_twcut": 0.03643307685120217,
+            "severe_imbalance": true,
+            "severe_imbalance_threshold": 2.0
+          }
+        ]
+      }
+    },
+    "decision_rules": {
+      "C2": "SUPPORTED only when Orion has lower TWCut at every dataset/M point and paired common-ef local recall plus 0.90 fixed-recall work favor Orion at every point; CONTRADICTED when K-Means has lower TWCut at at least four scales in each dataset; otherwise INCONCLUSIVE.",
+      "C3": "SUPPORTED only when every dataset/M point has a paired P_HNSW CI favoring Orion, no >=5% W90 regression with CI above zero, and Orion max/mean shard size below 2.0; CONTRADICTED when at least one point favors K-Means and no point satisfies the full support rule; otherwise INCONCLUSIVE."
+    }
+  }
+}

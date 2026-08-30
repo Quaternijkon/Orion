@@ -109,6 +109,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "for explicitly labeled shard-scaling experiments."
         ),
     )
+    parser.add_argument(
+        "--allow-orion-balance-layout",
+        action="store_true",
+        help=(
+            "Accept a checksum-verified capacity-balanced Orion source. The "
+            "source and derived bundle must retain the complete balance proof, "
+            "layout checksum, import assignments, and physical copy count."
+        ),
+    )
+    parser.add_argument(
+        "--allow-orion-l1-partition-layout",
+        action="store_true",
+        help=(
+            "Accept a checksum-verified Orion L1 partition bundle, including "
+            "fixed-P C_CNBR+BMR_10 scaling layouts. The derived profile must "
+            "preserve its complete specialized proof and import assignments."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -127,6 +145,13 @@ def validate_args(args: argparse.Namespace) -> None:
         or args.dynamic_ef_factor < 0
     ):
         raise ValueError("--dynamic-ef-factor must be non-negative")
+    layout_flags = [
+        bool(getattr(args, "allow_orion_scaling_layout", False)),
+        bool(getattr(args, "allow_orion_balance_layout", False)),
+        bool(getattr(args, "allow_orion_l1_partition_layout", False)),
+    ]
+    if sum(layout_flags) > 1:
+        raise ValueError("Orion layout-family authorization flags are mutually exclusive")
 
 
 def canonical_json_sha256(value: Any) -> str:
@@ -235,11 +260,17 @@ def validate_source_bundle(
     source_dir: Path,
     *,
     allow_orion_scaling_layout: bool = False,
+    allow_orion_balance_layout: bool = False,
+    allow_orion_l1_partition_layout: bool = False,
 ) -> dict[str, Any]:
     layout = prepare.load_routed_layout(
         "orion",
         source_dir,
-        allow_orion_scaling_layout=allow_orion_scaling_layout,
+        allow_orion_scaling_layout=(
+            allow_orion_scaling_layout or allow_orion_balance_layout
+        ),
+        allow_orion_balance_layout=allow_orion_balance_layout,
+        allow_orion_l1_partition_layout=allow_orion_l1_partition_layout,
     )
     build_manifest_path = Path(layout["build_manifest_path"])
     build_manifest = read_json_object(build_manifest_path, "source build manifest")
@@ -250,18 +281,29 @@ def validate_source_bundle(
     if not isinstance(declared_files, dict):
         raise ValueError("source build manifest outputs/files must be JSON objects")
 
-    graphless_path = checked_source_file(
-        source_dir,
-        outputs.get("graphless_artifact"),
-        "graphless_artifact",
-        layout["checksums"],
-        declared_files,
-    )
-    graphless = read_json_object(graphless_path, "source graphless artifact")
-    if "upper_graph" in graphless:
-        raise RuntimeError("source graphless artifact unexpectedly contains upper_graph")
     production_path = Path(layout["artifact_path"])
     production = read_json_object(production_path, "source production artifact")
+    if allow_orion_l1_partition_layout and outputs.get("graphless_artifact") is None:
+        # Specialized L1 materializers retain only the Rust-typed production
+        # artifact.  Its graphless form is uniquely obtained by removing the
+        # upper_graph field, so no offline layout bytes are reconstructed or
+        # reinterpreted here.
+        graphless_path = production_path
+        graphless = copy.deepcopy(production)
+        graphless.pop("upper_graph", None)
+    else:
+        graphless_path = checked_source_file(
+            source_dir,
+            outputs.get("graphless_artifact"),
+            "graphless_artifact",
+            layout["checksums"],
+            declared_files,
+        )
+        graphless = read_json_object(graphless_path, "source graphless artifact")
+        if "upper_graph" in graphless:
+            raise RuntimeError(
+                "source graphless artifact unexpectedly contains upper_graph"
+            )
     graphless_from_production = copy.deepcopy(production)
     upper_graph = graphless_from_production.pop("upper_graph", None)
     if not isinstance(upper_graph, dict):
@@ -445,9 +487,15 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         raise FileNotFoundError(f"source layout directory not found: {source_dir}")
 
     allow_scaling = bool(getattr(args, "allow_orion_scaling_layout", False))
+    allow_balance = bool(getattr(args, "allow_orion_balance_layout", False))
+    allow_l1_partition = bool(
+        getattr(args, "allow_orion_l1_partition_layout", False)
+    )
     source = validate_source_bundle(
         source_dir,
         allow_orion_scaling_layout=allow_scaling,
+        allow_orion_balance_layout=allow_balance,
+        allow_orion_l1_partition_layout=allow_l1_partition,
     )
     source_generation = int(source["layout"]["generation"])
     upper_nodes = source["graphless"].get("upper_nodes")
@@ -487,6 +535,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     builder_args = argparse.Namespace(
         cargo=str(args.cargo),
         cargo_target_dir=args.cargo_target_dir,
+        rust_builder_binary=None,
         upper_graph_seed=int(parameters["upper_graph_seed"]),
         upper_m=int(parameters["upper_m"]),
         upper_ef_construction=int(parameters["upper_ef_construction"]),
@@ -605,6 +654,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             },
             "formal_evidence_eligible": str(args.payload_mode) == "copy",
             "orion_scaling_layout_allowed": allow_scaling,
+            "orion_balance_layout_allowed": allow_balance,
+            "orion_l1_partition_layout_allowed": allow_l1_partition,
             "source": source_binding,
             "reused_payloads": reused_payloads,
         },
@@ -624,7 +675,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     derived_layout = prepare.load_routed_layout(
         "orion",
         output_dir,
-        allow_orion_scaling_layout=allow_scaling,
+        allow_orion_scaling_layout=(allow_scaling or allow_balance),
+        allow_orion_balance_layout=allow_balance,
+        allow_orion_l1_partition_layout=allow_l1_partition,
     )
     if derived_layout["artifact"]["layout_sha256"] != source_binding["layout_sha256"]:
         raise RuntimeError("derived layout checksum changed after final validation")
@@ -646,6 +699,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "payload_mode": str(args.payload_mode),
         "formal_evidence_eligible": str(args.payload_mode) == "copy",
         "orion_scaling_layout_allowed": allow_scaling,
+        "orion_balance_layout_allowed": allow_balance,
+        "orion_l1_partition_layout_allowed": allow_l1_partition,
         "reused_payloads": reused_payloads,
     }
     print(json.dumps(summary, sort_keys=True, indent=2))

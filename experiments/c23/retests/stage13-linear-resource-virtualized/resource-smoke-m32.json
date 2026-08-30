@@ -1,0 +1,4430 @@
+{
+  "active_verification": {
+    "checks": {
+      "all_containers_pass": "PASS",
+      "exact_container_count": "PASS",
+      "no_foreign_running_containers": "PASS",
+      "pairwise_disjoint_cpusets": "PASS",
+      "resource_contract": "PASS"
+    },
+    "logical_shards": 32,
+    "per_container_checks": [
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s00",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s01",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s02",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s03",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s04",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s05",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s06",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s07",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s08",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s09",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s10",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s11",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s12",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s13",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s14",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s15",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s16",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s17",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s18",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s19",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s20",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s21",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s22",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s23",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s24",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s25",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s26",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s27",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s28",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s29",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s30",
+        "status": "PASS"
+      },
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m32-smoke-s31",
+        "status": "PASS"
+      }
+    ],
+    "protocol_version": "c23-linear-20260824-v1",
+    "resource_contract": {
+      "checks": {
+        "linear_memory_capacity": "PASS",
+        "m32_uses_all_declared_server_cores": "PASS",
+        "one_physical_core_per_logical_shard": "PASS",
+        "total_cpu_capacity_equals_M": "PASS"
+      },
+      "logical_shards": 32,
+      "m32_capacity_fraction": 1.0,
+      "memory_bytes_per_shard": 8589934592,
+      "physical_core_equivalents": 32,
+      "physical_hosts_with_shards": 4,
+      "placement": [
+        {
+          "base_url": "http://10.10.1.1:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 0,
+          "physical_core": 0,
+          "private_ip": "10.10.1.1",
+          "shard_id": 0,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 1,
+          "physical_core": 0,
+          "private_ip": "10.10.1.2",
+          "shard_id": 1,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 2,
+          "physical_core": 0,
+          "private_ip": "10.10.1.3",
+          "shard_id": 2,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 3,
+          "physical_core": 0,
+          "private_ip": "10.10.1.4",
+          "shard_id": 3,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 0,
+          "physical_core": 1,
+          "private_ip": "10.10.1.1",
+          "shard_id": 4,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 1,
+          "physical_core": 1,
+          "private_ip": "10.10.1.2",
+          "shard_id": 5,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 2,
+          "physical_core": 1,
+          "private_ip": "10.10.1.3",
+          "shard_id": 6,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 3,
+          "physical_core": 1,
+          "private_ip": "10.10.1.4",
+          "shard_id": 7,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 0,
+          "physical_core": 2,
+          "private_ip": "10.10.1.1",
+          "shard_id": 8,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 1,
+          "physical_core": 2,
+          "private_ip": "10.10.1.2",
+          "shard_id": 9,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 2,
+          "physical_core": 2,
+          "private_ip": "10.10.1.3",
+          "shard_id": 10,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 3,
+          "physical_core": 2,
+          "private_ip": "10.10.1.4",
+          "shard_id": 11,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 0,
+          "physical_core": 3,
+          "private_ip": "10.10.1.1",
+          "shard_id": 12,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 1,
+          "physical_core": 3,
+          "private_ip": "10.10.1.2",
+          "shard_id": 13,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 2,
+          "physical_core": 3,
+          "private_ip": "10.10.1.3",
+          "shard_id": 14,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 3,
+          "physical_core": 3,
+          "private_ip": "10.10.1.4",
+          "shard_id": 15,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 0,
+          "physical_core": 4,
+          "private_ip": "10.10.1.1",
+          "shard_id": 16,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 1,
+          "physical_core": 4,
+          "private_ip": "10.10.1.2",
+          "shard_id": 17,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 2,
+          "physical_core": 4,
+          "private_ip": "10.10.1.3",
+          "shard_id": 18,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 3,
+          "physical_core": 4,
+          "private_ip": "10.10.1.4",
+          "shard_id": 19,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 0,
+          "physical_core": 5,
+          "private_ip": "10.10.1.1",
+          "shard_id": 20,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 1,
+          "physical_core": 5,
+          "private_ip": "10.10.1.2",
+          "shard_id": 21,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 2,
+          "physical_core": 5,
+          "private_ip": "10.10.1.3",
+          "shard_id": 22,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 3,
+          "physical_core": 5,
+          "private_ip": "10.10.1.4",
+          "shard_id": 23,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 0,
+          "physical_core": 6,
+          "private_ip": "10.10.1.1",
+          "shard_id": 24,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 1,
+          "physical_core": 6,
+          "private_ip": "10.10.1.2",
+          "shard_id": 25,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 2,
+          "physical_core": 6,
+          "private_ip": "10.10.1.3",
+          "shard_id": 26,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 3,
+          "physical_core": 6,
+          "private_ip": "10.10.1.4",
+          "shard_id": 27,
+          "ssh_host": "10.10.1.4"
+        },
+        {
+          "base_url": "http://10.10.1.1:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 0,
+          "physical_core": 7,
+          "private_ip": "10.10.1.1",
+          "shard_id": 28,
+          "ssh_host": "localhost"
+        },
+        {
+          "base_url": "http://10.10.1.2:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 1,
+          "physical_core": 7,
+          "private_ip": "10.10.1.2",
+          "shard_id": 29,
+          "ssh_host": "10.10.1.2"
+        },
+        {
+          "base_url": "http://10.10.1.3:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 2,
+          "physical_core": 7,
+          "private_ip": "10.10.1.3",
+          "shard_id": 30,
+          "ssh_host": "10.10.1.3"
+        },
+        {
+          "base_url": "http://10.10.1.4:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 3,
+          "physical_core": 7,
+          "private_ip": "10.10.1.4",
+          "shard_id": 31,
+          "ssh_host": "10.10.1.4"
+        }
+      ],
+      "shards_per_host": {
+        "0": 8,
+        "1": 8,
+        "2": 8,
+        "3": 8
+      },
+      "total_memory_capacity_bytes": 274877906944
+    },
+    "run_id": "stage13-m32-smoke",
+    "runtime": [
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 0,
+          "physical_core": 0,
+          "private_ip": "10.10.1.1",
+          "shard_id": 0,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 86503\nuser_usec 37072\nsystem_usec 49430\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "0,16",
+          "cgroup_memory_current": 14721024,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "619a79a81943bda6524955a55b6899c3a5fe47b5768a2b1341cffeaa509da019",
+          "container_name": "c23lr-stage13-m32-smoke-s00",
+          "docker_cpuset": "0,16",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6400/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "0"
+          },
+          "oom_killed": false,
+          "pid": 1452179,
+          "running": true,
+          "runtime_cpuset": "0,16"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 1,
+          "physical_core": 0,
+          "private_ip": "10.10.1.2",
+          "shard_id": 1,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 90816\nuser_usec 45408\nsystem_usec 45408\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "0,16",
+          "cgroup_memory_current": 14446592,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "32473daaa7ca9826178316518c1595bd7b9989488d9a257163632d0ff055506f",
+          "container_name": "c23lr-stage13-m32-smoke-s01",
+          "docker_cpuset": "0,16",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6400/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "1"
+          },
+          "oom_killed": false,
+          "pid": 598554,
+          "running": true,
+          "runtime_cpuset": "0,16"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 2,
+          "physical_core": 0,
+          "private_ip": "10.10.1.3",
+          "shard_id": 2,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 106350\nuser_usec 57606\nsystem_usec 48743\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "0,16",
+          "cgroup_memory_current": 14643200,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "d51bdba4ac0f74866addaa65a2585d9ea5513dba239f41215f33d1ae154294d3",
+          "container_name": "c23lr-stage13-m32-smoke-s02",
+          "docker_cpuset": "0,16",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6400/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "2"
+          },
+          "oom_killed": false,
+          "pid": 542213,
+          "running": true,
+          "runtime_cpuset": "0,16"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 3,
+          "physical_core": 0,
+          "private_ip": "10.10.1.4",
+          "shard_id": 3,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 93360\nuser_usec 46680\nsystem_usec 46680\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "0,16",
+          "cgroup_memory_current": 14725120,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "d368dcb2afc6722c72ae6ab360b7bf2109133bdff42b2b978fb81c14b2e975b9",
+          "container_name": "c23lr-stage13-m32-smoke-s03",
+          "docker_cpuset": "0,16",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6400/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "3"
+          },
+          "oom_killed": false,
+          "pid": 562715,
+          "running": true,
+          "runtime_cpuset": "0,16"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 0,
+          "physical_core": 1,
+          "private_ip": "10.10.1.1",
+          "shard_id": 4,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 90620\nuser_usec 45310\nsystem_usec 45310\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "1,17",
+          "cgroup_memory_current": 14729216,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "cfd00db16ea30ada780a3dcd5392fa212096a3c03eeaef5100fe361fa4a5415f",
+          "container_name": "c23lr-stage13-m32-smoke-s04",
+          "docker_cpuset": "1,17",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6401/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "4"
+          },
+          "oom_killed": false,
+          "pid": 1452305,
+          "running": true,
+          "runtime_cpuset": "1,17"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 1,
+          "physical_core": 1,
+          "private_ip": "10.10.1.2",
+          "shard_id": 5,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 88145\nuser_usec 57294\nsystem_usec 30850\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "1,17",
+          "cgroup_memory_current": 14516224,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "7ce97b60da38e6c4584989f0569535c509e5822abb9415c0cc288a741c9d2f72",
+          "container_name": "c23lr-stage13-m32-smoke-s05",
+          "docker_cpuset": "1,17",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6401/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "5"
+          },
+          "oom_killed": false,
+          "pid": 598746,
+          "running": true,
+          "runtime_cpuset": "1,17"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 2,
+          "physical_core": 1,
+          "private_ip": "10.10.1.3",
+          "shard_id": 6,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 104124\nuser_usec 56067\nsystem_usec 48057\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "1,17",
+          "cgroup_memory_current": 14712832,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "16bc0851f6a4329483ffcd5511208cfc25f560dcf8d4b5cc5ae3da2f250490c9",
+          "container_name": "c23lr-stage13-m32-smoke-s06",
+          "docker_cpuset": "1,17",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6401/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "6"
+          },
+          "oom_killed": false,
+          "pid": 542405,
+          "running": true,
+          "runtime_cpuset": "1,17"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6401",
+          "cpuset": "1,17",
+          "grpc_port": 6501,
+          "host_slot": 1,
+          "http_port": 6401,
+          "node_index": 3,
+          "physical_core": 1,
+          "private_ip": "10.10.1.4",
+          "shard_id": 7,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 93685\nuser_usec 48879\nsystem_usec 44806\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "1,17",
+          "cgroup_memory_current": 14606336,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "e07f089194f91a98fb3c4b715fb0a390c2c247953cab5c9e8a46e555fcb5595e",
+          "container_name": "c23lr-stage13-m32-smoke-s07",
+          "docker_cpuset": "1,17",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6401/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "7"
+          },
+          "oom_killed": false,
+          "pid": 562906,
+          "running": true,
+          "runtime_cpuset": "1,17"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 0,
+          "physical_core": 2,
+          "private_ip": "10.10.1.1",
+          "shard_id": 8,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 92878\nuser_usec 52496\nsystem_usec 40382\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "2,18",
+          "cgroup_memory_current": 14499840,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "4e166ac1b5220955243cf4a45759e4331d7437a230597a90d7c52a8c725d977f",
+          "container_name": "c23lr-stage13-m32-smoke-s08",
+          "docker_cpuset": "2,18",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6402/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "8"
+          },
+          "oom_killed": false,
+          "pid": 1452418,
+          "running": true,
+          "runtime_cpuset": "2,18"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 1,
+          "physical_core": 2,
+          "private_ip": "10.10.1.2",
+          "shard_id": 9,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 89027\nuser_usec 44513\nsystem_usec 44513\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "2,18",
+          "cgroup_memory_current": 14565376,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "28569d966db7f3b500fab6297ee8d5a082bf7fcb175eeeca5adb2f19e2542b0a",
+          "container_name": "c23lr-stage13-m32-smoke-s09",
+          "docker_cpuset": "2,18",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6402/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "9"
+          },
+          "oom_killed": false,
+          "pid": 598935,
+          "running": true,
+          "runtime_cpuset": "2,18"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 2,
+          "physical_core": 2,
+          "private_ip": "10.10.1.3",
+          "shard_id": 10,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 99979\nuser_usec 49989\nsystem_usec 49989\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "2,18",
+          "cgroup_memory_current": 14741504,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "7f197a36862be8ad6847dfb68cf31fef9d09a73b85c8de2a1508b35dd5bdbd1a",
+          "container_name": "c23lr-stage13-m32-smoke-s10",
+          "docker_cpuset": "2,18",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6402/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "10"
+          },
+          "oom_killed": false,
+          "pid": 542599,
+          "running": true,
+          "runtime_cpuset": "2,18"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6402",
+          "cpuset": "2,18",
+          "grpc_port": 6502,
+          "host_slot": 2,
+          "http_port": 6402,
+          "node_index": 3,
+          "physical_core": 2,
+          "private_ip": "10.10.1.4",
+          "shard_id": 11,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 95157\nuser_usec 39649\nsystem_usec 55508\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "2,18",
+          "cgroup_memory_current": 14782464,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "50117e8701648bb93f43adf4a84653158c1d82f717b79a854ddc9ed0305fc328",
+          "container_name": "c23lr-stage13-m32-smoke-s11",
+          "docker_cpuset": "2,18",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6402/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "11"
+          },
+          "oom_killed": false,
+          "pid": 563094,
+          "running": true,
+          "runtime_cpuset": "2,18"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 0,
+          "physical_core": 3,
+          "private_ip": "10.10.1.1",
+          "shard_id": 12,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 90599\nuser_usec 49829\nsystem_usec 40769\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "3,19",
+          "cgroup_memory_current": 14606336,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "ca595c70e96f2afa20ae034b9220f82d890b891575d394fa92b6e25b4a1fcc38",
+          "container_name": "c23lr-stage13-m32-smoke-s12",
+          "docker_cpuset": "3,19",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6403/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "12"
+          },
+          "oom_killed": false,
+          "pid": 1452545,
+          "running": true,
+          "runtime_cpuset": "3,19"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 1,
+          "physical_core": 3,
+          "private_ip": "10.10.1.2",
+          "shard_id": 13,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 90288\nuser_usec 42994\nsystem_usec 47293\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "3,19",
+          "cgroup_memory_current": 14725120,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "470c7d46399401938eefe7e7fd8d7b3104472a3c504b29f7d4b782c85f6c8e0a",
+          "container_name": "c23lr-stage13-m32-smoke-s13",
+          "docker_cpuset": "3,19",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6403/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "13"
+          },
+          "oom_killed": false,
+          "pid": 599131,
+          "running": true,
+          "runtime_cpuset": "3,19"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 2,
+          "physical_core": 3,
+          "private_ip": "10.10.1.3",
+          "shard_id": 14,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 102803\nuser_usec 62576\nsystem_usec 40227\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "3,19",
+          "cgroup_memory_current": 14745600,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "d3326b85e17eb4b8aae7457b254ae6fc6505e95f6b5e8ca69016bb71e82f2ee5",
+          "container_name": "c23lr-stage13-m32-smoke-s14",
+          "docker_cpuset": "3,19",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6403/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "14"
+          },
+          "oom_killed": false,
+          "pid": 542790,
+          "running": true,
+          "runtime_cpuset": "3,19"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6403",
+          "cpuset": "3,19",
+          "grpc_port": 6503,
+          "host_slot": 3,
+          "http_port": 6403,
+          "node_index": 3,
+          "physical_core": 3,
+          "private_ip": "10.10.1.4",
+          "shard_id": 15,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 90481\nuser_usec 27537\nsystem_usec 62943\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "3,19",
+          "cgroup_memory_current": 14372864,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "7bbc205633d0d91acfaf96908fd8377b2acb164866d517c66ec95f90a4f73574",
+          "container_name": "c23lr-stage13-m32-smoke-s15",
+          "docker_cpuset": "3,19",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6403/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "15"
+          },
+          "oom_killed": false,
+          "pid": 563284,
+          "running": true,
+          "runtime_cpuset": "3,19"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 0,
+          "physical_core": 4,
+          "private_ip": "10.10.1.1",
+          "shard_id": 16,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 88734\nuser_usec 46010\nsystem_usec 42723\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "4,20",
+          "cgroup_memory_current": 14655488,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "28c89673c9b64e0e75e43da754b7108c91b11998537d6576753929a6fbed9d87",
+          "container_name": "c23lr-stage13-m32-smoke-s16",
+          "docker_cpuset": "4,20",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6404/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "16"
+          },
+          "oom_killed": false,
+          "pid": 1452654,
+          "running": true,
+          "runtime_cpuset": "4,20"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 1,
+          "physical_core": 4,
+          "private_ip": "10.10.1.2",
+          "shard_id": 17,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 92850\nuser_usec 54865\nsystem_usec 37984\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "4,20",
+          "cgroup_memory_current": 14503936,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "952f50c6d03c5c9a369ff53429ff539c8bb1e9714c8337524f6a1cec5cdf56f2",
+          "container_name": "c23lr-stage13-m32-smoke-s17",
+          "docker_cpuset": "4,20",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6404/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "17"
+          },
+          "oom_killed": false,
+          "pid": 599322,
+          "running": true,
+          "runtime_cpuset": "4,20"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 2,
+          "physical_core": 4,
+          "private_ip": "10.10.1.3",
+          "shard_id": 18,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 93850\nuser_usec 41294\nsystem_usec 52556\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "4,20",
+          "cgroup_memory_current": 14737408,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "6966ffa5276a0d1f17ec029494aa83b8ebf7f7477f82bfbb0ad0e2a3dbd89b46",
+          "container_name": "c23lr-stage13-m32-smoke-s18",
+          "docker_cpuset": "4,20",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6404/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "18"
+          },
+          "oom_killed": false,
+          "pid": 542979,
+          "running": true,
+          "runtime_cpuset": "4,20"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6404",
+          "cpuset": "4,20",
+          "grpc_port": 6504,
+          "host_slot": 4,
+          "http_port": 6404,
+          "node_index": 3,
+          "physical_core": 4,
+          "private_ip": "10.10.1.4",
+          "shard_id": 19,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 91249\nuser_usec 47608\nsystem_usec 43641\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "4,20",
+          "cgroup_memory_current": 14508032,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "ab502e84d7a61281964f67b04e58a86c07b0dda6c4c8641c0d6db278f6cea1c3",
+          "container_name": "c23lr-stage13-m32-smoke-s19",
+          "docker_cpuset": "4,20",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6404/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "19"
+          },
+          "oom_killed": false,
+          "pid": 563473,
+          "running": true,
+          "runtime_cpuset": "4,20"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 0,
+          "physical_core": 5,
+          "private_ip": "10.10.1.1",
+          "shard_id": 20,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 91027\nuser_usec 50064\nsystem_usec 40962\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "5,21",
+          "cgroup_memory_current": 14516224,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "80d177a4d7a4220d0d878e6f0d3c1c3b1aa583c6114583663fb7449c3cfc703c",
+          "container_name": "c23lr-stage13-m32-smoke-s20",
+          "docker_cpuset": "5,21",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6405/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "20"
+          },
+          "oom_killed": false,
+          "pid": 1452778,
+          "running": true,
+          "runtime_cpuset": "5,21"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 1,
+          "physical_core": 5,
+          "private_ip": "10.10.1.2",
+          "shard_id": 21,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 89571\nuser_usec 48857\nsystem_usec 40714\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "5,21",
+          "cgroup_memory_current": 14483456,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "a57e4d12c721803d7b6d44cc76d5230f4499610fb3b019897aa8a095258be869",
+          "container_name": "c23lr-stage13-m32-smoke-s21",
+          "docker_cpuset": "5,21",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6405/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "21"
+          },
+          "oom_killed": false,
+          "pid": 599512,
+          "running": true,
+          "runtime_cpuset": "5,21"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 2,
+          "physical_core": 5,
+          "private_ip": "10.10.1.3",
+          "shard_id": 22,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 100217\nuser_usec 34858\nsystem_usec 65358\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "5,21",
+          "cgroup_memory_current": 14483456,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "0c53a335d12354ce245e3e0dd7acf0f28d709d0e5b8e8bc4826fd6d975684759",
+          "container_name": "c23lr-stage13-m32-smoke-s22",
+          "docker_cpuset": "5,21",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6405/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "22"
+          },
+          "oom_killed": false,
+          "pid": 543170,
+          "running": true,
+          "runtime_cpuset": "5,21"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6405",
+          "cpuset": "5,21",
+          "grpc_port": 6505,
+          "host_slot": 5,
+          "http_port": 6405,
+          "node_index": 3,
+          "physical_core": 5,
+          "private_ip": "10.10.1.4",
+          "shard_id": 23,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 92859\nuser_usec 38691\nsystem_usec 54168\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "5,21",
+          "cgroup_memory_current": 14782464,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "d6291c4f7560075f2b00eb6f87085ceaa1cc2ce2e668124d79cefbc9098906b0",
+          "container_name": "c23lr-stage13-m32-smoke-s23",
+          "docker_cpuset": "5,21",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6405/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "23"
+          },
+          "oom_killed": false,
+          "pid": 563664,
+          "running": true,
+          "runtime_cpuset": "5,21"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 0,
+          "physical_core": 6,
+          "private_ip": "10.10.1.1",
+          "shard_id": 24,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 87670\nuser_usec 39850\nsystem_usec 47820\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "6,22",
+          "cgroup_memory_current": 14790656,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "47f20eca2036301f98f2472c6c5a370b8a4212a1fe51985edaf97a6564eec918",
+          "container_name": "c23lr-stage13-m32-smoke-s24",
+          "docker_cpuset": "6,22",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6406/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "24"
+          },
+          "oom_killed": false,
+          "pid": 1452902,
+          "running": true,
+          "runtime_cpuset": "6,22"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 1,
+          "physical_core": 6,
+          "private_ip": "10.10.1.2",
+          "shard_id": 25,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 93219\nuser_usec 37287\nsystem_usec 55931\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "6,22",
+          "cgroup_memory_current": 14417920,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "0751814c11076d3412f0735074fde954d51be5c176d939b1a484179b410eeb37",
+          "container_name": "c23lr-stage13-m32-smoke-s25",
+          "docker_cpuset": "6,22",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6406/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "25"
+          },
+          "oom_killed": false,
+          "pid": 599702,
+          "running": true,
+          "runtime_cpuset": "6,22"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 2,
+          "physical_core": 6,
+          "private_ip": "10.10.1.3",
+          "shard_id": 26,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 97301\nuser_usec 61918\nsystem_usec 35382\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "6,22",
+          "cgroup_memory_current": 14643200,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "62d4cc4856d673345f3827c9e8b24d2448a9d6cd37848649eed0d2c1afee57d4",
+          "container_name": "c23lr-stage13-m32-smoke-s26",
+          "docker_cpuset": "6,22",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6406/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "26"
+          },
+          "oom_killed": false,
+          "pid": 543359,
+          "running": true,
+          "runtime_cpuset": "6,22"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6406",
+          "cpuset": "6,22",
+          "grpc_port": 6506,
+          "host_slot": 6,
+          "http_port": 6406,
+          "node_index": 3,
+          "physical_core": 6,
+          "private_ip": "10.10.1.4",
+          "shard_id": 27,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 94237\nuser_usec 35338\nsystem_usec 58898\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "6,22",
+          "cgroup_memory_current": 14770176,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "1cbac291b6e3e1fb9e09b8903432c71d3716a18a9e45c9a9c03bc5886aa701c3",
+          "container_name": "c23lr-stage13-m32-smoke-s27",
+          "docker_cpuset": "6,22",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6406/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "27"
+          },
+          "oom_killed": false,
+          "pid": 563852,
+          "running": true,
+          "runtime_cpuset": "6,22"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 0,
+          "physical_core": 7,
+          "private_ip": "10.10.1.1",
+          "shard_id": 28,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 89407\nuser_usec 40233\nsystem_usec 49174\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "7,23",
+          "cgroup_memory_current": 14626816,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "1894510033f82f94d161df6f7992602a546f7835de60cab73821a617de009bac",
+          "container_name": "c23lr-stage13-m32-smoke-s28",
+          "docker_cpuset": "7,23",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6407/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "28"
+          },
+          "oom_killed": false,
+          "pid": 1453016,
+          "running": true,
+          "runtime_cpuset": "7,23"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.2:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 1,
+          "physical_core": 7,
+          "private_ip": "10.10.1.2",
+          "shard_id": 29,
+          "ssh_host": "10.10.1.2"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 94690\nuser_usec 42084\nsystem_usec 52605\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "7,23",
+          "cgroup_memory_current": 14684160,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "fa050cb45c03787ef8be85fd72264623d60e8220afafb75007b2f66760ea20a6",
+          "container_name": "c23lr-stage13-m32-smoke-s29",
+          "docker_cpuset": "7,23",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.2:6407/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "29"
+          },
+          "oom_killed": false,
+          "pid": 599892,
+          "running": true,
+          "runtime_cpuset": "7,23"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.3:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 2,
+          "physical_core": 7,
+          "private_ip": "10.10.1.3",
+          "shard_id": 30,
+          "ssh_host": "10.10.1.3"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 102036\nuser_usec 48977\nsystem_usec 53058\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "7,23",
+          "cgroup_memory_current": 14442496,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "bade12fc139fab5dbfa6cee92970ad4d5d01f0085c7076523e8926d6b1378064",
+          "container_name": "c23lr-stage13-m32-smoke-s30",
+          "docker_cpuset": "7,23",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.3:6407/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "30"
+          },
+          "oom_killed": false,
+          "pid": 543549,
+          "running": true,
+          "runtime_cpuset": "7,23"
+        }
+      },
+      {
+        "placement": {
+          "base_url": "http://10.10.1.4:6407",
+          "cpuset": "7,23",
+          "grpc_port": 6507,
+          "host_slot": 7,
+          "http_port": 6407,
+          "node_index": 3,
+          "physical_core": 7,
+          "private_ip": "10.10.1.4",
+          "shard_id": 31,
+          "ssh_host": "10.10.1.4"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 96026\nuser_usec 45925\nsystem_usec 50100\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "7,23",
+          "cgroup_memory_current": 14462976,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "ea35846160a382e60d0590eaab694a9e574340e5d7eea37f4579fbe02db16ac0",
+          "container_name": "c23lr-stage13-m32-smoke-s31",
+          "docker_cpuset": "7,23",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.4:6407/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m32-smoke",
+            "orion.c23.shard_id": "31"
+          },
+          "oom_killed": false,
+          "pid": 564041,
+          "running": true,
+          "runtime_cpuset": "7,23"
+        }
+      }
+    ],
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:46:50.910671Z",
+    "unexpected_running_containers": []
+  },
+  "checks": {
+    "active_cluster": "PASS",
+    "cleanup": "PASS",
+    "preflight": "PASS"
+  },
+  "cleanup": {
+    "logical_shards": 32,
+    "phase": "cleanup_complete",
+    "protocol_version": "c23-linear-20260824-v1",
+    "removed": [
+      {
+        "container": {
+          "id": "1894510033f82f94d161df6f7992602a546f7835de60cab73821a617de009bac",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s28",
+          "state": "running",
+          "status": "Up 46 seconds"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "47f20eca2036301f98f2472c6c5a370b8a4212a1fe51985edaf97a6564eec918",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s24",
+          "state": "running",
+          "status": "Up 50 seconds"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "80d177a4d7a4220d0d878e6f0d3c1c3b1aa583c6114583663fb7449c3cfc703c",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s20",
+          "state": "running",
+          "status": "Up 53 seconds"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "28c89673c9b64e0e75e43da754b7108c91b11998537d6576753929a6fbed9d87",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s16",
+          "state": "running",
+          "status": "Up 56 seconds"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "ca595c70e96f2afa20ae034b9220f82d890b891575d394fa92b6e25b4a1fcc38",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s12",
+          "state": "running",
+          "status": "Up 59 seconds"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "4e166ac1b5220955243cf4a45759e4331d7437a230597a90d7c52a8c725d977f",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s08",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "cfd00db16ea30ada780a3dcd5392fa212096a3c03eeaef5100fe361fa4a5415f",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s04",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "619a79a81943bda6524955a55b6899c3a5fe47b5768a2b1341cffeaa509da019",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s00",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      },
+      {
+        "container": {
+          "id": "fa050cb45c03787ef8be85fd72264623d60e8220afafb75007b2f66760ea20a6",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s29",
+          "state": "running",
+          "status": "Up 46 seconds"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "0751814c11076d3412f0735074fde954d51be5c176d939b1a484179b410eeb37",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s25",
+          "state": "running",
+          "status": "Up 49 seconds"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "a57e4d12c721803d7b6d44cc76d5230f4499610fb3b019897aa8a095258be869",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s21",
+          "state": "running",
+          "status": "Up 53 seconds"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "952f50c6d03c5c9a369ff53429ff539c8bb1e9714c8337524f6a1cec5cdf56f2",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s17",
+          "state": "running",
+          "status": "Up 56 seconds"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "470c7d46399401938eefe7e7fd8d7b3104472a3c504b29f7d4b782c85f6c8e0a",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s13",
+          "state": "running",
+          "status": "Up 59 seconds"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "28569d966db7f3b500fab6297ee8d5a082bf7fcb175eeeca5adb2f19e2542b0a",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s09",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "7ce97b60da38e6c4584989f0569535c509e5822abb9415c0cc288a741c9d2f72",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s05",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "32473daaa7ca9826178316518c1595bd7b9989488d9a257163632d0ff055506f",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s01",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        }
+      },
+      {
+        "container": {
+          "id": "bade12fc139fab5dbfa6cee92970ad4d5d01f0085c7076523e8926d6b1378064",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s30",
+          "state": "running",
+          "status": "Up 47 seconds"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "62d4cc4856d673345f3827c9e8b24d2448a9d6cd37848649eed0d2c1afee57d4",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s26",
+          "state": "running",
+          "status": "Up 51 seconds"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "0c53a335d12354ce245e3e0dd7acf0f28d709d0e5b8e8bc4826fd6d975684759",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s22",
+          "state": "running",
+          "status": "Up 54 seconds"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "6966ffa5276a0d1f17ec029494aa83b8ebf7f7477f82bfbb0ad0e2a3dbd89b46",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s18",
+          "state": "running",
+          "status": "Up 57 seconds"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "d3326b85e17eb4b8aae7457b254ae6fc6505e95f6b5e8ca69016bb71e82f2ee5",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s14",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "7f197a36862be8ad6847dfb68cf31fef9d09a73b85c8de2a1508b35dd5bdbd1a",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s10",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "16bc0851f6a4329483ffcd5511208cfc25f560dcf8d4b5cc5ae3da2f250490c9",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s06",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "d51bdba4ac0f74866addaa65a2585d9ea5513dba239f41215f33d1ae154294d3",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s02",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        }
+      },
+      {
+        "container": {
+          "id": "ea35846160a382e60d0590eaab694a9e574340e5d7eea37f4579fbe02db16ac0",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s31",
+          "state": "running",
+          "status": "Up 50 seconds"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "1cbac291b6e3e1fb9e09b8903432c71d3716a18a9e45c9a9c03bc5886aa701c3",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s27",
+          "state": "running",
+          "status": "Up 53 seconds"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "d6291c4f7560075f2b00eb6f87085ceaa1cc2ce2e668124d79cefbc9098906b0",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s23",
+          "state": "running",
+          "status": "Up 56 seconds"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "ab502e84d7a61281964f67b04e58a86c07b0dda6c4c8641c0d6db278f6cea1c3",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s19",
+          "state": "running",
+          "status": "Up 59 seconds"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "7bbc205633d0d91acfaf96908fd8377b2acb164866d517c66ec95f90a4f73574",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s15",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "50117e8701648bb93f43adf4a84653158c1d82f717b79a854ddc9ed0305fc328",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s11",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "e07f089194f91a98fb3c4b715fb0a390c2c247953cab5c9e8a46e555fcb5595e",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s07",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      },
+      {
+        "container": {
+          "id": "d368dcb2afc6722c72ae6ab360b7bf2109133bdff42b2b978fb81c14b2e975b9",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m32-smoke-s03",
+          "state": "running",
+          "status": "Up About a minute"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        }
+      }
+    ],
+    "restored": {
+      "failures": [],
+      "protocol_version": "c23-linear-20260824-v1",
+      "restored": [
+        {
+          "after": {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 16 seconds"
+          },
+          "node": {
+            "index": 0,
+            "private_ip": "10.10.1.1",
+            "ssh_host": "localhost"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 16 seconds"
+          },
+          "node": {
+            "index": 1,
+            "private_ip": "10.10.1.2",
+            "ssh_host": "10.10.1.2"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 17 seconds"
+          },
+          "node": {
+            "index": 2,
+            "private_ip": "10.10.1.3",
+            "ssh_host": "10.10.1.3"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 17 seconds"
+          },
+          "node": {
+            "index": 3,
+            "private_ip": "10.10.1.4",
+            "ssh_host": "10.10.1.4"
+          },
+          "valid": true
+        }
+      ],
+      "status": "PASS",
+      "timestamp": "2026-08-24T13:47:01.259927Z"
+    },
+    "run_id": "stage13-m32-smoke",
+    "suspended": {
+      "nodes": [
+        {
+          "containers_before": [
+            {
+              "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-controller",
+              "state": "running",
+              "status": "Up 16 seconds"
+            },
+            {
+              "id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-controller",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "c5613138ebafb6112f9a19d761e34dd0782016ac8683d502d64602616e2c8143",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-controller",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 0,
+            "private_ip": "10.10.1.1",
+            "ssh_host": "localhost"
+          },
+          "running_before": [
+            {
+              "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-controller",
+              "state": "running",
+              "status": "Up 16 seconds"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+              "state": "running",
+              "status": "Up 16 seconds"
+            },
+            {
+              "id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "80d2407f268b66176160c880b58043b7a5506a9d84c063fc8a0409c1df5abb1c",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_1",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 1,
+            "private_ip": "10.10.1.2",
+            "ssh_host": "10.10.1.2"
+          },
+          "running_before": [
+            {
+              "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+              "state": "running",
+              "status": "Up 16 seconds"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+              "state": "running",
+              "status": "Up 17 seconds"
+            },
+            {
+              "id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "6923394cc1da2f784c9789e1f7e9cf838aefff9aa02b5b0329007cb7ce5593d2",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_2",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 2,
+            "private_ip": "10.10.1.3",
+            "ssh_host": "10.10.1.3"
+          },
+          "running_before": [
+            {
+              "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+              "state": "running",
+              "status": "Up 17 seconds"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+              "state": "running",
+              "status": "Up 17 seconds"
+            },
+            {
+              "id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "077563bf1ae68012f979ac80ef5d8bf81a33f09f3017a48c6dd6261926e6dc79",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_3",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 3,
+            "private_ip": "10.10.1.4",
+            "ssh_host": "10.10.1.4"
+          },
+          "running_before": [
+            {
+              "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+              "state": "running",
+              "status": "Up 17 seconds"
+            }
+          ]
+        }
+      ],
+      "protocol_version": "c23-linear-20260824-v1",
+      "run_id": "stage13-m32-smoke",
+      "status": "PASS",
+      "timestamp": "2026-08-24T13:45:41.526919Z"
+    },
+    "timestamp": "2026-08-24T13:47:01.259946Z"
+  },
+  "logical_shards": 32,
+  "preflight": {
+    "checks": {
+      "all_scale_contracts_pass": "PASS",
+      "four_hosts_pass": "PASS",
+      "no_stale_experiment_containers": "PASS"
+    },
+    "hosts": [
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 9 seconds"
+          },
+          {
+            "id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "c5613138ebafb6112f9a19d761e34dd0782016ac8683d502d64602616e2c8143",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-0.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488976,
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 11 seconds"
+          },
+          {
+            "id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "80d2407f268b66176160c880b58043b7a5506a9d84c063fc8a0409c1df5abb1c",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-1.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488972,
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 13 seconds"
+          },
+          {
+            "id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "6923394cc1da2f784c9789e1f7e9cf838aefff9aa02b5b0329007cb7ce5593d2",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-2.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488852,
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 15 seconds"
+          },
+          {
+            "id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "077563bf1ae68012f979ac80ef5d8bf81a33f09f3017a48c6dd6261926e6dc79",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-3.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488972,
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      }
+    ],
+    "protocol_version": "c23-linear-20260824-v1",
+    "resource_contracts": [
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 1,
+        "m32_capacity_fraction": 0.03125,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 1,
+        "physical_hosts_with_shards": 1,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "total_memory_capacity_bytes": 8589934592
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 2,
+        "m32_capacity_fraction": 0.0625,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 2,
+        "physical_hosts_with_shards": 2,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 1,
+          "2": 0,
+          "3": 0
+        },
+        "total_memory_capacity_bytes": 17179869184
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 4,
+        "m32_capacity_fraction": 0.125,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 4,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 1,
+          "2": 1,
+          "3": 1
+        },
+        "total_memory_capacity_bytes": 34359738368
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 8,
+        "m32_capacity_fraction": 0.25,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 8,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 2,
+          "1": 2,
+          "2": 2,
+          "3": 2
+        },
+        "total_memory_capacity_bytes": 68719476736
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 16,
+        "m32_capacity_fraction": 0.5,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 16,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 0,
+            "physical_core": 2,
+            "private_ip": "10.10.1.1",
+            "shard_id": 8,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 1,
+            "physical_core": 2,
+            "private_ip": "10.10.1.2",
+            "shard_id": 9,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 2,
+            "physical_core": 2,
+            "private_ip": "10.10.1.3",
+            "shard_id": 10,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 3,
+            "physical_core": 2,
+            "private_ip": "10.10.1.4",
+            "shard_id": 11,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 0,
+            "physical_core": 3,
+            "private_ip": "10.10.1.1",
+            "shard_id": 12,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 1,
+            "physical_core": 3,
+            "private_ip": "10.10.1.2",
+            "shard_id": 13,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 2,
+            "physical_core": 3,
+            "private_ip": "10.10.1.3",
+            "shard_id": 14,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 3,
+            "physical_core": 3,
+            "private_ip": "10.10.1.4",
+            "shard_id": 15,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 4,
+          "1": 4,
+          "2": 4,
+          "3": 4
+        },
+        "total_memory_capacity_bytes": 137438953472
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 32,
+        "m32_capacity_fraction": 1.0,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 32,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 0,
+            "physical_core": 2,
+            "private_ip": "10.10.1.1",
+            "shard_id": 8,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 1,
+            "physical_core": 2,
+            "private_ip": "10.10.1.2",
+            "shard_id": 9,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 2,
+            "physical_core": 2,
+            "private_ip": "10.10.1.3",
+            "shard_id": 10,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 3,
+            "physical_core": 2,
+            "private_ip": "10.10.1.4",
+            "shard_id": 11,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 0,
+            "physical_core": 3,
+            "private_ip": "10.10.1.1",
+            "shard_id": 12,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 1,
+            "physical_core": 3,
+            "private_ip": "10.10.1.2",
+            "shard_id": 13,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 2,
+            "physical_core": 3,
+            "private_ip": "10.10.1.3",
+            "shard_id": 14,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 3,
+            "physical_core": 3,
+            "private_ip": "10.10.1.4",
+            "shard_id": 15,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 0,
+            "physical_core": 4,
+            "private_ip": "10.10.1.1",
+            "shard_id": 16,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 1,
+            "physical_core": 4,
+            "private_ip": "10.10.1.2",
+            "shard_id": 17,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 2,
+            "physical_core": 4,
+            "private_ip": "10.10.1.3",
+            "shard_id": 18,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 3,
+            "physical_core": 4,
+            "private_ip": "10.10.1.4",
+            "shard_id": 19,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 0,
+            "physical_core": 5,
+            "private_ip": "10.10.1.1",
+            "shard_id": 20,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 1,
+            "physical_core": 5,
+            "private_ip": "10.10.1.2",
+            "shard_id": 21,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 2,
+            "physical_core": 5,
+            "private_ip": "10.10.1.3",
+            "shard_id": 22,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 3,
+            "physical_core": 5,
+            "private_ip": "10.10.1.4",
+            "shard_id": 23,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 0,
+            "physical_core": 6,
+            "private_ip": "10.10.1.1",
+            "shard_id": 24,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 1,
+            "physical_core": 6,
+            "private_ip": "10.10.1.2",
+            "shard_id": 25,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 2,
+            "physical_core": 6,
+            "private_ip": "10.10.1.3",
+            "shard_id": 26,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 3,
+            "physical_core": 6,
+            "private_ip": "10.10.1.4",
+            "shard_id": 27,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 0,
+            "physical_core": 7,
+            "private_ip": "10.10.1.1",
+            "shard_id": 28,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 1,
+            "physical_core": 7,
+            "private_ip": "10.10.1.2",
+            "shard_id": 29,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 2,
+            "physical_core": 7,
+            "private_ip": "10.10.1.3",
+            "shard_id": 30,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 3,
+            "physical_core": 7,
+            "private_ip": "10.10.1.4",
+            "shard_id": 31,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 8,
+          "1": 8,
+          "2": 8,
+          "3": 8
+        },
+        "total_memory_capacity_bytes": 274877906944
+      }
+    ],
+    "stale_experiment_containers": [],
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:45:38.560022Z"
+  },
+  "protocol_version": "c23-linear-20260824-v1",
+  "record_type": "c23_linear_resource_isolation_smoke",
+  "run_id": "stage13-m32-smoke",
+  "status": "PASS",
+  "timestamp": "2026-08-24T13:47:01.262889Z"
+}

@@ -1,0 +1,283 @@
+{
+  "logical_shards": 1,
+  "phase": "cleanup_complete",
+  "protocol_version": "c23-linear-20260824-v1",
+  "removed": [
+    {
+      "container": {
+        "id": "91a178b5be801fbc9bc743da6506272b305eaaf1d727dd83928e2f6a2b13114b",
+        "image": "orion-c1:20260821-deterministic-seed",
+        "name": "c23lr-stage13-m1-smoke-s00",
+        "state": "running",
+        "status": "Up 1 second"
+      },
+      "node": {
+        "index": 0,
+        "private_ip": "10.10.1.1",
+        "ssh_host": "localhost"
+      }
+    }
+  ],
+  "restored": {
+    "failures": [],
+    "protocol_version": "c23-linear-20260824-v1",
+    "restored": [
+      {
+        "after": {
+          "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-controller",
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        "before": {
+          "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-controller",
+          "state": "running",
+          "status": "Up 4 hours"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        },
+        "valid": true
+      },
+      {
+        "after": {
+          "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        "before": {
+          "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+          "state": "running",
+          "status": "Up 4 hours"
+        },
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        },
+        "valid": true
+      },
+      {
+        "after": {
+          "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        "before": {
+          "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+          "state": "running",
+          "status": "Up 4 hours"
+        },
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        },
+        "valid": true
+      },
+      {
+        "after": {
+          "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+          "state": "running",
+          "status": "Up Less than a second"
+        },
+        "before": {
+          "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+          "state": "running",
+          "status": "Up 4 hours"
+        },
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        },
+        "valid": true
+      }
+    ],
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:45:23.680925Z"
+  },
+  "run_id": "stage13-m1-smoke",
+  "suspended": {
+    "nodes": [
+      {
+        "containers_before": [
+          {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "c5613138ebafb6112f9a19d761e34dd0782016ac8683d502d64602616e2c8143",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        },
+        "running_before": [
+          {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 4 hours"
+          }
+        ]
+      },
+      {
+        "containers_before": [
+          {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "80d2407f268b66176160c880b58043b7a5506a9d84c063fc8a0409c1df5abb1c",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        },
+        "running_before": [
+          {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 4 hours"
+          }
+        ]
+      },
+      {
+        "containers_before": [
+          {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "6923394cc1da2f784c9789e1f7e9cf838aefff9aa02b5b0329007cb7ce5593d2",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        },
+        "running_before": [
+          {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 4 hours"
+          }
+        ]
+      },
+      {
+        "containers_before": [
+          {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "077563bf1ae68012f979ac80ef5d8bf81a33f09f3017a48c6dd6261926e6dc79",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        },
+        "running_before": [
+          {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 4 hours"
+          }
+        ]
+      }
+    ],
+    "protocol_version": "c23-linear-20260824-v1",
+    "run_id": "stage13-m1-smoke",
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:45:19.465969Z"
+  },
+  "timestamp": "2026-08-24T13:45:23.680943Z"
+}

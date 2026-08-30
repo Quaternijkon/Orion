@@ -308,6 +308,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "expected_placement, placement, or final_placement."
         ),
     )
+    parser.add_argument(
+        "--placement-peers",
+        choices=("workers", "all_peers"),
+        default="workers",
+        help=(
+            "Validate numeric shard ownership on the three non-coordinator peers "
+            "or on all four Qdrant peers, including the benchmark coordinator."
+        ),
+    )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--warmup-query-count", type=int, default=100)
     parser.add_argument("--eval-query-count", type=int, default=10000)
@@ -328,6 +337,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Disabled by default. For Orion only, replay the normalized evaluation "
             "queries through the production OrionRouter outside the timed benchmark."
+        ),
+    )
+    parser.add_argument(
+        "--allow-orion-balance-layout",
+        action="store_true",
+        help=(
+            "Allow an explicitly checksum-bound Orion capacity-balance layout. "
+            "The benchmark still requires the production bundle to prove satisfied "
+            "capacity bounds, preserved copy counts, navigation evidence for every "
+            "assignment, and shard/load/copy-count agreement."
+        ),
+    )
+    parser.add_argument(
+        "--allow-orion-scaling-layout",
+        action="store_true",
+        help=(
+            "Allow initial_num_shards to differ from the canonical 31-shard "
+            "Orion configuration for an explicitly labeled scaling layout. "
+            "All other Orion semantic constants remain strict."
+        ),
+    )
+    parser.add_argument(
+        "--allow-orion-l1-partition-layout",
+        action="store_true",
+        help=(
+            "Allow a checksum-bound N_native/C_CNBR L1-partition bundle. "
+            "C_CNBR replays its aggregate construction-cost-v4 PASS through "
+            "the production layout loader before benchmarking."
         ),
     )
     parser.add_argument(
@@ -367,6 +404,28 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--artifact is not valid for --method hash_all")
     if args.orion_route_trace and args.method != "orion":
         raise ValueError("--orion-route-trace is only valid for --method orion")
+    if args.allow_orion_balance_layout and args.method != "orion":
+        raise ValueError(
+            "--allow-orion-balance-layout is only valid for --method orion"
+        )
+    if args.allow_orion_scaling_layout and args.method != "orion":
+        raise ValueError(
+            "--allow-orion-scaling-layout is only valid for --method orion"
+        )
+    allow_l1_partition = bool(
+        getattr(args, "allow_orion_l1_partition_layout", False)
+    )
+    if allow_l1_partition and args.method != "orion":
+        raise ValueError(
+            "--allow-orion-l1-partition-layout is only valid for --method orion"
+        )
+    if allow_l1_partition and (
+        args.allow_orion_balance_layout or args.allow_orion_scaling_layout
+    ):
+        raise ValueError(
+            "--allow-orion-l1-partition-layout is mutually exclusive with "
+            "legacy balance/scaling layout exceptions"
+        )
 
 
 def create_output_directory(path: str | Path) -> Path:
@@ -484,15 +543,16 @@ def validate_live_numeric_placement(
     args: argparse.Namespace,
     collection_info: dict[str, Any],
     collection_cluster: dict[str, Any],
-    worker_peer_ids: list[int],
+    eligible_peer_ids: list[int],
     shard_count: int,
 ) -> dict[str, Any]:
     if not args.expected_placement_map:
         return experiment.validate_numeric_shard_round_robin_placement(
             collection_info,
             collection_cluster,
-            worker_peer_ids,
+            eligible_peer_ids,
             shard_count,
+            include_controller=args.placement_peers == "all_peers",
         )
 
     expected, source = load_expected_placement_map(
@@ -502,12 +562,33 @@ def validate_live_numeric_placement(
     proof = experiment.validate_numeric_shard_explicit_placement(
         collection_info,
         collection_cluster,
-        worker_peer_ids,
+        eligible_peer_ids,
         shard_count,
         expected,
+        include_controller=args.placement_peers == "all_peers",
     )
     proof["expected_placement_source"] = source
     return proof
+
+
+def benchmark_placement_peer_ids(
+    cluster_preflight: dict[str, Any], placement_peers: str
+) -> list[int]:
+    peer_ids = [int(peer_id) for peer_id in cluster_preflight["worker_peer_ids"]]
+    if placement_peers == "workers":
+        return peer_ids
+    if placement_peers != "all_peers":
+        raise ValueError(f"unknown placement peer mode: {placement_peers!r}")
+    controller_peer_id = cluster_preflight.get("controller_peer_id")
+    if (
+        isinstance(controller_peer_id, bool)
+        or not isinstance(controller_peer_id, int)
+        or controller_peer_id < 0
+    ):
+        raise RuntimeError(
+            "cluster preflight lacks a valid controller peer for all-peers placement"
+        )
+    return [controller_peer_id, *peer_ids]
 
 
 def load_dataset(
@@ -758,12 +839,24 @@ def validate_artifact_bundle(
     method: str,
     artifact_path: Path | None,
     artifact_proof: dict[str, Any] | None,
+    *,
+    allow_orion_scaling_layout: bool = False,
+    allow_orion_balance_layout: bool = False,
+    allow_orion_l1_partition_layout: bool = False,
 ) -> dict[str, Any] | None:
     if method not in ROUTED_METHODS:
         return None
     if artifact_path is None or artifact_proof is None:
         raise RuntimeError(f"{method} benchmark requires a production layout bundle")
-    layout = prepare.load_routed_layout(method, artifact_path.parent)
+    layout = prepare.load_routed_layout(
+        method,
+        artifact_path.parent,
+        allow_orion_scaling_layout=(
+            allow_orion_scaling_layout or allow_orion_balance_layout
+        ),
+        allow_orion_balance_layout=allow_orion_balance_layout,
+        allow_orion_l1_partition_layout=allow_orion_l1_partition_layout,
+    )
     if Path(layout["artifact_path"]).resolve() != artifact_path.resolve():
         raise RuntimeError("benchmark artifact is not the production artifact of its bundle")
     build_manifest = json.loads(
@@ -838,6 +931,10 @@ def validate_artifact_bundle(
         "dataset": dataset,
         "offline_layout_fingerprint": offline_layout_fingerprint,
         "formal_evidence_eligible": formal_evidence_eligible,
+        "balance_layout_proof": layout.get("balance_layout_proof"),
+        "l1_partition_layout_proof": layout.get(
+            "l1_partition_layout_proof"
+        ),
     }
 
 
@@ -1645,6 +1742,11 @@ def _run_locked(
         args.method,
         artifact_path,
         artifact_proof,
+        allow_orion_scaling_layout=args.allow_orion_scaling_layout,
+        allow_orion_balance_layout=args.allow_orion_balance_layout,
+        allow_orion_l1_partition_layout=(
+            bool(getattr(args, "allow_orion_l1_partition_layout", False))
+        ),
     )
     indexed_vectors_count = int(collection_info.get("indexed_vectors_count") or 0)
     indexing_readiness = {
@@ -1661,11 +1763,15 @@ def _run_locked(
         "update_queue": collection_info.get("update_queue"),
         "shard_transfers": collection_cluster.get("shard_transfers") or [],
     }
+    placement_peer_ids = benchmark_placement_peer_ids(
+        cluster_preflight,
+        args.placement_peers,
+    )
     placement_proof = validate_live_numeric_placement(
         args,
         collection_info,
         collection_cluster,
-        cluster_preflight["worker_peer_ids"],
+        placement_peer_ids,
         shard_count,
     )
     route = route_reporting(args.method, shard_count, artifact, args.hnsw_ef)

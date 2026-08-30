@@ -1,0 +1,317 @@
+{
+  "format_version": 1,
+  "date": "2026-08-26",
+  "status": "TOPOLOGY_BALANCE_ELIGIBLE_COST_FAIL_DO_NOT_ADOPT_AS_IMPLEMENTED",
+  "scope": {
+    "objective": "replace the removed Orion L0-informed balancing design with a lightweight L1-prior repair",
+    "logical_shards": 32,
+    "historical_role_H": "generation 3248141, P24-to-P32 L0-informed weighting/refinement/fission; historical performance anchor only",
+    "baseline_N_native": "P32 plain upper-vector KMeans with seed 1, ten centroid-update iterations, and final squared-L2 argmin; no load balancing",
+    "candidate_C_CNBR": "byte-copy N_native owner followed by frozen-upper-only CNBR boundary repair with trigger 9/4",
+    "fallback": "N_native",
+    "H_is_candidate": false,
+    "H_is_veto": false,
+    "H_is_fallback": false,
+    "multi_assignment": {
+      "enabled": true,
+      "min_max_vote": 2,
+      "vote_delta": 0,
+      "max_shards": 0,
+      "unchanged_between_N_and_C": true,
+      "applies_after_owner_freeze": true
+    }
+  },
+  "canonical_evidence": {
+    "phase_a": {
+      "sift_formal": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/sift-p32/native-cnbr-phase-a-formal-v1/phase-a.manifest.json",
+        "sha256": "dbb9b8e617bade3c4d5715749d34d6f2781e014b58cf59c6f28a36393a275ee9"
+      },
+      "sift_grid": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/sift-p32/native-cnbr-phase-a-grid-v1/phase-a.manifest.json",
+        "sha256": "d8137991d687bebe7f6176e8192309aca22b0baaba8a16025e1047b0e1a55063"
+      },
+      "glove_formal": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/glove-p32/native-cnbr-phase-a-formal-v1/phase-a.manifest.json",
+        "sha256": "753cea6a61a11bb05f2d7958911c04ae68747696742516d13d7398f7b3f37db0"
+      },
+      "glove_grid": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/glove-p32/native-cnbr-phase-a-grid-v1/phase-a.manifest.json",
+        "sha256": "57948e5e3c330b0b9aea450b0019281e76c12d55769cf4874b8a27e3dec486d6"
+      }
+    },
+    "phase_b_v2": {
+      "sift_formal": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/sift-p32/native-cnbr-phase-b-formal-v2/screen-manifest.json",
+        "sha256": "cd14332f5726a25566af09f4e63d64dfbc9939ddd108e503c1eb076673b0555f"
+      },
+      "sift_grid": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/sift-p32/native-cnbr-phase-b-grid-v2/screen-manifest.json",
+        "sha256": "5a5b9ce42527fe5543c90c6ff324e7350b47b6603b41760f8d7c08a4b777e08d"
+      },
+      "glove_formal": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/glove-p32/native-cnbr-phase-b-formal-v2/screen-manifest.json",
+        "sha256": "d5fa8c77ac97da80747b0e969193838d8622fb306595b5ab02eab4d9d59bba4c"
+      },
+      "glove_grid": {
+        "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/glove-p32/native-cnbr-phase-b-grid-v2/screen-manifest.json",
+        "sha256": "760c1250df9b503f2222534b5db724ae6c112a39daa60290c9d38203facfe39d"
+      }
+    },
+    "selection_v2": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/native-cnbr-dual-dataset-selection-v2/selection-manifest.json",
+      "sha256": "059423566262fe3086fbfc1abd14116a5098a45fdf846a94335de23823457da1"
+    },
+    "construction_cost_v3": {
+      "path": "/proj/intelisys-PG0/exp/orion-distributed/l1-balance-20260826/native-cnbr-construction-cost-v3/construction-cost-audit.json",
+      "status": "COMPLETE_MEASUREMENT_INCREMENTAL_GATE_FAIL"
+    },
+    "superseded_intermediate": [
+      "all native-cnbr Phase-B-v1 outputs",
+      "native-cnbr-dual-dataset-selection-v1"
+    ]
+  },
+  "owner_byte_parity": {
+    "sift1m": {
+      "N_native_formal_and_grid_sha256": "a33ed85c4ee9fe4a09b7e29177ec00150a609c4914e573935cef598e1bdac6b7",
+      "C_CNBR_formal_and_CNBR_9_4_grid_sha256": "f00ccb35f6dba918c214a64e62449776ccd6a261362a7c6cbb07e69a0b19099b"
+    },
+    "glove-200-angular": {
+      "N_native_formal_and_grid_sha256": "a0de3e6a263645da6a93abfd1cf1110f0fa1ddc486352d067d18b8c39ee2f926",
+      "C_CNBR_formal_and_CNBR_9_4_grid_sha256": "0e42469f1fb30b76788f556834109562eddc1ba7cac12996b02d28938c5ea11d"
+    },
+    "owner_record_hashes_may_differ": "formal/grid role metadata differs even when owner bytes and deterministic outcome metrics match"
+  },
+  "family_selection": {
+    "selected": "CNBR_9_4",
+    "selection_status": "post_exploratory_two_dataset_family_selection",
+    "strict_cross_dataset_holdout_claim": false,
+    "new_ratio_or_retuning_forbidden": true,
+    "rows": [
+      {
+        "name": "CNBR_9_4",
+        "sift_graph_pass": true,
+        "sift_query_pass": true,
+        "sift_physical_copy_max_over_mean": 2.618353229239881,
+        "sift_expansion_ratio": 1.091263,
+        "glove_graph_pass": true,
+        "glove_query_pass": true,
+        "glove_physical_copy_max_over_mean": 3.1213885706776625,
+        "glove_expansion_ratio": 1.1380845515980378,
+        "dual_dataset_all_gate_pass": true
+      },
+      {
+        "name": "CNBR_2_1",
+        "sift_graph_pass": true,
+        "sift_query_pass": true,
+        "sift_physical_copy_max_over_mean": 2.3361153651691566,
+        "sift_expansion_ratio": 1.091768,
+        "glove_graph_pass": true,
+        "glove_query_pass": false,
+        "glove_physical_copy_max_over_mean": 2.7337656231141008,
+        "glove_expansion_ratio": 1.1410790239912667,
+        "dual_dataset_all_gate_pass": false
+      },
+      {
+        "name": "CNBR_7_4",
+        "sift_graph_pass": true,
+        "sift_query_pass": true,
+        "sift_physical_copy_max_over_mean": 2.05980793401917,
+        "sift_expansion_ratio": 1.093166,
+        "glove_graph_pass": true,
+        "glove_query_pass": false,
+        "glove_physical_copy_max_over_mean": 2.448995518558371,
+        "glove_expansion_ratio": 1.1433206535790874,
+        "dual_dataset_all_gate_pass": false
+      },
+      {
+        "name": "CNBR_8_5",
+        "sift_graph_pass": true,
+        "sift_query_pass": true,
+        "sift_physical_copy_max_over_mean": 1.911872416692764,
+        "sift_expansion_ratio": 1.095253,
+        "glove_graph_pass": true,
+        "glove_query_pass": false,
+        "glove_physical_copy_max_over_mean": 2.2239627400024933,
+        "glove_expansion_ratio": 1.1454558205479615,
+        "dual_dataset_all_gate_pass": false
+      },
+      {
+        "name": "CNBR_3_2",
+        "sift_graph_pass": true,
+        "sift_query_pass": true,
+        "sift_physical_copy_max_over_mean": 1.817482383613342,
+        "sift_expansion_ratio": 1.09699,
+        "glove_graph_pass": true,
+        "glove_query_pass": false,
+        "glove_physical_copy_max_over_mean": 2.0391740119472272,
+        "glove_expansion_ratio": 1.1481140062559463,
+        "dual_dataset_all_gate_pass": false
+      },
+      {
+        "name": "CNBR_7_5",
+        "sift_graph_pass": true,
+        "sift_query_pass": false,
+        "sift_physical_copy_max_over_mean": 1.7088879801005719,
+        "sift_expansion_ratio": 1.097921,
+        "glove_graph_pass": true,
+        "glove_query_pass": false,
+        "glove_physical_copy_max_over_mean": 1.9115965051044952,
+        "glove_expansion_ratio": 1.1505085702408253,
+        "dual_dataset_all_gate_pass": false
+      }
+    ]
+  },
+  "formal_N_vs_C": {
+    "sift1m": {
+      "N_native": {
+        "physical_copy_max_over_mean": 2.9715136764066625,
+        "physical_copy_cv": 0.5809857956358832,
+        "primary_max_over_mean": 2.874016,
+        "primary_cv": 0.5820898971670957,
+        "expansion_ratio": 1.090418,
+        "upper_edge_cut_count": 162484,
+        "retained_degree_mean": 0.545444305297719,
+        "retained_degree_p10": 0.2608695652173913,
+        "isolated_fraction": 0.00208,
+        "largest_component_fraction_mean": 0.9973557659449253,
+        "largest_component_fraction_min": 0.9899280575539569,
+        "query_owner_transitions_mean": 23.6514,
+        "routed_shards_mean": 4.7956,
+        "route_entry_points_mean": 51.2425,
+        "route_ef_sum_mean": 300.882,
+        "gt_routing_coverage_mean": 0.9967300000000001,
+        "gt_full_coverage_fraction": 0.9713,
+        "gt_zero_coverage_queries": 0
+      },
+      "C_CNBR": {
+        "physical_copy_max_over_mean": 2.618353229239881,
+        "physical_copy_cv": 0.5543696516792835,
+        "primary_max_over_mean": 2.5136,
+        "primary_cv": 0.5571311116065948,
+        "expansion_ratio": 1.091263,
+        "upper_edge_cut_count": 161854,
+        "retained_degree_mean": 0.5473259321786043,
+        "retained_degree_p10": 0.2647058823529412,
+        "isolated_fraction": 0.001984,
+        "largest_component_fraction_mean": 0.9974453994690861,
+        "largest_component_fraction_min": 0.9899280575539569,
+        "query_owner_transitions_mean": 23.7789,
+        "routed_shards_mean": 4.8159,
+        "route_entry_points_mean": 51.2042,
+        "route_ef_sum_mean": 301.1348,
+        "gt_routing_coverage_mean": 0.9967,
+        "gt_full_coverage_fraction": 0.9713,
+        "gt_zero_coverage_queries": 0
+      },
+      "physical_copy_max_over_mean_reduction_percent": 11.88486696093033,
+      "physical_copy_cv_reduction_percent": 4.581203904902442,
+      "all_identity_graph_and_query_gates_pass": true
+    },
+    "glove-200-angular": {
+      "N_native": {
+        "physical_copy_max_over_mean": 4.3942362906076475,
+        "physical_copy_cv": 0.7691147045135943,
+        "primary_max_over_mean": 4.172847976449793,
+        "primary_cv": 0.7542013096522261,
+        "expansion_ratio": 1.1330174379010303,
+        "upper_edge_cut_count": 497066,
+        "retained_degree_mean": 0.36724272454382273,
+        "retained_degree_p10": 0.12,
+        "isolated_fraction": 0.005840363400389357,
+        "largest_component_fraction_mean": 0.9941232369549672,
+        "largest_component_fraction_min": 0.9616634178037686,
+        "query_owner_transitions_mean": 27.1538,
+        "routed_shards_mean": 7.9398,
+        "route_entry_points_mean": 51.4873,
+        "route_ef_sum_mean": 1117.8122,
+        "gt_routing_coverage_mean": 0.9701800000000002,
+        "gt_full_coverage_fraction": 0.8039,
+        "gt_zero_coverage_queries": 2
+      },
+      "C_CNBR": {
+        "physical_copy_max_over_mean": 3.1213885706776625,
+        "physical_copy_cv": 0.6233330894822839,
+        "primary_max_over_mean": 2.9223076364115674,
+        "primary_cv": 0.6240753990150928,
+        "expansion_ratio": 1.1380845515980378,
+        "upper_edge_cut_count": 492516,
+        "retained_degree_mean": 0.37296711821418627,
+        "retained_degree_p10": 0.12698412698412698,
+        "isolated_fraction": 0.005380705169803158,
+        "largest_component_fraction_mean": 0.9947283972914492,
+        "largest_component_fraction_min": 0.9654510556621881,
+        "query_owner_transitions_mean": 27.4958,
+        "routed_shards_mean": 8.243,
+        "route_entry_points_mean": 51.5389,
+        "route_ef_sum_mean": 1133.6946,
+        "gt_routing_coverage_mean": 0.9691700000000001,
+        "gt_full_coverage_fraction": 0.7974,
+        "gt_zero_coverage_queries": 2
+      },
+      "physical_copy_max_over_mean_reduction_percent": 28.966301212581623,
+      "physical_copy_cv_reduction_percent": 18.95446988281234,
+      "all_identity_graph_and_query_gates_pass": true
+    }
+  },
+  "construction_cost": {
+    "incremental_upper_only_gate": "FAIL",
+    "sift1m": {
+      "self_navigation_wall_seconds": 5.65,
+      "required_input_validation_and_mass_replay_wall_seconds": 0.6957831439794973,
+      "cnbr_wall_seconds": 2.381006291951053,
+      "full_attachment_wall_seconds": 166.72,
+      "lower_bound_ratio_omitting_required_replay": 0.04817062315229759,
+      "lower_bound_is_admissible_for_gate": false,
+      "strict_current_implementation_ratio": 0.05234398653989054,
+      "strict_current_implementation_percent": 5.234398653989054,
+      "gate_pass": false
+    },
+    "glove-200-angular": {
+      "self_navigation_wall_seconds": 20.73,
+      "required_input_validation_and_mass_replay_wall_seconds": 0.8766744660679251,
+      "cnbr_wall_seconds": 3.892350186011754,
+      "full_attachment_wall_seconds": 657.08,
+      "lower_bound_ratio_omitting_required_replay": 0.03747237807574687,
+      "lower_bound_is_admissible_for_gate": false,
+      "strict_current_implementation_ratio": 0.03880657553430279,
+      "strict_current_implementation_percent": 3.880657553430279,
+      "gate_pass": true
+    },
+    "no_extra_O_N_L0_pass": true,
+    "failure_reason": "the current generator separately rereads and validates self-navigation hits and replays proxy mass; counting that required stage puts SIFT1M above 5%",
+    "required_optimization": "stream occurrence counting and self-row validation into the upper self-navigation exporter and rerun the same audit",
+    "end_to_end_C_CNBR_vs_HashAll_wall_cpu_rss": "PENDING",
+    "overall_construction_cost_evidence": "FAIL_INCREMENTAL_AND_PENDING_END_TO_END"
+  },
+  "online_confirmation": {
+    "physical_hosts": 4,
+    "logical_shards": 32,
+    "C_CNBR_vs_N_native": {
+      "status": "PENDING_BLOCKED_BY_CURRENT_COST_GATE",
+      "role": "primary causal adoption test",
+      "recall_gate": "both Recall@10 >= 0.90",
+      "qps_gate": "paired C_CNBR/N_native QPS-ratio 95% CI lower bound > 1.0"
+    },
+    "C_CNBR_vs_H": {
+      "status": "PENDING_BLOCKED_BY_CURRENT_COST_GATE",
+      "role": "historical deployment-performance bridge only",
+      "may_substitute_for_primary_test": false,
+      "may_make_H_eligible": false
+    }
+  },
+  "verdicts": {
+    "replacement_architecture_boundary": "PASS",
+    "identity_and_stage_boundary": "PASS",
+    "upper_graph_topology": "PASS",
+    "post_freeze_routing_topology": "PASS",
+    "physical_copy_balance_improves_on_both_datasets": "PASS",
+    "incremental_upper_only_cost": "FAIL_ON_SIFT1M_AS_IMPLEMENTED",
+    "end_to_end_C_CNBR_vs_HashAll_cost": "PENDING",
+    "C_CNBR_vs_N_native_online_QPS": "PENDING",
+    "C_CNBR_vs_H_historical_recovery": "PENDING",
+    "final_adoption": "DO_NOT_ADOPT_AS_IMPLEMENTED",
+    "current_candidate": "CNBR_9_4_TOPOLOGY_BALANCE_CANDIDATE_REQUIRING_FUSED_COST_RETEST",
+    "failure_fallback": "N_native"
+  }
+}

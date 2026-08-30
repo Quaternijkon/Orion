@@ -1,0 +1,241 @@
+{
+  "C2": {
+    "kmeans_lower_twcut_points": 8,
+    "orion_lower_twcut_points": 2,
+    "status": "CONTRADICTED",
+    "total_points": 10
+  },
+  "C3": {
+    "fully_supporting_points": 0,
+    "kmeans_favored_P_HNSW_points": 8,
+    "status": "CONTRADICTED",
+    "total_points": 10
+  },
+  "ablation": {
+    "topology_refinement_improves_P_HNSW_points": 6,
+    "topology_refinement_improves_twcut_points": 10,
+    "total_points": 10
+  },
+  "dataset_evidence": {
+    "glove-200-angular": {
+      "C2_structural_counts": {
+        "kmeans_lower_twcut_points": 4,
+        "orion_lower_twcut_points": 1
+      },
+      "points": [
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.016777777777777777,
+            0.04300277777777774
+          ],
+          "W90_relative_difference_vs_kmeans": 0.010426915325202117,
+          "fixed_recall_090_favors_orion": true,
+          "fixed_recall_090_required_work_difference": -197.62121704495667,
+          "fixed_recall_090_success_fraction_difference": 0.03827079091473318,
+          "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+          "logical_shards": 2,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 1.5914285762568081,
+          "orion_minus_kmeans_twcut": -0.007238079539251235,
+          "severe_imbalance": false,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.10877777777777778,
+            0.1545583333333333
+          ],
+          "W90_relative_difference_vs_kmeans": 0.03363463626552006,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": 17.97989855206788,
+          "fixed_recall_090_success_fraction_difference": 0.0029506697357978284,
+          "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+          "logical_shards": 4,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 1.5341837950374901,
+          "orion_minus_kmeans_twcut": 0.143409942597311,
+          "severe_imbalance": false,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.14522222222222222,
+            0.23133333333333334
+          ],
+          "W90_relative_difference_vs_kmeans": 0.010582876673302226,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": -145.70371817219666,
+          "fixed_recall_090_success_fraction_difference": -0.007822534265208736,
+          "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+          "logical_shards": 8,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 2.1302189919172902,
+          "orion_minus_kmeans_twcut": 0.07189082912766043,
+          "severe_imbalance": true,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.29977499999999996,
+            0.46633611111111106
+          ],
+          "W90_relative_difference_vs_kmeans": 0.05495300832430802,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": 9.837521781282703,
+          "fixed_recall_090_success_fraction_difference": -0.02330015151710707,
+          "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+          "logical_shards": 16,
+          "material_W90_regression": true,
+          "orion_max_size_over_mean": 2.6106121262612865,
+          "orion_minus_kmeans_twcut": 0.06062555482509219,
+          "severe_imbalance": true,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            1.448886111111111,
+            1.7807833333333332
+          ],
+          "W90_relative_difference_vs_kmeans": 0.3642870264493678,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": -166.26413549730842,
+          "fixed_recall_090_success_fraction_difference": -0.032951377792231784,
+          "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+          "logical_shards": 32,
+          "material_W90_regression": true,
+          "orion_max_size_over_mean": 5.886875862896425,
+          "orion_minus_kmeans_twcut": 0.05321861674114431,
+          "severe_imbalance": true,
+          "severe_imbalance_threshold": 2.0
+        }
+      ]
+    },
+    "sift1m": {
+      "C2_structural_counts": {
+        "kmeans_lower_twcut_points": 4,
+        "orion_lower_twcut_points": 1
+      },
+      "points": [
+        {
+          "C3_point_contradicted": false,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "INCONCLUSIVE",
+          "P_HNSW_ci95": [
+            -0.006111111111111111,
+            0.012444444444444444
+          ],
+          "W90_relative_difference_vs_kmeans": -0.0028891335893983486,
+          "fixed_recall_090_favors_orion": true,
+          "fixed_recall_090_required_work_difference": -0.46120780498449676,
+          "fixed_recall_090_success_fraction_difference": 0.0,
+          "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+          "logical_shards": 2,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 1.028584,
+          "orion_minus_kmeans_twcut": -0.00021962276087122892,
+          "severe_imbalance": false,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.06044166666666667,
+            0.117
+          ],
+          "W90_relative_difference_vs_kmeans": 0.05563922508112741,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": -31.766183912212455,
+          "fixed_recall_090_success_fraction_difference": -0.00029180396321648594,
+          "local_recall_bootstrap_conclusion": "ORION_FAVORED",
+          "logical_shards": 4,
+          "material_W90_regression": true,
+          "orion_max_size_over_mean": 1.526492,
+          "orion_minus_kmeans_twcut": 0.08676411592806925,
+          "severe_imbalance": false,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": false,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "INCONCLUSIVE",
+          "P_HNSW_ci95": [
+            -0.03578055555555555,
+            0.07300277777777774
+          ],
+          "W90_relative_difference_vs_kmeans": -0.016724052376490023,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": -13.96690332624189,
+          "fixed_recall_090_success_fraction_difference": -0.00028839049925899474,
+          "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+          "logical_shards": 8,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 1.753976,
+          "orion_minus_kmeans_twcut": 0.038781221032375135,
+          "severe_imbalance": false,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.156775,
+            0.37355833333333327
+          ],
+          "W90_relative_difference_vs_kmeans": -0.009074188319551377,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": 14.78020874329161,
+          "fixed_recall_090_success_fraction_difference": -0.0002651993222256843,
+          "local_recall_bootstrap_conclusion": "INCONCLUSIVE",
+          "logical_shards": 16,
+          "material_W90_regression": false,
+          "orion_max_size_over_mean": 3.120416,
+          "orion_minus_kmeans_twcut": 0.023977087498097793,
+          "severe_imbalance": true,
+          "severe_imbalance_threshold": 2.0
+        },
+        {
+          "C3_point_contradicted": true,
+          "C3_point_supported": false,
+          "P_HNSW_bootstrap_conclusion": "KMEANS_FAVORED",
+          "P_HNSW_ci95": [
+            0.5872194444444444,
+            1.0141111111111112
+          ],
+          "W90_relative_difference_vs_kmeans": 0.054599893177293524,
+          "fixed_recall_090_favors_orion": false,
+          "fixed_recall_090_required_work_difference": 17.39978855912716,
+          "fixed_recall_090_success_fraction_difference": -3.280978640485266e-05,
+          "local_recall_bootstrap_conclusion": "KMEANS_FAVORED",
+          "logical_shards": 32,
+          "material_W90_regression": true,
+          "orion_max_size_over_mean": 4.92976,
+          "orion_minus_kmeans_twcut": 0.03643307685120217,
+          "severe_imbalance": true,
+          "severe_imbalance_threshold": 2.0
+        }
+      ]
+    }
+  },
+  "decision_rules": {
+    "C2": "SUPPORTED only when Orion has lower TWCut at every dataset/M point and paired common-ef local recall plus 0.90 fixed-recall work favor Orion at every point; CONTRADICTED when K-Means has lower TWCut at at least four scales in each dataset; otherwise INCONCLUSIVE.",
+    "C3": "SUPPORTED only when every dataset/M point has a paired P_HNSW CI favoring Orion, no >=5% W90 regression with CI above zero, and Orion max/mean shard size below 2.0; CONTRADICTED when at least one point favors K-Means and no point satisfies the full support rule; otherwise INCONCLUSIVE."
+  }
+}

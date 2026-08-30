@@ -50,9 +50,12 @@ def test_second_direct_owner_is_rejected_and_exception_releases_lock(tmp_path):
     with pytest.raises(LookupError):
         with module.hold_benchmark_lock(manifest, owner={"kind": "first"}) as held:
             assert stat.S_IMODE(held.path.stat().st_mode) == 0o600
-            with pytest.raises(module.BenchmarkLockError, match="already held"):
+            with pytest.raises(module.BenchmarkLockError, match="already held") as error:
                 with module.hold_benchmark_lock(manifest):
                     pass
+            message = str(error.value)
+            assert held.token not in message
+            assert module.hashlib.sha256(held.token.encode("utf-8")).hexdigest() in message
             raise LookupError("release through context-manager exception")
 
     with module.hold_benchmark_lock(manifest, owner={"kind": "second"}) as held:

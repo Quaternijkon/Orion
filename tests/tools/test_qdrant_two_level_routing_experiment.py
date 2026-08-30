@@ -27,6 +27,30 @@ def test_compute_sample_sizes_uses_one_over_32_per_shard_with_floor_and_min_one(
     assert sizes == [1, 1, 1, 1, 3]
 
 
+def test_compute_point_to_l1s_breaks_equal_distance_ties_by_label():
+    module = load_module()
+
+    class FakeIndex:
+        def get_current_count(self):
+            return 3
+
+        def knn_query(self, _queries, k):
+            assert k == 3
+            return (
+                module.np.asarray([[9, 3, 5]], dtype=module.np.int64),
+                module.np.asarray([[0.25, 0.1, 0.1]], dtype=module.np.float32),
+            )
+
+    rows = module.compute_point_to_l1s(
+        FakeIndex(),
+        module.np.zeros((1, 2), dtype=module.np.float32),
+        k_overlap=3,
+        batch_size=1,
+    )
+
+    assert rows == [[3, 5, 9]]
+
+
 def test_cpp_baseline_kmeans_train_initializes_centroids_from_first_sample_rows():
     module = load_module()
     data = module.np.array(
@@ -2206,6 +2230,491 @@ def test_assign_points_by_l1_vote_can_cap_multi_assign_shards():
     )
 
     assert point_to_shards == [[0, 1]]
+
+
+def test_capacity_constrained_topology_repairs_overload_with_navigation_evidence():
+    module = load_module()
+    upper_indices = module.np.asarray([0, 1, 2, 3, 4, 5], dtype=module.np.int64)
+    weights = module.np.asarray([10, 10, 10, 10, 10, 10], dtype=module.np.int64)
+    initial = [0, 0, 0, 1, 2, 2]
+    point_to_l1s = [
+        [0, 1, 3],
+        [1, 0, 3],
+        [2, 3, 5],
+        [3, 4, 0],
+        [4, 5, 0],
+        [5, 4, 1],
+    ]
+
+    first, iterations, diagnostics = module.converge_l1_topology_capacity_constrained(
+        point_to_l1s,
+        upper_indices,
+        weights,
+        initial,
+        num_shards=3,
+        max_iters=8,
+        min_load_ratio=0.9,
+        max_load_ratio=1.1,
+        max_vote_loss=0,
+    )
+    second, _, second_diagnostics = module.converge_l1_topology_capacity_constrained(
+        point_to_l1s,
+        upper_indices,
+        weights,
+        initial,
+        num_shards=3,
+        max_iters=8,
+        min_load_ratio=0.9,
+        max_load_ratio=1.1,
+        max_vote_loss=0,
+    )
+
+    assert first == second
+    assert iterations > 0
+    assert first[2] == 1
+    assert diagnostics["final"]["loads"] == [20, 20, 20]
+    assert diagnostics["bounds_satisfied"] is True
+    assert diagnostics["moves_without_navigation_evidence"] == 0
+    assert diagnostics == second_diagnostics
+
+
+def test_capacity_constrained_topology_uses_weighted_swap_past_greedy_local_optimum():
+    module = load_module()
+    upper_indices = module.np.asarray([0, 1, 2, 3], dtype=module.np.int64)
+    weights = module.np.asarray([6, 6, 4, 4], dtype=module.np.int64)
+    initial = [0, 0, 1, 1]
+    point_to_l1s = [
+        [0, 2],
+        [1, 3],
+        [2, 0],
+        [3, 1],
+    ]
+
+    first, iterations, diagnostics = module.converge_l1_topology_capacity_constrained(
+        point_to_l1s,
+        upper_indices,
+        weights,
+        initial,
+        num_shards=2,
+        max_iters=2,
+        min_load_ratio=1.0,
+        max_load_ratio=1.0,
+        max_vote_loss=0,
+    )
+    second, _, second_diagnostics = module.converge_l1_topology_capacity_constrained(
+        point_to_l1s,
+        upper_indices,
+        weights,
+        initial,
+        num_shards=2,
+        max_iters=2,
+        min_load_ratio=1.0,
+        max_load_ratio=1.0,
+        max_vote_loss=0,
+    )
+
+    assert iterations == 1
+    assert first == [1, 0, 0, 1]
+    assert first == second
+    assert diagnostics["initial"]["loads"] == [12, 8]
+    assert diagnostics["final"]["loads"] == [10, 10]
+    assert diagnostics["bounds_satisfied"] is True
+    assert diagnostics["move_counts"] == {"weighted_swap_repair": 2}
+    assert diagnostics["weighted_repair"]["attempted"] is True
+    assert diagnostics["weighted_repair"]["feasible"] is True
+    assert diagnostics["weighted_repair"]["swap_count"] == 1
+    assert diagnostics["weighted_repair"]["cycle_count"] == 0
+    assert diagnostics["weighted_repair"]["maximum_target_vote_loss"] == 0
+    assert diagnostics["weighted_repair"]["before_residual"]["total"] == 4
+    assert diagnostics["weighted_repair"]["after_residual"]["total"] == 0
+    assert diagnostics == second_diagnostics
+
+
+def test_capacity_constrained_point_assignment_balances_supported_shards():
+    module = load_module()
+    reference_l1_shard = [0, 0, 1, 1, 2, 2]
+    point_to_l1s = [[0, 1, 2, 4] for _ in range(30)]
+
+    primary, assignments, diagnostics = (
+        module.assign_points_by_l1_vote_capacity_constrained(
+            point_to_l1s,
+            reference_l1_shard,
+            num_shards=3,
+            use_multi_assign=False,
+            min_load_ratio=0.9,
+            max_load_ratio=1.1,
+            max_passes=8,
+            max_vote_loss=1,
+        )
+    )
+    second_primary, second_assignments, _ = (
+        module.assign_points_by_l1_vote_capacity_constrained(
+            point_to_l1s,
+            reference_l1_shard,
+            num_shards=3,
+            use_multi_assign=False,
+            min_load_ratio=0.9,
+            max_load_ratio=1.1,
+            max_passes=8,
+            max_vote_loss=1,
+        )
+    )
+
+    assert primary.tolist() == second_primary.tolist()
+    assert assignments == second_assignments
+    assert diagnostics["final"]["loads"] == [11, 10, 9]
+    assert diagnostics["final"]["max_over_mean"] == pytest.approx(1.1)
+    assert diagnostics["bounds_satisfied"] is True
+    assert diagnostics["all_assignments_have_navigation_evidence"] is True
+    assert diagnostics["assignment_target_vote_loss_histogram"] == {
+        "0": 11,
+        "1": 19,
+    }
+    assert diagnostics["maximum_assignment_target_vote_loss"] == 1
+    assert diagnostics["mean_assignment_target_vote_loss"] == pytest.approx(19 / 30)
+    for l1s, shard_ids in zip(point_to_l1s, assignments):
+        supported = {
+            reference_l1_shard[l1_idx]
+            for l1_idx in l1s
+        }
+        assert set(shard_ids) <= supported
+
+
+def test_post_layout_capacity_balance_repairs_existing_layout_minimally(monkeypatch):
+    module = load_module()
+    train = module.np.zeros((4, 2), dtype=module.np.float32)
+    upper_indices = module.np.asarray([0, 1], dtype=module.np.int64)
+    point_to_l1s = [[0, 1], [0, 1], [0, 1], [1]]
+
+    monkeypatch.setattr(
+        module,
+        "initial_l1_shards_by_balanced_kmeans",
+        lambda *_args, **_kwargs: [0, 0],
+    )
+    monkeypatch.setattr(
+        module,
+        "converge_l1_topology",
+        lambda *_args, **_kwargs: ([0, 0], 1),
+    )
+    monkeypatch.setattr(
+        module,
+        "recalibrate_l1_weights_by_voting",
+        lambda *_args, **_kwargs: module.np.asarray([3, 1], dtype=module.np.int64),
+    )
+    monkeypatch.setattr(
+        module,
+        "apply_fission_simulator",
+        lambda *_args, **_kwargs: (
+            [0, 1],
+            2,
+            [{"accepted": True, "source_shard": 0, "split_k": 2}],
+        ),
+    )
+
+    routing = module.build_original_routing_state(
+        train,
+        upper_indices,
+        point_to_l1s,
+        initial_num_shards=1,
+        kmeans_iters=1,
+        kmeans_seed=1,
+        topology_iters=1,
+        use_multi_assign=False,
+        enable_fission=True,
+        balance_mode="post_layout_capacity_constrained",
+        balance_min_load_ratio=1.0,
+        balance_max_load_ratio=1.0,
+        balance_max_passes=4,
+        balance_max_vote_loss=0,
+    )
+
+    diagnostics = routing.balance_diagnostics
+    point_diagnostics = diagnostics["l0_physical_copies"]
+    assert routing.num_shards == 2
+    assert routing.fission_events == [
+        {"accepted": True, "source_shard": 0, "split_k": 2}
+    ]
+    assert routing.expansion_ratio == 1.0
+    assert routing.shard_counts.tolist() == [2, 2]
+    assert diagnostics["mode"] == "post_layout_capacity_constrained"
+    assert diagnostics["fission_applied"] is True
+    assert diagnostics["fission_disabled_reason"] is None
+    assert point_diagnostics["initialization"] == "existing_orion_layout"
+    assert point_diagnostics["initial"]["loads"] == [3, 1]
+    assert point_diagnostics["final"]["loads"] == [2, 2]
+    assert point_diagnostics["assignments_changed_from_unconstrained"] == 1
+    assert point_diagnostics["copy_count_preserved"] is True
+    assert point_diagnostics["all_assignments_have_navigation_evidence"] is True
+
+
+def test_capacity_constrained_multi_assignment_preserves_physical_copy_count():
+    module = load_module()
+    reference_l1_shard = [0, 0, 1, 1, 2, 2]
+    point_to_l1s = [[0, 1, 2, 3, 4] for _ in range(12)]
+
+    _primary, assignments, diagnostics = (
+        module.assign_points_by_l1_vote_capacity_constrained(
+            point_to_l1s,
+            reference_l1_shard,
+            num_shards=3,
+            use_multi_assign=True,
+            multi_assign_min_max_vote=2,
+            multi_assign_vote_delta=0,
+            min_load_ratio=0.9,
+            max_load_ratio=1.1,
+            max_passes=8,
+            max_vote_loss=1,
+        )
+    )
+
+    counts = module.shard_counts_from_point_to_shards(assignments, 3)
+    assert all(len(shards) == 2 for shards in assignments)
+    assert int(counts.sum()) == 24
+    assert diagnostics["requested_total_copies"] == 24
+    assert diagnostics["copy_count_preserved"] is True
+    assert diagnostics["bounds_satisfied"] is True
+    assert diagnostics["all_assignments_have_navigation_evidence"] is True
+
+
+def test_capacity_constrained_assignment_reports_evidence_graph_infeasibility():
+    module = load_module()
+    reference_l1_shard = [0, 0]
+    point_to_l1s = [[0, 1] for _ in range(30)]
+
+    _primary, assignments, diagnostics = (
+        module.assign_points_by_l1_vote_capacity_constrained(
+            point_to_l1s,
+            reference_l1_shard,
+            num_shards=3,
+            use_multi_assign=False,
+            min_load_ratio=0.9,
+            max_load_ratio=1.1,
+            max_passes=4,
+            max_vote_loss=1,
+        )
+    )
+
+    assert diagnostics["bounds_satisfied"] is False
+    assert diagnostics["over_upper_shards"] == [0]
+    assert diagnostics["under_lower_shards"] == [1, 2]
+    assert diagnostics["non_evidence_assignment_count"] == 0
+    assert diagnostics["all_assignments_have_navigation_evidence"] is True
+    assert assignments == [[0] for _ in range(30)]
+
+
+def test_capacity_constrained_build_fails_closed_on_l1_bounds(monkeypatch):
+    module = load_module()
+    train = module.np.zeros((4, 2), dtype=module.np.float32)
+    upper_indices = module.np.asarray([0, 1], dtype=module.np.int64)
+    point_to_l1s = [[0, 1] for _ in range(4)]
+    initial = [0, 1, -1, -1]
+
+    monkeypatch.setattr(
+        module,
+        "initial_l1_shards_by_balanced_kmeans",
+        lambda *_args, **_kwargs: list(initial),
+    )
+    monkeypatch.setattr(
+        module,
+        "converge_l1_topology_capacity_constrained",
+        lambda *_args, **_kwargs: (
+            list(initial),
+            1,
+            {
+                "bounds_satisfied": False,
+                "over_upper_shards": [],
+                "under_lower_shards": [1],
+            },
+        ),
+    )
+
+    def must_not_assign(*_args, **_kwargs):
+        raise AssertionError("L0 assignment must not run after an invalid L1 proof")
+
+    monkeypatch.setattr(
+        module,
+        "assign_points_by_l1_vote_capacity_constrained",
+        must_not_assign,
+    )
+
+    with pytest.raises(RuntimeError, match="L1 topology bounds are not satisfied"):
+        module.build_original_routing_state(
+            train,
+            upper_indices,
+            point_to_l1s,
+            initial_num_shards=2,
+            kmeans_iters=1,
+            kmeans_seed=1,
+            topology_iters=1,
+            use_multi_assign=False,
+            enable_fission=False,
+            balance_mode="capacity_constrained",
+            balance_min_load_ratio=0.9,
+            balance_max_load_ratio=1.1,
+            balance_max_passes=1,
+            balance_max_vote_loss=2,
+        )
+
+
+def test_capacity_constrained_build_uses_distinct_l1_and_l0_vote_loss_bounds(
+    monkeypatch,
+):
+    module = load_module()
+    train = module.np.zeros((4, 2), dtype=module.np.float32)
+    upper_indices = module.np.asarray([0, 1], dtype=module.np.int64)
+    point_to_l1s = [[0, 1] for _ in range(4)]
+    observed = {}
+
+    monkeypatch.setattr(
+        module,
+        "initial_l1_shards_by_balanced_kmeans",
+        lambda *_args, **_kwargs: [0, 1, -1, -1],
+    )
+
+    def converge(*args, **_kwargs):
+        observed["l1"] = args[8]
+        return (
+            [0, 1, -1, -1],
+            1,
+            {
+                "bounds_satisfied": True,
+                "over_upper_shards": [],
+                "under_lower_shards": [],
+            },
+        )
+
+    def assign(*_args, **kwargs):
+        observed["l0"] = kwargs["max_vote_loss"]
+        return (
+            module.np.asarray([0, 0, 1, 1], dtype=module.np.int32),
+            [[0], [0], [1], [1]],
+            {
+                "bounds_satisfied": True,
+                "over_upper_shards": [],
+                "under_lower_shards": [],
+            },
+        )
+
+    monkeypatch.setattr(module, "converge_l1_topology_capacity_constrained", converge)
+    monkeypatch.setattr(
+        module,
+        "assign_points_by_l1_vote_capacity_constrained",
+        assign,
+    )
+
+    routing = module.build_original_routing_state(
+        train,
+        upper_indices,
+        point_to_l1s,
+        initial_num_shards=2,
+        kmeans_iters=1,
+        kmeans_seed=1,
+        topology_iters=1,
+        use_multi_assign=False,
+        enable_fission=False,
+        balance_mode="capacity_constrained",
+        balance_min_load_ratio=0.9,
+        balance_max_load_ratio=1.1,
+        balance_max_passes=1,
+        balance_max_vote_loss=3,
+        balance_l1_max_vote_loss=1,
+        balance_l0_max_vote_loss=2,
+    )
+
+    assert observed == {"l1": 1, "l0": 2}
+    assert routing.balance_diagnostics["l1_max_vote_loss"] == 1
+    assert routing.balance_diagnostics["l0_max_vote_loss"] == 2
+
+
+def test_capacity_constrained_build_fails_closed_on_l0_bounds(monkeypatch):
+    module = load_module()
+    train = module.np.zeros((4, 2), dtype=module.np.float32)
+    upper_indices = module.np.asarray([0, 1], dtype=module.np.int64)
+    point_to_l1s = [[0, 1] for _ in range(4)]
+    initial = [0, 1, -1, -1]
+
+    monkeypatch.setattr(
+        module,
+        "initial_l1_shards_by_balanced_kmeans",
+        lambda *_args, **_kwargs: list(initial),
+    )
+    monkeypatch.setattr(
+        module,
+        "converge_l1_topology_capacity_constrained",
+        lambda *_args, **_kwargs: (
+            list(initial),
+            1,
+            {
+                "bounds_satisfied": True,
+                "over_upper_shards": [],
+                "under_lower_shards": [],
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "assign_points_by_l1_vote_capacity_constrained",
+        lambda *_args, **_kwargs: (
+            module.np.asarray([0, 0, 0, 1], dtype=module.np.int32),
+            [[0], [0], [0], [1]],
+            {
+                "bounds_satisfied": False,
+                "over_upper_shards": [0],
+                "under_lower_shards": [1],
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="L0 physical-copy bounds are not satisfied"):
+        module.build_original_routing_state(
+            train,
+            upper_indices,
+            point_to_l1s,
+            initial_num_shards=2,
+            kmeans_iters=1,
+            kmeans_seed=1,
+            topology_iters=1,
+            use_multi_assign=False,
+            enable_fission=False,
+            balance_mode="capacity_constrained",
+            balance_min_load_ratio=0.9,
+            balance_max_load_ratio=1.1,
+            balance_max_passes=1,
+            balance_max_vote_loss=2,
+        )
+
+
+def test_grouped_capacity_flow_resolves_multi_hop_reassignment_chain():
+    module = load_module()
+    reference_l1_shard = [0, 1, 2]
+    point_to_l1s = [
+        [0, 1],
+        [0, 1],
+        [1, 2],
+        [1, 2],
+        [0],
+        [0],
+    ]
+    initial_assignments = [[0], [0], [1], [1], [0], [0]]
+    required_copies = module.np.ones(6, dtype=module.np.int16)
+
+    rebalanced, loads, diagnostics = module.capacity_flow_rebalance_point_assignments(
+        point_to_l1s,
+        reference_l1_shard,
+        initial_assignments,
+        required_copies,
+        num_shards=3,
+        lower_load=2,
+        upper_load=2,
+        effective_vote_loss=1,
+    )
+
+    assert diagnostics["feasible"] is True
+    assert loads.tolist() == [2, 2, 2]
+    assert [shards[0] for shards in rebalanced[2:4]] == [2, 2]
+    for l1s, shard_ids in zip(point_to_l1s, rebalanced):
+        supported = {reference_l1_shard[l1_idx] for l1_idx in l1s}
+        assert set(shard_ids) <= supported
 
 
 def test_point_indices_by_shard_preserves_multi_assignment_expansion():

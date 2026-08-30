@@ -296,3 +296,63 @@ Evidence SHA-256: construction audit
 `6b7d2f04366d6cc5ab5329c7e5b248a7208da3eec27017828cf011d467316a51`; final audit
 `3a57f2515baa8b569c22b515e781288811e203fd031561ef39c54f924bdd5df1`; final manifest
 `a16c397d1dbaf0ed6f9c9905634504f918aa3fe584cdb785753dd4d7a2cfa474`.
+
+## 2026-08-24T23:52:37Z - Stage 13 four-host virtualized linear-resource retest
+
+Timestamp: 2026-08-24T23:52:37Z
+
+Git commit: `7468366bdffddebf9b938ebb7217360e10944da1` plus checksum-bound Stage 13 implementation files
+
+Experiment: independent C2/C3 retest with one isolated Qdrant container and one non-empty HNSW per
+logical shard, while total server CPU and memory capacity grow exactly in proportion to M
+
+Dataset: SIFT1M and glove-200-angular
+
+Logical shards: M=1 common control and M=2,4,8,16,32 for Random, full-data K-Means, Full Orion,
+and Orion-NoRefinement on four physical hosts
+
+Resource contract: exactly M physical-core equivalents and 8*M GiB server-memory capacity;
+M=32 consumes the complete declared 32-core/256-GiB pool, while lower M receives exactly M/32
+
+Run IDs: `s13-sift1m-*` and `s13-glove-*`; registry has 42/42 PASS configurations
+
+Primary metrics: TWCut, paired common-EF local navigability, P_exact, P_HNSW, Delta_P, W90,
+9,000-query paired 10,000-replicate bootstrap, M=32 variance, refinement ablation, and balance
+
+Observed result: all 15 final-audit checks pass. Every configuration has all five cgroup snapshots,
+monotonic cumulative CPU, memory within its 8-GiB-per-shard cap, zero swap/OOM, client/server core
+isolation, one non-empty HNSW per shard, checksum-bound manifests/raw arrays, and successful cleanup
+restoration. Eight final CSV tables and ten valid PDFs are present.
+
+C2: Topology-oblivious partitioning disrupts graph-search topology
+
+Status: CONTRADICTED
+
+Evidence: K-Means has lower TWCut than Full Orion at 8/10 dataset/M points: M=4,8,16,32 on both
+datasets. Orion is lower only at M=2. Paired local-recall evidence is mixed rather than a consistent
+Orion advantage, so the required topology-to-local-navigability chain remains absent.
+
+C3: Topology-aware partitioning reduces required shard fan-out
+
+Status: CONTRADICTED
+
+Evidence: paired P_HNSW confidence intervals significantly favor K-Means at SIFT M=4,16,32 and at
+all five GloVe scales; SIFT M=2 and M=8 are inconclusive. No point significantly favors Orion and
+no point simultaneously satisfies the fan-out, W90, and balance support rule. At M=32, Orion minus
+K-Means mean P_HNSW is +0.803 on SIFT and +1.615 on GloVe.
+
+Status: COMPLETE. The alternative explanation that the prior result was caused by lower M using
+all four-host compute is not supported: lower M is now strictly resource-limited to M/32, yet both
+claim verdicts remain contradicted.
+
+Anomalies: Full Orion remains severely imbalanced at high M. M=32 max/mean is 4.930 on SIFT and
+5.887 on GloVe; GloVe Full Orion ranges from 4,908 to 217,725 vectors per shard. Refinement improves
+TWCut over Orion-NoRefinement at all ten points but does not establish superiority over K-Means.
+
+Required follow-up: none for this retest. Balance-constrained partitioning or online routing would
+be new experiments and must not rewrite this independent negative evidence line.
+
+Evidence SHA-256: final audit
+`616492f420c0aef41dd446fb5c5fa8eac0f0534c3537d2bd16e713073d6c597c`; verdicts
+`5e23bdbadf841d2c47c062aa80277c1f7aa981861468f1f24857c3b1c9087e6b`; raw registry
+`19b4472225dbf8ca8a5374f73011eb4f1b2f816fd62a0cbf63ecbdf674808b27`.

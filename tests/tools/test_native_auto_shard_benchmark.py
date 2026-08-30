@@ -187,6 +187,30 @@ def test_run_uses_canonical_lock_and_direct_contention_fails_closed(
             module.run(args)
 
 
+def test_allow_orion_balance_layout_is_orion_only(tmp_path):
+    module = load_module()
+    args = args_for(
+        module,
+        tmp_path,
+        "--hnsw-ef",
+        "40",
+        "--allow-orion-balance-layout",
+    )
+
+    with pytest.raises(ValueError, match="only valid for --method orion"):
+        module.validate_args(args)
+
+    args = args_for(
+        module,
+        tmp_path,
+        "--hnsw-ef",
+        "40",
+        "--allow-orion-scaling-layout",
+    )
+    with pytest.raises(ValueError, match="only valid for --method orion"):
+        module.validate_args(args)
+
+
 def route_trace_payload(
     *,
     artifact_sha256: str,
@@ -355,14 +379,15 @@ def test_live_placement_defaults_to_round_robin_and_explicit_map_is_opt_in(
 ):
     module = load_module()
     args = args_for(module, tmp_path, "--hnsw-ef", "40")
+    assert args.placement_peers == "workers"
     calls = []
 
-    def fake_round_robin(*call_args):
-        calls.append(("round_robin", call_args))
+    def fake_round_robin(*call_args, **call_kwargs):
+        calls.append(("round_robin", call_args, call_kwargs))
         return {"valid": True, "placement_mode": "round_robin"}
 
-    def fake_explicit(*call_args):
-        calls.append(("explicit", call_args))
+    def fake_explicit(*call_args, **call_kwargs):
+        calls.append(("explicit", call_args, call_kwargs))
         return {"valid": True, "placement_mode": "explicit"}
 
     monkeypatch.setattr(
@@ -405,6 +430,43 @@ def test_live_placement_defaults_to_round_robin_and_explicit_map_is_opt_in(
     )
     assert [call[0] for call in calls] == ["round_robin", "explicit"]
     assert calls[-1][1][-1] == {0: 303, 1: 202, 2: 404}
+    assert calls[0][2] == {"include_controller": False}
+    assert calls[1][2] == {"include_controller": False}
+
+    args.placement_peers = "all_peers"
+    module.validate_live_numeric_placement(
+        args,
+        {"info": True},
+        {"cluster": True},
+        [101, 202, 303, 404],
+        3,
+    )
+    assert calls[-1][2] == {"include_controller": True}
+
+
+def test_benchmark_placement_peer_ids_requires_explicit_all_peers_mode():
+    module = load_module()
+    preflight = {
+        "controller_peer_id": 101,
+        "worker_peer_ids": [202, 303, 404],
+    }
+
+    assert module.benchmark_placement_peer_ids(preflight, "workers") == [
+        202,
+        303,
+        404,
+    ]
+    assert module.benchmark_placement_peer_ids(preflight, "all_peers") == [
+        101,
+        202,
+        303,
+        404,
+    ]
+    with pytest.raises(RuntimeError, match="valid controller peer"):
+        module.benchmark_placement_peer_ids(
+            {"worker_peer_ids": [202, 303, 404]},
+            "all_peers",
+        )
 
 
 def test_repository_binding_requires_same_clean_tracked_commit():
@@ -985,17 +1047,37 @@ def test_artifact_bundle_fingerprint_excludes_runtime_only_parameters(
     }
     build_manifest_path.write_text(json.dumps(build_manifest), encoding="utf-8")
     import_manifest_path.write_text(json.dumps(import_manifest), encoding="utf-8")
-    monkeypatch.setattr(
-        module.prepare,
-        "load_routed_layout",
-        lambda *_args: {
+    observed_layout_kwargs = []
+
+    def fake_load_routed_layout(*_args, **kwargs):
+        observed_layout_kwargs.append(kwargs)
+        result = {
             "artifact_path": str(artifact_path),
             "build_manifest_path": str(build_manifest_path),
             "build_manifest_sha256": "d" * 64,
             "import_manifest_path": str(import_manifest_path),
             "import_manifest_sha256": "e" * 64,
-        },
-    )
+            "balance_layout_proof": {
+                "mode": "capacity_constrained",
+                "bounds_satisfied": True,
+                "l1_bounds_satisfied": True,
+                "l0_bounds_satisfied": True,
+                "copy_count_preserved": True,
+                "all_assignments_have_navigation_evidence": True,
+            },
+        }
+        if kwargs.get("allow_orion_l1_partition_layout"):
+            result["l1_partition_layout_proof"] = {
+                "arm": "C_CNBR",
+                "construction_cost_v4_bound": True,
+                "construction_cost_v4": {
+                    "status": "PASS",
+                    "audit_sha256": "9" * 64,
+                },
+            }
+        return result
+
+    monkeypatch.setattr(module.prepare, "load_routed_layout", fake_load_routed_layout)
     artifact_proof = {
         "layout_sha256": "c" * 64,
         "routing_structure_sha256": "f" * 64,
@@ -1010,7 +1092,12 @@ def test_artifact_bundle_fingerprint_excludes_runtime_only_parameters(
         },
     }
 
-    first = module.validate_artifact_bundle("orion", artifact_path, artifact_proof)
+    first = module.validate_artifact_bundle(
+        "orion",
+        artifact_path,
+        artifact_proof,
+        allow_orion_balance_layout=True,
+    )
     build_manifest["parameters"].update(
         {
             "upper_k": 96,
@@ -1022,11 +1109,39 @@ def test_artifact_bundle_fingerprint_excludes_runtime_only_parameters(
     )
     build_manifest_path.write_text(json.dumps(build_manifest), encoding="utf-8")
     second = module.validate_artifact_bundle("orion", artifact_path, artifact_proof)
+    third = module.validate_artifact_bundle(
+        "orion",
+        artifact_path,
+        artifact_proof,
+        allow_orion_l1_partition_layout=True,
+    )
 
     assert first["offline_layout_fingerprint"] == second["offline_layout_fingerprint"]
+    assert third["offline_layout_fingerprint"] == second["offline_layout_fingerprint"]
+    assert third["l1_partition_layout_proof"]["construction_cost_v4"][
+        "status"
+    ] == "PASS"
     assert first["formal_evidence_eligible"] is True
     assert first["vectors_sha256"] == "b" * 64
     assert first["assignments_sha256"] == "c" * 64
+    assert first["balance_layout_proof"]["bounds_satisfied"] is True
+    assert observed_layout_kwargs == [
+        {
+            "allow_orion_scaling_layout": True,
+            "allow_orion_balance_layout": True,
+            "allow_orion_l1_partition_layout": False,
+        },
+        {
+            "allow_orion_scaling_layout": False,
+            "allow_orion_balance_layout": False,
+            "allow_orion_l1_partition_layout": False,
+        },
+        {
+            "allow_orion_scaling_layout": False,
+            "allow_orion_balance_layout": False,
+            "allow_orion_l1_partition_layout": True,
+        },
+    ]
 
 
 def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
@@ -1183,7 +1298,10 @@ def test_hash_all_mocked_run_writes_reproducible_outputs(monkeypatch, tmp_path):
     monkeypatch.setattr(
         module.experiment,
         "validate_numeric_shard_round_robin_placement",
-        lambda *_args: {"valid": True, "shards_per_worker": {202: 1, 303: 1, 404: 1}},
+        lambda *_args, **_kwargs: {
+            "valid": True,
+            "shards_per_worker": {202: 1, 303: 1, 404: 1},
+        },
     )
     monkeypatch.setattr(
         module.experiment, "evaluate_standard_dense_vector_batches", fake_evaluate
@@ -1448,7 +1566,7 @@ def test_orion_mocked_run_times_queries_before_trace_and_backfills_route_metrics
     monkeypatch.setattr(
         module.experiment,
         "validate_numeric_shard_round_robin_placement",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "valid": True,
             "shards_per_worker": {202: 1, 303: 1, 404: 1},
         },

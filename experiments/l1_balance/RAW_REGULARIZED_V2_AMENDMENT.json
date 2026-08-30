@@ -1,0 +1,13 @@
+{
+  "estimator_version": 2,
+  "format_version": 1,
+  "id": "post-exploratory-raw-regularized-v2-confirmation",
+  "mass_mode": "raw-regularized-v2",
+  "method": "mass-balanced-kmeans",
+  "online_qps_only_confirmation": true,
+  "old_raw_owner_byte_parity_required": true,
+  "source": "production_upper_navigation_top10_hit_frequency_regularized_v2",
+  "status": "post_exploratory_promotion_not_preregistered",
+  "topology_gates_unchanged": true,
+  "transform": "raw_count_with_unit_l1_prior"
+}

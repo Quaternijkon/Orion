@@ -414,6 +414,88 @@ def test_explicit_scaling_flag_accepts_and_preserves_variable_initial_shards(
     assert loaded["shard_count"] == 2
 
 
+def test_balance_profile_preserves_complete_balance_proof_and_layout(
+    monkeypatch, tmp_path
+):
+    module = load_module()
+    source_dir = tmp_path / "source"
+    output_dir = tmp_path / "balanced-profile"
+    source = write_source_bundle(module, source_dir)
+    manifest_path = source_dir / module.layout_common.BUILD_MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["parameters"].update(
+        {
+            "initial_num_shards": 2,
+            "use_multi_assign": False,
+            "enable_fission": False,
+            "balance_mode": "capacity_constrained",
+        }
+    )
+    manifest["routing"].update(
+        {
+            "initial_num_shards": 2,
+            "balance_diagnostics": {
+                "mode": "capacity_constrained",
+                "fixed_num_shards": True,
+                "fission_applied": False,
+                "l1_topology": {
+                    "bounds_satisfied": True,
+                    "over_upper_shards": [],
+                    "under_lower_shards": [],
+                },
+                "l0_physical_copies": {
+                    "bounds_satisfied": True,
+                    "copy_count_preserved": True,
+                    "all_assignments_have_navigation_evidence": True,
+                    "non_evidence_assignment_count": 0,
+                    "no_evidence_points": 0,
+                    "over_upper_shards": [],
+                    "under_lower_shards": [],
+                    "requested_total_copies": 5,
+                    "final": {"loads": [2, 3]},
+                },
+            },
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (source_dir / module.layout_common.CHECKSUMS_NAME).unlink()
+    module.layout_common.write_checksums(source_dir)
+    patch_rust_builder(module, monkeypatch, source["upper_graph"])
+
+    with pytest.raises(RuntimeError, match="main-idea parameter drift"):
+        module.validate_source_bundle(source_dir)
+
+    summary = module.build(
+        runtime_args(
+            module,
+            source_dir,
+            output_dir,
+            "--allow-orion-balance-layout",
+        )
+    )
+
+    assert summary["orion_balance_layout_allowed"] is True
+    assert summary["layout_sha256"] == source["graphless"]["layout_sha256"]
+    derived_manifest = json.loads(
+        (output_dir / module.layout_common.BUILD_MANIFEST_NAME).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert derived_manifest["routing"] == manifest["routing"]
+    assert (
+        derived_manifest["derivation"]["orion_balance_layout_allowed"] is True
+    )
+    loaded = module.prepare.load_routed_layout(
+        "orion",
+        output_dir,
+        allow_orion_balance_layout=True,
+    )
+    assert loaded["balance_layout_proof"]["bounds_satisfied"] is True
+    assert loaded["artifact"]["layout_sha256"] == source["graphless"][
+        "layout_sha256"
+    ]
+
+
 def test_validated_runtime_profile_can_be_the_source_of_another_profile(
     monkeypatch, tmp_path
 ):

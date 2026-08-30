@@ -1,14 +1,32 @@
 # C2-C3 Execution Status
 
-Updated: 2026-08-22T09:46:07Z
+Updated: 2026-08-24T23:52:37Z
 
-Current stage: Stage 12 complete. The full two-dataset protocol is finished and the strict final
-audit passes all ten synthesis gates.
+Current stage: Stage 13 four-host virtualized linear-resource retest complete. This is an
+independent evidence line and does not replace the accepted Stage 12 result. Its strict final
+audit passes all 15 gates.
 
 Final verdicts:
 
 - C2 — Topology-oblivious partitioning disrupts graph-search topology: `CONTRADICTED`.
 - C3 — Topology-aware partitioning reduces required shard fan-out: `CONTRADICTED`.
+
+Stage 13 retest:
+
+- Four physical hosts virtualized into `M={1,2,4,8,16,32}` independent logical shards, one
+  container and one non-empty HNSW per shard.
+- Exactly one physical-core equivalent and 8 GiB memory capacity per logical shard. Total server
+  capacity is exactly M cores and `M/32` of the M=32 budget; the client uses disjoint cores.
+- 42/42 configurations pass, including five cgroup phase snapshots, no OOM/swap, checksum-bound
+  raw arrays, cleanup/restoration, and client/server affinity gates.
+- SIFT1M common efSearch is 24; GloVe common efSearch is 320. Each primary comparison uses 9,000
+  paired measurement queries and 10,000 bootstrap replicates.
+- C2 remains contradicted: K-Means has lower TWCut at 8/10 dataset/M points, while local
+  navigability does not consistently favor Orion.
+- C3 remains contradicted: P_HNSW significantly favors K-Means at 8/10 points and is inconclusive
+  at two SIFT points; zero points significantly favor Orion or pass the full C3 support rule.
+- Full Orion M=32 max/mean imbalance remains 4.930 on SIFT and 5.887 on GloVe.
+- Eight final CSV tables, ten valid PDFs, 15/15 audit checks, and 35/35 implementation tests pass.
 
 Completed:
 
@@ -39,6 +57,14 @@ Completed:
 
 Primary final evidence:
 
+- Stage 13 protocol and Chinese result:
+  `retests/stage13-linear-resource-virtualized/PROTOCOL.md` and
+  `retests/stage13-linear-resource-virtualized/RESULTS_zh.md`.
+- Stage 13 strict audit and verdicts:
+  `retests/stage13-linear-resource-virtualized/evidence-v1/final-audit.json` and
+  `retests/stage13-linear-resource-virtualized/evidence-v1/verdicts.json`.
+- Stage 13 raw registry:
+  `/proj/intelisys-PG0/exp/orion-distributed/c23-linear-20260824-v1/matrix/registry.json`.
 - Strict audit: `logs/stage12-final-audit-v1.json`.
 - Final raw manifest:
   `/proj/intelisys-PG0/exp/orion-distributed/c23-20260821-v2/analysis/final-v1/manifest.json`.
@@ -52,5 +78,6 @@ In progress:
 
 Not yet complete:
 
-- None within the C2-C3 protocol. Any balance-constrained partitioner or online-router evaluation
-  is a new experiment and must not overwrite these contradictory results.
+- None within the accepted Stage 12 protocol or the requested Stage 13 linear-resource retest.
+  Any balance-constrained partitioner or online-router evaluation is a new experiment and must
+  not overwrite these contradictory results.

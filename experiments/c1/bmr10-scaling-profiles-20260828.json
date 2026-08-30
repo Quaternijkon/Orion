@@ -1,0 +1,41 @@
+{
+  "dataset": "GloVe-200-angular",
+  "method": "C_CNBR+BMR_10",
+  "target_recall_at_10": 0.9,
+  "resource_rule": "total Qdrant CPU quota = 2 * nominal M",
+  "logical_shard_rule": "exact fixed P = nominal M",
+  "layouts": {
+    "p1": {
+      "actual_shards": 1,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p1-u20-b48-f14-g3280101"
+    },
+    "p2": {
+      "actual_shards": 2,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p2-u32-b48-f14-g3280202"
+    },
+    "p4": {
+      "actual_shards": 4,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p4-u38-b48-f14-g3280404"
+    },
+    "p8": {
+      "actual_shards": 8,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p8-u40-b50-f14-g3280808"
+    },
+    "p16": {
+      "actual_shards": 16,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p16-u48-b50-f14-g3280016"
+    },
+    "p32": {
+      "actual_shards": 32,
+      "layout_dir": "/proj/intelisys-PG0/exp/orion-distributed/orion-bmr10-virtual-linear-cpu-glove-20260828/artifacts/p32-u48-b50-f14-g3280032"
+    }
+  },
+  "points": [
+    {"point_id": "m1-exact-s1", "nominal_m": 1, "boundary": "exact", "layout_key": "p1"},
+    {"point_id": "m2-exact-s2", "nominal_m": 2, "boundary": "exact", "layout_key": "p2"},
+    {"point_id": "m4-exact-s4", "nominal_m": 4, "boundary": "exact", "layout_key": "p4"},
+    {"point_id": "m8-exact-s8", "nominal_m": 8, "boundary": "exact", "layout_key": "p8"},
+    {"point_id": "m16-exact-s16", "nominal_m": 16, "boundary": "exact", "layout_key": "p16"},
+    {"point_id": "m32-exact-s32", "nominal_m": 32, "boundary": "exact", "layout_key": "p32"}
+  ]
+}

@@ -30,6 +30,7 @@ from tools import qdrant_two_level_routing_experiment as experiment  # noqa: E40
 GRAPHLESS_NAME = "graphless-orion.json"
 BUILD_MANIFEST_NAME = "build-manifest.json"
 CHECKSUMS_NAME = "checksums.sha256"
+DETERMINISTIC_ATTACHMENT_BUILD_THREADS = 1
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -105,6 +106,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--multi-assign-vote-delta", type=int, default=0)
     parser.add_argument("--multi-assign-max-shards", type=int, default=0)
     parser.add_argument("--disable-fission", action="store_true")
+    parser.add_argument(
+        "--balance-mode",
+        choices=(
+            "none",
+            "capacity_constrained",
+            "post_layout_capacity_constrained",
+        ),
+        default="none",
+        help=(
+            "Optional offline balance mode. capacity_constrained uses a fixed P and "
+            "disables fission. post_layout_capacity_constrained preserves the "
+            "original Orion topology/fission/multi-assignment result, freezes its "
+            "final P, and minimally repairs physical-copy placement. Both keep the "
+            "upper graph and online router unchanged and use only navigation-supported "
+            "shards."
+        ),
+    )
+    parser.add_argument("--balance-min-load-ratio", type=float, default=0.99)
+    parser.add_argument("--balance-max-load-ratio", type=float, default=1.01)
+    parser.add_argument("--balance-max-passes", type=int, default=8)
+    parser.add_argument(
+        "--balance-max-vote-loss",
+        type=int,
+        default=3,
+        help="Shared default vote-loss bound for L1 and L0.",
+    )
+    parser.add_argument(
+        "--balance-l1-max-vote-loss",
+        type=int,
+        default=None,
+        help="Optional L1 topology vote-loss override.",
+    )
+    parser.add_argument(
+        "--balance-l0-max-vote-loss",
+        type=int,
+        default=None,
+        help="Optional L0 physical-copy vote-loss override.",
+    )
 
     parser.add_argument(
         "--upper-graph-seed",
@@ -113,6 +152,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Deterministic seed passed to the Rust production upper-HNSW builder.",
     )
     parser.add_argument("--cargo", default="cargo")
+    parser.add_argument(
+        "--rust-builder-binary",
+        default=None,
+        help=(
+            "Optional prebuilt orion_build_artifact executable. Its resolved path and "
+            "SHA-256 are recorded in the build manifest."
+        ),
+    )
     parser.add_argument(
         "--cargo-target-dir",
         default=None,
@@ -160,6 +207,24 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--multi-assign-vote-delta must be non-negative")
     if int(args.multi_assign_max_shards) < 0:
         raise ValueError("--multi-assign-max-shards must be non-negative")
+    experiment.validate_capacity_balance_parameters(
+        float(args.balance_min_load_ratio),
+        float(args.balance_max_load_ratio),
+        int(args.balance_max_passes),
+        int(args.balance_max_vote_loss),
+    )
+    l1_vote_loss, l0_vote_loss = experiment.resolve_capacity_balance_vote_losses(
+        int(args.balance_max_vote_loss),
+        args.balance_l1_max_vote_loss,
+        args.balance_l0_max_vote_loss,
+    )
+    for stage_vote_loss in (l1_vote_loss, l0_vote_loss):
+        experiment.validate_capacity_balance_parameters(
+            float(args.balance_min_load_ratio),
+            float(args.balance_max_load_ratio),
+            int(args.balance_max_passes),
+            stage_vote_loss,
+        )
     if int(args.attachment_search_ef) < int(args.k_overlap):
         raise ValueError("--attachment-search-ef must be at least --k-overlap")
     if int(args.upper_search_ef) < int(args.upper_k):
@@ -174,6 +239,16 @@ def validate_args(args: argparse.Namespace) -> None:
         )
     if not args.bundle_prefix or Path(args.bundle_prefix).name != args.bundle_prefix:
         raise ValueError("--bundle-prefix must be a non-empty file-name component")
+    if args.rust_builder_binary is not None:
+        builder_binary = Path(args.rust_builder_binary).expanduser().resolve()
+        if not builder_binary.is_file():
+            raise FileNotFoundError(
+                f"Rust builder binary not found: {builder_binary}"
+            )
+        if not os.access(builder_binary, os.X_OK):
+            raise PermissionError(
+                f"Rust builder binary is not executable: {builder_binary}"
+            )
 
 
 def sha256_path(path: Path) -> str:
@@ -237,6 +312,21 @@ def rust_builder_command(
     graphless_path: Path,
     production_path: Path,
 ) -> list[str]:
+    builder_args = [
+        str(graphless_path),
+        str(production_path),
+        "--seed",
+        str(args.upper_graph_seed),
+        "--m",
+        str(args.upper_m),
+        "--ef",
+        str(args.upper_ef_construction),
+    ]
+    if args.rust_builder_binary is not None:
+        return [
+            str(Path(args.rust_builder_binary).expanduser().resolve()),
+            *builder_args,
+        ]
     return [
         str(args.cargo),
         "run",
@@ -246,14 +336,7 @@ def rust_builder_command(
         "--example",
         "orion_build_artifact",
         "--",
-        str(graphless_path),
-        str(production_path),
-        "--seed",
-        str(args.upper_graph_seed),
-        "--m",
-        str(args.upper_m),
-        "--ef",
-        str(args.upper_ef_construction),
+        *builder_args,
     ]
 
 
@@ -364,6 +447,16 @@ def write_checksums(output_dir: Path) -> Path:
 
 
 def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
+    l1_vote_loss, l0_vote_loss = experiment.resolve_capacity_balance_vote_losses(
+        int(args.balance_max_vote_loss),
+        args.balance_l1_max_vote_loss,
+        args.balance_l0_max_vote_loss,
+    )
+    builder_binary = (
+        Path(args.rust_builder_binary).expanduser().resolve()
+        if args.rust_builder_binary is not None
+        else None
+    )
     return {
         "generation": int(args.generation),
         "initial_num_shards": int(args.num_shards),
@@ -392,7 +485,21 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "multi_assign_vote_delta": int(args.multi_assign_vote_delta),
         "multi_assign_max_shards": int(args.multi_assign_max_shards),
         "enable_fission": not bool(args.disable_fission),
+        "balance_mode": str(args.balance_mode),
+        "balance_min_load_ratio": float(args.balance_min_load_ratio),
+        "balance_max_load_ratio": float(args.balance_max_load_ratio),
+        "balance_max_passes": int(args.balance_max_passes),
+        "balance_max_vote_loss": int(args.balance_max_vote_loss),
+        "balance_l1_max_vote_loss": int(l1_vote_loss),
+        "balance_l0_max_vote_loss": int(l0_vote_loss),
         "upper_graph_seed": int(args.upper_graph_seed),
+        "attachment_index_random_seed": int(args.upper_graph_seed),
+        "attachment_index_build_threads": DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
+        "attachment_query_tie_break": "distance_then_label",
+        "rust_builder_binary": str(builder_binary) if builder_binary else None,
+        "rust_builder_binary_sha256": (
+            sha256_path(builder_binary) if builder_binary else None
+        ),
         "cargo_target_dir": effective_cargo_target_dir(args),
     }
 
@@ -425,6 +532,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         int(args.upper_ef_construction),
         int(args.attachment_search_ef),
         distance_config["hnsw_space"],
+        random_seed=int(args.upper_graph_seed),
+        construction_threads=DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
     )
     point_to_l1s = experiment.compute_point_to_l1s(
         upper_index,
@@ -446,6 +555,13 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         multi_assign_vote_delta=int(args.multi_assign_vote_delta),
         multi_assign_max_shards=int(args.multi_assign_max_shards),
         enable_topology_refinement=not bool(args.disable_topology_refinement),
+        balance_mode=str(args.balance_mode),
+        balance_min_load_ratio=float(args.balance_min_load_ratio),
+        balance_max_load_ratio=float(args.balance_max_load_ratio),
+        balance_max_passes=int(args.balance_max_passes),
+        balance_max_vote_loss=int(args.balance_max_vote_loss),
+        balance_l1_max_vote_loss=args.balance_l1_max_vote_loss,
+        balance_l0_max_vote_loss=args.balance_l0_max_vote_loss,
     )
 
     graphless_path = output_dir / GRAPHLESS_NAME
@@ -512,6 +628,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             "topology_iterations": int(routing.topology_iterations),
             "shard_counts": [int(value) for value in routing.shard_counts.tolist()],
             "fission_events": routing.fission_events,
+            "balance_diagnostics": getattr(routing, "balance_diagnostics", None),
         },
         "outputs": {
             "graphless_artifact": graphless_path.name,

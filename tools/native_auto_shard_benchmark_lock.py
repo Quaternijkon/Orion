@@ -135,7 +135,11 @@ def _open_lock_file(path: Path) -> int:
 def _format_owner(payload: dict[str, Any] | None) -> str:
     if payload is None:
         return "<unavailable>"
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    public = {key: value for key, value in payload.items() if key != "token"}
+    token = payload.get("token")
+    if isinstance(token, str) and token:
+        public["token_sha256"] = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return json.dumps(public, sort_keys=True, separators=(",", ":"))
 
 
 @dataclass

@@ -92,7 +92,16 @@ def patch_algorithm_pipeline(module, monkeypatch):
 
     upper_index = object()
 
-    def build_upper(vectors, labels, dim, m, ef_construction, ef_search, space):
+    def build_upper(
+        vectors,
+        labels,
+        dim,
+        m,
+        ef_construction,
+        ef_search,
+        space,
+        **kwargs,
+    ):
         calls.append(
             (
                 "build_upper_index",
@@ -103,6 +112,7 @@ def patch_algorithm_pipeline(module, monkeypatch):
                 ef_construction,
                 ef_search,
                 space,
+                kwargs,
             )
         )
         return upper_index
@@ -219,6 +229,10 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "build_original_routing_state",
         "write_orion_graphless_artifact",
     ]
+    assert calls[2][-1] == {
+        "random_seed": 100,
+        "construction_threads": module.DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
+    }
     routing_call = calls[4]
     assert routing_call[4:8] == (2, 10, 1, 50)
     assert routing_call[8] == {
@@ -228,6 +242,13 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "multi_assign_vote_delta": 1,
         "multi_assign_max_shards": 2,
         "enable_topology_refinement": True,
+        "balance_mode": "none",
+        "balance_min_load_ratio": 0.99,
+        "balance_max_load_ratio": 1.01,
+        "balance_max_passes": 8,
+        "balance_max_vote_loss": 3,
+        "balance_l1_max_vote_loss": None,
+        "balance_l0_max_vote_loss": None,
     }
     upper_build_call = calls[2]
     assert upper_build_call[6] == 100
@@ -257,6 +278,7 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
     assert manifest["parameters"]["attachment_search_ef"] == 100
     assert manifest["parameters"]["upper_search_ef"] == 2
     assert manifest["parameters"]["enable_topology_refinement"] is True
+    assert manifest["parameters"]["balance_mode"] == "none"
     checksum_lines = (output_dir / module.CHECKSUMS_NAME).read_text().splitlines()
     assert any(line.endswith(f"  {module.GRAPHLESS_NAME}") for line in checksum_lines)
     assert any(line.endswith(f"  {module.BUILD_MANIFEST_NAME}") for line in checksum_lines)
@@ -391,6 +413,51 @@ def test_rust_builder_command_targets_collection_production_example(tmp_path):
     ]
 
 
+def test_rust_builder_command_can_use_checksum_bound_prebuilt_binary(tmp_path):
+    module = load_module()
+    builder = tmp_path / "orion_build_artifact"
+    builder.write_bytes(b"fixed-builder")
+    builder.chmod(0o755)
+    args = module.parse_args(
+        [
+            "--hdf5-path",
+            str(tmp_path / "input.hdf5"),
+            "--output-dir",
+            str(tmp_path / "layout"),
+            "--rust-builder-binary",
+            str(builder),
+            "--upper-graph-seed",
+            "17",
+            "--upper-m",
+            "24",
+            "--upper-ef-construction",
+            "88",
+        ]
+    )
+
+    module.validate_args(args)
+    command = module.rust_builder_command(
+        args,
+        tmp_path / "graphless.json",
+        tmp_path / "generation-1.json",
+    )
+    parameters = module.routing_parameters(args)
+
+    assert command == [
+        str(builder.resolve()),
+        str(tmp_path / "graphless.json"),
+        str(tmp_path / "generation-1.json"),
+        "--seed",
+        "17",
+        "--m",
+        "24",
+        "--ef",
+        "88",
+    ]
+    assert parameters["rust_builder_binary"] == str(builder.resolve())
+    assert parameters["rust_builder_binary_sha256"] == module.sha256_path(builder)
+
+
 def test_no_refinement_ablation_is_forwarded_and_recorded(monkeypatch, tmp_path):
     module = load_module()
     hdf5_path = tmp_path / "ablation-smoke.hdf5"
@@ -411,6 +478,74 @@ def test_no_refinement_ablation_is_forwarded_and_recorded(monkeypatch, tmp_path)
     assert routing_call[8]["enable_topology_refinement"] is False
     manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
     assert manifest["parameters"]["enable_topology_refinement"] is False
+    assert manifest["parameters"]["attachment_index_build_threads"] == 1
+    assert manifest["parameters"]["attachment_query_tie_break"] == "distance_then_label"
+
+
+def test_capacity_balance_is_forwarded_and_recorded(monkeypatch, tmp_path):
+    module = load_module()
+    hdf5_path = tmp_path / "balanced-smoke.hdf5"
+    output_dir = tmp_path / "balanced-layout"
+    write_train_hdf5(module, hdf5_path)
+    calls, routing = patch_algorithm_pipeline(module, monkeypatch)
+    routing.balance_diagnostics = {
+        "mode": "capacity_constrained",
+        "fixed_num_shards": True,
+    }
+    args = smoke_args(
+        module,
+        hdf5_path,
+        output_dir,
+        "--balance-mode",
+        "capacity_constrained",
+        "--balance-min-load-ratio",
+        "0.95",
+        "--balance-max-load-ratio",
+        "1.05",
+        "--balance-max-passes",
+        "6",
+        "--balance-max-vote-loss",
+        "2",
+        "--balance-l1-max-vote-loss",
+        "1",
+        "--balance-l0-max-vote-loss",
+        "2",
+        "--graphless-only",
+    )
+
+    module.build(args)
+
+    routing_call = next(call for call in calls if call[0] == "build_original_routing_state")
+    assert routing_call[8]["balance_mode"] == "capacity_constrained"
+    assert routing_call[8]["balance_min_load_ratio"] == 0.95
+    assert routing_call[8]["balance_max_load_ratio"] == 1.05
+    assert routing_call[8]["balance_max_passes"] == 6
+    assert routing_call[8]["balance_max_vote_loss"] == 2
+    assert routing_call[8]["balance_l1_max_vote_loss"] == 1
+    assert routing_call[8]["balance_l0_max_vote_loss"] == 2
+    manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
+    assert manifest["parameters"]["balance_mode"] == "capacity_constrained"
+    assert manifest["parameters"]["balance_l1_max_vote_loss"] == 1
+    assert manifest["parameters"]["balance_l0_max_vote_loss"] == 2
+    assert manifest["routing"]["balance_diagnostics"] == routing.balance_diagnostics
+
+
+def test_post_layout_capacity_balance_mode_is_accepted(tmp_path):
+    module = load_module()
+    args = module.parse_args(
+        [
+            "--hdf5-path",
+            str(tmp_path / "input.hdf5"),
+            "--output-dir",
+            str(tmp_path / "layout"),
+            "--balance-mode",
+            "post_layout_capacity_constrained",
+        ]
+    )
+
+    module.validate_args(args)
+
+    assert args.balance_mode == "post_layout_capacity_constrained"
 
 
 def test_run_rust_builder_passes_external_cargo_target_dir(monkeypatch, tmp_path):

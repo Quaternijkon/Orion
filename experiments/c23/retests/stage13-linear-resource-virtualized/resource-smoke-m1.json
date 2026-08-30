@@ -1,0 +1,1640 @@
+{
+  "active_verification": {
+    "checks": {
+      "all_containers_pass": "PASS",
+      "exact_container_count": "PASS",
+      "no_foreign_running_containers": "PASS",
+      "pairwise_disjoint_cpusets": "PASS",
+      "resource_contract": "PASS"
+    },
+    "logical_shards": 1,
+    "per_container_checks": [
+      {
+        "checks": {
+          "cgroup_cpuset": "PASS",
+          "cgroup_memory_max": "PASS",
+          "docker_cpuset": "PASS",
+          "docker_memory": "PASS",
+          "docker_memory_swap": "PASS",
+          "image_id": "PASS",
+          "no_swap": "PASS",
+          "not_oom_killed": "PASS",
+          "protocol_label": "PASS",
+          "run_label": "PASS",
+          "running": "PASS",
+          "runtime_cpuset": "PASS",
+          "shard_label": "PASS"
+        },
+        "container_name": "c23lr-stage13-m1-smoke-s00",
+        "status": "PASS"
+      }
+    ],
+    "protocol_version": "c23-linear-20260824-v1",
+    "resource_contract": {
+      "checks": {
+        "linear_memory_capacity": "PASS",
+        "m32_uses_all_declared_server_cores": "PASS",
+        "one_physical_core_per_logical_shard": "PASS",
+        "total_cpu_capacity_equals_M": "PASS"
+      },
+      "logical_shards": 1,
+      "m32_capacity_fraction": 0.03125,
+      "memory_bytes_per_shard": 8589934592,
+      "physical_core_equivalents": 1,
+      "physical_hosts_with_shards": 1,
+      "placement": [
+        {
+          "base_url": "http://10.10.1.1:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 0,
+          "physical_core": 0,
+          "private_ip": "10.10.1.1",
+          "shard_id": 0,
+          "ssh_host": "localhost"
+        }
+      ],
+      "shards_per_host": {
+        "0": 1,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "total_memory_capacity_bytes": 8589934592
+    },
+    "run_id": "stage13-m1-smoke",
+    "runtime": [
+      {
+        "placement": {
+          "base_url": "http://10.10.1.1:6400",
+          "cpuset": "0,16",
+          "grpc_port": 6500,
+          "host_slot": 0,
+          "http_port": 6400,
+          "node_index": 0,
+          "physical_core": 0,
+          "private_ip": "10.10.1.1",
+          "shard_id": 0,
+          "ssh_host": "localhost"
+        },
+        "runtime": {
+          "cgroup_cpu_max": "max 100000",
+          "cgroup_cpu_stat": "usage_usec 89717\nuser_usec 49344\nsystem_usec 40372\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0",
+          "cgroup_cpuset_effective": "0,16",
+          "cgroup_memory_current": 16265216,
+          "cgroup_memory_max": "8589934592",
+          "cgroup_memory_swap_max": "0",
+          "container_id": "91a178b5be801fbc9bc743da6506272b305eaaf1d727dd83928e2f6a2b13114b",
+          "container_name": "c23lr-stage13-m1-smoke-s00",
+          "docker_cpuset": "0,16",
+          "docker_memory": 8589934592,
+          "docker_memory_swap": 8589934592,
+          "health_url": "http://10.10.1.1:6400/healthz",
+          "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+          "labels": {
+            "org.opencontainers.image.description": "Official Qdrant image",
+            "org.opencontainers.image.documentation": "https://qdrant.com/docs",
+            "org.opencontainers.image.source": "https://github.com/qdrant/qdrant",
+            "org.opencontainers.image.title": "Qdrant",
+            "org.opencontainers.image.url": "https://qdrant.com/",
+            "org.opencontainers.image.vendor": "Qdrant",
+            "org.qdrant.orion.compact_wire.max_version": "2",
+            "orion.c23.protocol": "c23-linear-20260824-v1",
+            "orion.c23.run_id": "stage13-m1-smoke",
+            "orion.c23.shard_id": "0"
+          },
+          "oom_killed": false,
+          "pid": 1451566,
+          "running": true,
+          "runtime_cpuset": "0,16"
+        }
+      }
+    ],
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:45:21.057486Z",
+    "unexpected_running_containers": []
+  },
+  "checks": {
+    "active_cluster": "PASS",
+    "cleanup": "PASS",
+    "preflight": "PASS"
+  },
+  "cleanup": {
+    "logical_shards": 1,
+    "phase": "cleanup_complete",
+    "protocol_version": "c23-linear-20260824-v1",
+    "removed": [
+      {
+        "container": {
+          "id": "91a178b5be801fbc9bc743da6506272b305eaaf1d727dd83928e2f6a2b13114b",
+          "image": "orion-c1:20260821-deterministic-seed",
+          "name": "c23lr-stage13-m1-smoke-s00",
+          "state": "running",
+          "status": "Up 1 second"
+        },
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        }
+      }
+    ],
+    "restored": {
+      "failures": [],
+      "protocol_version": "c23-linear-20260824-v1",
+      "restored": [
+        {
+          "after": {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          "node": {
+            "index": 0,
+            "private_ip": "10.10.1.1",
+            "ssh_host": "localhost"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          "node": {
+            "index": 1,
+            "private_ip": "10.10.1.2",
+            "ssh_host": "10.10.1.2"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          "node": {
+            "index": 2,
+            "private_ip": "10.10.1.3",
+            "ssh_host": "10.10.1.3"
+          },
+          "valid": true
+        },
+        {
+          "after": {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up Less than a second"
+          },
+          "before": {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          "node": {
+            "index": 3,
+            "private_ip": "10.10.1.4",
+            "ssh_host": "10.10.1.4"
+          },
+          "valid": true
+        }
+      ],
+      "status": "PASS",
+      "timestamp": "2026-08-24T13:45:23.680925Z"
+    },
+    "run_id": "stage13-m1-smoke",
+    "suspended": {
+      "nodes": [
+        {
+          "containers_before": [
+            {
+              "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-controller",
+              "state": "running",
+              "status": "Up 4 hours"
+            },
+            {
+              "id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-controller",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "c5613138ebafb6112f9a19d761e34dd0782016ac8683d502d64602616e2c8143",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-controller",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 0,
+            "private_ip": "10.10.1.1",
+            "ssh_host": "localhost"
+          },
+          "running_before": [
+            {
+              "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-controller",
+              "state": "running",
+              "status": "Up 4 hours"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+              "state": "running",
+              "status": "Up 4 hours"
+            },
+            {
+              "id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "80d2407f268b66176160c880b58043b7a5506a9d84c063fc8a0409c1df5abb1c",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_1",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 1,
+            "private_ip": "10.10.1.2",
+            "ssh_host": "10.10.1.2"
+          },
+          "running_before": [
+            {
+              "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+              "state": "running",
+              "status": "Up 4 hours"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+              "state": "running",
+              "status": "Up 4 hours"
+            },
+            {
+              "id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "6923394cc1da2f784c9789e1f7e9cf838aefff9aa02b5b0329007cb7ce5593d2",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_2",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 2,
+            "private_ip": "10.10.1.3",
+            "ssh_host": "10.10.1.3"
+          },
+          "running_before": [
+            {
+              "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+              "state": "running",
+              "status": "Up 4 hours"
+            }
+          ]
+        },
+        {
+          "containers_before": [
+            {
+              "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+              "state": "running",
+              "status": "Up 4 hours"
+            },
+            {
+              "id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+              "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+              "name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            },
+            {
+              "id": "077563bf1ae68012f979ac80ef5d8bf81a33f09f3017a48c6dd6261926e6dc79",
+              "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+              "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_3",
+              "state": "exited",
+              "status": "Exited (0) 3 days ago"
+            }
+          ],
+          "node": {
+            "index": 3,
+            "private_ip": "10.10.1.4",
+            "ssh_host": "10.10.1.4"
+          },
+          "running_before": [
+            {
+              "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+              "image": "orion-c1:20260821-deterministic-seed",
+              "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+              "state": "running",
+              "status": "Up 4 hours"
+            }
+          ]
+        }
+      ],
+      "protocol_version": "c23-linear-20260824-v1",
+      "run_id": "stage13-m1-smoke",
+      "status": "PASS",
+      "timestamp": "2026-08-24T13:45:19.465969Z"
+    },
+    "timestamp": "2026-08-24T13:45:23.680943Z"
+  },
+  "logical_shards": 1,
+  "preflight": {
+    "checks": {
+      "all_scale_contracts_pass": "PASS",
+      "four_hosts_pass": "PASS",
+      "no_stale_experiment_containers": "PASS"
+    },
+    "hosts": [
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "41d3c2db4184731e5a1cc7bc5686a59d84bc512f9a4645677326d6f4c9ad268c",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-controller",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "b98ea6a9a266a7ee31ce73d3fb8d51e54822a8f65b8601bb9ebf18c617f98599",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "c5613138ebafb6112f9a19d761e34dd0782016ac8683d502d64602616e2c8143",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-controller",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-0.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488976,
+        "node": {
+          "index": 0,
+          "private_ip": "10.10.1.1",
+          "ssh_host": "localhost"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "ca79ee125decc0aa20009aad5e33b3b2fb1d0c3ffb5e6a9508a534ddb67f7882",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_1",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "6829629e18360001670b1d3d46aed15285c1e445e117a75f3e47ab221e4806ca",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "80d2407f268b66176160c880b58043b7a5506a9d84c063fc8a0409c1df5abb1c",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_1",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-1.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488972,
+        "node": {
+          "index": 1,
+          "private_ip": "10.10.1.2",
+          "ssh_host": "10.10.1.2"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "49637d478eaa135eb0c84d0531522ed7056de51facb78649c03baef56a080178",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_2",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "45467b09cc146f13b02684db3f1de115362e40a4cd8b80cfbc2a9a98890f5f0b",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "6923394cc1da2f784c9789e1f7e9cf838aefff9aa02b5b0329007cb7ce5593d2",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_2",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-2.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488852,
+        "node": {
+          "index": 2,
+          "private_ip": "10.10.1.3",
+          "ssh_host": "10.10.1.3"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      },
+      {
+        "cgroup_filesystem": "cgroup2fs",
+        "checks": {
+          "cgroup_v2": "PASS",
+          "image_id_matches": "PASS",
+          "logical_cpu_count_is_32": "PASS",
+          "memory_supports_m32_host_cap": "PASS",
+          "physical_core_count_is_16": "PASS",
+          "server_smt_pairs_match": "PASS"
+        },
+        "containers": [
+          {
+            "id": "787d3bb812c28c5238fa73be68528fbcefc4a1e286b2e21c1e99e49c7a9f2d34",
+            "image": "orion-c1:20260821-deterministic-seed",
+            "name": "orion-dist-c1-20260821-v2-qdrant_shard_3",
+            "state": "running",
+            "status": "Up 4 hours"
+          },
+          {
+            "id": "5269677ceaf942a4f7bffa30987334e2b02bb6eb8153f2ce7251e7ed9b68ec49",
+            "image": "orion-c1:20260820-instrumented-dirty-744d27a7e629",
+            "name": "orion-dist-c1-20260820-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          },
+          {
+            "id": "077563bf1ae68012f979ac80ef5d8bf81a33f09f3017a48c6dd6261926e6dc79",
+            "image": "orion-method4:fe61fdac6760-source-cb53046429a7",
+            "name": "orion-dist-native-20260818-scale4-32-r080-095-v1-qdrant_shard_3",
+            "state": "exited",
+            "status": "Exited (0) 3 days ago"
+          }
+        ],
+        "cpu_online": "0-31",
+        "docker_version": "29.1.3",
+        "hostname": "node-3.qdrant.intelisys-pg0.utah.cloudlab.us",
+        "image_id": "sha256:54819a6648dc706f654f3e541351c68814c0c1798312149c5e3ee099c183bfc8",
+        "logical_cpu_count": 32,
+        "memory_kib": 131488972,
+        "node": {
+          "index": 3,
+          "private_ip": "10.10.1.4",
+          "ssh_host": "10.10.1.4"
+        },
+        "physical_core_count": 16,
+        "server_core_siblings": {
+          "0": [
+            0,
+            16
+          ],
+          "1": [
+            1,
+            17
+          ],
+          "2": [
+            2,
+            18
+          ],
+          "3": [
+            3,
+            19
+          ],
+          "4": [
+            4,
+            20
+          ],
+          "5": [
+            5,
+            21
+          ],
+          "6": [
+            6,
+            22
+          ],
+          "7": [
+            7,
+            23
+          ]
+        },
+        "status": "PASS"
+      }
+    ],
+    "protocol_version": "c23-linear-20260824-v1",
+    "resource_contracts": [
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 1,
+        "m32_capacity_fraction": 0.03125,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 1,
+        "physical_hosts_with_shards": 1,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "total_memory_capacity_bytes": 8589934592
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 2,
+        "m32_capacity_fraction": 0.0625,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 2,
+        "physical_hosts_with_shards": 2,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 1,
+          "2": 0,
+          "3": 0
+        },
+        "total_memory_capacity_bytes": 17179869184
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 4,
+        "m32_capacity_fraction": 0.125,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 4,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 1,
+          "1": 1,
+          "2": 1,
+          "3": 1
+        },
+        "total_memory_capacity_bytes": 34359738368
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 8,
+        "m32_capacity_fraction": 0.25,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 8,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 2,
+          "1": 2,
+          "2": 2,
+          "3": 2
+        },
+        "total_memory_capacity_bytes": 68719476736
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 16,
+        "m32_capacity_fraction": 0.5,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 16,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 0,
+            "physical_core": 2,
+            "private_ip": "10.10.1.1",
+            "shard_id": 8,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 1,
+            "physical_core": 2,
+            "private_ip": "10.10.1.2",
+            "shard_id": 9,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 2,
+            "physical_core": 2,
+            "private_ip": "10.10.1.3",
+            "shard_id": 10,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 3,
+            "physical_core": 2,
+            "private_ip": "10.10.1.4",
+            "shard_id": 11,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 0,
+            "physical_core": 3,
+            "private_ip": "10.10.1.1",
+            "shard_id": 12,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 1,
+            "physical_core": 3,
+            "private_ip": "10.10.1.2",
+            "shard_id": 13,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 2,
+            "physical_core": 3,
+            "private_ip": "10.10.1.3",
+            "shard_id": 14,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 3,
+            "physical_core": 3,
+            "private_ip": "10.10.1.4",
+            "shard_id": 15,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 4,
+          "1": 4,
+          "2": 4,
+          "3": 4
+        },
+        "total_memory_capacity_bytes": 137438953472
+      },
+      {
+        "checks": {
+          "linear_memory_capacity": "PASS",
+          "m32_uses_all_declared_server_cores": "PASS",
+          "one_physical_core_per_logical_shard": "PASS",
+          "total_cpu_capacity_equals_M": "PASS"
+        },
+        "logical_shards": 32,
+        "m32_capacity_fraction": 1.0,
+        "memory_bytes_per_shard": 8589934592,
+        "physical_core_equivalents": 32,
+        "physical_hosts_with_shards": 4,
+        "placement": [
+          {
+            "base_url": "http://10.10.1.1:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 0,
+            "physical_core": 0,
+            "private_ip": "10.10.1.1",
+            "shard_id": 0,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 1,
+            "physical_core": 0,
+            "private_ip": "10.10.1.2",
+            "shard_id": 1,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 2,
+            "physical_core": 0,
+            "private_ip": "10.10.1.3",
+            "shard_id": 2,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6400",
+            "cpuset": "0,16",
+            "grpc_port": 6500,
+            "host_slot": 0,
+            "http_port": 6400,
+            "node_index": 3,
+            "physical_core": 0,
+            "private_ip": "10.10.1.4",
+            "shard_id": 3,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 0,
+            "physical_core": 1,
+            "private_ip": "10.10.1.1",
+            "shard_id": 4,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 1,
+            "physical_core": 1,
+            "private_ip": "10.10.1.2",
+            "shard_id": 5,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 2,
+            "physical_core": 1,
+            "private_ip": "10.10.1.3",
+            "shard_id": 6,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6401",
+            "cpuset": "1,17",
+            "grpc_port": 6501,
+            "host_slot": 1,
+            "http_port": 6401,
+            "node_index": 3,
+            "physical_core": 1,
+            "private_ip": "10.10.1.4",
+            "shard_id": 7,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 0,
+            "physical_core": 2,
+            "private_ip": "10.10.1.1",
+            "shard_id": 8,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 1,
+            "physical_core": 2,
+            "private_ip": "10.10.1.2",
+            "shard_id": 9,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 2,
+            "physical_core": 2,
+            "private_ip": "10.10.1.3",
+            "shard_id": 10,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6402",
+            "cpuset": "2,18",
+            "grpc_port": 6502,
+            "host_slot": 2,
+            "http_port": 6402,
+            "node_index": 3,
+            "physical_core": 2,
+            "private_ip": "10.10.1.4",
+            "shard_id": 11,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 0,
+            "physical_core": 3,
+            "private_ip": "10.10.1.1",
+            "shard_id": 12,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 1,
+            "physical_core": 3,
+            "private_ip": "10.10.1.2",
+            "shard_id": 13,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 2,
+            "physical_core": 3,
+            "private_ip": "10.10.1.3",
+            "shard_id": 14,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6403",
+            "cpuset": "3,19",
+            "grpc_port": 6503,
+            "host_slot": 3,
+            "http_port": 6403,
+            "node_index": 3,
+            "physical_core": 3,
+            "private_ip": "10.10.1.4",
+            "shard_id": 15,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 0,
+            "physical_core": 4,
+            "private_ip": "10.10.1.1",
+            "shard_id": 16,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 1,
+            "physical_core": 4,
+            "private_ip": "10.10.1.2",
+            "shard_id": 17,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 2,
+            "physical_core": 4,
+            "private_ip": "10.10.1.3",
+            "shard_id": 18,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6404",
+            "cpuset": "4,20",
+            "grpc_port": 6504,
+            "host_slot": 4,
+            "http_port": 6404,
+            "node_index": 3,
+            "physical_core": 4,
+            "private_ip": "10.10.1.4",
+            "shard_id": 19,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 0,
+            "physical_core": 5,
+            "private_ip": "10.10.1.1",
+            "shard_id": 20,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 1,
+            "physical_core": 5,
+            "private_ip": "10.10.1.2",
+            "shard_id": 21,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 2,
+            "physical_core": 5,
+            "private_ip": "10.10.1.3",
+            "shard_id": 22,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6405",
+            "cpuset": "5,21",
+            "grpc_port": 6505,
+            "host_slot": 5,
+            "http_port": 6405,
+            "node_index": 3,
+            "physical_core": 5,
+            "private_ip": "10.10.1.4",
+            "shard_id": 23,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 0,
+            "physical_core": 6,
+            "private_ip": "10.10.1.1",
+            "shard_id": 24,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 1,
+            "physical_core": 6,
+            "private_ip": "10.10.1.2",
+            "shard_id": 25,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 2,
+            "physical_core": 6,
+            "private_ip": "10.10.1.3",
+            "shard_id": 26,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6406",
+            "cpuset": "6,22",
+            "grpc_port": 6506,
+            "host_slot": 6,
+            "http_port": 6406,
+            "node_index": 3,
+            "physical_core": 6,
+            "private_ip": "10.10.1.4",
+            "shard_id": 27,
+            "ssh_host": "10.10.1.4"
+          },
+          {
+            "base_url": "http://10.10.1.1:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 0,
+            "physical_core": 7,
+            "private_ip": "10.10.1.1",
+            "shard_id": 28,
+            "ssh_host": "localhost"
+          },
+          {
+            "base_url": "http://10.10.1.2:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 1,
+            "physical_core": 7,
+            "private_ip": "10.10.1.2",
+            "shard_id": 29,
+            "ssh_host": "10.10.1.2"
+          },
+          {
+            "base_url": "http://10.10.1.3:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 2,
+            "physical_core": 7,
+            "private_ip": "10.10.1.3",
+            "shard_id": 30,
+            "ssh_host": "10.10.1.3"
+          },
+          {
+            "base_url": "http://10.10.1.4:6407",
+            "cpuset": "7,23",
+            "grpc_port": 6507,
+            "host_slot": 7,
+            "http_port": 6407,
+            "node_index": 3,
+            "physical_core": 7,
+            "private_ip": "10.10.1.4",
+            "shard_id": 31,
+            "ssh_host": "10.10.1.4"
+          }
+        ],
+        "shards_per_host": {
+          "0": 8,
+          "1": 8,
+          "2": 8,
+          "3": 8
+        },
+        "total_memory_capacity_bytes": 274877906944
+      }
+    ],
+    "stale_experiment_containers": [],
+    "status": "PASS",
+    "timestamp": "2026-08-24T13:45:16.420822Z"
+  },
+  "protocol_version": "c23-linear-20260824-v1",
+  "record_type": "c23_linear_resource_isolation_smoke",
+  "run_id": "stage13-m1-smoke",
+  "status": "PASS",
+  "timestamp": "2026-08-24T13:45:23.682186Z"
+}
