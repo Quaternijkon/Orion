@@ -1,0 +1,89 @@
+{
+  "tag": "g3_half",
+  "collection": "stage0_smoke_sift100k_s4",
+  "queries": 100000,
+  "elapsed_s": 37.343034613877535,
+  "qps": 2677.875567264094,
+  "batch": 1,
+  "repeat": 100,
+  "inflight": 96,
+  "procs": 2,
+  "hnsw_ef": 128,
+  "top_k": 10,
+  "coordinator": "all",
+  "client_cores": [
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71
+  ],
+  "peers": {
+    "qdrant-controller-qdrant_controller-1": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "qdrant-controller-qdrant_shard_1-1": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "qdrant-controller-qdrant_shard_2-1": [
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "qdrant-controller-qdrant_shard_3-1": [
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ]
+  },
+  "request_latency_us": {
+    "p50": 34562.154500000004,
+    "p95": 37833.9094,
+    "p99": 40444.68870999997
+  },
+  "per_peer_cpu_pct": {
+    "qdrant-controller-qdrant_controller-1": 89.81926976961668,
+    "qdrant-controller-qdrant_shard_1-1": 79.65465730775371,
+    "qdrant-controller-qdrant_shard_2-1": 78.52383698378607,
+    "qdrant-controller-qdrant_shard_3-1": 73.05568235705641
+  },
+  "gates": {
+    "server_saturation_pct": 89.81926976961668,
+    "least_loaded_peer_pct": 73.05568235705641,
+    "peer_imbalance_ratio": 0.8133631295872445,
+    "client_headroom_pct": 18.24637464644572,
+    "host_interference_pct": 4.589477112684377,
+    "g1_server_saturation": true,
+    "g2_client_headroom": true,
+    "g4_host_interference": true
+  },
+  "gates_passed": true,
+  "note": "recall is scored offline by score_recall.py; G3 needs two runs"
+}

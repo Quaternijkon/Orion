@@ -1,0 +1,6 @@
+{
+  "qdrant-controller-qdrant_controller-1": "0,1,2,3,4,5,6,7",
+  "qdrant-controller-qdrant_shard_1-1": "8,9,10,11,12",
+  "qdrant-controller-qdrant_shard_2-1": "13,14,15,16,17",
+  "qdrant-controller-qdrant_shard_3-1": "18,19,20,21,22"
+}
