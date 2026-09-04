@@ -1,0 +1,128 @@
+{
+  "queries": 10000,
+  "top_k": 10,
+  "tail_quantile": 0.95,
+  "required_fanout": {
+    "mean": 2.2219,
+    "median": 2.0,
+    "std": 1.1073664208381977,
+    "p90": 4.0,
+    "p95": 4.0,
+    "p99": 5.0,
+    "max": 7.0
+  },
+  "orderings": {
+    "oracle": {
+      "mean_recall_by_budget": [
+        0.7794899999999918,
+        0.9326999999999723,
+        0.9825499999999822,
+        0.9967799999999956,
+        0.9995899999999991,
+        0.9999599999999998,
+        1.0,
+        1.0
+      ],
+      "targets": {
+        "0.90": {
+          "per_query_need": {
+            "mean": 1.7666,
+            "median": 2.0,
+            "std": 0.8484836120986663,
+            "p90": 3.0,
+            "p95": 3.0,
+            "p99": 4.0,
+            "max": 6.0
+          },
+          "per_query_need_at_tail": 3.0,
+          "headroom_tail": 1.6981772897090457,
+          "fixed_budget": 2,
+          "adaptive_mean_shards": 1.3995499999999996,
+          "headroom_adaptive": 1.429030759887107,
+          "adaptive_mean_shards_greedy_check": 1.3996,
+          "greedy_matches_lagrangian": true
+        },
+        "0.95": {
+          "per_query_need": {
+            "mean": 2.2219,
+            "median": 2.0,
+            "std": 1.1073664208381977,
+            "p90": 4.0,
+            "p95": 4.0,
+            "p99": 5.0,
+            "max": 7.0
+          },
+          "per_query_need_at_tail": 4.0,
+          "headroom_tail": 1.8002610378504882,
+          "fixed_budget": 3,
+          "adaptive_mean_shards": 1.7218999999999989,
+          "headroom_adaptive": 1.7422614553690703,
+          "adaptive_mean_shards_greedy_check": 1.7219,
+          "greedy_matches_lagrangian": true
+        }
+      }
+    },
+    "centroid": {
+      "mean_recall_by_budget": [
+        0.7134499999999943,
+        0.8714499999999787,
+        0.9351199999999737,
+        0.9669299999999795,
+        0.9829099999999855,
+        0.9918899999999917,
+        0.9967899999999967,
+        1.0
+      ],
+      "targets": {
+        "0.90": {
+          "per_query_need": {
+            "mean": 2.1402,
+            "median": 2.0,
+            "std": 1.4044728406060403,
+            "p90": 4.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "max": 8.0
+          },
+          "per_query_need_at_tail": 5.0,
+          "headroom_tail": 2.3362302588543127,
+          "fixed_budget": 3,
+          "adaptive_mean_shards": 1.5140000000000002,
+          "headroom_adaptive": 1.9815059445178334
+        },
+        "0.95": {
+          "per_query_need": {
+            "mean": 2.8972,
+            "median": 2.0,
+            "std": 1.906051457857316,
+            "p90": 6.0,
+            "p95": 7.0,
+            "p99": 8.0,
+            "max": 8.0
+          },
+          "per_query_need_at_tail": 7.0,
+          "headroom_tail": 2.416125914676239,
+          "fixed_budget": 4,
+          "adaptive_mean_shards": 1.9148999999999978,
+          "headroom_adaptive": 2.088881925949138
+        }
+      }
+    }
+  },
+  "headroom_ordering": {
+    "0.90": 1.5,
+    "0.95": 1.3333333333333333
+  },
+  "dataset": "glove-200-angular.hdf5",
+  "base_vectors": 1183514,
+  "shards": 8,
+  "layout_method": "kmeans",
+  "normalized": true,
+  "seed": 20260904,
+  "layout_balance": {
+    "min_shard_size": 67640.0,
+    "max_shard_size": 356494.0,
+    "max_over_mean": 2.4097323732545624,
+    "size_cv": 0.6180793720717589
+  }
+}

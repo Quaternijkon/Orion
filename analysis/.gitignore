@@ -1,0 +1,3 @@
+# Materialized layouts are large derived artifacts; rebuild with build_orion_layout.py.
+layouts/
+__pycache__/
