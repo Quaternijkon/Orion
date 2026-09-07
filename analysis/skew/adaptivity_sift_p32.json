@@ -1,0 +1,21 @@
+{
+  "dataset": "sift-128-euclidean.hdf5",
+  "layout": "orion_sift1m_p32",
+  "shards": 32,
+  "upper_k": 12,
+  "ef_model": {
+    "base_ef": 20,
+    "factor": 4
+  },
+  "probed_shards_mean": 3.7632,
+  "neighbour_coverage_mean": 1.0266899999999999,
+  "concentration_top1_share_mean": 0.7089629478094145,
+  "marginal_shard_fraction_mean": 0.41927614718614714,
+  "proxy_argmax_agreement": 0.7807,
+  "recover_top1_by_hits": 0.652002699330683,
+  "recover_top1_by_oracle": 0.7089629478094145,
+  "recover_top2_by_hits": 0.8389015604854382,
+  "recover_top2_by_oracle": 0.9017159798912818,
+  "adaptive_ef_work_ratio_mean": 0.7536447027042105,
+  "adaptive_speedup_vs_uniform_max_mean": 1.3629318742053704
+}

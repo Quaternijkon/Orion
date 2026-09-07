@@ -1,0 +1,21 @@
+{
+  "dataset": "coco-t2i-512-angular.hdf5",
+  "layout": "orion_coco_p32",
+  "shards": 32,
+  "upper_k": 18,
+  "ef_model": {
+    "base_ef": 20,
+    "factor": 4
+  },
+  "probed_shards_mean": 5.0891,
+  "neighbour_coverage_mean": 1.0214100000000002,
+  "concentration_top1_share_mean": 0.7423923611557861,
+  "marginal_shard_fraction_mean": 0.5570342796092796,
+  "proxy_argmax_agreement": 0.8006,
+  "recover_top1_by_hits": 0.6843971841625867,
+  "recover_top1_by_oracle": 0.7423923611557861,
+  "recover_top2_by_hits": 0.827733688290124,
+  "recover_top2_by_oracle": 0.8964894826690337,
+  "adaptive_ef_work_ratio_mean": 0.6556965363853627,
+  "adaptive_speedup_vs_uniform_max_mean": 1.6008624408428882
+}

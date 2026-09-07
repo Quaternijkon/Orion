@@ -1,0 +1,21 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "orion_glove_p32",
+  "shards": 32,
+  "upper_k": 34,
+  "ef_model": {
+    "base_ef": 20,
+    "factor": 4
+  },
+  "probed_shards_mean": 9.3579,
+  "neighbour_coverage_mean": 1.03874,
+  "concentration_top1_share_mean": 0.6587042814684455,
+  "marginal_shard_fraction_mean": 0.7254878629974594,
+  "proxy_argmax_agreement": 0.714,
+  "recover_top1_by_hits": 0.5757528942321009,
+  "recover_top1_by_oracle": 0.6587042814684455,
+  "recover_top2_by_hits": 0.7416577543784045,
+  "recover_top2_by_oracle": 0.8371781971034641,
+  "adaptive_ef_work_ratio_mean": 0.5030130764477695,
+  "adaptive_speedup_vs_uniform_max_mean": 2.144052867059143
+}

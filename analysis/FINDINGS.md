@@ -387,6 +387,43 @@ the remaining load-skew points are not yet run.
   sensitivity is unmeasured, and the P = 32 SIFT reversal in Finding 2 is a
   0.06-shard margin that a second seed could plausibly move.
 
+## Finding 6: adaptive within-shard search strength
+
+The router does more than pick shards: it searches each probed shard at
+`ef_s = base_ef + factor * (L1 hits on s)` (defaults 20 + 4), so shards many of
+the query's nearest upper nodes fall on are searched harder. This is the one
+layer the routing-recall analysis excluded. It pays off only if the true
+neighbours are unevenly spread across probed shards *and* the hit count tracks
+where they are. Both hold (measured against ground truth, P = 32):
+
+| dataset | probed shards | heaviest shard's neighbour share | probed shards with <=1 neighbour | argmax(hits)==argmax(neighbours) |
+|---|---|---|---|---|
+| SIFT  | 3.76 | 71% | 42% | 78% |
+| GloVe | 9.36 | 66% | 73% | 71% |
+| coco  | 5.09 | 74% | 56% | 80% |
+
+One shard holds two-thirds to three-quarters of the neighbours; on GloVe 73% of
+probed shards hold at most one. The hit signal picks the true heaviest shard
+71%–80% of the time, and ordering shards by hits captures 88%–92% of what the
+oracle ordering captures in the top shard — a good but noisy proxy.
+
+Under a linear-ef cost model, the within-shard work Orion spends versus searching
+every probed shard at the heaviest shard's strength (`uniform-at-max`) is:
+
+| dataset | adaptive/uniform-max ef | saving |
+|---|---|---|
+| SIFT  | 0.75 | 1.36x |
+| coco  | 0.66 | 1.60x |
+| GloVe | 0.50 | 2.14x |
+
+The saving grows with fan-out and with the fraction of marginal shards, so it is
+largest exactly where fan-out is largest (GloVe, 2.14x). Caveats: cost is modelled
+as proportional to ef (candidate depth); `uniform-at-max` is a conservative flat
+baseline so this is an optimistic bound; the exact figure needs real per-shard
+recall(ef) curves (not yet run). This isolates the ef-strength mechanism only; the
+entry-point mechanism (L1 hits seed the HNSW search) is a separate, unmeasured
+gain. See `within_shard_adaptivity.py`.
+
 ## Reproducing
 
 ```sh
