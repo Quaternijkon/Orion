@@ -1,14 +1,12 @@
 # Stage 1 — Matched-recall throughput of routing and layout
 
-Status: harness extended for routed serving; ready for a real multi-host cluster.
-Precondition: Stage 0 gates (`STAGE0.md` §4) must hold at every operating point.
+Precondition: the Stage 0 gates (`STAGE0.md` §3) must hold at every operating point.
 
-Stage 0 built a gated, server-bound harness but only for **broadcast** search
-(the server fans out to every shard, fan-out = P). That measures the wrong thing
-for Orion, whose entire claim is that it touches *fewer* shards per query at the
-same recall. Stage 1 adds the routed serving path so the offline finding — Orion
-reaches target recall at lower fan-out than a k-means router, and much lower than
-broadcast — can be turned into an end-to-end matched-recall QPS number.
+Routed serving lets a query touch only the shards its router selects, so fan-out
+is below the shard count `P`. This document defines how the harness measures
+matched-recall throughput of three serving arms — broadcast, a k-means centroid
+router, and Orion's navigation router — turning the offline fan-out results in
+`analysis/FINDINGS.md` into end-to-end QPS at a fixed recall target.
 
 ## 1. What "routed" means here, and why it stays server-bound
 
@@ -150,21 +148,19 @@ The load path is host-agnostic: peers are reached at `http://<host>:<port>` from
   `source_id_dedup_block_size`). `--from-collection` removes the membership half of
   this risk; the upper-index half (seeds/M/ef) still must match.
 - **Entry-point + ef-by-shard honoring needs the patched Qdrant** (the Orion fork).
-  The plumbing was validated locally by replaying bodies against a stock collection;
-  the entry-point *semantics* are confirmed only by a real routed run's recall.
-- **The dual-graph upper index is the legacy ablation path** `agent.md` flags: a
-  faithful encoding of the routing rule, not a bit-for-bit match of the Rust router.
+  The entry-point *semantics* are confirmed by a real routed run's recall.
+- **The dual-graph upper index is an ablation path** `agent.md` flags: a faithful
+  encoding of the routing rule, not a bit-for-bit match of the Rust router.
 
-## 7. Validation done so far
+## 7. Validation status
 
-- Generator (`build_routed_requests.py`) produces correct bodies for both routers
-  on synthetic data: navigation carries per-shard entry points with encoded ids
+- The generator (`build_routed_requests.py`) produces correct bodies for both
+  routers: navigation carries per-shard entry points with encoded ids
   (`shard_id·block + src + 1`) and `ef = base_ef + factor·hits`; centroid probes
   exactly `nprobe` nearest shards at uniform ef with no entry points.
-- Replay (`measure.py --mode routed`) runs end to end against a live collection:
-  bodies load, ids persist and align by offset (fixed an offset off-by-one), G1–G4
-  compute, and **G2 shows large client headroom (~10%) → the routed path is
-  server-bound**, not client-bound like the legacy harness. `score_recall.py` reads
-  the run unchanged.
-- Full gate-passing matched-recall runs on real Orion/k-means collections are the
-  next step and require the deployed collections (and, for scale-out, real hosts).
+- The replay path (`measure.py --mode routed`) runs end to end against a live
+  collection: bodies load, ids persist and align by query offset, G1–G4 compute
+  with G2 showing large client headroom (the routed path is server-bound), and
+  `score_recall.py` reads the run.
+- Gate-passing matched-recall runs on the Orion and k-means collections require the
+  deployed collections; physical scale-out requires a multi-host cluster.

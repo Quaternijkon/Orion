@@ -1,10 +1,9 @@
 # Deploying and running the throughput tests — a new developer's guide
 
 This is the hands-on runbook. For *why* the harness is built this way, read
-`STAGE0.md` (what went wrong in the legacy harness, the validity gates) and
-`STAGE1.md` (the routed serving path and the comparison protocol). This document
-gets you from a fresh checkout to a gate-passing matched-recall QPS number, on one
-host or several.
+`STAGE0.md` (the testbed and validity gates) and `STAGE1.md` (the routed serving
+path and the comparison protocol). This document gets you from a fresh checkout to
+a gate-passing matched-recall QPS number, on one host or several.
 
 The one idea to keep in mind: **a throughput number only counts if the server is
 the bottleneck.** Every step below exists to keep the load generator, routing, and
