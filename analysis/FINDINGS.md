@@ -407,22 +407,36 @@ probed shards hold at most one. The hit signal picks the true heaviest shard
 71%–80% of the time, and ordering shards by hits captures 88%–92% of what the
 oracle ordering captures in the top shard — a good but noisy proxy.
 
-Under a linear-ef cost model, the within-shard work Orion spends versus searching
-every probed shard at the heaviest shard's strength (`uniform-at-max`) is:
+*Tier 1 (model).* Under a linear-ef cost model, the within-shard work Orion spends
+versus searching every probed shard at the heaviest shard's strength
+(`uniform-at-max`) is 0.75 (SIFT), 0.66 (coco), 0.50 (GloVe) — a 1.36x–2.14x
+saving, largest where fan-out is largest. See `within_shard_adaptivity.py`.
 
-| dataset | adaptive/uniform-max ef | saving |
-|---|---|---|
-| SIFT  | 0.75 | 1.36x |
-| coco  | 0.66 | 1.60x |
-| GloVe | 0.50 | 2.14x |
+*Tier 2 (measured).* Removing the model: a real hnswlib index is built per shard,
+each query is routed to its probed set, and those shards are searched two ways on
+the *same* routing — one global ef (uniform) versus `ef_s = round(alpha*(20+4*hits_s))`
+(adaptive) — merging per-shard top-k and scoring Recall@10 against ground truth.
+Work is total candidate depth `Sum_s ef_s`. Sweeping both traces recall-vs-work
+frontiers; adaptive's frontier sits above uniform's. Speedup at matched recall:
 
-The saving grows with fan-out and with the fraction of marginal shards, so it is
-largest exactly where fan-out is largest (GloVe, 2.14x). Caveats: cost is modelled
-as proportional to ef (candidate depth); `uniform-at-max` is a conservative flat
-baseline so this is an optimistic bound; the exact figure needs real per-shard
-recall(ef) curves (not yet run). This isolates the ef-strength mechanism only; the
-entry-point mechanism (L1 hits seed the HNSW search) is a separate, unmeasured
-gain. See `within_shard_adaptivity.py`.
+| dataset | recall 0.80 | 0.85 | 0.90 |
+|---|---|---|---|
+| SIFT  | 0.99x | 1.27x | 1.33x |
+| coco  | 1.66x | 1.73x | 1.78x |
+| GloVe | 1.57x | uniform never reaches 0.85 (ef<=130); adaptive reaches 0.88 | — |
+
+So the measured adaptive-ef saving is ~1.3x (SIFT), ~1.8x (coco), and >=1.6x
+(GloVe, where uniform cannot even reach the recall adaptive does) — the same
+ordering and rough magnitude as the Tier 1 model, now without modelling
+assumptions. The edge vanishes only at low recall on SIFT (0.99x at 0.80), where
+the base_ef floor leaves no room to allocate. Neither reaches 0.95 here because at
+this tuned upper_k end-to-end recall caps below the routing coverage; that is a
+routing-budget matter, orthogonal to the ef-allocation question tested.
+
+Scope: this isolates ef *strength*. The entry-point mechanism (L1 hits seed the
+per-shard search) is NOT measured — stock hnswlib enters from its own hierarchy
+top and takes no custom entry points, so that gain needs the patched Qdrant and
+belongs to the system test. See `within_shard_measure.py`.
 
 ## Reproducing
 

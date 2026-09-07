@@ -1,0 +1,119 @@
+{
+  "dataset": "sift-128-euclidean.hdf5",
+  "layout": "orion_sift1m_p32",
+  "shards": 32,
+  "upper_k": 12,
+  "queries": 10000,
+  "ef_model": {
+    "base_ef": 20,
+    "factor": 4
+  },
+  "curves": {
+    "uniform": [
+      {
+        "ef": 10,
+        "recall": 0.75408,
+        "work": 37.634
+      },
+      {
+        "ef": 12,
+        "recall": 0.78418,
+        "work": 45.1608
+      },
+      {
+        "ef": 16,
+        "recall": 0.8264300000000001,
+        "work": 60.2144
+      },
+      {
+        "ef": 20,
+        "recall": 0.85316,
+        "work": 75.268
+      },
+      {
+        "ef": 28,
+        "recall": 0.8866900000000002,
+        "work": 105.3752
+      },
+      {
+        "ef": 40,
+        "recall": 0.91217,
+        "work": 150.536
+      },
+      {
+        "ef": 60,
+        "recall": 0.9307300000000001,
+        "work": 225.804
+      },
+      {
+        "ef": 90,
+        "recall": 0.9412300000000001,
+        "work": 338.706
+      },
+      {
+        "ef": 130,
+        "recall": 0.9458700000000001,
+        "work": 489.242
+      }
+    ],
+    "adaptive": [
+      {
+        "alpha": 0.4,
+        "recall": 0.8386400000000002,
+        "work": 51.4129
+      },
+      {
+        "alpha": 0.6,
+        "recall": 0.88151,
+        "work": 76.0251
+      },
+      {
+        "alpha": 0.8,
+        "recall": 0.904,
+        "work": 101.527
+      },
+      {
+        "alpha": 1.0,
+        "recall": 0.91685,
+        "work": 127.438
+      },
+      {
+        "alpha": 1.4,
+        "recall": 0.93145,
+        "work": 178.8509
+      },
+      {
+        "alpha": 2.0,
+        "recall": 0.9406300000000001,
+        "work": 254.876
+      },
+      {
+        "alpha": 3.0,
+        "recall": 0.94571,
+        "work": 382.314
+      },
+      {
+        "alpha": 4.5,
+        "recall": 0.94811,
+        "work": 573.471
+      }
+    ]
+  },
+  "speedup_at_matched_recall": {
+    "0.85": {
+      "uniform_work": 75.268,
+      "adaptive_work": 76.0251,
+      "speedup": 0.9900414468379523
+    },
+    "0.9": {
+      "uniform_work": 150.536,
+      "adaptive_work": 101.527,
+      "speedup": 1.482718882661755
+    },
+    "0.95": {
+      "uniform_work": null,
+      "adaptive_work": null,
+      "speedup": null
+    }
+  }
+}

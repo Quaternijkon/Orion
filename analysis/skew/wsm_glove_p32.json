@@ -1,0 +1,119 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "orion_glove_p32",
+  "shards": 32,
+  "upper_k": 34,
+  "queries": 10000,
+  "ef_model": {
+    "base_ef": 20,
+    "factor": 4
+  },
+  "curves": {
+    "uniform": [
+      {
+        "ef": 10,
+        "recall": 0.55071,
+        "work": 93.645
+      },
+      {
+        "ef": 12,
+        "recall": 0.5801099999999999,
+        "work": 112.374
+      },
+      {
+        "ef": 16,
+        "recall": 0.6237299999999999,
+        "work": 149.832
+      },
+      {
+        "ef": 20,
+        "recall": 0.6554500000000001,
+        "work": 187.29
+      },
+      {
+        "ef": 28,
+        "recall": 0.69971,
+        "work": 262.206
+      },
+      {
+        "ef": 40,
+        "recall": 0.7424400000000001,
+        "work": 374.58
+      },
+      {
+        "ef": 60,
+        "recall": 0.7844,
+        "work": 561.87
+      },
+      {
+        "ef": 90,
+        "recall": 0.8208900000000001,
+        "work": 842.805
+      },
+      {
+        "ef": 130,
+        "recall": 0.84955,
+        "work": 1217.385
+      }
+    ],
+    "adaptive": [
+      {
+        "alpha": 0.4,
+        "recall": 0.68483,
+        "work": 136.1659
+      },
+      {
+        "alpha": 0.6,
+        "recall": 0.73038,
+        "work": 200.6925
+      },
+      {
+        "alpha": 0.8,
+        "recall": 0.75935,
+        "work": 268.3447
+      },
+      {
+        "alpha": 1.0,
+        "recall": 0.7803200000000001,
+        "work": 336.8584
+      },
+      {
+        "alpha": 1.4,
+        "recall": 0.8075600000000001,
+        "work": 473.0243
+      },
+      {
+        "alpha": 2.0,
+        "recall": 0.83315,
+        "work": 673.7168
+      },
+      {
+        "alpha": 3.0,
+        "recall": 0.8587600000000001,
+        "work": 1010.5752
+      },
+      {
+        "alpha": 4.5,
+        "recall": 0.88036,
+        "work": 1515.8628
+      }
+    ]
+  },
+  "speedup_at_matched_recall": {
+    "0.85": {
+      "uniform_work": null,
+      "adaptive_work": 1010.5752,
+      "speedup": null
+    },
+    "0.9": {
+      "uniform_work": null,
+      "adaptive_work": null,
+      "speedup": null
+    },
+    "0.95": {
+      "uniform_work": null,
+      "adaptive_work": null,
+      "speedup": null
+    }
+  }
+}
