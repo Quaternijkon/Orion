@@ -5,6 +5,71 @@ materialized shard layout to compute how many shards a query *must* touch to
 reach a recall target. It replaces the retired TWCut metric, which the legacy
 program showed does not predict cost (see `legacy/LEGACY.md`).
 
+## Headline: Orion vs the plain baseline, end to end
+
+Before attributing anything to Orion's individual techniques, the first question
+is whether the whole system beats a basic baseline. It does not, on the metric
+that drives throughput.
+
+The primary throughput driver is **fan-out** — the mean number of shards a query
+touches at a fixed recall. With one shard per core, per-query compute scales as
+`fan-out × ef × log(shard_size)`, so at fixed recall total work is essentially
+proportional to fan-out. Load skew is a second, multiplicative correction (the
+busiest shard caps throughput): `throughput ∝ P / (fan-out × load_skew × log(shard_size))`.
+So fan-out leads and load skew modulates.
+
+Realizable mean fan-out at routing-recall 0.95, full system vs baseline:
+
+| config | baseline (k-means + centroid) | Orion (orion layout + navigation) | Orion vs base | naive all-shards |
+|---|---|---|---|---|
+| sift  P8  | **1.59** | 2.32 | +46% | 8 |
+| sift  P32 | **2.81** | 4.33 | +54% | 32 |
+| glove P8  | **2.90** | 3.74 | +29% | 8 |
+| glove P32 | **7.80** | 9.60 | +23% | 32 |
+
+**The plain baseline wins on fan-out in every configuration, by 23%–54%**, and
+the Orion layout is even carrying 7%–18% replication that can only lower its
+fan-out. So on the first-order throughput driver, the entire Orion apparatus is a
+net loss.
+
+Decomposing the fan-out gap into the two techniques (realizable adaptive fan-out):
+
+| config | baseline | + Orion layout (keep centroid) | + navigation router | net vs base |
+|---|---|---|---|---|
+| sift  P32 | 2.81 | 5.38 (**+2.57**) | 4.33 (−1.05) | **+1.53 worse** |
+| glove P32 | 7.80 | 9.99 (**+2.20**) | 9.60 (−0.39) | **+1.80 worse** |
+| sift  P8  | 1.59 | 2.84 (+1.26) | 2.32 (−0.52) | +0.73 worse |
+| glove P8  | 2.90 | 4.10 (+1.20) | 3.74 (−0.36) | +0.84 worse |
+
+Orion's **placement raises fan-out sharply** by trading locality for balance
+(+1.2 to +2.6 shards); its **navigation router recovers only part** of that
+(−0.4 to −1.05) and never enough to break even. Finding 5's "navigation beats
+centroid" is real but is a partial rescue of a deficit the layout created.
+
+Only when the load-skew term is included does Orion win anywhere. Throughput
+proxy `W = fan-out × load_skew` (lower is better):
+
+| config | baseline W | Orion W | winner |
+|---|---|---|---|
+| sift  P32 | 4.50 | 6.56 | baseline, by 31% |
+| glove P32 | 20.07 | **16.44** | Orion, by 18% |
+| glove P8  | 5.51 | **4.51** | Orion, by 18% |
+| sift  P8  | 3.07 | 3.67 | baseline, by 16% |
+
+Orion only comes out ahead on GloVe, and only because plain k-means has bad load
+skew there (2.57, driven by its 2.05x size imbalance) which Orion's balancing
+tames to 1.71. On SIFT, where the baseline is already evenly loaded, Orion's
+fan-out penalty is unmasked and it loses. **Orion's end-to-end value is confined
+to skewed workloads and comes entirely from balance, not from lower work.**
+
+This is measured at routing recall — coverage of the true neighbours by the
+probed shard set, assuming perfect within-shard search — so it isolates routing
+and placement from within-shard HNSW approximation. Fidelity caveat as in
+Finding 5: hnswlib upper graph and the Python router, not Rust `router.rs`.
+
+The sections below decompose the pieces in more detail; this headline is the
+answer to "how does Orion compare to a basic baseline first".
+
 Everything here is a property of the layout and the ground truth. No search, no
 QPS, no HNSW approximation. Numbers are therefore reproducible and exact, and
 they are *bounds* on what any deployed router can achieve, not predictions of
@@ -142,8 +207,15 @@ placement barely controls.
 Combining the two halves: the busiest shard's load is proportional to
 (shards probed) x (load skew), so that product is inverse normalized throughput.
 Under the oracle ordering at P = 32 it spans 17.2–20.3 on SIFT and 21.5–24.4 on
-GloVe across all four layouts — a 13%–18% spread. The choice of partitioner
-barely moves the throughput ceiling.
+GloVe across all four layouts — a 13%–18% spread.
+
+**Correction:** the "barely moves the ceiling" reading here is an artifact of
+computing it under the *oracle* ordering, which is not any deployed router and
+which flattens the layouts' differences. Under the actual deployed routers (the
+Headline section), placement moves fan-out a lot — Orion's layout is 23%–54%
+worse on fan-out than plain k-means — and fan-out, not skew, is the first-order
+term. Load skew is the second-order correction that only rescues Orion on the
+skewed GloVe workload. Treat the Headline as the throughput verdict, not this.
 
 There is also a tension worth building on. Oracle routing minimizes total work
 (3 shards on SIFT at P = 32) but concentrates load 6.1x; centroid routing spreads

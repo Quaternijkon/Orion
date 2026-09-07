@@ -1,0 +1,24 @@
+{
+  "dataset": "sift-128-euclidean.hdf5",
+  "layout": "kmeans",
+  "shards": 32,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 1.480576,
+  "expansion_ratio": 1.0,
+  "orderings": {
+    "oracle": {
+      "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.3096,
+      "load_skew_max_over_mean": 6.766933333333333,
+      "load_skew_cv": 1.2014303475441264,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 4,
+      "adaptive_mean_fanout": 2.8056,
+      "load_skew_max_over_mean": 1.6024,
+      "load_skew_cv": 0.2880646455224938,
+      "queries_target_unreachable": 0
+    }
+  }
+}

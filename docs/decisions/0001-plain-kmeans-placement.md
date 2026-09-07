@@ -70,6 +70,24 @@ oracle headroom on GloVe P = 32 (oracle 3.25 vs both real routers ~9.6). So the
 routing cost of dropping the graph is real but bounded — single-digit to ~20% of
 fan-out — not the full 2x–6x that Finding 3's abstract oracle suggested.
 
+**Update 2: the end-to-end baseline comparison now favours the rollback on the
+primary metric.** FINDINGS' Headline section measures the full system against a
+plain k-means + centroid baseline on realizable fan-out (the first-order
+throughput driver) at routing recall 0.95:
+
+| config | baseline | Orion | Orion vs base |
+|---|---|---|---|
+| sift  P32 | 2.81 | 4.33 | +54% |
+| glove P32 | 7.80 | 9.60 | +23% |
+
+The baseline wins on fan-out in all four configs by 23%–54%. Orion's placement
+raises fan-out (locality traded for balance); its navigation router recovers only
+part. Orion wins end to end only once load skew is folded in, and only on GloVe,
+where plain k-means is badly load-skewed (2.57) and Orion's balancing tames it
+(1.71). On evenly-loaded SIFT the baseline wins outright. So the rollback is right
+on the primary throughput driver for even workloads; the one thing it forfeits is
+Orion's balance advantage on skewed workloads.
+
 ## Why
 
 The offline analysis in `analysis/FINDINGS.md` removed the systems argument for

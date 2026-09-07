@@ -1,0 +1,24 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "kmeans",
+  "shards": 8,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 2.409752651848647,
+  "expansion_ratio": 1.0,
+  "orderings": {
+    "oracle": {
+      "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.222,
+      "load_skew_max_over_mean": 2.4442666666666666,
+      "load_skew_cv": 0.8112215644733975,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 4,
+      "adaptive_mean_fanout": 2.8975,
+      "load_skew_max_over_mean": 1.9022,
+      "load_skew_cv": 0.5216513394979447,
+      "queries_target_unreachable": 0
+    }
+  }
+}

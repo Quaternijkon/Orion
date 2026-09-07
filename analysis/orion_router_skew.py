@@ -51,10 +51,9 @@ from fanout_headroom import (  # noqa: E402
     Layout,
     greedy_coverage_order,
     neighbor_masks,
-    recall_curve,
     shard_centroids,
 )
-from load_skew import centroid_order, fixed_budget, skew_at  # noqa: E402
+from load_skew import centroid_order, router_stats  # noqa: E402
 
 
 def orion_navigation_order(
@@ -86,22 +85,6 @@ def orion_navigation_order(
                     order[query, cursor] = shard
                     cursor += 1
     return order
-
-
-def summarize(name: str, order, masks, top_k, target, shards) -> dict[str, object]:
-    curve = recall_curve(masks, order, top_k)
-    budget = fixed_budget(curve, target)
-    skew = skew_at(order, budget, shards)
-    per_query_reached = np.argmax(curve >= target, axis=1)
-    unreached = curve[:, -1] < target
-    per_query_reached[unreached] = shards - 1
-    return {
-        "fixed_budget": budget,
-        "load_skew_max_over_mean": skew["max_over_mean"],
-        "load_skew_cv": skew["cv"],
-        "adaptive_mean_fanout": float(per_query_reached.mean() + 1),
-        "queries_target_unreachable": int(unreached.sum()),
-    }
 
 
 def main() -> int:
@@ -168,7 +151,7 @@ def main() -> int:
             layout.copies_per_shard().max() / layout.copies_per_shard().mean()
         ),
         "routers": {
-            name: summarize(name, order, masks, args.top_k, args.target, layout.shards)
+            name: router_stats(order, masks, args.top_k, args.target, layout.shards)
             for name, order in orders.items()
         },
     }

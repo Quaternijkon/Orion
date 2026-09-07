@@ -65,6 +65,36 @@ def skew_at(order: np.ndarray, budget: int, shards: int) -> dict[str, float]:
     }
 
 
+def adaptive_mean_fanout(curve: np.ndarray, target: float) -> tuple[float, int]:
+    """Realizable per-query fan-out: shards each query needs to reach the target.
+
+    This is the primary throughput driver -- total per-query work scales with it,
+    since each probed shard costs ~log(shard_size). Returns the mean over queries
+    and how many queries never reach the target within all shards.
+    """
+    shards = curve.shape[1]
+    reached = np.argmax(curve >= target, axis=1)
+    unreached = curve[:, -1] < target
+    reached[unreached] = shards - 1
+    return float(reached.mean() + 1), int(unreached.sum())
+
+
+def router_stats(
+    order: np.ndarray, masks: np.ndarray, top_k: int, target: float, shards: int
+) -> dict[str, object]:
+    curve = recall_curve(masks, order, top_k)
+    budget = fixed_budget(curve, target)
+    skew = skew_at(order, budget, shards)
+    fanout, unreached = adaptive_mean_fanout(curve, target)
+    return {
+        "fixed_budget": budget,
+        "adaptive_mean_fanout": fanout,
+        "load_skew_max_over_mean": skew["max_over_mean"],
+        "load_skew_cv": skew["cv"],
+        "queries_target_unreachable": unreached,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hdf5", required=True)
@@ -115,23 +145,24 @@ def main() -> int:
         "recall_target": args.target,
         "size_skew_max_over_mean": float(sizes.max() / sizes.mean()),
         "expansion_ratio": layout.copies / layout.points,
-        "orderings": {},
+        "orderings": {
+            name: router_stats(order, masks, args.top_k, args.target, layout.shards)
+            for name, order in orders.items()
+        },
     }
-    for name, order in orders.items():
-        curve = recall_curve(masks, order, args.top_k)
-        budget = fixed_budget(curve, args.target)
-        report["orderings"][name] = skew_at(order, budget, layout.shards)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
-    oracle = report["orderings"]["oracle"]
-    centroid = report["orderings"]["centroid"]
     print(
         f"{report['dataset']:24} P={layout.shards:2d} {args.label:16} "
-        f"size_skew={report['size_skew_max_over_mean']:.2f} | "
-        f"oracle B={oracle['budget']} load_skew={oracle['max_over_mean']:.2f} | "
-        f"centroid B={centroid['budget']} load_skew={centroid['max_over_mean']:.2f}"
+        f"size_skew={report['size_skew_max_over_mean']:.2f}"
     )
+    for name, stats in report["orderings"].items():
+        print(
+            f"  {name:9} fanout={stats['adaptive_mean_fanout']:.2f} "
+            f"fixed_B={stats['fixed_budget']} "
+            f"load_skew={stats['load_skew_max_over_mean']:.2f}"
+        )
     return 0
 
 
