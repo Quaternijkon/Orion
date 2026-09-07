@@ -1,0 +1,22 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "balanced_kmeans",
+  "shards": 32,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 1.0000050696485212,
+  "expansion_ratio": 1.0,
+  "orderings": {
+    "oracle": {
+      "budget": 5,
+      "max_over_mean": 4.55488,
+      "min_over_mean": 0.31744,
+      "cv": 1.005017848995728
+    },
+    "centroid": {
+      "budget": 17,
+      "max_over_mean": 1.8211764705882354,
+      "min_over_mean": 0.19068235294117647,
+      "cv": 0.46946780028211743
+    }
+  }
+}

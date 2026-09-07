@@ -1,0 +1,22 @@
+{
+  "dataset": "sift-128-euclidean.hdf5",
+  "layout": "orion",
+  "shards": 8,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 1.0099187851590015,
+  "expansion_ratio": 1.070494,
+  "orderings": {
+    "oracle": {
+      "budget": 2,
+      "max_over_mean": 2.3592,
+      "min_over_mean": 0.6832,
+      "cv": 0.5193308771871743
+    },
+    "centroid": {
+      "budget": 5,
+      "max_over_mean": 1.5776,
+      "min_over_mean": 0.64464,
+      "cv": 0.3157024117741263
+    }
+  }
+}

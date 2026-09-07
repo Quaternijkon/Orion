@@ -1,0 +1,22 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "orion",
+  "shards": 32,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 1.009999835399546,
+  "expansion_ratio": 1.1806560801139656,
+  "orderings": {
+    "oracle": {
+      "budget": 4,
+      "max_over_mean": 5.3704,
+      "min_over_mean": 0.3992,
+      "cv": 1.0553410064997948
+    },
+    "centroid": {
+      "budget": 16,
+      "max_over_mean": 1.9366,
+      "min_over_mean": 0.1606,
+      "cv": 0.5048949024301989
+    }
+  }
+}
