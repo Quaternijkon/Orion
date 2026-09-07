@@ -155,6 +155,48 @@ justification for multi-assignment than the locality one, and it is untested.
 This finding drove the decision recorded in
 `docs/decisions/0001-plain-kmeans-placement.md`.
 
+## Finding 5: Orion's navigation router beats a centroid router, but modestly
+
+Findings 1–4 order shards by oracle coverage or by centroid distance, neither of
+which is Orion's deployed router. `orion_router_skew.py` reconstructs the real
+one: a query's nearest upper-graph L1 nodes are looked up and the shards owning
+them are the shards probed, so fan-out is emergent, not a chosen prefix. All
+three routers are run on the *same* Orion layout to R = 0.95. Adaptive mean
+fan-out (shards touched per query) and query load skew (max/mean shard touches):
+
+| dataset | P | oracle fanout / skew | centroid fanout / skew | orion fanout / skew |
+|---|---|---|---|---|
+| sift  |  8 | 1.98 / 2.36 | 2.84 / 1.58 | 2.32 / 1.58 |
+| sift  | 32 | 2.64 / 6.11 | 5.38 / 1.76 | 4.33 / 1.52 |
+| glove |  8 | 2.67 / 2.15 | 4.10 / 1.13 | 3.74 / 1.21 |
+| glove | 32 | 3.25 / 5.37 | 9.99 / 1.89 | 9.60 / 1.71 |
+
+Three things stand out.
+
+- **Navigation routing is cheaper than centroid routing at equal recall, on every
+  point.** It touches 4%–27% fewer shards per query (2.32 vs 2.84 and 4.33 vs
+  5.38 on SIFT; 3.74 vs 4.10 and 9.60 vs 9.99 on GloVe), with the larger gains on
+  the easier dataset and the smaller P. So the navigation graph does earn its keep
+  for routing — this is the first mechanism-specific evidence that it does.
+- **It does so without paying in balance.** Load skew is essentially tied
+  (slightly better than centroid on SIFT, slightly worse on GloVe). Navigation
+  gets lower fan-out *and* comparable-or-better skew, which is the tension Finding
+  4 flagged as open — Orion resolves it a little better than a centroid router.
+- **Neither deployable router captures the big headroom, exactly where it is
+  largest.** On GloVe P = 32 the oracle reaches the target at 3.25 shards while
+  both real routers need ~9.6 — a 3x gap that navigation barely narrows. The
+  headroom Finding 3 identified is real but is *not* unlocked by graph navigation
+  on hard, high-P workloads; it would take a better routing signal than either
+  centroid distance or nearest-L1 membership.
+
+Net: the navigation graph is worth a modest, real routing improvement over the
+centroid router that a plain k-means layout would use, biggest on easy data and
+small P, and it is not the key to the large oracle headroom on hard data.
+
+Fidelity caveat: the upper graph is the hnswlib dual-graph variant and the router
+is the harness's Python encoding, not the Rust `router.rs`. This is sound for the
+structural comparison, not for deployable numbers.
+
 ## Full table at R = 0.95, k = 10
 
 `bal` is max/mean shard size, `exp` is physical copies per logical point.

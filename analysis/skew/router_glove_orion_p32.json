@@ -1,0 +1,31 @@
+{
+  "dataset": "glove-200-angular.hdf5",
+  "layout": "orion_glove_p32",
+  "shards": 32,
+  "recall_target": 0.95,
+  "upper_query_k": 200,
+  "size_skew_max_over_mean": 1.009999835399546,
+  "routers": {
+    "oracle": {
+      "fixed_budget": 4,
+      "load_skew_max_over_mean": 5.3704,
+      "load_skew_cv": 1.0553410064997948,
+      "adaptive_mean_fanout": 3.2478,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 15,
+      "load_skew_max_over_mean": 1.8920533333333334,
+      "load_skew_cv": 0.49626478380441663,
+      "adaptive_mean_fanout": 9.9937,
+      "queries_target_unreachable": 0
+    },
+    "orion": {
+      "fixed_budget": 15,
+      "load_skew_max_over_mean": 1.712,
+      "load_skew_cv": 0.26014686860395697,
+      "adaptive_mean_fanout": 9.6004,
+      "queries_target_unreachable": 0
+    }
+  }
+}

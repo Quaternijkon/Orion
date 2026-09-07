@@ -50,10 +50,25 @@ every layout). This cost was not counted in the first draft.
 The decision's *evidence* is unaffected: the measured `orion` layouts had
 self-search refinement enabled, so Finding 4's load-skew result is about the real
 refined layout, not a stripped one. What changed is the cost accounting, which is
-why the status is reopened rather than the decision reversed. A caveat that does
-survive: load skew for `orion` was measured under the oracle and centroid
-orderings, neither of which is Orion's graph-navigation router, so Orion's load
-skew *under its own router* is still unmeasured.
+why the status is reopened rather than the decision reversed.
+
+**Update: the reopened question has now been measured.** Finding 5 in
+`analysis/FINDINGS.md` reconstructs Orion's real navigation router and compares it
+against the centroid router on the same layout, at R = 0.95:
+
+| dataset | P | centroid fanout / skew | orion fanout / skew |
+|---|---|---|---|
+| sift  |  8 | 2.84 / 1.58 | 2.32 / 1.58 |
+| sift  | 32 | 5.38 / 1.76 | 4.33 / 1.52 |
+| glove |  8 | 4.10 / 1.13 | 3.74 / 1.21 |
+| glove | 32 | 9.99 / 1.89 | 9.60 / 1.71 |
+
+The navigation graph does have routing value the centroid router lacks: it
+touches 4%–27% fewer shards at equal recall, without losing balance. But the gain
+is modest, largest on easy data and small P, and it does **not** unlock the big
+oracle headroom on GloVe P = 32 (oracle 3.25 vs both real routers ~9.6). So the
+routing cost of dropping the graph is real but bounded — single-digit to ~20% of
+fan-out — not the full 2x–6x that Finding 3's abstract oracle suggested.
 
 ## Why
 
@@ -135,10 +150,15 @@ no longer drives the design. It remains valid as a measurement.
   shards, which targets the ~6x load skew directly. That is a better
   justification than the locality one this analysis rejected, and it is untested.
   Do not treat this decision as evidence against replication for that purpose.
-- The largest measured headroom is in routing, not placement: the gap between a
-  fixed-budget centroid router and an ideal adaptive one is roughly 2x–6x on
-  every layout, growing with P and dataset hardness. That is where the next work
-  should go.
+- The largest *abstract* headroom is in routing, but Finding 5 shows neither a
+  centroid nor Orion's navigation router captures most of it on hard, high-P
+  workloads (both need ~9.6 shards on GloVe P = 32 where the oracle needs 3.25).
+  The next routing work should target that gap with a better signal than
+  nearest-L1 membership, not assume graph navigation already closes it.
+- Navigation routing's measured edge over centroid routing (4%–27% fewer shards
+  at equal recall, Finding 5) is the concrete thing lost by dropping the graph.
+  Weigh it against the whole offline pipeline's cost; on easy data / small P it
+  is worth more, on hard data / large P almost nothing.
 - If the memory cost of size imbalance proves unacceptable, `balanced_kmeans`
   (k-means centroids plus a `ceil(N/P)` quota pass) reaches balance 1.00 while
   keeping this decision's simplicity, at the cost of worse locality than plain
