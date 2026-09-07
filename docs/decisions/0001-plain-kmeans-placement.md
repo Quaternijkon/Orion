@@ -1,8 +1,8 @@
 # 0001 — Plain k-means, single assignment, as Orion's primary layout
 
-Status: **reopened, 2026-09-07** (accepted the same day, then reopened after a
-correctness error in the "what this buys" reasoning was found; see the
-Correction section)
+Status: **reopened and leaning toward reversal, 2026-09-07** (accepted, then
+reopened for a reasoning error, and now the end-to-end evidence largely
+undercuts the original rationale; see Update 3)
 Supersedes: the topology-aware placement pipeline as the *default* arm
 
 ## Decision
@@ -87,6 +87,39 @@ where plain k-means is badly load-skewed (2.57) and Orion's balancing tames it
 (1.71). On evenly-loaded SIFT the baseline wins outright. So the rollback is right
 on the primary throughput driver for even workloads; the one thing it forfeits is
 Orion's balance advantage on skewed workloads.
+
+## Update 3 (2026-09-07): the end-to-end case largely undercuts this decision
+
+Update 2 compared only against *unbalanced* plain k-means, on SIFT and GloVe. Two
+additions — a *balanced* k-means baseline, and a third dataset (coco-t2i-512,
+cross-modal) — reverse most of the conclusion. Full three-dataset results are in
+FINDINGS' Headline; `W = fan-out × load_skew`, lower is better:
+
+| config | plain kmeans W (size skew) | balanced kmeans W | Orion W |
+|---|---|---|---|
+| sift  P32 | **4.5** (1.48) | 8.4 | 6.6 |
+| glove P32 | 20.1 (2.05) | 20.3 | **16.4** |
+| coco  P32 | 19.4 (2.12) | 21.6 | **12.5** |
+
+- **Among balanced layouts Orion wins everywhere** — 14%–50% lower fan-out and
+  13%–42% lower `W` than balanced k-means, on all six configs. If a deployment
+  requires balanced shards for memory efficiency (the usual case for a
+  memory-bound vector store), Orion is the best option and this decision's target
+  should have been balanced k-means, which Orion beats — not plain k-means.
+- **Against unbalanced plain k-means, Orion wins on GloVe and coco**, losing only
+  on uniform SIFT, and plain k-means only wins there by tolerating a 1.48x–2.12x
+  size imbalance (up to ~half the memory wasted at P = 32).
+- **The navigation router is essential on cross-modal data**: coco P32 needs 13.8
+  shards under centroid routing vs 5.8 under navigation. Dropping the graph would
+  forfeit that entirely, and it is a 2.4x effect, not the single-digit one Update
+  1 estimated from SIFT/GloVe.
+
+So the original rationale — "plain k-means is simpler and gives up little" — holds
+only for uniform, imbalance-tolerant workloads. For balanced or non-uniform ones,
+Orion is measurably better end to end. The decision should probably be reversed
+for the general case, or narrowed to "plain k-means is the right default only when
+the workload is near-uniform and memory imbalance is acceptable." Deferring the
+final call pending the open items below.
 
 ## Why
 

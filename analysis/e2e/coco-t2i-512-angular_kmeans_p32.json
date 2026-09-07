@@ -1,0 +1,24 @@
+{
+  "dataset": "coco-t2i-512-angular.hdf5",
+  "layout": "kmeans",
+  "shards": 32,
+  "recall_target": 0.95,
+  "size_skew_max_over_mean": 2.12218524632129,
+  "expansion_ratio": 1.0,
+  "orderings": {
+    "oracle": {
+      "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.3541,
+      "load_skew_max_over_mean": 7.613866666666667,
+      "load_skew_cv": 1.4236380064234495,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 11,
+      "adaptive_mean_fanout": 6.6717,
+      "load_skew_max_over_mean": 2.909090909090909,
+      "load_skew_cv": 0.972146512781921,
+      "queries_target_unreachable": 0
+    }
+  }
+}
