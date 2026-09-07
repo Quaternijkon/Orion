@@ -1,0 +1,12 @@
+{
+  "applied": {
+    "controller": "0-19",
+    "qdrant_shard_1": "0-19",
+    "qdrant_shard_2": "0-19",
+    "qdrant_shard_3": "0-19"
+  },
+  "cluster_run_id": "c6-sift-m4-stage1-20260831a",
+  "record_type": "c6_cluster_affinity",
+  "requested_cpuset": "0-19",
+  "timestamp": "2026-09-01T09:17:14Z"
+}

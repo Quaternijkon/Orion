@@ -1,0 +1,47 @@
+{
+  "groups": [
+    {
+      "entry_point_group": "1",
+      "mean_ground_truth_contribution": 0.013422818791946308,
+      "mean_oracle_local_distance_computations": 350.4474272930649,
+      "mean_oracle_local_ef_search": 8.0,
+      "probability_contributes_ground_truth": 0.013422818791946308,
+      "sample_count": 447
+    },
+    {
+      "entry_point_group": "2",
+      "mean_ground_truth_contribution": 0.017543859649122806,
+      "mean_oracle_local_distance_computations": 354.4350877192982,
+      "mean_oracle_local_ef_search": 8.0,
+      "probability_contributes_ground_truth": 0.014035087719298246,
+      "sample_count": 285
+    },
+    {
+      "entry_point_group": "3-4",
+      "mean_ground_truth_contribution": 0.006972477064220183,
+      "mean_oracle_local_distance_computations": 368.95376146788993,
+      "mean_oracle_local_ef_search": 8.0,
+      "probability_contributes_ground_truth": 0.0066055045871559635,
+      "sample_count": 2725
+    },
+    {
+      "entry_point_group": "5-8",
+      "mean_ground_truth_contribution": 0.1858974358974359,
+      "mean_oracle_local_distance_computations": 354.42788461538464,
+      "mean_oracle_local_ef_search": 8.038461538461538,
+      "probability_contributes_ground_truth": 0.14102564102564102,
+      "sample_count": 624
+    },
+    {
+      "entry_point_group": ">8",
+      "mean_ground_truth_contribution": 6.517925138300165,
+      "mean_oracle_local_distance_computations": 636.4213664774768,
+      "mean_oracle_local_ef_search": 18.683526115381852,
+      "probability_contributes_ground_truth": 0.9070335512608665,
+      "sample_count": 13919
+    }
+  ],
+  "sample_count": 18000,
+  "spearman_entry_points_vs_ground_truth_contribution": 0.9437450201244995,
+  "spearman_entry_points_vs_oracle_local_work": 0.38624584157659636
+}

@@ -30,22 +30,22 @@ fn valid_artifact() -> OrionRoutingArtifact {
             OrionUpperNode {
                 label: id(10),
                 vector: vec![0.0, 0.0],
-                shard_membership: vec![2, 0],
+                owner_shard: 0,
             },
             OrionUpperNode {
                 label: id(20),
                 vector: vec![1.0, 0.0],
-                shard_membership: vec![1, 2],
+                owner_shard: 1,
             },
             OrionUpperNode {
                 label: id(30),
                 vector: vec![2.0, 0.0],
-                shard_membership: vec![1],
+                owner_shard: 2,
             },
             OrionUpperNode {
                 label: id(40),
                 vector: vec![3.0, 0.0],
-                shard_membership: vec![3],
+                owner_shard: 3,
             },
         ],
         upper_graph: Some(OrionUpperHnswGraph {
@@ -90,11 +90,9 @@ fn route_upper_labels_per_shard_dedup_reference(
             .iter()
             .find(|node| node.label == label)
             .expect("reference labels must exist in the artifact");
-        for &shard_id in &node.shard_membership {
-            let target = targets.entry(shard_id).or_default();
-            if target.seen.insert(label) {
-                target.entry_points.push(label);
-            }
+        let target = targets.entry(node.owner_shard).or_default();
+        if target.seen.insert(label) {
+            target.entry_points.push(label);
         }
     }
 
@@ -174,6 +172,24 @@ fn artifact_round_trip_and_checksum_ignore_json_whitespace() {
 }
 
 #[test]
+fn artifact_rejects_legacy_multi_membership_format() {
+    let mut legacy = serde_json::to_value(valid_artifact()).unwrap();
+    legacy["format_version"] = serde_json::json!(1);
+    let first = legacy["upper_nodes"][0].as_object_mut().unwrap();
+    first.remove("owner_shard");
+    first.insert("shard_membership".to_string(), serde_json::json!([0, 1]));
+
+    assert!(matches!(
+        OrionRoutingArtifact::from_json_slice(&serde_json::to_vec(&legacy).unwrap(), None),
+        Err(OrionRoutingError::InvalidJson(_))
+            | Err(OrionRoutingError::UnsupportedFormatVersion {
+                actual: 1,
+                supported: 2
+            })
+    ));
+}
+
+#[test]
 fn artifact_rejects_checksum_mismatch_and_malformed_checksum() {
     let json = serde_json::to_vec(&valid_artifact()).unwrap();
     let mismatch = "0".repeat(64);
@@ -188,7 +204,7 @@ fn artifact_rejects_checksum_mismatch_and_malformed_checksum() {
 }
 
 #[test]
-fn artifact_rejects_dimension_membership_and_shard_errors() {
+fn artifact_rejects_dimension_and_owner_shard_errors() {
     let mut artifact = valid_artifact();
     artifact.layout_sha256 = "not-a-digest".to_string();
     assert!(matches!(
@@ -218,24 +234,10 @@ fn artifact_rejects_dimension_membership_and_shard_errors() {
     ));
 
     let mut artifact = valid_artifact();
-    artifact.upper_nodes[0].shard_membership.clear();
-    assert!(matches!(
-        artifact.validate(),
-        Err(OrionRoutingError::EmptyShardMembership { .. })
-    ));
-
-    let mut artifact = valid_artifact();
-    artifact.upper_nodes[0].shard_membership = vec![4];
+    artifact.upper_nodes[0].owner_shard = 4;
     assert!(matches!(
         artifact.validate(),
         Err(OrionRoutingError::ShardOutOfRange { .. })
-    ));
-
-    let mut artifact = valid_artifact();
-    artifact.upper_nodes[0].shard_membership = vec![2, 2];
-    assert!(matches!(
-        artifact.validate(),
-        Err(OrionRoutingError::DuplicateShardMembership { .. })
     ));
 }
 
@@ -297,10 +299,10 @@ fn hnsw_search_runs_greedy_upper_levels_then_level_zero_ef_search() {
 }
 
 #[test]
-fn routes_all_memberships_with_sorted_shards_ordered_unique_eps_and_dynamic_ef() {
+fn routes_each_upper_hit_to_one_owner_with_dynamic_ef() {
     let router = OrionRouter::new(valid_artifact()).unwrap();
     let targets = router
-        .route_upper_labels([id(20), id(10), id(20), id(40)])
+        .route_upper_labels([id(20), id(10), id(30), id(40)])
         .unwrap();
 
     // upper_k=3 fixes the routing budget; the fourth label is not adaptively considered.
@@ -319,10 +321,60 @@ fn routes_all_memberships_with_sorted_shards_ordered_unique_eps_and_dynamic_ef()
             },
             OrionShardTarget {
                 shard_id: 2,
-                entry_points: vec![id(20), id(10)],
-                ef: 28,
+                entry_points: vec![id(30)],
+                ef: 24,
             },
         ]
+    );
+    assert_eq!(
+        targets
+            .iter()
+            .map(|target| target.entry_points.len())
+            .sum::<usize>(),
+        3,
+        "three unique upper hits must contribute exactly three shard entry points",
+    );
+}
+
+#[test]
+fn ten_upper_hits_route_three_three_four_exactly_once() {
+    let mut artifact = valid_artifact();
+    artifact.shard_count = 3;
+    artifact.logical_point_count = 10;
+    artifact.physical_point_count = 10;
+    artifact.upper_k = 10;
+    artifact.upper_ef_search = 10;
+    artifact.upper_graph = None;
+    artifact.upper_nodes = (0_u64..10)
+        .map(|index| OrionUpperNode {
+            label: id(100 + index),
+            vector: vec![index as f32, 0.0],
+            owner_shard: match index {
+                0..=2 => 0,
+                3..=5 => 1,
+                _ => 2,
+            },
+        })
+        .collect();
+
+    let router = OrionRouter::new_brute_force_testing(artifact).unwrap();
+    let targets = router
+        .route_upper_labels((0_u64..10).map(|index| id(100 + index)))
+        .unwrap();
+
+    assert_eq!(
+        targets
+            .iter()
+            .map(|target| (target.shard_id, target.entry_points.len(), target.ef))
+            .collect::<Vec<_>>(),
+        vec![(0, 3, 32), (1, 3, 32), (2, 4, 36)],
+    );
+    assert_eq!(
+        targets
+            .iter()
+            .map(|target| target.entry_points.len())
+            .sum::<usize>(),
+        10,
     );
 }
 
@@ -332,8 +384,7 @@ fn optimized_route_planner_matches_per_shard_dedup_reference() {
     let router = OrionRouter::new_brute_force_testing(artifact.clone()).unwrap();
     let labels = [id(10), id(20), id(30), id(40)];
 
-    // Exhaustively cover duplicates, all membership overlaps, and labels beyond upper_k. The
-    // reference is the previous BTreeMap plus one HashSet per target-shard implementation.
+    // Exhaustively cover duplicates and labels beyond upper_k.
     for sequence_len in 0usize..=5 {
         let sequence_count = labels.len().pow(sequence_len as u32);
         for mut encoded_sequence in 0..sequence_count {
@@ -365,8 +416,8 @@ fn route_query_combines_server_side_upper_search_and_route_plan() {
             .collect::<Vec<_>>(),
         vec![0, 1, 2]
     );
-    assert_eq!(targets[2].entry_points, vec![id(10), id(20)]);
-    assert_eq!(targets[2].ef, 28);
+    assert_eq!(targets[2].entry_points, vec![id(30)]);
+    assert_eq!(targets[2].ef, 24);
 }
 
 #[test]
@@ -482,7 +533,7 @@ fn cosine_upper_search_uses_qdrant_preprocessing_and_is_scale_invariant() {
 }
 
 #[test]
-fn incomplete_upper_hnsw_search_is_rejected_instead_of_routing_a_partial_union() {
+fn incomplete_upper_hnsw_search_routes_all_actual_hits() {
     let mut artifact = valid_artifact();
     artifact.upper_graph = Some(OrionUpperHnswGraph {
         entry_point: id(10),
@@ -508,21 +559,17 @@ fn incomplete_upper_hnsw_search_is_rejected_instead_of_routing_a_partial_union()
     });
 
     let router = OrionRouter::new(artifact).unwrap();
-    assert!(matches!(
-        router.search_upper(&[0.0, 0.0]),
-        Err(OrionRoutingError::IncompleteUpperSearch {
-            expected: 3,
-            actual: 1,
-        })
-    ));
+    let hits = router.search_upper(&[0.0, 0.0]).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].label, id(10));
     let mut scratch = router.new_route_scratch();
-    assert!(matches!(
-        router.route_query_with_scratch(&[0.0, 0.0], &mut scratch),
-        Err(OrionRoutingError::IncompleteUpperSearch {
-            expected: 3,
-            actual: 1,
-        })
-    ));
+    let targets = router
+        .route_query_with_scratch(&[0.0, 0.0], &mut scratch)
+        .unwrap();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].shard_id, 0);
+    assert_eq!(targets[0].entry_points, vec![id(10)]);
+    assert_eq!(targets[0].ef, 24);
 }
 
 #[test]

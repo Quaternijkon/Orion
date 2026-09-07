@@ -8,12 +8,14 @@ import hashlib
 import itertools
 import json
 import os
+import queue
 import re
 import shlex
 import socket
 import subprocess
 import sys
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,7 +31,7 @@ import numpy as np
 
 
 ORION_COLLECTION_METADATA_KEY = "orion_harness"
-ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION = 1
+ORION_ROUTING_BUILD_METADATA_SCHEMA_VERSION = 2
 RUNTIME_LOG_ERROR_PATTERNS = {
     "too_many_open_files": re.compile(r"too many open files", re.IGNORECASE),
     "peer_transport_failure": re.compile(
@@ -85,6 +87,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cpp-kmeans-train-size", type=int, default=10000)
     parser.add_argument("--kmeans-iters", type=int, default=10)
     parser.add_argument("--upload-batch-size", type=int, default=1024)
+    parser.add_argument("--upload-concurrency", type=int, default=16)
+    parser.add_argument("--upload-queue-capacity-batches", type=int, default=4)
     parser.add_argument("--tuning-query-count", type=int, default=1000)
     parser.add_argument("--eval-query-count", type=int, default=10000)
     parser.add_argument("--top-k", type=int, default=10)
@@ -507,6 +511,10 @@ def effective_upper_search_ef(args: argparse.Namespace) -> int:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if int(getattr(args, "upload_concurrency", 16)) <= 0:
+        raise ValueError("--upload-concurrency must be positive")
+    if int(getattr(args, "upload_queue_capacity_batches", 4)) <= 0:
+        raise ValueError("--upload-queue-capacity-batches must be positive")
     if int(args.orion_multi_assign_min_max_vote) <= 0:
         raise ValueError("--orion-multi-assign-min-max-vote must be positive")
     if int(args.orion_multi_assign_vote_delta) < 0:
@@ -539,6 +547,20 @@ def validate_args(args: argparse.Namespace) -> None:
             int(getattr(args, "orion_balance_max_passes", 8)),
             stage_vote_loss,
         )
+    if (
+        str(getattr(args, "routing_mode", "")) == "faithful_original_rest"
+        and str(getattr(args, "claim_a_partition_family", "none")) == "none"
+    ):
+        if bool(getattr(args, "disable_multi_assign", False)):
+            raise ValueError("canonical Orion multi-assignment cannot be disabled")
+        if int(getattr(args, "orion_multi_assign_min_max_vote", 2)) != 2:
+            raise ValueError("canonical Orion fixes the multi-assignment threshold at max_vote > 1")
+        if int(getattr(args, "orion_multi_assign_vote_delta", 0)) != 0:
+            raise ValueError("canonical Orion assigns only exact maximum-vote shard ties")
+        if int(getattr(args, "orion_multi_assign_max_shards", 0)) != 0:
+            raise ValueError("canonical Orion cannot cap maximum-vote shard ties")
+        if str(getattr(args, "orion_balance_mode", "none")) != "none":
+            raise ValueError("canonical Orion currently excludes load-balancing intervention")
 
 
 def vector_distance_config(vector_distance: str) -> dict[str, Any]:
@@ -975,6 +997,12 @@ def compute_point_to_l1s(
 
     labels_rows: list[list[int]] = []
     k = min(k_overlap, upper_index.get_current_count())
+    # Canonical Orion uses one build-time budget: efsearch == number of
+    # returned/voting results.  Runtime upper-search tuning is restored by the
+    # caller after the immutable partition/layout has been built.
+    set_ef = getattr(upper_index, "set_ef", None)
+    if callable(set_ef):
+        set_ef(k)
     for start in range(0, len(train), batch_size):
         labels, distances = upper_index.knn_query(
             train[start : start + batch_size],
@@ -1020,6 +1048,103 @@ def initial_l1_shards_by_balanced_kmeans(
     for point_id, shard_id in zip(upper_indices.tolist(), assignments.tolist()):
         l1_to_shard[int(point_id)] = int(shard_id)
     return l1_to_shard
+
+
+def initial_l1_shards_by_kmeans(
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    num_shards: int,
+    kmeans_iters: int,
+    seed: int,
+) -> list[int]:
+    """Cluster upper-navigation points without any capacity/load correction."""
+    centroids = cpp_style_kmeans_train(
+        train,
+        upper_indices,
+        num_shards,
+        max_iter=kmeans_iters,
+        seed=seed,
+    )
+    upper_points = train[np.asarray(upper_indices, dtype=np.int64)].astype(
+        np.float32,
+        copy=False,
+    )
+    assignments = np.argmin(
+        squared_l2_distances(upper_points, centroids),
+        axis=1,
+    )
+    l1_to_shard = [-1] * len(train)
+    for point_id, shard_id in zip(
+        upper_indices.tolist(),
+        assignments.tolist(),
+        strict=True,
+    ):
+        l1_to_shard[int(point_id)] = int(shard_id)
+    return l1_to_shard
+
+
+def self_vote_target_shard(
+    l1s: list[int],
+    reference_l1_shard: list[int],
+) -> int:
+    """Choose one deterministic self-vote winner using nearest-hit tie-break."""
+    ordered_shards = [
+        int(reference_l1_shard[int(l1_idx)])
+        for l1_idx in l1s
+        if 0 <= int(l1_idx) < len(reference_l1_shard)
+        and int(reference_l1_shard[int(l1_idx)]) >= 0
+    ]
+    if not ordered_shards:
+        raise RuntimeError("upper self-search returned no shard-labelled result")
+    votes = Counter(ordered_shards)
+    max_vote = max(votes.values())
+    winning_shards = {
+        int(shard_id) for shard_id, vote in votes.items() if int(vote) == int(max_vote)
+    }
+    return next(shard_id for shard_id in ordered_shards if shard_id in winning_shards)
+
+
+def converge_l1_topology_by_self_vote(
+    point_to_l1s: list[list[int]],
+    upper_indices: np.ndarray,
+    l1_to_shard: list[int],
+    max_iters: int,
+) -> tuple[list[int], int]:
+    """Refine clustered upper labels using only immutable navigation votes."""
+    if max_iters <= 0:
+        raise ValueError("max_iters must be positive")
+    current_shard = list(l1_to_shard)
+    iteration_count = 0
+    for iteration in range(max_iters):
+        next_shard = list(current_shard)
+        changed_count = 0
+        for raw_l1_idx in upper_indices.tolist():
+            l1_idx = int(raw_l1_idx)
+            target_shard = self_vote_target_shard(
+                point_to_l1s[l1_idx],
+                current_shard,
+            )
+            if target_shard != int(current_shard[l1_idx]):
+                next_shard[l1_idx] = target_shard
+                changed_count += 1
+        current_shard = next_shard
+        iteration_count = iteration + 1
+        if changed_count == 0:
+            return current_shard, iteration_count
+
+    unconverged = [
+        int(l1_idx)
+        for l1_idx in upper_indices.tolist()
+        if self_vote_target_shard(point_to_l1s[int(l1_idx)], current_shard)
+        != int(current_shard[int(l1_idx)])
+    ]
+    if unconverged:
+        preview = ", ".join(str(point_id) for point_id in unconverged[:10])
+        raise RuntimeError(
+            "upper self-vote refinement did not converge within "
+            f"{max_iters} iterations; first unstable points: {preview}"
+        )
+    return current_shard, iteration_count
 
 
 def converge_l1_topology(
@@ -1825,6 +1950,37 @@ def target_shards_from_votes(
     return target_shards
 
 
+def strict_target_shards_from_votes(
+    l1s: list[int],
+    reference_l1_shard: list[int],
+) -> list[int]:
+    """Apply the canonical all-max-vote rule to one ordered upper search."""
+    ordered_shards = [
+        int(reference_l1_shard[int(l1_idx)])
+        for l1_idx in l1s
+        if 0 <= int(l1_idx) < len(reference_l1_shard)
+        and int(reference_l1_shard[int(l1_idx)]) >= 0
+    ]
+    if not ordered_shards:
+        raise RuntimeError("point assignment has no shard-labelled navigation result")
+
+    votes = Counter(ordered_shards)
+    max_vote = int(max(votes.values()))
+    if max_vote == 1:
+        # Search results are stored nearest first, so this is exactly the
+        # specified single-assignment exception for an all-one vote.
+        return [int(ordered_shards[0])]
+
+    winning_shards = {
+        int(shard_id) for shard_id, vote in votes.items() if int(vote) == max_vote
+    }
+    # Preserve first navigation appearance for deterministic primary selection,
+    # while returning every and only maximum-vote shard.
+    return list(dict.fromkeys(
+        shard_id for shard_id in ordered_shards if shard_id in winning_shards
+    ))
+
+
 def recalibrate_l1_weights_by_voting(
     point_to_l1s: list[list[int]],
     upper_indices: np.ndarray,
@@ -1954,6 +2110,19 @@ def assign_points_by_l1_vote(
         )
         primary_shards[point_index] = int(target_shards[0])
         point_to_shards.append([int(shard_id) for shard_id in target_shards])
+    return primary_shards, point_to_shards
+
+
+def assign_points_by_strict_l1_vote(
+    point_to_l1s: list[list[int]],
+    reference_l1_shard: list[int],
+) -> tuple[np.ndarray, list[list[int]]]:
+    primary_shards = np.full(len(point_to_l1s), -1, dtype=np.int32)
+    point_to_shards: list[list[int]] = []
+    for point_index, l1s in enumerate(point_to_l1s):
+        target_shards = strict_target_shards_from_votes(l1s, reference_l1_shard)
+        primary_shards[point_index] = int(target_shards[0])
+        point_to_shards.append(target_shards)
     return primary_shards, point_to_shards
 
 
@@ -2204,6 +2373,7 @@ def assign_points_by_l1_vote_capacity_constrained(
     max_passes: int = 8,
     max_vote_loss: int = 3,
     initial_point_to_shards: list[list[int]] | None = None,
+    required_copies_override: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[list[int]], dict[str, Any]]:
     """Place every physical L0 copy under deterministic capacity constraints.
 
@@ -2231,6 +2401,20 @@ def assign_points_by_l1_vote_capacity_constrained(
 
     started = time.perf_counter()
     point_count = len(point_to_l1s)
+    override = None
+    if required_copies_override is not None:
+        override = np.asarray(required_copies_override)
+        if override.shape != (point_count,):
+            raise ValueError(
+                "required_copies_override must have one value per point"
+            )
+        if not np.issubdtype(override.dtype, np.integer):
+            raise TypeError("required_copies_override must contain integers")
+        if np.any(override <= 0) or np.any(override > int(num_shards)):
+            raise ValueError(
+                "required_copies_override values must lie in [1, num_shards]"
+            )
+        override = np.asarray(override, dtype=np.int16)
     effective_vote_loss = max(int(max_vote_loss), int(multi_assign_vote_delta))
     required_copies = np.ones(point_count, dtype=np.int16)
     candidate_slack = np.zeros(point_count, dtype=np.int16)
@@ -2247,12 +2431,16 @@ def assign_points_by_l1_vote_capacity_constrained(
             continue
         for shard_id in votes:
             navigation_point_coverage[int(shard_id)] += 1
-        requested = requested_copy_count_from_votes(
-            votes,
-            use_multi_assign,
-            multi_assign_min_max_vote,
-            multi_assign_vote_delta,
-            multi_assign_max_shards,
+        requested = (
+            int(override[point_id])
+            if override is not None
+            else requested_copy_count_from_votes(
+                votes,
+                use_multi_assign,
+                multi_assign_min_max_vote,
+                multi_assign_vote_delta,
+                multi_assign_max_shards,
+            )
         )
         eligible = eligible_navigation_shards(votes, effective_vote_loss)
         for shard_id in eligible:
@@ -2546,6 +2734,11 @@ def assign_points_by_l1_vote_capacity_constrained(
         "configured_max_vote_loss": int(max_vote_loss),
         "effective_max_vote_loss": int(effective_vote_loss),
         "requested_total_copies": int(requested_total_copies),
+        "required_copy_count_source": (
+            "explicit_override"
+            if override is not None
+            else "multi_assignment_vote_rule"
+        ),
         "navigation_point_coverage_by_shard": [
             int(value) for value in navigation_point_coverage.tolist()
         ],
@@ -2668,6 +2861,7 @@ def write_orion_graphless_artifact(
     train: np.ndarray,
     upper_indices: np.ndarray,
     point_to_shards: list[list[int]],
+    upper_owner_by_point: list[int],
     num_shards: int,
     output_path: str | Path,
     *,
@@ -2687,6 +2881,125 @@ def write_orion_graphless_artifact(
         int(vectors.shape[0]),
         num_shards,
     )
+    upper_indices = np.asarray(upper_indices, dtype=np.int64)
+    if upper_indices.ndim != 1 or len(upper_indices) == 0:
+        raise ValueError("upper_indices must be a non-empty one-dimensional array")
+    if len(set(map(int, upper_indices.tolist()))) != len(upper_indices):
+        raise ValueError("upper_indices must not contain duplicate point IDs")
+    if np.any(upper_indices < 0) or np.any(upper_indices >= len(vectors)):
+        raise ValueError("upper_indices contains a point outside the training set")
+    if len(upper_owner_by_point) != len(vectors):
+        raise ValueError("upper_owner_by_point must contain one entry per training vector")
+    normalized_upper_owners: dict[int, int] = {}
+    for point_id in map(int, upper_indices.tolist()):
+        owner_shard = int(upper_owner_by_point[point_id])
+        if owner_shard < 0 or owner_shard >= int(num_shards):
+            raise ValueError(
+                f"upper point {point_id} owner shard {owner_shard} is outside [0, {num_shards})"
+            )
+        if owner_shard not in normalized_assignments[point_id]:
+            raise ValueError(
+                f"upper point {point_id} owner shard {owner_shard} has no lower-tier copy"
+            )
+        normalized_upper_owners[point_id] = owner_shard
+    if generation <= 0:
+        raise ValueError("generation must be positive")
+    if upper_k <= 0 or upper_k > len(upper_indices):
+        raise ValueError("upper_k must be positive and no larger than the upper tier")
+    if upper_ef_search < upper_k:
+        raise ValueError("upper_ef_search must be at least upper_k")
+    if dynamic_ef_base <= 0 or dynamic_ef_factor < 0:
+        raise ValueError("Dynamic EF base must be positive and factor non-negative")
+    if not isinstance(vector_name, str):
+        raise TypeError("vector_name must be a string")
+
+    distance_name = str(vector_distance).strip().lower()
+    distance = {
+        "cosine": "Cosine",
+        "dot": "Dot",
+        "euclid": "Euclid",
+        "l2": "Euclid",
+        "manhattan": "Manhattan",
+    }.get(distance_name)
+    if distance is None:
+        raise ValueError(f"unsupported Orion artifact distance: {vector_distance!r}")
+
+    layout_digest = hashlib.sha256()
+    for point_id, shard_ids in enumerate(normalized_assignments):
+        layout_digest.update(canonical_orion_assignment_line(point_id, shard_ids))
+
+    artifact = {
+        "format_version": 2,
+        "generation": int(generation),
+        "vector_schema": {
+            "vector_name": vector_name,
+            "dimension": int(vectors.shape[1]),
+            "distance": distance,
+            "datatype": "float32",
+        },
+        "shard_count": int(num_shards),
+        "layout_sha256": layout_digest.hexdigest(),
+        "logical_point_count": int(len(vectors)),
+        "physical_point_count": int(total_copies),
+        "upper_k": int(upper_k),
+        "upper_ef_search": int(upper_ef_search),
+        "dynamic_ef_base": int(dynamic_ef_base),
+        "dynamic_ef_factor": int(dynamic_ef_factor),
+        "upper_nodes": [
+            {
+                "label": int(point_id),
+                "vector": vectors[int(point_id)].tolist(),
+                "owner_shard": normalized_upper_owners[int(point_id)],
+            }
+            for point_id in upper_indices.tolist()
+        ],
+    }
+    output_path = Path(output_path)
+    if output_path.exists():
+        raise FileExistsError(f"refusing to overwrite Orion artifact: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
+    temporary.unlink(missing_ok=True)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(artifact, handle, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        os.replace(temporary, output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return output_path
+
+
+def write_orion_upper_seed_graphless_artifact(
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    output_path: str | Path,
+    *,
+    generation: int,
+    vector_distance: str,
+    upper_k: int,
+    upper_ef_search: int,
+    dynamic_ef_base: int,
+    dynamic_ef_factor: int,
+    vector_name: str = "",
+) -> Path:
+    """Write the neutral, build-only input for the one canonical upper graph.
+
+    The upper HNSW is independent of shard memberships, but the typed production
+    artifact requires every upper node to have a valid membership and requires a
+    full-layout checksum.  This seed therefore binds every logical point to the
+    single neutral shard 0.  It must never be imported or served as the final
+    Orion layout; ``orion_rebind_memberships --finalize-build`` replaces only the
+    layout metadata and upper-node memberships after attachments have been
+    generated from the frozen graph.
+
+    The neutral checksum is streamed instead of materializing ``N`` singleton
+    Python lists, keeping the pre-attachment stage bounded by the upper vectors.
+    """
+
+    vectors = np.asarray(train, dtype=np.float32)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
     upper_indices = np.asarray(upper_indices, dtype=np.int64)
     if upper_indices.ndim != 1 or len(upper_indices) == 0:
         raise ValueError("upper_indices must be a non-empty one-dimensional array")
@@ -2717,11 +3030,11 @@ def write_orion_graphless_artifact(
         raise ValueError(f"unsupported Orion artifact distance: {vector_distance!r}")
 
     layout_digest = hashlib.sha256()
-    for point_id, shard_ids in enumerate(normalized_assignments):
-        layout_digest.update(canonical_orion_assignment_line(point_id, shard_ids))
+    for point_id in range(len(vectors)):
+        layout_digest.update(canonical_orion_assignment_line(point_id, [0]))
 
     artifact = {
-        "format_version": 1,
+        "format_version": 2,
         "generation": int(generation),
         "vector_schema": {
             "vector_name": vector_name,
@@ -2729,10 +3042,10 @@ def write_orion_graphless_artifact(
             "distance": distance,
             "datatype": "float32",
         },
-        "shard_count": int(num_shards),
+        "shard_count": 1,
         "layout_sha256": layout_digest.hexdigest(),
         "logical_point_count": int(len(vectors)),
-        "physical_point_count": int(total_copies),
+        "physical_point_count": int(len(vectors)),
         "upper_k": int(upper_k),
         "upper_ef_search": int(upper_ef_search),
         "dynamic_ef_base": int(dynamic_ef_base),
@@ -2741,7 +3054,7 @@ def write_orion_graphless_artifact(
             {
                 "label": int(point_id),
                 "vector": vectors[int(point_id)].tolist(),
-                "shard_membership": normalized_assignments[int(point_id)],
+                "owner_shard": 0,
             }
             for point_id in upper_indices.tolist()
         ],
@@ -2868,6 +3181,51 @@ def write_simple_kmeans_graphless_artifact(
     return output_path
 
 
+def write_orion_numeric_vector_file(
+    train: np.ndarray,
+    output_path: str | Path,
+    *,
+    row_chunk_size: int = 16384,
+) -> str:
+    """Write canonical row-major little-endian f32 vectors exactly once.
+
+    The canonical Orion build uses this file first as the query input for
+    ``orion_export_upper_hits`` and later reuses the same bytes in the numeric
+    shard import bundle.  Existing files are never overwritten.
+    """
+
+    vectors = np.asarray(train)
+    if vectors.ndim != 2 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        raise ValueError("train must be a non-empty two-dimensional array")
+    if row_chunk_size <= 0:
+        raise ValueError("row_chunk_size must be positive")
+    output_path = Path(output_path)
+    if output_path.exists():
+        raise FileExistsError(f"refusing to overwrite vector file: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_name(output_path.name + ".tmp")
+    temporary.unlink(missing_ok=True)
+    digest = hashlib.sha256()
+    try:
+        little_endian_f32 = np.dtype("<f4")
+        with temporary.open("wb") as handle:
+            for start in range(0, int(vectors.shape[0]), row_chunk_size):
+                chunk = np.ascontiguousarray(
+                    vectors[start : start + row_chunk_size],
+                    dtype=little_endian_f32,
+                )
+                if not np.isfinite(chunk).all():
+                    raise ValueError(f"train contains a non-finite value near row {start}")
+                raw = memoryview(chunk).cast("B")
+                handle.write(raw)
+                digest.update(raw)
+        os.replace(temporary, output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return digest.hexdigest()
+
+
 def write_orion_numeric_shard_import_bundle(
     train: np.ndarray,
     point_to_shards: list[list[int]],
@@ -2878,6 +3236,7 @@ def write_orion_numeric_shard_import_bundle(
     vector_name: str = "",
     prefix: str = "orion_numeric_import",
     row_chunk_size: int = 16384,
+    prewritten_vectors_path: str | Path | None = None,
 ) -> Path:
     """Write the bounded-memory input bundle for ``orion_numeric_shard_import``.
 
@@ -2917,7 +3276,18 @@ def write_orion_numeric_shard_import_bundle(
     vectors_path = output_dir / f"{prefix}.f32le"
     assignments_path = output_dir / f"{prefix}.assignments.jsonl"
     manifest_path = output_dir / f"{prefix}.manifest.json"
-    final_paths = [vectors_path, assignments_path, manifest_path]
+    reuse_vectors = prewritten_vectors_path is not None
+    if reuse_vectors:
+        supplied_vectors_path = Path(prewritten_vectors_path).expanduser().resolve()
+        if supplied_vectors_path != vectors_path.resolve():
+            raise ValueError(
+                "prewritten_vectors_path must be the bundle's canonical vectors path"
+            )
+        if not vectors_path.is_file():
+            raise FileNotFoundError(f"prewritten vector file not found: {vectors_path}")
+    final_paths = [assignments_path, manifest_path]
+    if not reuse_vectors:
+        final_paths.insert(0, vectors_path)
     existing = [path for path in final_paths if path.exists()]
     if existing:
         raise FileExistsError(
@@ -2928,7 +3298,9 @@ def write_orion_numeric_shard_import_bundle(
     vectors_tmp = vectors_path.with_name(vectors_path.name + ".tmp")
     assignments_tmp = assignments_path.with_name(assignments_path.name + ".tmp")
     manifest_tmp = manifest_path.with_name(manifest_path.name + ".tmp")
-    temp_paths = [vectors_tmp, assignments_tmp, manifest_tmp]
+    temp_paths = [assignments_tmp, manifest_tmp]
+    if not reuse_vectors:
+        temp_paths.insert(0, vectors_tmp)
     promoted_paths: list[Path] = []
     for path in temp_paths:
         path.unlink(missing_ok=True)
@@ -2937,17 +3309,44 @@ def write_orion_numeric_shard_import_bundle(
     assignments_digest = hashlib.sha256()
     try:
         little_endian_f32 = np.dtype("<f4")
-        with vectors_tmp.open("wb") as handle:
-            for start in range(0, int(vectors.shape[0]), row_chunk_size):
-                chunk = np.ascontiguousarray(
-                    vectors[start : start + row_chunk_size],
-                    dtype=little_endian_f32,
+        if reuse_vectors:
+            expected_size = int(vectors.shape[0]) * int(vectors.shape[1]) * 4
+            if vectors_path.stat().st_size != expected_size:
+                raise ValueError(
+                    "prewritten vector file size does not match the training matrix"
                 )
-                if not np.isfinite(chunk).all():
-                    raise ValueError(f"train contains a non-finite value near row {start}")
-                raw = memoryview(chunk).cast("B")
-                handle.write(raw)
-                vectors_digest.update(raw)
+            with vectors_path.open("rb") as handle:
+                for start in range(0, int(vectors.shape[0]), row_chunk_size):
+                    chunk = np.ascontiguousarray(
+                        vectors[start : start + row_chunk_size],
+                        dtype=little_endian_f32,
+                    )
+                    if not np.isfinite(chunk).all():
+                        raise ValueError(
+                            f"train contains a non-finite value near row {start}"
+                        )
+                    expected = memoryview(chunk).cast("B").tobytes()
+                    observed = handle.read(len(expected))
+                    if observed != expected:
+                        raise ValueError(
+                            "prewritten vector file differs from the training matrix "
+                            f"near row {start}"
+                        )
+                    vectors_digest.update(observed)
+                if handle.read(1):
+                    raise ValueError("prewritten vector file contains trailing bytes")
+        else:
+            with vectors_tmp.open("wb") as handle:
+                for start in range(0, int(vectors.shape[0]), row_chunk_size):
+                    chunk = np.ascontiguousarray(
+                        vectors[start : start + row_chunk_size],
+                        dtype=little_endian_f32,
+                    )
+                    if not np.isfinite(chunk).all():
+                        raise ValueError(f"train contains a non-finite value near row {start}")
+                    raw = memoryview(chunk).cast("B")
+                    handle.write(raw)
+                    vectors_digest.update(raw)
 
         with assignments_tmp.open("wb") as handle:
             for point_id, shard_ids in enumerate(normalized_assignments):
@@ -2990,8 +3389,9 @@ def write_orion_numeric_shard_import_bundle(
             json.dump(manifest, handle, sort_keys=True, indent=2, allow_nan=False)
             handle.write("\n")
 
-        os.replace(vectors_tmp, vectors_path)
-        promoted_paths.append(vectors_path)
+        if not reuse_vectors:
+            os.replace(vectors_tmp, vectors_path)
+            promoted_paths.append(vectors_path)
         os.replace(assignments_tmp, assignments_path)
         promoted_paths.append(assignments_path)
         os.replace(manifest_tmp, manifest_path)
@@ -3204,6 +3604,55 @@ def point_indices_by_shard(
     return [np.asarray(indices, dtype=np.int64) for indices in by_shard]
 
 
+def iter_shard_upload_batches(
+    point_to_shards: list[list[int]],
+    num_shards: int,
+    batch_size: int,
+    upper_indices: np.ndarray | None = None,
+) -> Any:
+    """Yield bounded point-major batches so shard indexing can overlap ingestion."""
+    if num_shards <= 0:
+        raise ValueError("num_shards must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if upper_indices is None:
+        ordered_points: Any = range(len(point_to_shards))
+    else:
+        upper_ids = np.asarray(upper_indices, dtype=np.int64)
+        if np.any(upper_ids < 0) or np.any(upper_ids >= len(point_to_shards)):
+            raise ValueError("upper_indices contains an out-of-range point ID")
+        if len(np.unique(upper_ids)) != len(upper_ids):
+            raise ValueError("upper_indices must be unique")
+        is_upper = np.zeros(len(point_to_shards), dtype=bool)
+        is_upper[upper_ids] = True
+        ordered_points = [int(point_id) for point_id in upper_ids.tolist()]
+        ordered_points.extend(
+            int(point_id) for point_id in np.flatnonzero(~is_upper).tolist()
+        )
+
+    pending: list[list[int]] = [[] for _ in range(num_shards)]
+    for raw_point_id in ordered_points:
+        point_id = int(raw_point_id)
+        shard_ids = [int(shard_id) for shard_id in point_to_shards[point_id]]
+        if not shard_ids:
+            raise ValueError(f"point {point_id} has no shard assignment")
+        if len(set(shard_ids)) != len(shard_ids):
+            raise ValueError(f"point {point_id} repeats a shard assignment")
+        for shard_id in shard_ids:
+            if not 0 <= shard_id < num_shards:
+                raise ValueError(
+                    f"point {point_id} references out-of-range shard {shard_id}"
+                )
+            pending[shard_id].append(point_id)
+            if len(pending[shard_id]) == batch_size:
+                yield shard_id, np.asarray(pending[shard_id], dtype=np.int64)
+                pending[shard_id] = []
+
+    for shard_id, point_ids in enumerate(pending):
+        if point_ids:
+            yield shard_id, np.asarray(point_ids, dtype=np.int64)
+
+
 def hash_point_to_shards(num_points: int, num_shards: int) -> list[list[int]]:
     if num_points <= 0:
         raise ValueError("num_points must be positive")
@@ -3241,6 +3690,67 @@ def fixed_ef_shard_key_chunks(
     if flattened != normalized or sum(map(len, chunks)) != len(set(flattened)):
         raise RuntimeError("fixed EF shard chunks are not a disjoint full partition")
     return chunks
+
+
+def build_canonical_routing_state(
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    point_to_l1s: list[list[int]],
+    num_shards: int,
+    kmeans_iters: int,
+    kmeans_seed: int,
+    topology_iters: int,
+) -> OriginalRoutingState:
+    """Build the current Orion layout without balancing, fission, or vote tuning."""
+    if len(point_to_l1s) != len(train):
+        raise ValueError("point_to_l1s must contain one ordered search result per point")
+    l1_to_shard = initial_l1_shards_by_kmeans(
+        train,
+        upper_indices,
+        num_shards,
+        kmeans_iters,
+        kmeans_seed,
+    )
+    l1_to_shard, topology_iteration_count = converge_l1_topology_by_self_vote(
+        point_to_l1s,
+        upper_indices,
+        l1_to_shard,
+        topology_iters,
+    )
+    primary_shards, point_to_shards = assign_points_by_strict_l1_vote(
+        point_to_l1s,
+        l1_to_shard,
+    )
+
+    missing_entry_copies = [
+        int(point_id)
+        for point_id in upper_indices.tolist()
+        if int(l1_to_shard[int(point_id)]) not in point_to_shards[int(point_id)]
+    ]
+    if missing_entry_copies:
+        preview = ", ".join(str(point_id) for point_id in missing_entry_copies[:10])
+        raise RuntimeError(
+            "frozen upper ownership is inconsistent with strict navigation-vote "
+            f"assignment; first missing entry copies: {preview}"
+        )
+
+    shard_counts = shard_counts_from_point_to_shards(point_to_shards, num_shards)
+    total_assigned = int(np.sum(shard_counts))
+    return OriginalRoutingState(
+        initial_num_shards=num_shards,
+        num_shards=num_shards,
+        upper_indices=upper_indices,
+        point_to_l1s=point_to_l1s,
+        l1_to_shard=l1_to_shard,
+        primary_shards=primary_shards,
+        point_to_shards=point_to_shards,
+        shard_counts=shard_counts,
+        total_assigned=total_assigned,
+        expansion_ratio=float(total_assigned / len(train)),
+        topology_iterations=topology_iteration_count,
+        fission_events=[],
+        balance_diagnostics=None,
+    )
 
 
 def build_original_routing_state(
@@ -3948,19 +4458,25 @@ def build_routing_build_metadata(
     is_orion = routing_mode == "faithful_original_rest"
     is_simple = routing_mode == "kmeans_simple_nprobe"
     claim_a_family = str(getattr(args, "claim_a_partition_family", "none"))
-    orion_multi_assign = is_orion and not bool(getattr(args, "disable_multi_assign", False))
+    canonical_orion = is_orion and claim_a_family == "none"
+    orion_multi_assign = canonical_orion or (
+        is_orion and not bool(getattr(args, "disable_multi_assign", False))
+    )
     simple_alpha = float(getattr(args, "simple_kmeans_multi_assign_alpha", 1.0))
     simple_multi_assign = is_simple and simple_alpha > 1.0
     upper_k_candidates = [
         int(value)
         for value in (getattr(args, "upper_k_candidates", None) or [])
     ]
-    upper_search_ef_during_build = max(
-        [int(getattr(args, "upper_search_ef", 100)), *upper_k_candidates]
+    upper_search_ef_during_build = (
+        int(getattr(args, "k_overlap", 10))
+        if canonical_orion
+        else max([int(getattr(args, "upper_search_ef", 100)), *upper_k_candidates])
     )
     fission_enabled = (
         is_orion
         and claim_a_family == "none"
+        and not canonical_orion
         and not bool(getattr(args, "disable_fission", False))
         and str(getattr(args, "orion_balance_mode", "none")) == "none"
     )
@@ -3987,14 +4503,37 @@ def build_routing_build_metadata(
         "sample_denominator": int(getattr(args, "sample_denominator", 32)),
         "k_overlap": int(getattr(args, "k_overlap", 10)),
         "topology_iters": int(getattr(args, "topology_iters", 50)),
+        "upper_routing": {
+            "ownership": (
+                "single_frozen_owner"
+                if is_orion
+                else "method_specific"
+            ),
+            "lower_multi_assignment_can_widen_routing": False,
+        },
         "multi_assign": {
             "enabled": bool(orion_multi_assign or simple_multi_assign),
             "orion_enabled": bool(orion_multi_assign),
-            "orion_min_max_vote": int(
-                getattr(args, "orion_multi_assign_min_max_vote", 2)
+            "orion_min_max_vote": (
+                2
+                if canonical_orion
+                else int(getattr(args, "orion_multi_assign_min_max_vote", 2))
             ),
-            "orion_vote_delta": int(getattr(args, "orion_multi_assign_vote_delta", 0)),
-            "orion_max_shards": int(getattr(args, "orion_multi_assign_max_shards", 0)),
+            "orion_vote_delta": (
+                0
+                if canonical_orion
+                else int(getattr(args, "orion_multi_assign_vote_delta", 0))
+            ),
+            "orion_max_shards": (
+                0
+                if canonical_orion
+                else int(getattr(args, "orion_multi_assign_max_shards", 0))
+            ),
+            "policy": (
+                "all_max_vote_ties_else_nearest_when_max_vote_is_one"
+                if canonical_orion
+                else "experimental"
+            ),
             "simple_kmeans_enabled": bool(simple_multi_assign),
             "simple_kmeans_alpha": simple_alpha,
             "simple_kmeans_chunk_size": int(
@@ -4006,28 +4545,38 @@ def build_routing_build_metadata(
             "claim_a_partition_family": claim_a_family,
             "claim_a_random_seed": int(getattr(args, "claim_a_random_seed", 12345)),
         },
-        "orion_balance": {
-            "mode": str(getattr(args, "orion_balance_mode", "none")),
-            "min_load_ratio": float(
-                getattr(args, "orion_balance_min_load_ratio", 0.99)
-            ),
-            "max_load_ratio": float(
-                getattr(args, "orion_balance_max_load_ratio", 1.01)
-            ),
-            "max_passes": int(getattr(args, "orion_balance_max_passes", 8)),
-            "max_vote_loss": int(
-                getattr(args, "orion_balance_max_vote_loss", 3)
-            ),
-            "l1_max_vote_loss": resolve_capacity_balance_vote_losses(
-                int(getattr(args, "orion_balance_max_vote_loss", 3)),
-                getattr(args, "orion_balance_l1_max_vote_loss", None),
-                getattr(args, "orion_balance_l0_max_vote_loss", None),
-            )[0],
-            "l0_max_vote_loss": resolve_capacity_balance_vote_losses(
-                int(getattr(args, "orion_balance_max_vote_loss", 3)),
-                getattr(args, "orion_balance_l1_max_vote_loss", None),
-                getattr(args, "orion_balance_l0_max_vote_loss", None),
-            )[1],
+        "orion_balance": (
+            {"mode": "none", "intervention": False}
+            if canonical_orion
+            else {
+                "mode": str(getattr(args, "orion_balance_mode", "none")),
+                "min_load_ratio": float(
+                    getattr(args, "orion_balance_min_load_ratio", 0.99)
+                ),
+                "max_load_ratio": float(
+                    getattr(args, "orion_balance_max_load_ratio", 1.01)
+                ),
+                "max_passes": int(getattr(args, "orion_balance_max_passes", 8)),
+                "max_vote_loss": int(
+                    getattr(args, "orion_balance_max_vote_loss", 3)
+                ),
+                "l1_max_vote_loss": resolve_capacity_balance_vote_losses(
+                    int(getattr(args, "orion_balance_max_vote_loss", 3)),
+                    getattr(args, "orion_balance_l1_max_vote_loss", None),
+                    getattr(args, "orion_balance_l0_max_vote_loss", None),
+                )[0],
+                "l0_max_vote_loss": resolve_capacity_balance_vote_losses(
+                    int(getattr(args, "orion_balance_max_vote_loss", 3)),
+                    getattr(args, "orion_balance_l1_max_vote_loss", None),
+                    getattr(args, "orion_balance_l0_max_vote_loss", None),
+                )[1],
+            }
+        ),
+        "lower_hnsw": {
+            "construction": "independent_full_multilayer_per_shard",
+            "retain_non_base_layers": True,
+            "routed_search_start_level": 0,
+            "routed_entry_points_required": bool(canonical_orion),
         },
         "legacy_centroid": {
             "sample_size": int(getattr(args, "sample_size", 50000)),
@@ -4164,7 +4713,13 @@ def create_collection(
     ef_construct: int,
     vector_distance: str = "Cosine",
     routing_build_metadata: dict[str, Any] | None = None,
+    *,
+    indexing_threshold: int = 10,
 ) -> None:
+    if isinstance(indexing_threshold, bool) or not isinstance(indexing_threshold, int):
+        raise TypeError("indexing_threshold must be an integer")
+    if indexing_threshold <= 0:
+        raise ValueError("indexing_threshold must be positive")
     body: dict[str, Any] = {
         "vectors": {"size": dim, "distance": vector_distance},
         "shard_number": 1,
@@ -4177,7 +4732,10 @@ def create_collection(
             "full_scan_threshold": 10,
             "max_indexing_threads": 0,
         },
-        "optimizers_config": {"default_segment_number": 1, "indexing_threshold": 10},
+        "optimizers_config": {
+            "default_segment_number": 1,
+            "indexing_threshold": indexing_threshold,
+        },
     }
     if routing_build_metadata is not None:
         body["metadata"] = collection_metadata_for_routing_build(routing_build_metadata)
@@ -5351,6 +5909,7 @@ def wait_collection_indexed(
     collection: str,
     expected_points: int,
     timeout_sec: float = 7200.0,
+    require_fully_indexed: bool = False,
 ) -> dict:
     start = time.perf_counter()
     last_indexed: int | None = None
@@ -5379,7 +5938,9 @@ def wait_collection_indexed(
         )
         no_transfers = not cluster_info or not (cluster_info.get("shard_transfers") or [])
         indexing_complete = indexed >= expected_points or (
-            points == expected_points and time.perf_counter() - last_change >= 30.0
+            not require_fully_indexed
+            and points == expected_points
+            and time.perf_counter() - last_change >= 30.0
         )
         stable = (
             points == expected_points
@@ -5592,9 +6153,24 @@ def ensure_collection_from_point_shards(
     shard_placement_map: dict[str, int] | None = None,
     vector_distance: str = "Cosine",
     routing_build_metadata: dict[str, Any] | None = None,
+    force_hnsw_for_nonempty_shards: bool = False,
+    upload_concurrency: int = 16,
+    upload_queue_capacity_batches: int = 4,
 ) -> dict[str, Any]:
     shard_keys = [shard_key_for_id(shard_id) for shard_id in range(num_shards)]
     expected_points = total_assigned_points(point_to_shards)
+    if (
+        isinstance(upload_concurrency, bool)
+        or not isinstance(upload_concurrency, int)
+        or upload_concurrency <= 0
+    ):
+        raise ValueError("upload_concurrency must be a positive integer")
+    if (
+        isinstance(upload_queue_capacity_batches, bool)
+        or not isinstance(upload_queue_capacity_batches, int)
+        or upload_queue_capacity_batches <= 0
+    ):
+        raise ValueError("upload_queue_capacity_batches must be a positive integer")
     exists = collection_exists(base_url, collection)
     if reuse_existing and exists:
         validate_existing_collection(
@@ -5610,6 +6186,9 @@ def ensure_collection_from_point_shards(
             expected_routing_build_metadata=routing_build_metadata,
         )
     created = not reuse_existing or not exists
+    upload_elapsed_seconds = 0.0
+    upload_backpressure_events = 0
+    max_observed_queue_batches = 0
     if created:
         delete_collection_if_exists(base_url, collection)
         create_collection(
@@ -5620,22 +6199,114 @@ def ensure_collection_from_point_shards(
             ef_construct,
             vector_distance,
             routing_build_metadata,
+            indexing_threshold=(1 if force_hnsw_for_nonempty_shards else 10),
         )
         for shard_id, shard_key in enumerate(shard_keys):
             placement = placement_for_shard_key(shard_id, peer_ids, shard_placement, shard_placement_map)
             create_shard_key(base_url, collection, shard_key, placement=placement)
 
-        points_by_shard = point_indices_by_shard(point_to_shards, num_shards, upper_indices)
-        for shard_id, shard_key in enumerate(shard_keys):
-            point_indices = points_by_shard[shard_id]
-            for start_idx in range(0, len(point_indices), upload_batch_size):
-                idx_chunk = point_indices[start_idx : start_idx + upload_batch_size]
-                ids = [encode_copy_id(int(point_idx), shard_id, len(train)) for point_idx in idx_chunk.tolist()]
-                source_ids = [int(point_idx) for point_idx in idx_chunk.tolist()]
-                vectors = train[idx_chunk].tolist()
-                upsert_points(base_url, collection, shard_key, ids, vectors, source_ids=source_ids)
+        shard_queues = [
+            queue.Queue(maxsize=upload_queue_capacity_batches)
+            for _ in range(num_shards)
+        ]
+        request_budget = threading.BoundedSemaphore(upload_concurrency)
+        stop_marker = object()
+        stop_event = threading.Event()
+        upload_started = time.perf_counter()
 
-    info = wait_collection_indexed(base_url, collection, expected_points)
+        def upload_one_shard(shard_id: int) -> tuple[int, int, int]:
+            request_count = 0
+            uploaded_copies = 0
+            try:
+                while not stop_event.is_set():
+                    try:
+                        item = shard_queues[shard_id].get(timeout=0.1)
+                    except queue.Empty:
+                        continue
+                    if item is stop_marker:
+                        shard_queues[shard_id].task_done()
+                        break
+                    idx_chunk = item
+                    source_ids = [int(point_idx) for point_idx in idx_chunk.tolist()]
+                    ids = [
+                        encode_copy_id(point_idx, shard_id, len(train))
+                        for point_idx in source_ids
+                    ]
+                    # Each shard has one ordered producer task. Different shards upload
+                    # concurrently while Qdrant independently builds their HNSW indexes.
+                    with request_budget:
+                        upsert_points(
+                            base_url,
+                            collection,
+                            shard_keys[shard_id],
+                            ids,
+                            train[idx_chunk].tolist(),
+                            source_ids=source_ids,
+                        )
+                    request_count += 1
+                    uploaded_copies += len(idx_chunk)
+                    shard_queues[shard_id].task_done()
+            except BaseException:
+                stop_event.set()
+                raise
+            return shard_id, uploaded_copies, request_count
+
+        worker_count = num_shards
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = [pool.submit(upload_one_shard, shard_id) for shard_id in range(num_shards)]
+
+            def enqueue(shard_id: int, item: Any) -> None:
+                nonlocal upload_backpressure_events, max_observed_queue_batches
+                while True:
+                    if stop_event.is_set():
+                        for future in futures:
+                            if future.done():
+                                future.result()
+                        raise RuntimeError("parallel shard upload stopped")
+                    try:
+                        shard_queues[shard_id].put(item, timeout=0.1)
+                        max_observed_queue_batches = max(
+                            max_observed_queue_batches,
+                            shard_queues[shard_id].qsize(),
+                        )
+                        return
+                    except queue.Full:
+                        upload_backpressure_events += 1
+                        for future in futures:
+                            if future.done():
+                                future.result()
+
+            try:
+                for shard_id, idx_chunk in iter_shard_upload_batches(
+                    point_to_shards,
+                    num_shards,
+                    upload_batch_size,
+                    upper_indices,
+                ):
+                    enqueue(shard_id, idx_chunk)
+                for shard_id in range(num_shards):
+                    enqueue(shard_id, stop_marker)
+            except BaseException:
+                stop_event.set()
+                raise
+            upload_results = [future.result() for future in futures]
+        upload_elapsed_seconds = time.perf_counter() - upload_started
+        uploaded_copies = sum(result[1] for result in upload_results)
+        if uploaded_copies != expected_points:
+            raise RuntimeError(
+                f"parallel shard upload acknowledged {uploaded_copies} copies, expected {expected_points}"
+            )
+        upload_request_count = sum(result[2] for result in upload_results)
+    else:
+        worker_count = num_shards
+        upload_request_count = 0
+
+    info = wait_collection_indexed(
+        base_url,
+        collection,
+        expected_points,
+        require_fully_indexed=force_hnsw_for_nonempty_shards,
+    )
     routing_metadata_validation = collection_routing_build_metadata_validation(
         info,
         routing_build_metadata,
@@ -5646,6 +6317,21 @@ def ensure_collection_from_point_shards(
             f"{routing_metadata_validation['status']}"
         )
     cluster_summary = collection_cluster_summary(collection_cluster_info(base_url, collection))
+    if force_hnsw_for_nonempty_shards:
+        indexed_vectors = int(info.get("indexed_vectors_count") or 0)
+        if indexed_vectors != expected_points:
+            raise RuntimeError(
+                "Orion requires every non-empty shard to finish HNSW indexing: "
+                f"indexed_vectors_count={indexed_vectors}, expected={expected_points}"
+            )
+        expected_segments = int(num_shards) * 2
+        actual_segments = int(info.get("segments_count") or 0)
+        if actual_segments != expected_segments:
+            raise RuntimeError(
+                "Orion requires one complete HNSW segment and one appendable "
+                f"segment per shard: segments_count={actual_segments}, "
+                f"expected={expected_segments}"
+            )
     return {
         "collection": collection,
         "points_count": int(info.get("points_count") or 0),
@@ -5655,6 +6341,26 @@ def ensure_collection_from_point_shards(
         "discovered_peer_count": len(peer_ids),
         "logical_points_count": int(len(train)),
         "assigned_points_count": int(expected_points),
+        "ingest_mode": "parallel_per_shard_ordered_batches",
+        "max_buffered_point_ids": int(
+            num_shards * (upload_queue_capacity_batches + 1) * upload_batch_size
+        ),
+        "upload_worker_count": int(worker_count),
+        "upload_concurrency": int(min(num_shards, upload_concurrency)),
+        "upload_queue_capacity_batches": int(upload_queue_capacity_batches),
+        "upload_request_count": int(upload_request_count),
+        "upload_backpressure_events": int(upload_backpressure_events),
+        "max_observed_queue_batches": int(max_observed_queue_batches),
+        "upload_elapsed_seconds": float(upload_elapsed_seconds),
+        "upload_copies_per_second": (
+            float(expected_points / upload_elapsed_seconds)
+            if upload_elapsed_seconds > 0
+            else None
+        ),
+        "lower_hnsw_construction": "independent_full_multilayer_per_shard",
+        "lower_hnsw_retains_non_base_layers": True,
+        "routed_search_start_level": 0,
+        "force_hnsw_for_nonempty_shards": bool(force_hnsw_for_nonempty_shards),
         **routing_build_metadata_validation_fields(routing_metadata_validation),
         **cluster_summary,
     }
@@ -6605,7 +7311,22 @@ def evaluate_config(
         flat_query_positions: list[int] = []
 
         for local_idx, labels_row in enumerate(upper_labels):
-            if point_to_shards is not None:
+            owner_routing = label_to_shard is not None
+            if owner_routing:
+                shard_hit_counts = Counter()
+                shard_to_eps: dict[str, list[int]] = defaultdict(list)
+                for label in labels_row.tolist():
+                    shard_key = label_to_shard.get(int(label))
+                    if shard_key is not None:
+                        shard_hit_counts[shard_key] += 1
+                        shard_to_eps[shard_key].append(int(label))
+
+                shard_keys, ef_values = shard_efs_from_upper_hits(
+                    dict(shard_hit_counts), base_ef, factor
+                )
+                total_upper_hits += int(sum(shard_hit_counts.values()))
+            else:
+                assert point_to_shards is not None
                 shard_to_eps = route_upper_labels_to_shard_eps(labels_row.tolist(), point_to_shards)
                 shard_keys, ef_values = shard_efs_from_routed_eps(
                     shard_to_eps,
@@ -6615,16 +7336,6 @@ def evaluate_config(
                     search_all_shards=search_all_shards,
                 )
                 total_upper_hits += int(sum(len(eps) for eps in shard_to_eps.values()))
-            else:
-                shard_hit_counts = Counter()
-                assert label_to_shard is not None
-                for label in labels_row.tolist():
-                    shard_key = label_to_shard.get(int(label))
-                    if shard_key is not None:
-                        shard_hit_counts[shard_key] += 1
-
-                shard_keys, ef_values = shard_efs_from_upper_hits(dict(shard_hit_counts), base_ef, factor)
-                total_upper_hits += int(sum(shard_hit_counts.values()))
             total_visited_shards += len(shard_keys)
             if shard_key_to_peer:
                 total_physical_peers += len(
@@ -6633,11 +7344,16 @@ def evaluate_config(
 
             if not shard_keys:
                 continue
-            if routed_execution_mode == "per_shard_multi_ep" and point_to_shards is not None:
+            def shard_entry_points(shard_key: str) -> list[int]:
+                if owner_routing:
+                    return shard_to_eps.get(shard_key, [])
+                shard_id = int(shard_key.rsplit("_", 1)[1])
+                return shard_to_eps.get(shard_id, [])
+
+            if routed_execution_mode == "per_shard_multi_ep":
                 total_assigned_ef += sum(ef_values)
                 total_assigned_ef_count += len(ef_values)
                 for shard_key, ef_value in zip(shard_keys, ef_values):
-                    shard_id = int(shard_key.rsplit("_", 1)[1])
                     flat_query_positions.append(local_idx)
                     flat_searches.append(
                         search_request(
@@ -6646,18 +7362,17 @@ def evaluate_config(
                             ef_value,
                             [shard_key],
                         use_payload_source_id,
-                        shard_to_eps.get(shard_id, []),
+                        shard_entry_points(shard_key),
                         source_id_dedup_block_size=source_id_dedup_block_size,
                     )
                 )
-            elif routed_execution_mode == "compact_multi_ep" and point_to_shards is not None:
+            elif routed_execution_mode == "compact_multi_ep":
                 total_assigned_ef += sum(ef_values)
                 total_assigned_ef_count += len(ef_values)
                 entry_points_by_shard: dict[str, list[int]] = {}
                 ef_by_shard: dict[str, int] = {}
                 for shard_key, ef_value in zip(shard_keys, ef_values):
-                    shard_id = int(shard_key.rsplit("_", 1)[1])
-                    entry_points_by_shard[shard_key] = shard_to_eps.get(shard_id, [])
+                    entry_points_by_shard[shard_key] = shard_entry_points(shard_key)
                     ef_by_shard[shard_key] = int(ef_value)
                 flat_query_positions.append(local_idx)
                 flat_searches.append(
@@ -6789,7 +7504,8 @@ def evaluate_config_materialized_routing(
     total_queries = len(queries)
     start = time.perf_counter()
     upper_labels = compute_upper_labels(upper_index, queries, upper_k)
-    if point_to_shards is not None:
+    if label_to_shard is None:
+        assert point_to_shards is not None
         query_plans = build_routed_search_plans(
             queries,
             upper_labels,
@@ -6807,7 +7523,6 @@ def evaluate_config_materialized_routing(
             source_id_dedup_block_size,
         )
     else:
-        assert label_to_shard is not None
         query_plans = [
             legacy_routed_search_plan(
                 query.tolist(),
@@ -6948,7 +7663,8 @@ def evaluate_config_pipelined_routing(
     ) -> tuple[int, int, list[dict[str, Any]], list[bytes] | None]:
         batch_queries = queries[start_idx:end_idx]
         upper_labels = compute_upper_labels(upper_index, batch_queries, upper_k)
-        if point_to_shards is not None:
+        if label_to_shard is None:
+            assert point_to_shards is not None
             plans = build_routed_search_plans(
                 batch_queries,
                 upper_labels,
@@ -6966,7 +7682,6 @@ def evaluate_config_pipelined_routing(
                 source_id_dedup_block_size,
             )
         else:
-            assert label_to_shard is not None
             plans = [
                 legacy_routed_search_plan(
                     query.tolist(),
@@ -7123,15 +7838,31 @@ def evaluate_config_compact_materialized_routing(
         raise ValueError("compact_materialized planning requires --routed-execution-mode compact_multi_ep")
     if compact_ef_mode != "max":
         raise ValueError("compact_materialized planning does not support compact EF reduction modes")
+    if num_shards is None:
+        raise ValueError("compact_materialized planning requires num_shards")
     if label_to_shard is not None:
-        raise ValueError("compact_materialized planning requires point_to_shards, not label_to_shard")
-    if point_to_shards is None or num_shards is None:
-        raise ValueError("compact_materialized planning requires point_to_shards and num_shards")
+        point_count = (
+            len(point_to_shards)
+            if point_to_shards is not None
+            else max((int(label) for label in label_to_shard), default=-1) + 1
+        )
+        route_memberships: list[list[int]] = [[] for _ in range(point_count)]
+        for label, shard_key in label_to_shard.items():
+            point_id = int(label)
+            if point_id < 0 or point_id >= point_count:
+                raise ValueError(f"upper label {point_id} is outside compact route manifest")
+            route_memberships[point_id] = [int(str(shard_key).rsplit("_", 1)[1])]
+    elif point_to_shards is not None:
+        route_memberships = point_to_shards
+    else:
+        raise ValueError(
+            "compact_materialized planning requires label_to_shard or point_to_shards"
+        )
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
     manifest = build_compact_routing_manifest(
-        point_to_shards,
+        route_memberships,
         int(num_shards),
         source_id_dedup_block_size,
     )
@@ -8293,7 +9024,8 @@ def evaluate_routed_config_batch(
         raise ValueError("num_shards is required with point_to_shards")
 
     upper_labels = compute_upper_labels(upper_index, queries, upper_k)
-    if point_to_shards is not None:
+    if label_to_shard is None:
+        assert point_to_shards is not None
         query_plans = build_routed_search_plans(
             queries,
             upper_labels,
@@ -8311,7 +9043,6 @@ def evaluate_routed_config_batch(
             source_id_dedup_block_size,
         )
     else:
-        assert label_to_shard is not None
         query_plans = [
             legacy_routed_search_plan(
                 query.tolist(),
@@ -9204,6 +9935,8 @@ def main() -> int:
                 shard_placement_map,
                 vector_distance=distance_config["qdrant_distance"],
                 routing_build_metadata=routing_build_metadata,
+                upload_concurrency=args.upload_concurrency,
+                upload_queue_capacity_batches=args.upload_queue_capacity_batches,
             )
             shard_counts = shard_counts_from_point_to_shards(point_to_shards, args.num_shards)
             use_payload_source_id = True
@@ -9267,6 +10000,8 @@ def main() -> int:
             shard_placement_map,
             vector_distance=distance_config["qdrant_distance"],
             routing_build_metadata=routing_build_metadata,
+            upload_concurrency=args.upload_concurrency,
+            upload_queue_capacity_batches=args.upload_queue_capacity_batches,
         )
 
         upper_vectors, upper_ids, label_to_shard, sample_rows = sample_upper_points(
@@ -9412,6 +10147,7 @@ def main() -> int:
                 args.k_overlap,
                 args.upper_build_batch_size,
             )
+            upper_index.set_ef(configured_upper_search_ef)
             if args.claim_a_partition_family != "none":
                 routing_state = build_claim_a_partition_routing_state(
                     args.claim_a_partition_family,
@@ -9429,7 +10165,7 @@ def main() -> int:
                     random_seed=args.claim_a_random_seed,
                 )
             else:
-                routing_state = build_original_routing_state(
+                routing_state = build_canonical_routing_state(
                     train,
                     upper_indices,
                     point_to_l1s,
@@ -9437,20 +10173,14 @@ def main() -> int:
                     args.kmeans_iters,
                     args.kmeans_rand_seed,
                     args.topology_iters,
-                    use_multi_assign=not args.disable_multi_assign,
-                    enable_fission=not args.disable_fission,
-                    multi_assign_min_max_vote=args.orion_multi_assign_min_max_vote,
-                    multi_assign_vote_delta=args.orion_multi_assign_vote_delta,
-                    multi_assign_max_shards=args.orion_multi_assign_max_shards,
-                    balance_mode=args.orion_balance_mode,
-                    balance_min_load_ratio=args.orion_balance_min_load_ratio,
-                    balance_max_load_ratio=args.orion_balance_max_load_ratio,
-                    balance_max_passes=args.orion_balance_max_passes,
-                    balance_max_vote_loss=args.orion_balance_max_vote_loss,
-                    balance_l1_max_vote_loss=args.orion_balance_l1_max_vote_loss,
-                    balance_l0_max_vote_loss=args.orion_balance_l0_max_vote_loss,
                 )
             point_to_shards = routing_state.point_to_shards
+            label_to_shard = {
+                int(point_id): shard_key_for_id(
+                    int(routing_state.l1_to_shard[int(point_id)])
+                )
+                for point_id in routing_state.upper_indices.tolist()
+            }
             effective_num_shards = routing_state.num_shards
             routing_build_metadata = build_routing_build_metadata(
                 args,
@@ -9474,6 +10204,9 @@ def main() -> int:
                 shard_placement_map,
                 vector_distance=distance_config["qdrant_distance"],
                 routing_build_metadata=routing_build_metadata,
+                force_hnsw_for_nonempty_shards=True,
+                upload_concurrency=args.upload_concurrency,
+                upload_queue_capacity_batches=args.upload_queue_capacity_batches,
             )
             sample_rows = original_upper_sample_rows(routing_state)
         upper_ids = upper_indices
@@ -10531,43 +11264,19 @@ def main() -> int:
             else None
         ),
         "source_id_dedup_block_size": source_id_dedup_block_size,
-        "multi_assign": (not args.disable_multi_assign) if args.routing_mode == "faithful_original_rest" else False,
+        "multi_assign": args.routing_mode == "faithful_original_rest",
         "orion_multi_assign_min_max_vote": (
-            args.orion_multi_assign_min_max_vote if args.routing_mode == "faithful_original_rest" else None
+            2 if args.routing_mode == "faithful_original_rest" else None
         ),
         "orion_multi_assign_vote_delta": (
-            args.orion_multi_assign_vote_delta if args.routing_mode == "faithful_original_rest" else None
+            0 if args.routing_mode == "faithful_original_rest" else None
         ),
         "orion_multi_assign_max_shards": (
-            args.orion_multi_assign_max_shards if args.routing_mode == "faithful_original_rest" else None
+            0 if args.routing_mode == "faithful_original_rest" else None
         ),
-        "fission_enabled": (
-            args.claim_a_partition_family == "none"
-            and not args.disable_fission
-            and args.orion_balance_mode == "none"
-            if args.routing_mode == "faithful_original_rest"
-            else False
-        ),
+        "fission_enabled": False,
         "orion_balance": (
-            {
-                "mode": args.orion_balance_mode,
-                "min_load_ratio": args.orion_balance_min_load_ratio,
-                "max_load_ratio": args.orion_balance_max_load_ratio,
-                "max_passes": args.orion_balance_max_passes,
-                "max_vote_loss": args.orion_balance_max_vote_loss,
-                "l1_max_vote_loss": resolve_capacity_balance_vote_losses(
-                    args.orion_balance_max_vote_loss,
-                    args.orion_balance_l1_max_vote_loss,
-                    args.orion_balance_l0_max_vote_loss,
-                )[0],
-                "l0_max_vote_loss": resolve_capacity_balance_vote_losses(
-                    args.orion_balance_max_vote_loss,
-                    args.orion_balance_l1_max_vote_loss,
-                    args.orion_balance_l0_max_vote_loss,
-                )[1],
-                "online_path_changed": False,
-                "fixed_num_shards": args.orion_balance_mode == "capacity_constrained",
-            }
+            {"mode": "none", "intervention": False}
             if args.routing_mode == "faithful_original_rest"
             else None
         ),
@@ -10596,8 +11305,8 @@ def main() -> int:
         ),
         "rng_equivalence_note": (
             "The port preserves the original seed roles and algorithm order "
-            "(upper sample seed 100, KMeans random initialization stream, weighted "
-            "balanced assignment), but Python/NumPy RNG streams are not bit-identical "
+            "(upper sample seed 100 and KMeans random initialization stream), but "
+            "Python/NumPy RNG streams are not bit-identical "
             "to libstdc++ std::mt19937/std::shuffle or C rand()."
             if args.routing_mode == "faithful_original_rest"
             else None
@@ -10607,6 +11316,11 @@ def main() -> int:
                 "m": args.upper_m,
                 "ef_construction": args.upper_ef_construction,
                 "search_ef": configured_upper_search_ef,
+                "partition_build_efs": (
+                    args.k_overlap
+                    if args.routing_mode == "faithful_original_rest"
+                    else None
+                ),
                 "sample_points": int(len(upper_ids)),
             }
             if upper_index is not None
@@ -10638,9 +11352,11 @@ def main() -> int:
                 "topology_iterations": routing_state.topology_iterations,
                 "total_assigned": routing_state.total_assigned,
                 "expansion_ratio": routing_state.expansion_ratio,
-                "multi_assign_min_max_vote": args.orion_multi_assign_min_max_vote,
-                "multi_assign_vote_delta": args.orion_multi_assign_vote_delta,
-                "multi_assign_max_shards": args.orion_multi_assign_max_shards,
+                "multi_assign_min_max_vote": 2,
+                "multi_assign_vote_delta": 0,
+                "multi_assign_max_shards": 0,
+                "assignment_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
+                "initial_partition": "kmeans_without_capacity_correction",
                 "fission_events": routing_state.fission_events,
                 "shard_count_min": int(np.min(routing_state.shard_counts)),
                 "shard_count_max": int(np.max(routing_state.shard_counts)),
@@ -10659,9 +11375,10 @@ def main() -> int:
                     "topology_iterations": None,
                     "total_assigned": recovered_original_total_assigned,
                     "expansion_ratio": recovered_original_expansion_ratio,
-                    "multi_assign_min_max_vote": args.orion_multi_assign_min_max_vote,
-                    "multi_assign_vote_delta": args.orion_multi_assign_vote_delta,
-                    "multi_assign_max_shards": args.orion_multi_assign_max_shards,
+                    "multi_assign_min_max_vote": 2,
+                    "multi_assign_vote_delta": 0,
+                    "multi_assign_max_shards": 0,
+                    "assignment_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
                     "fission_events": None,
                     "shard_count_min": None,
                     "shard_count_max": None,

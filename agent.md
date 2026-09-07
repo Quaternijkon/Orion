@@ -1,194 +1,207 @@
-# Orion Agent Guidelines
+# Orion Agent 约束
 
-Orion is a distributed graph-based ANN system whose core principle is:
+Orion 是一个分布式图结构近似最近邻检索系统。修改 Orion 的设计、实现、实验或文档时，必须遵守本文件中的约束。
 
-> Offline data organization and online query routing must follow the same
-> graph-navigation semantics.
+本文件描述的是 Orion 的目标架构与强制语义，不代表当前代码已经完整实现这些能力。不得仅凭本文件宣称某项功能已经落地；实现状态必须通过代码、产物和实验独立验证。已有的正面、负面或矛盾实验结果必须保留，不得为了符合目标架构而改写历史证据。
 
-When modifying Orion, preserve the following design constraints.
+## 一、术语
 
-## Core Constraints
+- `N`：全量数据点数量。
+- `M`：上层导航图的采样比例分母；上层导航图包含 `N/M` 个点。若 `N` 不能被 `M` 整除，必须采用固定、可复现并写入元数据的取整规则。
+- 上层导航图：全局共享、构建后不可变的生产导航 HNSW 图。
+- 上层分区：上层导航点经过聚类和自搜索微调后得到的分区归属；该归属用于确定底层逻辑分片。
+- 底层分片：接收全量数据点并构建本地 HNSW 的逻辑分片。
+- `efs`：在上层导航图执行划分、分配或多分配时使用的 `efsearch`，当前规范默认值为 `10`；构建阶段必须同时作为返回结果数，即 `efsearch = topk = efs`。
+- `EP`：一次查询的上层导航结果中，归属于某个底层分片的结果点数量。
+- `a`、`b`：把分片贡献度映射为分片本地 `efsearch` 的配置参数。
 
-### 1. Offline-online symmetry
+## 二、全局不变量
 
-Data partitioning and query routing must be derived from the same immutable
-production upper graph, distance metric, vector preprocessing, and navigation
-implementation.
+### 1. 离线构建与在线搜索必须使用同一份上层导航图
 
-Canonical Orion must build and freeze the production upper graph before computing
-offline L0-to-L1 attachments. Offline attachment search and online query routing
-must then use the same upper navigator and the exact same graph bytes. They may use
-different explicit search budgets because attachment construction and query routing
-serve different purposes.
+离线的数据划分、点分配和在线的查询路由必须使用：
 
-Do not build one upper graph with `hnswlib` for offline placement and independently
-rebuild another Qdrant graph for online routing. Such a dual-graph path is legacy,
-an ablation, or an architectural experiment, not canonical Orion.
+- 同一份不可变的生产上层图字节；
+- 同一距离度量与向量预处理；
+- 同一套上层 HNSW 导航实现和搜索语义。
 
-The preferred implementation boundary is:
+离线和在线可以使用不同且显式配置的搜索预算，但不得分别重建两份上层图。禁止离线使用一份 `hnswlib` 图完成划分、在线再由 Qdrant 独立构建另一份图完成路由，并将二者视为规范 Orion。此类双图方案只能作为历史路径、基线、消融或架构实验。
 
-- an immutable `UpperNavigator` containing the vector schema, upper vectors,
-  portable HNSW graph, metric, preprocessing, and upper-search implementation;
-- an `OrionRouter` that composes that navigator with shard memberships, MultiEP,
-  shard selection, and contribution-aware local-search budgets.
+建议由不可变的 `UpperNavigator` 持有向量模式、上层向量、距离度量、预处理逻辑、可移植 HNSW 图及其遍历实现；由 `OrionRouter` 组合分片成员关系、多入口点、分片选择和分片本地搜索预算。
 
-The canonical build order is:
+### 2. 上层图构建后不可被划分流程修改
 
-```text
-upper sample
-    -> build and checksum the production upper graph once
-    -> use that graph to generate full-dataset navigation attachments
-    -> topology refinement / fission / multi-assignment
-    -> bind shard memberships and layout metadata to the unchanged graph
-    -> load the same graph in the online Orion router
-```
+聚类、自搜索微调、多分配和运行时参数派生只能修改上层点的分区归属、底层成员关系或布局元数据，不得重建、替换、重排或修改上层图的节点和边。
 
-Finalization and runtime-profile derivation must not rebuild, replace, or reorder
-the upper graph. Bind the stages with checksums such as `upper_graph_sha256`,
-`attachments_sha256`, and `layout_sha256`, and fail closed on any mismatch.
+必须至少使用以下校验和绑定各阶段产物：
 
-### 2. Search-induced topology
+- `upper_graph_sha256`；
+- `attachments_sha256`；
+- `layout_sha256`。
 
-Orion's topology is defined primarily by actual graph-navigation behavior, not
-merely vector-space distance or raw graph adjacency.
+上层采样、向量模式、距离度量、预处理、HNSW 构建参数、随机种子、插入顺序或图字节发生变化时，必须重新生成所有依赖的划分、分配和布局产物。加载时如图、分配关系、布局或校验和不一致，规范路径必须失败关闭，不得静默切换算法或回退到全分片搜索。
 
-Topology-aware partitioning and refinement should therefore be based on
-search-induced relationships produced by the canonical upper navigator.
+### 3. 拓扑关系以实际搜索行为为准
 
-### 3. Navigation-guided placement
+Orion 的拓扑关系主要由上层导航图的实际搜索行为决定，不能只依据向量空间距离、原始邻接边或几何聚类结果。聚类只能提供初始划分，最终划分、点分配和在线路由必须使用规范上层导航器产生的搜索证据。
 
-The full dataset must be assigned to shards according to shard evidence obtained
-through navigation on the global navigation graph.
+## 三、构建约束
 
-Geometric clustering may be used as initialization, for capacity management, or
-for an explicitly identified experimental mechanism, but it must not replace
-navigation-guided placement as the final canonical Orion partitioning principle.
+### 1. 构建顺序
 
-### 4. Navigation-guided multi-assignment
-
-When vectors are replicated across shards, replication must be justified by
-navigation/search reachability rather than only geometric proximity.
-
-The exact replication policy and expansion budget remain open design choices.
-
-### 5. Navigation-to-local handoff
-
-Online navigation results must determine both:
-
-- which shards should be searched;
-- the corresponding entry point or ordered entry points for shard-local graph
-  search.
-
-Do not discard navigation results and restart local search from unrelated default
-entry points.
-
-### 6. Contribution-aware search
-
-Different shards may have different expected contributions to a query.
-
-Navigation evidence, currently represented primarily by ordered shard entry-point
-evidence, must be used to estimate this contribution and adapt local search effort
-accordingly.
-
-The exact mapping from evidence to search budget or EF is not fixed.
-
-### 7. Selective routing
-
-Canonical Orion should selectively search shards supported by navigation evidence
-rather than unconditionally performing full scatter-gather.
-
-Full-shard search may be retained only as a baseline, ablation, explicit fallback,
-or debug mode. A configured canonical Orion route must fail closed rather than
-silently changing algorithms when its required graph or routing artifact is
-missing, corrupt, or inconsistent.
-
-## Upper Graph Lifecycle
-
-The production upper graph is an immutable, checksum-addressed input to layout
-construction and online routing.
-
-- Build it once with the production Qdrant/Rust graph implementation.
-- Generate offline attachments through the same metric, preprocessing, and HNSW
-  traversal code used online.
-- Make attachment output deterministic in point-ID order even if queries are
-  evaluated concurrently.
-- Preserve the graph exactly when adding memberships or deriving runtime profiles.
-- Rebuild attachments and the full layout whenever the upper sample, vector schema,
-  metric, preprocessing, HNSW construction parameters, seed, insertion order, or
-  graph bytes change.
-- Runtime-only changes such as query upper EF/K or the contribution-to-local-EF
-  function may reuse the graph and layout only when their contracts explicitly
-  permit it.
-- Keep old dual-built artifacts and accepted experiment evidence intact, but label
-  them as legacy rather than retroactively claiming strict offline-online graph
-  identity.
-
-Canonical validation should include:
-
-- exact upper-graph checksum identity across attachment, layout finalization, and
-  serving;
-- replay parity for upper hit IDs, order, and score bits between offline tooling and
-  the online router;
-- rejection of changed graph edges, upper vectors, schema, attachments, memberships,
-  or layout bindings;
-- a guard proving that finalization and runtime-profile derivation do not rebuild
-  the graph;
-- explicit separation of legacy/ablation builders from the canonical build path.
-
-## System Objectives
-
-The following are required objectives, but their concrete mechanisms are
-intentionally unspecified:
-
-- maintain reasonable load balance across logical shards and physical workers;
-- preserve search-topological locality;
-- reduce unnecessary shard fanout;
-- reduce unnecessary shard-local search work;
-- control index expansion caused by replication;
-- improve scalability while maintaining the required recall level.
-
-These are objectives, not assumptions about the current implementation or claims
-that existing experiments have already established them. Preserve contradictory
-or negative experimental findings.
-
-In particular, do not assume a specific load-balancing algorithm. Balanced K-means,
-graph partitioning, capacity constraints, shard splitting, physical placement, or
-other mechanisms are experimental choices unless explicitly established later.
-
-## Open Implementation Space
-
-The following are not architectural constraints and may be changed or explored:
-
-- sampling strategy and navigation-graph parameters;
-- initial partitioning method;
-- topology-refinement algorithm;
-- load-balancing mechanism;
-- multi-assignment policy and thresholds;
-- shard-selection policy;
-- contribution estimator;
-- Dynamic-EF or other search-budget function;
-- HNSW parameters;
-- storage, RPC, concurrency, and deployment implementation.
-
-Do not promote parameters or heuristics from earlier prototypes into Orion design
-requirements. If an experiment changes the upper graph or its navigation semantics,
-rebuild and rebind every dependent attachment and layout artifact rather than
-mixing generations.
-
-## Rule of Thumb
-
-A change is compatible with canonical Orion if it preserves this chain:
+规范构建顺序如下：
 
 ```text
-data/query
-    -> one immutable production global graph navigator
-    -> shard-level navigation evidence
-    -> data placement or query routing
-    -> shard-local entry points
-    -> contribution-aware local search
+全量 N 点
+    -> 选取 N/M 个点
+    -> 一次性构建并校验生产上层导航图
+    -> 聚类得到上层初始分区
+    -> 使用上层图进行自搜索微调
+    -> 冻结上层分区关系
+    -> 使用同一上层图为全量 N 点执行分配与多分配
+    -> 各底层分片并行接收点并构建完整多层 HNSW
+    -> 构建完成后保留各分片完整多层 HNSW
+    -> 绑定分片成员关系、入口点映射、布局及校验和
+    -> 在线加载同一份上层导航图和已绑定的底层布局
 ```
 
-If a change breaks this chain, uses independently rebuilt offline and online upper
-graphs, or bypasses checksum-bound graph identity, treat it as an ablation,
-baseline, legacy path, or architectural redesign rather than silently changing
-canonical Orion.
+### 2. 上层导航图采样与构建
+
+- 必须从全量 `N` 个点中选取 `N/M` 个点构建上层导航图。
+- 采样方法、随机种子、点 ID 顺序和取整规则必须可复现并写入产物元数据。
+- 上层图必须使用生产路径所采用的图实现构建一次，随后冻结；离线划分与在线路由加载完全相同的图产物。
+
+### 3. 上层分区的初始化与自搜索微调
+
+上层导航点必须先通过聚类算法，依据数据聚集关系得到初始分区；随后通过自搜索方式微调分区关系。几何聚类结果不得直接作为未经导航微调的最终规范划分。
+
+对每个上层导航点执行自搜索微调时，必须遵循以下规则：
+
+1. 以该点自身作为目标，在上层导航图中以 `efsearch = efs` 进行搜索。
+2. 取得本次搜索返回的 `efs` 个结果；如果有效结果不足 `efs`，必须记录实际结果数，不得伪造或重复结果补足票数。
+3. 每个结果点按照自己当前所在的上层分区投一票。
+4. 将目标点移动到得票最多的分区。
+5. 若最高票出现并列，必须使用固定、确定且可复现的消歧规则，并把该规则及其版本写入布局元数据；不得依赖无种子的随机选择。
+
+自搜索可以执行一轮或多轮，但轮数、遍历顺序、停止条件和随机种子必须显式配置且可复现。无论采用何种配置，微调依据必须来自规范上层图的实际搜索结果。
+
+### 4. 当前不采用负载均衡干预
+
+当前规范只包含“聚类初始化 -> 上层图自搜索投票微调 -> 严格导航投票分配/多分配”。暂不以容量、分片大小、物理节点负载、裂分或副本搬移改变上层分区和底层成员关系。
+
+分片规模、复制膨胀和在线热点仍应作为观测指标记录，但只能报告，不能反馈到当前规范分配算法中。历史负载均衡实现和实验必须保留并明确标记为实验路径，不得混入当前规范产物。
+
+### 5. 全量点的分配与多分配
+
+每个全量数据点应当分配到哪些底层分片，必须由该点在同一份上层导航图上的搜索结果确定：
+
+1. 以该数据点作为目标，在上层导航图中以 `efsearch = efs` 进行搜索。
+2. 对搜索结果逐一投票；每个结果点按照其冻结后的分片归属，为对应底层分片投一票。
+3. 若最高票数大于 `1`，将目标点分配到所有并列获得最高票数的分片；这构成多分配。
+4. 若最高票数等于 `1`，不执行“所有一票分片”的多分配，而只将目标点分配到距离目标点最近的结果点所对应的分片。
+
+不得以纯几何最近中心、静态哈希或物理节点容量直接替代上述导航投票规则。分配结果必须保存足够的搜索证据、票数和确定性消歧信息，以支持复现和审计。
+
+每个上层导航点都必须作为实际数据点存在于其冻结归属所对应底层分片的 `L0` 中，从而能够在在线搜索时直接充当入口点。若通用投票结果无法满足这一成员关系，布局不得最终化；构建流程必须在不修改上层图和原始投票证据的前提下显式补齐入口点副本，并将其计入多分配及复制膨胀统计。不得产生只存在于上层图、却不存在于其路由目标分片中的悬空入口点。
+
+不得为了获得更好看的分片规模数字而改变投票、多分配或上层图语义。
+
+### 6. 分配与分片索引构建必须解耦
+
+上层导航图向底层分片分配点时，各底层分片必须同步推进本地索引构建。一个被多分配的点等价于由多个目标分片分别接收并构建该点。
+
+由于点分配通常快于 HNSW 构建，分配端与构建端之间必须采用异步、可观测且有容量边界的缓冲机制：
+
+- 每个分片应具有独立或可公平调度的接收队列，避免慢分片阻塞其他分片；
+- 支持批量传输、批量落盘或批量构建，避免分配线程逐点同步等待索引插入完成；
+- 缓冲区必须有明确容量、积压量、吞吐量和失败指标，不能以无限内存队列规避阻塞；
+- 缓冲耗尽时必须使用显式的背压、可恢复落盘或流量调节策略，不得静默丢点；
+- 重试必须保证幂等，不能因重放导致同一分片中出现非预期重复点；
+- 最终化之前必须确认所有队列已排空、所有目标分片已确认接收，且成员关系与实际索引内容一致。
+
+### 7. 底层分片完整 HNSW 的构建与保留
+
+- 每个底层分片在构建阶段必须为其接收的全部点构建完整的多层 HNSW 图。
+- 构建完成后不得删除分片 HNSW 的非底层图；最终在线产物保留完整多层 HNSW。
+- 必须保留从全局点 ID 到分片本地 `L0` 节点的稳定映射，确保上层导航结果点可以直接作为该分片的本地入口点。
+- 必须校验点数、成员关系、完整 HNSW、`L0` 邻接数据、入口点可达性和产物校验和。在线规范搜索虽然保留完整图，但收到导航入口点后必须跳过分片本地上层遍历，直接从 `L0` 开始。
+
+## 四、搜索约束
+
+### 1. 使用上层导航结果选择分片
+
+在线查询必须先在与离线构建完全相同的上层导航图上执行搜索，再依据搜索结果点的冻结分片归属决定参与搜索的底层分片。
+
+- 只搜索得到上层导航证据支持的分片，不得默认全分片广播。
+- 全分片搜索只能作为显式的基线、消融、调试或故障处理模式，不能作为规范路径的静默回退。
+- 每个上层结果点只按照聚类与自搜索微调后冻结的唯一上层分区归属参与一次分片统计；该点在底层的多分配副本不得扩大在线路由分片集合。
+
+### 2. 按分片贡献度分配本地搜索预算
+
+对每个被选中的底层分片，统计上层导航结果中属于该分片的结果点数量 `EP`，并按以下公式设置该分片的本地搜索预算：
+
+```text
+efsearch = a * EP + b
+```
+
+要求如下：
+
+- 一个分片在上层搜索结果中出现的结果点越多，其本地 `efsearch` 越大；
+- `a`、`b` 的取值、类型、取整方式以及允许的最小值和最大值必须显式配置并绑定到运行时配置版本；
+- 实现不得在未记录的情况下把该公式替换为统一 EF、固定全分片预算或其他贡献度函数；
+- 若公式结果超出本地搜索实现允许的范围，必须按照已声明的边界规则处理并记录，不能静默产生不同语义。
+
+### 3. 上层结果点必须直接作为底层入口点
+
+在底层分片中搜索时，必须将该分片对应的上层导航结果点作为一个或多个入口点，直接从分片 HNSW 的最底层 `L0` 开始搜索。
+
+- 不得丢弃上层导航结果后从无关的默认入口点重新开始搜索。
+- 当一个分片有多个上层结果点时，必须保留其点 ID、顺序、距离和分片归属证据，并按多入口点语义启动 `L0` 搜索。
+- 每个入口点必须真实存在于目标分片的 `L0` 中；若入口点映射、成员关系或布局校验失败，规范路径必须失败关闭。
+- 各分片返回的候选结果必须使用一致的距离语义进行全局合并和排序。
+
+## 五、必须验证的契约
+
+规范实现至少需要验证：
+
+- 上层样本数量符合 `N/M` 及其已声明的取整规则；
+- 离线划分、全量点分配、布局最终化和在线路由加载的 `upper_graph_sha256` 完全一致；
+- 离线工具与在线路由器对同一输入能够重放一致的上层结果点 ID、顺序和距离；
+- 自搜索的结果、票数、移动决定和并列消歧可以确定性重放；
+- 全量点的主分配和多分配严格符合最高票规则及“最高票为 1 时仅选最近分片”的例外；
+- 逻辑分片规模、复制膨胀、拓扑局部性和热点风险均有独立观测指标，但不反馈干预当前分配；
+- 分配缓冲不存在丢点，最终队列为空，索引成员关系与布局完全一致；
+- 每个分片在线产物保留完整多层 HNSW，且所有上层入口点都能映射到对应分片的 `L0` 节点；
+- 分片选择由上层导航证据决定，本地 `efsearch` 严格按 `a * EP + b` 计算；
+- 最终化和运行时配置派生不会重建或修改上层图，也不会裁剪底层分片 HNSW。
+
+## 六、可配置但不得改变语义的部分
+
+以下内容可以通过实现和实验选择，但不得改变前述强制语义：
+
+- 从 `N` 点中选取 `N/M` 点的具体可复现采样方法；
+- 上层初始划分使用的聚类算法；
+- 自搜索微调的轮数、遍历顺序和停止条件；
+- `efs`、`a`、`b` 以及合法 EF 边界；
+- 缓冲队列、批处理、落盘、RPC、并发和重试的具体实现；
+- HNSW 构建参数和底层 `L0` 的存储格式。
+
+任何实验如果修改了上层图或其导航语义，都必须重新生成并绑定所有依赖的划分、分配和布局产物，不能混用不同代际的图、成员关系或实验结果。
+
+## 七、判断准则
+
+规范 Orion 必须保持以下完整链路：
+
+```text
+N/M 上层样本
+    -> 一份不可变的生产上层导航图
+    -> 聚类初始化与自搜索微调后的上层分区
+    -> 基于导航投票的全量点分配或多分配
+    -> 保留完整多层 HNSW 的底层分片图
+    -> 查询的上层导航证据
+    -> 基于 EP 的分片选择与 efsearch = a * EP + b
+    -> 以上层结果点为入口的分片 L0 搜索
+    -> 全局候选合并
+```
+
+如果某项变更绕过这条链路、使用独立重建的离线/在线上层图、以负载均衡干预当前分配、丢弃上层入口点、静默广播所有分片，或未按投票与线性 EF 规则执行，则必须将其明确标记为基线、消融、历史路径或架构重设计，不能静默称为规范 Orion。

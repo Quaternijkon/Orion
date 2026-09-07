@@ -10,13 +10,14 @@ use common::fs::atomic_save;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-const MEMBERSHIP_SIDECAR_FORMAT_VERSION: u32 = 1;
+const OWNER_SIDECAR_FORMAT_VERSION: u32 = 2;
 
 fn usage(program: &str) -> String {
     format!(
-        "Usage: {program} <source-generation.json> <memberships.json> <output-generation.json>\n\
+        "Usage: {program} <source-generation.json> <memberships.json> <output-generation.json> \
+         [--finalize-build | --runtime-profile]\n\
          \n\
-         Rebind only generation/layout metadata and ordered upper-node L0 shard memberships\n\
+         Rebind only generation/layout metadata and ordered upper-node owner shards\n\
          onto an existing complete production Orion artifact. The source upper graph, upper-node\n\
          order, labels, vectors, schema, search parameters, and logical point count are preserved.\n\
          Writes canonical JSON and lowercase SHA-256 to <output-generation.json>.sha256.\n\
@@ -24,24 +25,37 @@ fn usage(program: &str) -> String {
          \n\
          Sidecar schema (all fields required):\n\
          {{\n\
-           \"format_version\": 1,\n\
+           \"format_version\": 2,\n\
            \"source_artifact_sha256\": \"<SHA-256 of exact source file bytes>\",\n\
            \"source_generation\": <source generation>,\n\
            \"generation\": <new generation greater than source>,\n\
            \"layout_sha256\": \"<canonical full L0 assignment SHA-256>\",\n\
            \"shard_count\": <logical shard count>,\n\
            \"physical_point_count\": <full L0 physical-copy count>,\n\
-           \"shard_memberships\": [[0], [0, 2], ...]\n\
+           \"upper_owner_shards\": [0, 2, ...],\n\
+           \"upper_k\": <runtime result count; runtime-profile only>,\n\
+           \"upper_ef_search\": <runtime upper EF; runtime-profile only>,\n\
+           \"dynamic_ef_base\": <runtime base; runtime-profile only>,\n\
+           \"dynamic_ef_factor\": <runtime factor; runtime-profile only>\n\
          }}\n\
-         shard_memberships is positional and must contain exactly one non-empty, duplicate-free\n\
-         list for every source upper_nodes entry. It is the final L0 multi-assignment membership,\n\
-         not the unique L1 owner."
+         upper_owner_shards is positional and must contain exactly one owner shard for every\n\
+         source upper_nodes entry. It is the frozen upper-tier owner, not the final L0\n\
+         multi-assignment. --finalize-build is restricted to a neutral one-shard build-only\n\
+         source and preserves its generation. --runtime-profile preserves layout and memberships\n\
+         while allowing only the four explicit runtime fields to change."
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RebindMode {
+    Memberships,
+    BuildFinalization,
+    RuntimeProfile,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MembershipSidecar {
+struct OwnerSidecar {
     format_version: u32,
     source_artifact_sha256: String,
     source_generation: u64,
@@ -49,7 +63,15 @@ struct MembershipSidecar {
     layout_sha256: String,
     shard_count: u32,
     physical_point_count: u64,
-    shard_memberships: Vec<Vec<u32>>,
+    upper_owner_shards: Vec<u32>,
+    #[serde(default)]
+    upper_k: Option<usize>,
+    #[serde(default)]
+    upper_ef_search: Option<usize>,
+    #[serde(default)]
+    dynamic_ef_base: Option<usize>,
+    #[serde(default)]
+    dynamic_ef_factor: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -162,6 +184,7 @@ fn immutable_snapshot(
 fn verify_immutable_snapshot(
     expected: &ImmutableSnapshot,
     actual: &OrionRoutingArtifact,
+    preserve_runtime_parameters: bool,
 ) -> Result<(), Box<dyn Error>> {
     if actual.format_version != expected.format_version {
         return Err("rebind changed format_version".into());
@@ -172,10 +195,11 @@ fn verify_immutable_snapshot(
     if actual.logical_point_count != expected.logical_point_count {
         return Err("rebind changed logical_point_count".into());
     }
-    if actual.upper_k != expected.upper_k
-        || actual.upper_ef_search != expected.upper_ef_search
-        || actual.dynamic_ef_base != expected.dynamic_ef_base
-        || actual.dynamic_ef_factor != expected.dynamic_ef_factor
+    if preserve_runtime_parameters
+        && (actual.upper_k != expected.upper_k
+            || actual.upper_ef_search != expected.upper_ef_search
+            || actual.dynamic_ef_base != expected.dynamic_ef_base
+            || actual.dynamic_ef_factor != expected.dynamic_ef_factor)
     {
         return Err("rebind changed upper-search or dynamic-EF parameters".into());
     }
@@ -202,15 +226,83 @@ fn verify_immutable_snapshot(
     Ok(())
 }
 
+fn runtime_fields_present(sidecar: &OwnerSidecar) -> bool {
+    sidecar.upper_k.is_some()
+        || sidecar.upper_ef_search.is_some()
+        || sidecar.dynamic_ef_base.is_some()
+        || sidecar.dynamic_ef_factor.is_some()
+}
+
+fn validate_neutral_build_source(source: &OrionRoutingArtifact) -> Result<(), Box<dyn Error>> {
+    if source.shard_count != 1 {
+        return Err("build finalization requires a neutral one-shard source artifact".into());
+    }
+    if source.physical_point_count != source.logical_point_count {
+        return Err(
+            "build finalization requires one neutral physical copy per logical point".into(),
+        );
+    }
+    if source.upper_nodes.iter().any(|node| node.owner_shard != 0) {
+        return Err("build finalization requires every source upper owner to be shard 0".into());
+    }
+    Ok(())
+}
+
+fn validate_runtime_profile_sidecar(
+    sidecar: &OwnerSidecar,
+    source: &OrionRoutingArtifact,
+) -> Result<(), Box<dyn Error>> {
+    if sidecar.shard_count != source.shard_count
+        || sidecar.physical_point_count != source.physical_point_count
+        || sidecar.layout_sha256.to_ascii_lowercase() != source.layout_sha256.to_ascii_lowercase()
+    {
+        return Err(
+            "runtime-profile rebind must preserve shard count, physical count, and layout checksum"
+                .into(),
+        );
+    }
+    if sidecar
+        .upper_owner_shards
+        .iter()
+        .zip(&source.upper_nodes)
+        .any(|(owner_shard, node)| *owner_shard != node.owner_shard)
+    {
+        return Err("runtime-profile rebind must preserve every upper owner".into());
+    }
+    let (Some(upper_k), Some(upper_ef_search), Some(dynamic_ef_base), Some(dynamic_ef_factor)) = (
+        sidecar.upper_k,
+        sidecar.upper_ef_search,
+        sidecar.dynamic_ef_base,
+        sidecar.dynamic_ef_factor,
+    ) else {
+        return Err("runtime-profile rebind requires all four runtime fields".into());
+    };
+    if upper_k == 0 || upper_k > source.upper_nodes.len() {
+        return Err("runtime-profile upper_k is outside the upper tier".into());
+    }
+    if upper_ef_search < upper_k {
+        return Err("runtime-profile upper_ef_search must be at least upper_k".into());
+    }
+    if dynamic_ef_base == 0 {
+        return Err("runtime-profile dynamic_ef_base must be positive".into());
+    }
+    dynamic_ef_factor
+        .checked_mul(upper_k)
+        .and_then(|increment| dynamic_ef_base.checked_add(increment))
+        .ok_or("runtime-profile Dynamic EF overflows usize")?;
+    Ok(())
+}
+
 fn validate_sidecar(
-    sidecar: &MembershipSidecar,
+    sidecar: &OwnerSidecar,
     source: &OrionRoutingArtifact,
     source_file_sha256: &str,
+    mode: RebindMode,
 ) -> Result<String, Box<dyn Error>> {
-    if sidecar.format_version != MEMBERSHIP_SIDECAR_FORMAT_VERSION {
+    if sidecar.format_version != OWNER_SIDECAR_FORMAT_VERSION {
         return Err(format!(
             "unsupported membership sidecar format_version {}; supported version is {}",
-            sidecar.format_version, MEMBERSHIP_SIDECAR_FORMAT_VERSION
+            sidecar.format_version, OWNER_SIDECAR_FORMAT_VERSION
         )
         .into());
     }
@@ -231,12 +323,42 @@ fn validate_sidecar(
         )
         .into());
     }
-    if sidecar.generation <= source.generation {
-        return Err(format!(
-            "new generation {} must be greater than source generation {}",
-            sidecar.generation, source.generation
-        )
-        .into());
+    match mode {
+        RebindMode::Memberships => {
+            if sidecar.generation <= source.generation {
+                return Err(format!(
+                    "new generation {} must be greater than source generation {}",
+                    sidecar.generation, source.generation
+                )
+                .into());
+            }
+            if runtime_fields_present(sidecar) {
+                return Err("membership rebind must not change runtime parameters".into());
+            }
+        }
+        RebindMode::BuildFinalization => {
+            if sidecar.generation != source.generation {
+                return Err(format!(
+                    "build finalization generation {} must equal source generation {}",
+                    sidecar.generation, source.generation
+                )
+                .into());
+            }
+            if runtime_fields_present(sidecar) {
+                return Err("build finalization must not change runtime parameters".into());
+            }
+            validate_neutral_build_source(source)?;
+        }
+        RebindMode::RuntimeProfile => {
+            if sidecar.generation <= source.generation {
+                return Err(format!(
+                    "runtime-profile generation {} must be greater than source generation {}",
+                    sidecar.generation, source.generation
+                )
+                .into());
+            }
+            validate_runtime_profile_sidecar(sidecar, source)?;
+        }
     }
     if sidecar.shard_count == 0 {
         return Err("shard_count must be greater than zero".into());
@@ -248,47 +370,30 @@ fn validate_sidecar(
         )
         .into());
     }
-    if sidecar.shard_memberships.len() != source.upper_nodes.len() {
+    if sidecar.upper_owner_shards.len() != source.upper_nodes.len() {
         return Err(format!(
-            "shard_memberships has {} rows, but source upper_nodes has {} entries",
-            sidecar.shard_memberships.len(),
+            "upper_owner_shards has {} entries, but source upper_nodes has {} entries",
+            sidecar.upper_owner_shards.len(),
             source.upper_nodes.len()
         )
         .into());
     }
 
     let mut covered_shards = HashSet::with_capacity(sidecar.shard_count as usize);
-    for (index, (node, memberships)) in source
+    for (index, (node, owner_shard)) in source
         .upper_nodes
         .iter()
-        .zip(&sidecar.shard_memberships)
+        .zip(&sidecar.upper_owner_shards)
         .enumerate()
     {
-        if memberships.is_empty() {
+        if *owner_shard >= sidecar.shard_count {
             return Err(format!(
-                "shard_memberships[{index}] for upper label {} is empty",
-                node.label
+                "upper_owner_shards[{index}] for upper label {} references shard {}, but shard_count is {}",
+                node.label, owner_shard, sidecar.shard_count
             )
             .into());
         }
-        let mut unique = HashSet::with_capacity(memberships.len());
-        for &shard_id in memberships {
-            if shard_id >= sidecar.shard_count {
-                return Err(format!(
-                    "shard_memberships[{index}] for upper label {} references shard {}, but shard_count is {}",
-                    node.label, shard_id, sidecar.shard_count
-                )
-                .into());
-            }
-            if !unique.insert(shard_id) {
-                return Err(format!(
-                    "shard_memberships[{index}] for upper label {} repeats shard {}",
-                    node.label, shard_id
-                )
-                .into());
-            }
-            covered_shards.insert(shard_id);
-        }
+        covered_shards.insert(*owner_shard);
     }
     for shard_id in 0..sidecar.shard_count {
         if !covered_shards.contains(&shard_id) {
@@ -302,10 +407,11 @@ fn validate_sidecar(
     normalized_sha256("layout_sha256", &sidecar.layout_sha256)
 }
 
-fn rebind_artifact(
+fn rebind_artifact_with_mode(
     source_path: &Path,
     sidecar_path: &Path,
     output_path: &Path,
+    mode: RebindMode,
 ) -> Result<RebindReport, Box<dyn Error>> {
     let output_checksum_path = checksum_path(output_path);
     if output_path.exists() {
@@ -342,23 +448,38 @@ fn rebind_artifact(
     let immutable = immutable_snapshot(&artifact)?;
 
     let sidecar_bytes = fs_err::read(sidecar_path)?;
-    let sidecar: MembershipSidecar = serde_json::from_slice(&sidecar_bytes)?;
-    let layout_sha256 = validate_sidecar(&sidecar, &artifact, &source_file_sha256)?;
+    let sidecar: OwnerSidecar = serde_json::from_slice(&sidecar_bytes)?;
+    let layout_sha256 = validate_sidecar(&sidecar, &artifact, &source_file_sha256, mode)?;
 
     artifact.generation = sidecar.generation;
     artifact.layout_sha256 = layout_sha256;
     artifact.shard_count = sidecar.shard_count;
     artifact.physical_point_count = sidecar.physical_point_count;
-    for (node, memberships) in artifact
+    if mode == RebindMode::RuntimeProfile {
+        artifact.upper_k = sidecar
+            .upper_k
+            .expect("validated runtime profile must contain upper_k");
+        artifact.upper_ef_search = sidecar
+            .upper_ef_search
+            .expect("validated runtime profile must contain upper_ef_search");
+        artifact.dynamic_ef_base = sidecar
+            .dynamic_ef_base
+            .expect("validated runtime profile must contain dynamic_ef_base");
+        artifact.dynamic_ef_factor = sidecar
+            .dynamic_ef_factor
+            .expect("validated runtime profile must contain dynamic_ef_factor");
+    }
+    for (node, owner_shard) in artifact
         .upper_nodes
         .iter_mut()
-        .zip(sidecar.shard_memberships)
+        .zip(sidecar.upper_owner_shards)
     {
-        node.shard_membership = memberships;
+        node.owner_shard = owner_shard;
     }
 
     artifact.validate()?;
-    verify_immutable_snapshot(&immutable, &artifact)?;
+    let preserve_runtime_parameters = mode != RebindMode::RuntimeProfile;
+    verify_immutable_snapshot(&immutable, &artifact, preserve_runtime_parameters)?;
     let output_graph_sha256 = graph_semantic_sha256(&artifact)?;
     let output_nodes_sha256 = upper_nodes_identity_sha256(&artifact.upper_nodes)?;
     let output_generation = artifact.generation;
@@ -373,7 +494,7 @@ fn rebind_artifact(
     drop(artifact);
     let load_probe =
         OrionRoutingArtifact::from_json_slice(&canonical_json, Some(&output_artifact_sha256))?;
-    verify_immutable_snapshot(&immutable, &load_probe)?;
+    verify_immutable_snapshot(&immutable, &load_probe, preserve_runtime_parameters)?;
     OrionRouter::new(load_probe)?;
 
     atomic_save(output_path, |writer| writer.write_all(&canonical_json))?;
@@ -389,7 +510,7 @@ fn rebind_artifact(
     }
     let written_artifact =
         OrionRoutingArtifact::from_json_slice(&written, Some(&output_artifact_sha256))?;
-    verify_immutable_snapshot(&immutable, &written_artifact)?;
+    verify_immutable_snapshot(&immutable, &written_artifact, preserve_runtime_parameters)?;
     atomic_save(&output_checksum_path, |writer| {
         writer.write_all(format!("{output_artifact_sha256}\n").as_bytes())
     })?;
@@ -410,6 +531,48 @@ fn rebind_artifact(
     })
 }
 
+#[cfg(test)]
+fn rebind_artifact(
+    source_path: &Path,
+    sidecar_path: &Path,
+    output_path: &Path,
+) -> Result<RebindReport, Box<dyn Error>> {
+    rebind_artifact_with_mode(
+        source_path,
+        sidecar_path,
+        output_path,
+        RebindMode::Memberships,
+    )
+}
+
+#[cfg(test)]
+fn finalize_build_artifact(
+    source_path: &Path,
+    sidecar_path: &Path,
+    output_path: &Path,
+) -> Result<RebindReport, Box<dyn Error>> {
+    rebind_artifact_with_mode(
+        source_path,
+        sidecar_path,
+        output_path,
+        RebindMode::BuildFinalization,
+    )
+}
+
+#[cfg(test)]
+fn rebind_runtime_profile_artifact(
+    source_path: &Path,
+    sidecar_path: &Path,
+    output_path: &Path,
+) -> Result<RebindReport, Box<dyn Error>> {
+    rebind_artifact_with_mode(
+        source_path,
+        sidecar_path,
+        output_path,
+        RebindMode::RuntimeProfile,
+    )
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args_os();
     let program = args
@@ -426,6 +589,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let sidecar = args.next().ok_or_else(|| usage(&program))?;
     let output = args.next().ok_or_else(|| usage(&program))?;
+    let mode = match args.next() {
+        None => RebindMode::Memberships,
+        Some(flag) if flag == "--finalize-build" => RebindMode::BuildFinalization,
+        Some(flag) if flag == "--runtime-profile" => RebindMode::RuntimeProfile,
+        Some(extra) => {
+            return Err(format!("unexpected argument {extra:?}\n{}", usage(&program)).into());
+        }
+    };
     if let Some(extra) = args.next() {
         return Err(format!("unexpected argument {extra:?}\n{}", usage(&program)).into());
     }
@@ -433,7 +604,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let source = PathBuf::from(source);
     let sidecar = PathBuf::from(sidecar);
     let output = PathBuf::from(output);
-    let report = rebind_artifact(&source, &sidecar, &output)?;
+    let report = rebind_artifact_with_mode(&source, &sidecar, &output, mode)?;
     println!("artifact={}", output.display());
     println!("checksum_file={}", checksum_path(&output).display());
     println!("source_artifact_sha256={}", report.source_artifact_sha256);
@@ -504,12 +675,12 @@ mod tests {
                 OrionUpperNode {
                     label: 10_u64.into(),
                     vector: vec![1.0, -0.0],
-                    shard_membership: vec![0, 1],
+                    owner_shard: 0,
                 },
                 OrionUpperNode {
                     label: 20_u64.into(),
                     vector: vec![0.0, 1.0],
-                    shard_membership: vec![1],
+                    owner_shard: 1,
                 },
             ],
             upper_graph: with_graph.then(|| OrionUpperHnswGraph {
@@ -537,16 +708,28 @@ mod tests {
         (path, checksum)
     }
 
+    fn write_artifact_source(
+        directory: &Path,
+        filename: &str,
+        artifact: &OrionRoutingArtifact,
+    ) -> (PathBuf, String) {
+        let path = directory.join(filename);
+        let bytes = artifact.canonical_json_bytes().unwrap();
+        let checksum = sha256_hex(&bytes);
+        fs_err::write(&path, bytes).unwrap();
+        (path, checksum)
+    }
+
     fn sidecar(source_sha256: &str) -> serde_json::Value {
         json!({
-            "format_version": 1,
+            "format_version": 2,
             "source_artifact_sha256": source_sha256,
             "source_generation": 9,
             "generation": 10,
             "layout_sha256": "b".repeat(64),
-            "shard_count": 3,
+            "shard_count": 2,
             "physical_point_count": 14,
-            "shard_memberships": [[2, 0], [1, 2]],
+            "upper_owner_shards": [0, 1],
         })
     }
 
@@ -580,10 +763,10 @@ mod tests {
                 .unwrap();
         assert_eq!(rebound.generation, 10);
         assert_eq!(rebound.layout_sha256, "b".repeat(64));
-        assert_eq!(rebound.shard_count, 3);
+        assert_eq!(rebound.shard_count, 2);
         assert_eq!(rebound.physical_point_count, 14);
-        assert_eq!(rebound.upper_nodes[0].shard_membership, vec![2, 0]);
-        assert_eq!(rebound.upper_nodes[1].shard_membership, vec![1, 2]);
+        assert_eq!(rebound.upper_nodes[0].owner_shard, 0);
+        assert_eq!(rebound.upper_nodes[1].owner_shard, 1);
         assert_eq!(rebound.upper_graph, source.upper_graph);
         assert_eq!(
             upper_nodes_identity_sha256(&rebound.upper_nodes).unwrap(),
@@ -634,18 +817,16 @@ mod tests {
     #[test]
     fn rejects_invalid_membership_rows() {
         let cases = [
-            (json!([[0]]), "has 1 rows"),
-            (json!([[], [1, 2]]), "is empty"),
-            (json!([[0, 0], [1, 2]]), "repeats shard 0"),
-            (json!([[0, 3], [1, 2]]), "references shard 3"),
-            (json!([[0], [0]]), "covers shard 1"),
+            (json!([0]), "has 1 entries"),
+            (json!([0, 2]), "references shard 2"),
+            (json!([0, 0]), "covers shard 1"),
         ];
 
         for (memberships, expected_error) in cases {
             let directory = tempfile::tempdir().unwrap();
             let (source_path, source_sha256) = write_source(directory.path(), true);
             let mut value = sidecar(&source_sha256);
-            value["shard_memberships"] = memberships;
+            value["upper_owner_shards"] = memberships;
             let sidecar_path = write_sidecar(directory.path(), &value);
             let output_path = directory.path().join("generation-10.json");
             let error = rebind_artifact(&source_path, &sidecar_path, &output_path)
@@ -685,5 +866,82 @@ mod tests {
                 .to_string()
                 .contains("unknown field")
         );
+    }
+
+    #[test]
+    fn finalizes_neutral_build_source_without_rebuilding_or_incrementing_generation() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut neutral = artifact(true);
+        neutral.shard_count = 1;
+        neutral.physical_point_count = neutral.logical_point_count;
+        for node in &mut neutral.upper_nodes {
+            node.owner_shard = 0;
+        }
+        let (source_path, source_sha256) =
+            write_artifact_source(directory.path(), "upper-source-generation-9.json", &neutral);
+        let mut value = sidecar(&source_sha256);
+        value["generation"] = json!(9);
+        let sidecar_path = write_sidecar(directory.path(), &value);
+        let output_path = directory.path().join("generation-9.json");
+
+        let report = finalize_build_artifact(&source_path, &sidecar_path, &output_path).unwrap();
+        let finalized =
+            OrionRoutingArtifact::read_json(&output_path, Some(&report.output_artifact_sha256))
+                .unwrap();
+        assert_eq!(finalized.generation, 9);
+        assert_eq!(finalized.upper_graph, neutral.upper_graph);
+        assert_eq!(finalized.shard_count, 2);
+        assert_eq!(finalized.upper_nodes[0].owner_shard, 0);
+        assert_eq!(
+            report.source_upper_graph_sha256,
+            report.output_upper_graph_sha256
+        );
+
+        let non_neutral_directory = tempfile::tempdir().unwrap();
+        let (non_neutral_path, non_neutral_sha256) =
+            write_source(non_neutral_directory.path(), true);
+        let mut invalid = sidecar(&non_neutral_sha256);
+        invalid["generation"] = json!(9);
+        let invalid_sidecar = write_sidecar(non_neutral_directory.path(), &invalid);
+        let invalid_output = non_neutral_directory.path().join("final.json");
+        assert!(
+            finalize_build_artifact(&non_neutral_path, &invalid_sidecar, &invalid_output)
+                .unwrap_err()
+                .to_string()
+                .contains("neutral one-shard")
+        );
+    }
+
+    #[test]
+    fn runtime_profile_rebind_changes_only_runtime_fields_and_generation() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = artifact(true);
+        let (source_path, source_sha256) =
+            write_artifact_source(directory.path(), "generation-9.json", &source);
+        let mut value = sidecar(&source_sha256);
+        value["layout_sha256"] = json!(source.layout_sha256.clone());
+        value["shard_count"] = json!(source.shard_count);
+        value["physical_point_count"] = json!(source.physical_point_count);
+        value["upper_owner_shards"] = json!([0, 1]);
+        value["upper_k"] = json!(2);
+        value["upper_ef_search"] = json!(4);
+        value["dynamic_ef_base"] = json!(48);
+        value["dynamic_ef_factor"] = json!(15);
+        let sidecar_path = write_sidecar(directory.path(), &value);
+        let output_path = directory.path().join("generation-10.json");
+
+        let report =
+            rebind_runtime_profile_artifact(&source_path, &sidecar_path, &output_path).unwrap();
+        let rebound =
+            OrionRoutingArtifact::read_json(&output_path, Some(&report.output_artifact_sha256))
+                .unwrap();
+        assert_eq!(rebound.generation, 10);
+        assert_eq!(rebound.upper_k, 2);
+        assert_eq!(rebound.upper_ef_search, 4);
+        assert_eq!(rebound.dynamic_ef_base, 48);
+        assert_eq!(rebound.dynamic_ef_factor, 15);
+        assert_eq!(rebound.layout_sha256, source.layout_sha256);
+        assert_eq!(rebound.upper_nodes, source.upper_nodes);
+        assert_eq!(rebound.upper_graph, source.upper_graph);
     }
 }

@@ -392,6 +392,10 @@ mod auto_shard_policy_tests {
             let decoded_config: CollectionConfigInternal =
                 serde_json::from_slice(&encoded_config).unwrap();
             assert_eq!(decoded_config, config);
+            assert_eq!(
+                decoded_config.force_indexing_nonempty(),
+                matches!(&policy, AutoShardPolicy::Orion { .. }),
+            );
 
             match policy {
                 AutoShardPolicy::HashAll => {
@@ -489,6 +493,12 @@ pub struct CollectionConfigInternal {
 }
 
 impl CollectionConfigInternal {
+    pub fn force_indexing_nonempty(&self) -> bool {
+        self.auto_shard_policy
+            .as_ref()
+            .is_some_and(AutoShardPolicy::is_orion)
+    }
+
     pub fn to_bytes(&self) -> CollectionResult<Vec<u8>> {
         serde_json::to_vec(self).map_err(|err| CollectionError::service_error(err.to_string()))
     }

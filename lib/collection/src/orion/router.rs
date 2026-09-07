@@ -93,7 +93,7 @@ impl OrionRouteScratch {
 #[derive(Debug)]
 struct RuntimeUpperNode {
     label: ExtendedPointId,
-    shard_membership: Vec<ShardId>,
+    owner_shard: ShardId,
 }
 
 #[derive(Debug)]
@@ -208,7 +208,7 @@ impl OrionRouter {
             upper_vectors.extend(preprocessed_vector);
             nodes.push(RuntimeUpperNode {
                 label: node.label,
-                shard_membership: node.shard_membership,
+                owner_shard: node.owner_shard,
             });
         }
         debug_assert_eq!(upper_vectors.len(), upper_vector_element_count);
@@ -258,12 +258,6 @@ impl OrionRouter {
             UpperSearchBackend::Hnsw(graph) => self.search_hnsw(&query, graph),
             UpperSearchBackend::BruteForceTesting => self.search_brute_force(&query),
         }?;
-        if hits.len() != self.upper_k {
-            return Err(OrionRoutingError::IncompleteUpperSearch {
-                expected: self.upper_k,
-                actual: hits.len(),
-            });
-        }
         Ok(hits)
     }
 
@@ -280,24 +274,29 @@ impl OrionRouter {
         scratch: &mut OrionRouteScratch,
     ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         self.search_upper_indices_with_scratch(query, scratch)?;
-        self.route_upper_node_indices(
+        let targets = self.route_upper_node_indices(
             scratch
                 .sorted_nearest
                 .iter()
                 .take(self.upper_k)
                 .map(|(_, node_index)| *node_index),
-        )
+        )?;
+        let actual_upper_hits = scratch.sorted_nearest.len().min(self.upper_k);
+        self.validate_target_entry_count(&targets, actual_upper_hits)?;
+        Ok(targets)
     }
 
     /// Convert ordered upper hits into sorted logical-shard targets.
     ///
-    /// Every membership of every one of the first `upper_k` hits is retained. There is no adaptive
-    /// shard pruning. Entry points retain hit order and are de-duplicated independently per shard.
+    /// Every one of the first `upper_k` hits contributes exactly once to its frozen upper owner.
+    /// There is no adaptive shard pruning. Entry points retain hit order.
     pub fn route_upper_hits(
         &self,
         ordered_hits: &[OrionUpperHit],
     ) -> OrionRoutingResult<Vec<OrionShardTarget>> {
-        self.route_upper_labels(ordered_hits.iter().map(|hit| hit.label))
+        let targets = self.route_upper_labels(ordered_hits.iter().map(|hit| hit.label))?;
+        self.validate_target_entry_count(&targets, ordered_hits.len().min(self.upper_k))?;
+        Ok(targets)
     }
 
     pub fn route_upper_labels(
@@ -329,14 +328,9 @@ impl OrionRouter {
                 continue;
             }
             let node = &self.nodes[node_index];
-            for &shard_id in &node.shard_membership {
-                // Artifact validation guarantees that one upper node cannot list the same shard
-                // twice. A label-global duplicate check is therefore exactly equivalent to the
-                // previous HashSet attached to every target shard.
-                entry_points_by_shard[shard_id as usize]
-                    .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
-                    .push(label);
-            }
+            entry_points_by_shard[node.owner_shard as usize]
+                .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
+                .push(label);
         }
 
         self.finish_targets(entry_points_by_shard)
@@ -352,11 +346,9 @@ impl OrionRouter {
         let mut entry_points_by_shard = vec![None; self.shard_count as usize];
         for node_index in ordered_node_indices.into_iter().take(self.upper_k) {
             let node = &self.nodes[node_index];
-            for &shard_id in &node.shard_membership {
-                entry_points_by_shard[shard_id as usize]
-                    .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
-                    .push(node.label);
-            }
+            entry_points_by_shard[node.owner_shard as usize]
+                .get_or_insert_with(|| Vec::with_capacity(self.entry_point_capacity_hint))
+                .push(node.label);
         }
         self.finish_targets(entry_points_by_shard)
     }
@@ -384,6 +376,21 @@ impl OrionRouter {
                 })
             })
             .collect()
+    }
+
+    fn validate_target_entry_count(
+        &self,
+        targets: &[OrionShardTarget],
+        expected: usize,
+    ) -> OrionRoutingResult<()> {
+        let actual = targets
+            .iter()
+            .map(|target| target.entry_points.len())
+            .sum::<usize>();
+        if actual != expected {
+            return Err(OrionRoutingError::IncompleteUpperRouting { expected, actual });
+        }
+        Ok(())
     }
 
     fn search_upper_indices_with_scratch(
@@ -425,13 +432,6 @@ impl OrionRouter {
             }
         }
 
-        let actual = sorted_nearest.len().min(self.upper_k);
-        if actual != self.upper_k {
-            return Err(OrionRoutingError::IncompleteUpperSearch {
-                expected: self.upper_k,
-                actual,
-            });
-        }
         Ok(())
     }
 
@@ -664,16 +664,12 @@ fn route_entry_point_capacity_hint(
     shard_count: ShardId,
     upper_nodes: &[super::artifact::OrionUpperNode],
 ) -> usize {
-    let total_memberships = upper_nodes
-        .iter()
-        .map(|node| node.shard_membership.len())
-        .sum::<usize>();
     let denominator = upper_nodes
         .len()
         .saturating_mul(shard_count as usize)
         .max(1);
     let expected = upper_k
-        .saturating_mul(total_memberships)
+        .saturating_mul(upper_nodes.len())
         .div_ceil(denominator)
         .max(1);
     expected
@@ -776,17 +772,17 @@ mod flat_upper_vector_tests {
                 OrionUpperNode {
                     label: id(10),
                     vector: vec![3.0, 4.0],
-                    shard_membership: vec![1, 0],
+                    owner_shard: 1,
                 },
                 OrionUpperNode {
                     label: id(20),
                     vector: vec![0.0, -2.0],
-                    shard_membership: vec![0],
+                    owner_shard: 0,
                 },
                 OrionUpperNode {
                     label: id(30),
                     vector: vec![-5.0, 0.0],
-                    shard_membership: vec![1],
+                    owner_shard: 1,
                 },
             ],
             upper_graph: Some(OrionUpperHnswGraph {
@@ -823,7 +819,7 @@ mod flat_upper_vector_tests {
         let expected_metadata = artifact
             .upper_nodes
             .iter()
-            .map(|node| (node.label, node.shard_membership.clone()))
+            .map(|node| (node.label, node.owner_shard))
             .collect::<Vec<_>>();
 
         let brute_force = OrionRouter::new_brute_force_testing(artifact.clone()).unwrap();
@@ -835,7 +831,7 @@ mod flat_upper_vector_tests {
                 router
                     .nodes
                     .iter()
-                    .map(|node| (node.label, node.shard_membership.clone()))
+                    .map(|node| (node.label, node.owner_shard))
                     .collect::<Vec<_>>(),
                 expected_metadata,
             );

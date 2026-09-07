@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use super::error::{OrionRoutingError, OrionRoutingResult};
 use crate::shards::shard::ShardId;
 
-pub const ORION_ROUTING_ARTIFACT_FORMAT_VERSION: u32 = 1;
+pub const ORION_ROUTING_ARTIFACT_FORMAT_VERSION: u32 = 2;
 
 /// Dense-vector schema fields which must remain identical between artifact build and serving.
 ///
@@ -55,8 +55,11 @@ impl OrionVectorSchemaFingerprint {
 pub struct OrionUpperNode {
     pub label: ExtendedPointId,
     pub vector: Vec<f32>,
-    /// Logical shard IDs assigned by Orion voting/multi-assignment.
-    pub shard_membership: Vec<ShardId>,
+    /// Single logical shard frozen by upper-tier clustering and self-search refinement.
+    ///
+    /// Lower-tier point copies are described by the full layout and must not be used to widen
+    /// online routing for this upper node.
+    pub owner_shard: ShardId,
 }
 
 /// Per-level adjacency for one upper point. Index 0 is level 0.
@@ -179,24 +182,12 @@ impl OrionRoutingArtifact {
                     dimension,
                 });
             }
-            if node.shard_membership.is_empty() {
-                return Err(OrionRoutingError::EmptyShardMembership { label: node.label });
-            }
-            let mut memberships = HashSet::with_capacity(node.shard_membership.len());
-            for &shard_id in &node.shard_membership {
-                if shard_id >= self.shard_count {
-                    return Err(OrionRoutingError::ShardOutOfRange {
-                        label: node.label,
-                        shard_id,
-                        shard_count: self.shard_count,
-                    });
-                }
-                if !memberships.insert(shard_id) {
-                    return Err(OrionRoutingError::DuplicateShardMembership {
-                        label: node.label,
-                        shard_id,
-                    });
-                }
+            if node.owner_shard >= self.shard_count {
+                return Err(OrionRoutingError::ShardOutOfRange {
+                    label: node.label,
+                    shard_id: node.owner_shard,
+                    shard_count: self.shard_count,
+                });
             }
         }
 

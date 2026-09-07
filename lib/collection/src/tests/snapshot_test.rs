@@ -78,12 +78,12 @@ fn orion_snapshot_artifact() -> OrionRoutingArtifact {
             OrionUpperNode {
                 label: 10_u64.into(),
                 vector: vec![1.0, 0.0, 0.0, 0.0],
-                shard_membership: vec![0],
+                owner_shard: 0,
             },
             OrionUpperNode {
                 label: 20_u64.into(),
                 vector: vec![0.0, 1.0, 0.0, 0.0],
-                shard_membership: vec![0],
+                owner_shard: 0,
             },
         ],
         upper_graph: Some(OrionUpperHnswGraph {

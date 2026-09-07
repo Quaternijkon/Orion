@@ -480,6 +480,7 @@ impl LocalShard {
             &collection_config_read.hnsw_config,
             &shared_storage_config.hnsw_global_config,
             &collection_config_read.quantization_config,
+            collection_config_read.force_indexing_nonempty(),
         );
 
         drop(collection_config_read); // release `shared_config` from borrow checker
@@ -664,6 +665,7 @@ impl LocalShard {
             &config.hnsw_config,
             &shared_storage_config.hnsw_global_config,
             &config.quantization_config,
+            config.force_indexing_nonempty(),
         );
 
         drop(config); // release `shared_config` from borrow checker

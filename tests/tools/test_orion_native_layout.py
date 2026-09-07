@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import struct
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -58,6 +59,8 @@ def smoke_args(module, hdf5_path: Path, output_dir: Path, *extra: str):
             "2",
             "--k-overlap",
             "2",
+            "--attachment-search-ef",
+            "2",
             "--upper-build-batch-size",
             "3",
             *extra,
@@ -72,12 +75,14 @@ def patch_algorithm_pipeline(module, monkeypatch):
     routing = SimpleNamespace(
         initial_num_shards=2,
         num_shards=3,
-        point_to_shards=[[0], [1], [2], [0], [1], [2]],
-        total_assigned=6,
-        expansion_ratio=1.0,
+        l1_to_shard=[0, 2, 2, 0, 1, 2],
+        point_to_shards=[[0], [1, 2], [2], [0], [1], [2]],
+        total_assigned=7,
+        expansion_ratio=7 / 6,
         topology_iterations=4,
-        shard_counts=module.experiment.np.asarray([2, 2, 2], dtype=module.experiment.np.int64),
-        fission_events=[{"source_shard": 1, "accepted": True, "split_k": 2}],
+        shard_counts=module.experiment.np.asarray([2, 2, 3], dtype=module.experiment.np.int64),
+        fission_events=[],
+        balance_diagnostics=None,
     )
 
     real_prepare = module.experiment.prepare_vectors_for_distance
@@ -90,35 +95,96 @@ def patch_algorithm_pipeline(module, monkeypatch):
         calls.append(("global_upper_indices", num_points, denominator, seed))
         return upper_indices
 
-    upper_index = object()
+    def write_vectors(train, output_path, **kwargs):
+        calls.append(("write_orion_numeric_vector_file", len(train), output_path, kwargs))
+        output_path.write_bytes(b"canonical-vectors")
+        return module.sha256_path(output_path)
 
-    def build_upper(
-        vectors,
-        labels,
-        dim,
-        m,
-        ef_construction,
-        ef_search,
-        space,
-        **kwargs,
-    ):
+    def write_upper_seed(train, selected_upper, output_path, **kwargs):
         calls.append(
             (
-                "build_upper_index",
-                vectors.copy(),
-                labels.copy(),
-                dim,
-                m,
-                ef_construction,
-                ef_search,
-                space,
+                "write_orion_upper_seed_graphless_artifact",
+                len(train),
+                selected_upper.copy(),
+                output_path,
                 kwargs,
             )
         )
-        return upper_index
+        output_path.write_text(
+            json.dumps(
+                {
+                    "format_version": 2,
+                    "generation": kwargs["generation"],
+                    "layout_sha256": "0" * 64,
+                    "logical_point_count": len(train),
+                    "physical_point_count": len(train),
+                    "shard_count": 1,
+                    "upper_nodes": [
+                        {
+                            "label": int(point_id),
+                            "vector": train[int(point_id)].tolist(),
+                            "owner_shard": 0,
+                        }
+                        for point_id in selected_upper.tolist()
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return output_path
 
-    def attach(index, train, k_overlap, batch_size):
-        calls.append(("compute_point_to_l1s", index, len(train), k_overlap, batch_size))
+    def run_builder(args, graphless_path, production_path):
+        calls.append(("run_rust_builder", graphless_path, production_path))
+        payload = json.loads(graphless_path.read_text(encoding="utf-8"))
+        payload["upper_graph"] = {"entry_point": 4, "max_level": 0, "nodes": []}
+        production_path.write_text(json.dumps(payload), encoding="utf-8")
+        Path(f"{production_path}.sha256").write_text(
+            module.sha256_path(production_path) + "\n", encoding="utf-8"
+        )
+        return ["mock-cargo", "orion_build_artifact"]
+
+    def run_export(
+        args,
+        production_path,
+        vectors_path,
+        row_count,
+        dimension,
+        hits_path,
+        manifest_path,
+    ):
+        calls.append(
+            (
+                "run_rust_upper_hits_export",
+                production_path,
+                vectors_path,
+                row_count,
+                dimension,
+                hits_path,
+                manifest_path,
+            )
+        )
+        hits_path.write_bytes(b"hits")
+        manifest_path.write_text("{}\n", encoding="utf-8")
+        return ["mock-cargo", "orion_export_upper_hits"]
+
+    def verify_export(
+        args,
+        production_path,
+        vectors_path,
+        hits_path,
+        manifest_path,
+        **kwargs,
+    ):
+        calls.append(("verify_attachment_export", kwargs))
+        return {
+            "artifact_sha256": module.sha256_path(production_path),
+            "vectors_sha256": module.sha256_path(vectors_path),
+            "hits_sha256": module.sha256_path(hits_path),
+        }
+
+    def load_hits(hits_path, **kwargs):
+        calls.append(("load_point_to_l1s_from_upper_hits", hits_path, kwargs))
         return point_to_l1s
 
     def build_routing(
@@ -133,7 +199,7 @@ def patch_algorithm_pipeline(module, monkeypatch):
     ):
         calls.append(
             (
-                "build_original_routing_state",
+                "build_canonical_routing_state",
                 len(train),
                 selected_upper.copy(),
                 attachments,
@@ -141,7 +207,6 @@ def patch_algorithm_pipeline(module, monkeypatch):
                 kmeans_iters,
                 kmeans_seed,
                 topology_iters,
-                kwargs,
             )
         )
         return routing
@@ -150,6 +215,7 @@ def patch_algorithm_pipeline(module, monkeypatch):
         train,
         selected_upper,
         point_to_shards,
+        upper_owner_by_point,
         num_shards,
         output_path,
         **kwargs,
@@ -160,6 +226,7 @@ def patch_algorithm_pipeline(module, monkeypatch):
                 len(train),
                 selected_upper.copy(),
                 point_to_shards,
+                upper_owner_by_point,
                 num_shards,
                 kwargs,
             )
@@ -167,7 +234,7 @@ def patch_algorithm_pipeline(module, monkeypatch):
         output_path.write_text(
             json.dumps(
                 {
-                    "format_version": 1,
+                    "format_version": 2,
                     "generation": kwargs["generation"],
                     "layout_sha256": "a" * 64,
                     "logical_point_count": len(train),
@@ -182,24 +249,30 @@ def patch_algorithm_pipeline(module, monkeypatch):
 
     monkeypatch.setattr(module.experiment, "prepare_vectors_for_distance", prepare)
     monkeypatch.setattr(module.experiment, "global_upper_indices", select)
-    monkeypatch.setattr(module.experiment, "build_upper_index", build_upper)
-    monkeypatch.setattr(module.experiment, "compute_point_to_l1s", attach)
-    monkeypatch.setattr(module.experiment, "build_original_routing_state", build_routing)
+    monkeypatch.setattr(
+        module.experiment, "write_orion_numeric_vector_file", write_vectors
+    )
+    monkeypatch.setattr(
+        module.experiment,
+        "write_orion_upper_seed_graphless_artifact",
+        write_upper_seed,
+    )
+    monkeypatch.setattr(module, "run_rust_builder", run_builder)
+    monkeypatch.setattr(module, "run_rust_upper_hits_export", run_export)
+    monkeypatch.setattr(module, "verify_attachment_export", verify_export)
+    monkeypatch.setattr(module, "load_point_to_l1s_from_upper_hits", load_hits)
+    monkeypatch.setattr(module.experiment, "build_canonical_routing_state", build_routing)
     monkeypatch.setattr(module.experiment, "write_orion_graphless_artifact", write_graphless)
     return calls, routing
 
 
-def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypatch, tmp_path):
+def test_graphless_only_builds_one_qdrant_upper_graph_before_layout(monkeypatch, tmp_path):
     module = load_module()
     hdf5_path = tmp_path / "smoke.hdf5"
     output_dir = tmp_path / "layout"
     write_train_hdf5(module, hdf5_path)
     calls, routing = patch_algorithm_pipeline(module, monkeypatch)
 
-    def must_not_run(*_args, **_kwargs):
-        raise AssertionError("graphless-only must not invoke the Rust builder")
-
-    monkeypatch.setattr(module, "run_rust_builder", must_not_run)
     args = smoke_args(
         module,
         hdf5_path,
@@ -210,12 +283,6 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
         "48",
         "--dynamic-ef-factor",
         "15",
-        "--multi-assign-min-max-vote",
-        "3",
-        "--multi-assign-vote-delta",
-        "1",
-        "--multi-assign-max-shards",
-        "2",
         "--graphless-only",
     )
 
@@ -224,38 +291,24 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
     assert [call[0] for call in calls] == [
         "prepare_vectors_for_distance",
         "global_upper_indices",
-        "build_upper_index",
-        "compute_point_to_l1s",
-        "build_original_routing_state",
+        "write_orion_numeric_vector_file",
+        "write_orion_upper_seed_graphless_artifact",
+        "run_rust_builder",
+        "run_rust_upper_hits_export",
+        "verify_attachment_export",
+        "load_point_to_l1s_from_upper_hits",
+        "build_canonical_routing_state",
         "write_orion_graphless_artifact",
     ]
-    assert calls[2][-1] == {
-        "random_seed": 100,
-        "construction_threads": module.DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
-    }
-    routing_call = calls[4]
+    assert sum(call[0] == "run_rust_builder" for call in calls) == 1
+    routing_call = calls[8]
     assert routing_call[4:8] == (2, 10, 1, 50)
-    assert routing_call[8] == {
-        "use_multi_assign": True,
-        "enable_fission": True,
-        "multi_assign_min_max_vote": 3,
-        "multi_assign_vote_delta": 1,
-        "multi_assign_max_shards": 2,
-        "enable_topology_refinement": True,
-        "balance_mode": "none",
-        "balance_min_load_ratio": 0.99,
-        "balance_max_load_ratio": 1.01,
-        "balance_max_passes": 8,
-        "balance_max_vote_loss": 3,
-        "balance_l1_max_vote_loss": None,
-        "balance_l0_max_vote_loss": None,
-    }
-    upper_build_call = calls[2]
-    assert upper_build_call[6] == 100
-    graphless_call = calls[5]
+    assert len(routing_call) == 8
+    graphless_call = calls[9]
     assert graphless_call[3] == routing.point_to_shards
-    assert graphless_call[4] == 3
-    assert graphless_call[5] == {
+    assert graphless_call[4] == routing.l1_to_shard
+    assert graphless_call[5] == 3
+    assert graphless_call[6] == {
         "generation": 7,
         "vector_distance": "cosine",
         "upper_k": 2,
@@ -272,37 +325,70 @@ def test_graphless_only_is_a_thin_wrapper_over_existing_orion_pipeline(monkeypat
     manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
     assert manifest["mode"] == "graphless_only"
     assert manifest["dataset"]["train_rows_used"] == 6
-    assert manifest["routing"]["physical_point_count"] == 6
+    assert manifest["routing"]["physical_point_count"] == 7
     assert manifest["artifact_binding"]["layout_sha256"] == "a" * 64
     assert manifest["routing"]["fission_events"] == routing.fission_events
-    assert manifest["parameters"]["attachment_search_ef"] == 100
+    assert manifest["parameters"]["attachment_search_ef"] == 2
+    assert manifest["parameters"]["efs"] == 2
     assert manifest["parameters"]["upper_search_ef"] == 2
+    assert manifest["parameters"]["attachment_navigator"] == (
+        "qdrant_production_upper_graph"
+    )
+    assert manifest["parameters"]["single_upper_graph_build"] is True
+    assert manifest["navigation_binding"]["single_upper_graph_build"] is True
+    assert manifest["navigation_binding"]["upper_graph_sha256"]
+    assert manifest["navigation_binding"]["attachments_sha256"]
+    assert manifest["outputs"]["rust_builder_command"] == [
+        "mock-cargo",
+        "orion_build_artifact",
+    ]
+    assert manifest["outputs"]["rust_rebind_command"] is None
     assert manifest["parameters"]["enable_topology_refinement"] is True
     assert manifest["parameters"]["balance_mode"] == "none"
+    assert manifest["parameters"]["enable_fission"] is False
+    assert manifest["parameters"]["lower_hnsw_retains_non_base_layers"] is True
     checksum_lines = (output_dir / module.CHECKSUMS_NAME).read_text().splitlines()
     assert any(line.endswith(f"  {module.GRAPHLESS_NAME}") for line in checksum_lines)
     assert any(line.endswith(f"  {module.BUILD_MANIFEST_NAME}") for line in checksum_lines)
 
 
-def test_full_mode_mocks_rust_builder_then_reuses_existing_bundle_writer(monkeypatch, tmp_path):
+def test_full_mode_finalizes_memberships_without_a_second_graph_build(monkeypatch, tmp_path):
     module = load_module()
     hdf5_path = tmp_path / "full-smoke.hdf5"
     output_dir = tmp_path / "full-layout"
     write_train_hdf5(module, hdf5_path)
-    _calls, routing = patch_algorithm_pipeline(module, monkeypatch)
+    calls, routing = patch_algorithm_pipeline(module, monkeypatch)
     captured = {}
 
-    def fake_rust_builder(args, graphless_path, production_path):
-        captured["rust"] = (args.upper_graph_seed, graphless_path, production_path)
-        production_path.write_text(
-            json.dumps({"format_version": 1, "upper_graph": {"entry_point": 0}}),
-            encoding="utf-8",
+    def fake_rebind(args, source_path, sidecar_path, production_path, *, mode):
+        captured["rebind"] = (source_path, sidecar_path, production_path, mode)
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        source.update(
+            {
+                "generation": sidecar["generation"],
+                "layout_sha256": sidecar["layout_sha256"],
+                "shard_count": sidecar["shard_count"],
+                "physical_point_count": sidecar["physical_point_count"],
+            }
         )
+        for node, owner_shard in zip(
+            source["upper_nodes"], sidecar["upper_owner_shards"], strict=True
+        ):
+            node["owner_shard"] = owner_shard
+        production_path.write_text(json.dumps(source), encoding="utf-8")
         Path(f"{production_path}.sha256").write_text(
             module.sha256_path(production_path) + "\n",
             encoding="utf-8",
         )
-        return ["mock-cargo", "orion_build_artifact"]
+        return ["mock-cargo", "orion_rebind_memberships", "--finalize-build"]
+
+    def fake_finalized(source_path, graphless_path, production_path):
+        return {
+            "upper_graph_sha256": module.production_upper_graph_sha256(source_path),
+            "source_artifact_sha256": module.sha256_path(source_path),
+            "production_artifact_sha256": module.sha256_path(production_path),
+        }
 
     def fake_bundle_writer(
         train,
@@ -319,7 +405,6 @@ def test_full_mode_mocks_rust_builder_then_reuses_existing_bundle_writer(monkeyp
             **kwargs,
         }
         prefix = kwargs["prefix"]
-        (target_dir / f"{prefix}.f32le").write_bytes(b"vectors")
         (target_dir / f"{prefix}.assignments.jsonl").write_text(
             '{"id":0,"shards":[0]}\n', encoding="utf-8"
         )
@@ -327,7 +412,8 @@ def test_full_mode_mocks_rust_builder_then_reuses_existing_bundle_writer(monkeyp
         manifest_path.write_text("{}\n", encoding="utf-8")
         return manifest_path
 
-    monkeypatch.setattr(module, "run_rust_builder", fake_rust_builder)
+    monkeypatch.setattr(module, "run_rust_rebind", fake_rebind)
+    monkeypatch.setattr(module, "verify_finalized_artifact", fake_finalized)
     monkeypatch.setattr(
         module.experiment,
         "write_orion_numeric_shard_import_bundle",
@@ -347,16 +433,21 @@ def test_full_mode_mocks_rust_builder_then_reuses_existing_bundle_writer(monkeyp
 
     summary = module.build(args)
 
-    assert captured["rust"] == (
-        123,
-        output_dir / module.GRAPHLESS_NAME,
+    assert sum(call[0] == "run_rust_builder" for call in calls) == 1
+    assert captured["rebind"] == (
+        output_dir / "upper-source-generation-9.json",
+        output_dir / module.FINALIZATION_SIDECAR_NAME,
         output_dir / "generation-9.json",
+        "finalize-build",
     )
     assert captured["bundle"]["train_rows"] == 6
     assert captured["bundle"]["point_to_shards"] == routing.point_to_shards
     assert captured["bundle"]["num_shards"] == routing.num_shards
     assert captured["bundle"]["orion_artifact_path"] == output_dir / "generation-9.json"
     assert captured["bundle"]["prefix"] == "native-smoke"
+    assert captured["bundle"]["prewritten_vectors_path"] == (
+        output_dir / "native-smoke.f32le"
+    )
     assert summary["mode"] == "production_bundle"
     assert summary["production_artifact"] == str(output_dir / "generation-9.json")
     assert summary["import_manifest"] == str(output_dir / "native-smoke.manifest.json")
@@ -365,6 +456,12 @@ def test_full_mode_mocks_rust_builder_then_reuses_existing_bundle_writer(monkeyp
         "mock-cargo",
         "orion_build_artifact",
     ]
+    assert manifest["outputs"]["rust_rebind_command"] == [
+        "mock-cargo",
+        "orion_rebind_memberships",
+        "--finalize-build",
+    ]
+    assert manifest["navigation_binding"]["graph_identity_verified_after_finalization"] is True
     assert "native-smoke.f32le" in manifest["outputs"]["files"]
 
 
@@ -413,6 +510,77 @@ def test_rust_builder_command_targets_collection_production_example(tmp_path):
     ]
 
 
+def test_canonical_attachment_and_finalization_commands_use_rust_examples(tmp_path):
+    module = load_module()
+    args = module.parse_args(
+        [
+            "--hdf5-path",
+            str(tmp_path / "input.hdf5"),
+            "--output-dir",
+            str(tmp_path / "layout"),
+            "--cargo",
+            "/opt/rust/bin/cargo",
+            "--k-overlap",
+            "10",
+            "--attachment-search-ef",
+            "10",
+        ]
+    )
+    source = tmp_path / "upper-source.json"
+    vectors = tmp_path / "vectors.f32le"
+    hits = tmp_path / "hits.u64le"
+    attachment_manifest = tmp_path / "hits.json"
+    sidecar = tmp_path / "memberships.json"
+    production = tmp_path / "generation-1.json"
+
+    assert module.rust_upper_hits_command(
+        args,
+        source,
+        vectors,
+        1000,
+        200,
+        hits,
+        attachment_manifest,
+    ) == [
+        "/opt/rust/bin/cargo",
+        "run",
+        "--release",
+        "-p",
+        "collection",
+        "--example",
+        "orion_export_upper_hits",
+        "--",
+        str(source),
+        str(vectors),
+        "1000",
+        "200",
+        "10",
+        "10",
+        str(hits),
+        str(attachment_manifest),
+    ]
+    assert module.rust_rebind_command(
+        args,
+        source,
+        sidecar,
+        production,
+        mode="finalize-build",
+    ) == [
+        "/opt/rust/bin/cargo",
+        "run",
+        "--release",
+        "-p",
+        "collection",
+        "--example",
+        "orion_rebind_memberships",
+        "--",
+        str(source),
+        str(sidecar),
+        str(production),
+        "--finalize-build",
+    ]
+
+
 def test_rust_builder_command_can_use_checksum_bound_prebuilt_binary(tmp_path):
     module = load_module()
     builder = tmp_path / "orion_build_artifact"
@@ -458,12 +626,12 @@ def test_rust_builder_command_can_use_checksum_bound_prebuilt_binary(tmp_path):
     assert parameters["rust_builder_binary_sha256"] == module.sha256_path(builder)
 
 
-def test_no_refinement_ablation_is_forwarded_and_recorded(monkeypatch, tmp_path):
+def test_no_refinement_ablation_is_rejected_by_canonical_builder(monkeypatch, tmp_path):
     module = load_module()
     hdf5_path = tmp_path / "ablation-smoke.hdf5"
     output_dir = tmp_path / "ablation-layout"
     write_train_hdf5(module, hdf5_path)
-    calls, _routing = patch_algorithm_pipeline(module, monkeypatch)
+    patch_algorithm_pipeline(module, monkeypatch)
     args = smoke_args(
         module,
         hdf5_path,
@@ -472,26 +640,16 @@ def test_no_refinement_ablation_is_forwarded_and_recorded(monkeypatch, tmp_path)
         "--graphless-only",
     )
 
-    module.build(args)
-
-    routing_call = next(call for call in calls if call[0] == "build_original_routing_state")
-    assert routing_call[8]["enable_topology_refinement"] is False
-    manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
-    assert manifest["parameters"]["enable_topology_refinement"] is False
-    assert manifest["parameters"]["attachment_index_build_threads"] == 1
-    assert manifest["parameters"]["attachment_query_tie_break"] == "distance_then_label"
+    with pytest.raises(ValueError, match="self-vote refinement"):
+        module.build(args)
 
 
-def test_capacity_balance_is_forwarded_and_recorded(monkeypatch, tmp_path):
+def test_capacity_balance_is_rejected_by_canonical_builder(monkeypatch, tmp_path):
     module = load_module()
     hdf5_path = tmp_path / "balanced-smoke.hdf5"
     output_dir = tmp_path / "balanced-layout"
     write_train_hdf5(module, hdf5_path)
-    calls, routing = patch_algorithm_pipeline(module, monkeypatch)
-    routing.balance_diagnostics = {
-        "mode": "capacity_constrained",
-        "fixed_num_shards": True,
-    }
+    patch_algorithm_pipeline(module, monkeypatch)
     args = smoke_args(
         module,
         hdf5_path,
@@ -513,24 +671,11 @@ def test_capacity_balance_is_forwarded_and_recorded(monkeypatch, tmp_path):
         "--graphless-only",
     )
 
-    module.build(args)
-
-    routing_call = next(call for call in calls if call[0] == "build_original_routing_state")
-    assert routing_call[8]["balance_mode"] == "capacity_constrained"
-    assert routing_call[8]["balance_min_load_ratio"] == 0.95
-    assert routing_call[8]["balance_max_load_ratio"] == 1.05
-    assert routing_call[8]["balance_max_passes"] == 6
-    assert routing_call[8]["balance_max_vote_loss"] == 2
-    assert routing_call[8]["balance_l1_max_vote_loss"] == 1
-    assert routing_call[8]["balance_l0_max_vote_loss"] == 2
-    manifest = json.loads((output_dir / module.BUILD_MANIFEST_NAME).read_text())
-    assert manifest["parameters"]["balance_mode"] == "capacity_constrained"
-    assert manifest["parameters"]["balance_l1_max_vote_loss"] == 1
-    assert manifest["parameters"]["balance_l0_max_vote_loss"] == 2
-    assert manifest["routing"]["balance_diagnostics"] == routing.balance_diagnostics
+    with pytest.raises(ValueError, match="excludes load-balancing"):
+        module.build(args)
 
 
-def test_post_layout_capacity_balance_mode_is_accepted(tmp_path):
+def test_post_layout_capacity_balance_mode_is_rejected(tmp_path):
     module = load_module()
     args = module.parse_args(
         [
@@ -543,9 +688,8 @@ def test_post_layout_capacity_balance_mode_is_accepted(tmp_path):
         ]
     )
 
-    module.validate_args(args)
-
-    assert args.balance_mode == "post_layout_capacity_constrained"
+    with pytest.raises(ValueError, match="excludes load-balancing"):
+        module.validate_args(args)
 
 
 def test_run_rust_builder_passes_external_cargo_target_dir(monkeypatch, tmp_path):
@@ -677,3 +821,35 @@ def test_runtime_upper_search_decoupling_requires_explicit_diagnostic_flag(tmp_p
 
     args.allow_decoupled_runtime_upper_search = True
     module.validate_args(args)
+
+
+def test_counted_upper_hits_accepts_rows_shorter_than_requested_k(tmp_path):
+    module = load_module()
+    hits_path = tmp_path / "upper-attachments.counted.bin"
+    hits_path.write_bytes(
+        struct.pack("<I", 1)
+        + struct.pack("<Q", 10)
+        + struct.pack("<I", 3)
+        + struct.pack("<QQQ", 20, 30, 40)
+    )
+
+    assert module.load_point_to_l1s_from_upper_hits(
+        hits_path,
+        row_count=2,
+        top_k=4,
+        upper_labels={10, 20, 30, 40},
+    ) == [[10], [20, 30, 40]]
+
+
+def test_counted_upper_hits_rejects_count_above_requested_k(tmp_path):
+    module = load_module()
+    hits_path = tmp_path / "upper-attachments.counted.bin"
+    hits_path.write_bytes(struct.pack("<I", 3) + struct.pack("<QQQ", 10, 20, 30))
+
+    with pytest.raises(RuntimeError, match="exceeding 2"):
+        module.load_point_to_l1s_from_upper_hits(
+            hits_path,
+            row_count=1,
+            top_k=2,
+            upper_labels={10, 20, 30},
+        )

@@ -258,19 +258,27 @@ pub fn build_optimizers(
     hnsw_config: &HnswConfig,
     hnsw_global_config: &HnswGlobalConfig,
     quantization_config: &Option<QuantizationConfig>,
+    force_indexing_nonempty: bool,
 ) -> Arc<Vec<Arc<Optimizer>>> {
     let segments_path = shard_path.join(SEGMENTS_PATH);
     let temp_segments_path = shard_path.join(TEMP_SEGMENTS_PATH);
     let segment_config =
         build_segment_optimizer_config(collection_params, hnsw_config, quantization_config);
     let num_indexing_threads = max_num_indexing_threads(&segment_config);
-    let threshold_config = optimizers_config.optimizer_thresholds(
+    let mut threshold_config = optimizers_config.optimizer_thresholds(
         num_indexing_threads,
         collection_params.get_deferred_point_id(
             hnsw_config,
             optimizers_config.get_deferred_points_threshold_bytes(),
         ),
     );
+    if force_indexing_nonempty {
+        // Internal zero means every non-empty segment must be optimized into a
+        // complete HNSW. Public indexing_threshold=0 is normalized to
+        // usize::MAX before this point and retains its "disable indexing"
+        // meaning for non-Orion collections.
+        threshold_config.indexing_threshold_kb = 0;
+    }
 
     Arc::new(vec![
         Arc::new(MergeOptimizer::new(

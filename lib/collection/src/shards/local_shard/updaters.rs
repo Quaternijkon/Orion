@@ -72,6 +72,7 @@ impl LocalShard {
             &config.hnsw_config,
             &self.shared_storage_config.hnsw_global_config,
             &config.quantization_config,
+            config.force_indexing_nonempty(),
         );
 
         update_handler.optimizers = new_optimizers.clone();

@@ -1,0 +1,122 @@
+{
+  "dataset": "glove-200-angular",
+  "format_version": 1,
+  "logical_shards": 4,
+  "query_count": 1000,
+  "query_start": 0,
+  "run_id": "glove-m4-tuning",
+  "selected": {
+    "P0": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 3,
+        "policy": "P0",
+        "uniform_ef_search": 256
+      },
+      "config_id": "0f1cf690f7612a1e",
+      "summary": {
+        "aggregate_distance_computations_per_query": 24512.335,
+        "aggregate_nodes_visited_per_query": 775.878,
+        "max_shard_distance_computations_mean": 10319.613,
+        "mean_shards_per_query": 3.0,
+        "p5_per_query_recall": 0.6,
+        "p95_aggregate_distance_computations": 31497.55,
+        "p95_max_shard_distance_computations": 12956.1,
+        "p95_max_shard_nodes_visited": 278.0,
+        "p95_shards_per_query": 3.0,
+        "p99_max_shard_distance_computations": 13414.55,
+        "query_count": 1000,
+        "recall_at_10": 0.9105,
+        "worker_cpu_time_us_per_query": 7897.192
+      }
+    },
+    "P1": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P1",
+        "uniform_ef_search": 256
+      },
+      "config_id": "506ed44810159d6b",
+      "summary": {
+        "aggregate_distance_computations_per_query": 23594.765,
+        "aggregate_nodes_visited_per_query": 745.422,
+        "max_shard_distance_computations_mean": 9993.368,
+        "mean_shards_per_query": 2.896,
+        "p5_per_query_recall": 0.6,
+        "p95_aggregate_distance_computations": 36961.55,
+        "p95_max_shard_distance_computations": 12956.1,
+        "p95_max_shard_nodes_visited": 271.04999999999995,
+        "p95_shards_per_query": 4.0,
+        "p99_max_shard_distance_computations": 13414.0,
+        "query_count": 1000,
+        "recall_at_10": 0.9177000000000001,
+        "worker_cpu_time_us_per_query": 7533.896
+      }
+    },
+    "P2": {
+      "config": {
+        "alpha": 8,
+        "beta": 4,
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 4,
+        "policy": "P2"
+      },
+      "config_id": "65d6de3c2d363076",
+      "summary": {
+        "aggregate_distance_computations_per_query": 14620.562,
+        "aggregate_nodes_visited_per_query": 445.945,
+        "max_shard_distance_computations_mean": 9526.495,
+        "mean_shards_per_query": 4.0,
+        "p5_per_query_recall": 0.5,
+        "p95_aggregate_distance_computations": 20555.2,
+        "p95_max_shard_distance_computations": 14861.599999999999,
+        "p95_max_shard_nodes_visited": 388.0,
+        "p95_shards_per_query": 4.0,
+        "p99_max_shard_distance_computations": 16448.079999999998,
+        "query_count": 1000,
+        "recall_at_10": 0.9025,
+        "worker_cpu_time_us_per_query": 4917.346
+      }
+    },
+    "P3": {
+      "config": {
+        "alpha": 8,
+        "beta": 8,
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P3"
+      },
+      "config_id": "0b91ed752bb6a7d1",
+      "summary": {
+        "aggregate_distance_computations_per_query": 14192.729,
+        "aggregate_nodes_visited_per_query": 431.675,
+        "max_shard_distance_computations_mean": 9643.155,
+        "mean_shards_per_query": 2.896,
+        "p5_per_query_recall": 0.5,
+        "p95_aggregate_distance_computations": 20459.899999999998,
+        "p95_max_shard_distance_computations": 15017.0,
+        "p95_max_shard_nodes_visited": 392.0,
+        "p95_shards_per_query": 4.0,
+        "p99_max_shard_distance_computations": 16647.59,
+        "query_count": 1000,
+        "recall_at_10": 0.9003,
+        "worker_cpu_time_us_per_query": 4627.824
+      }
+    }
+  },
+  "sources": {
+    "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+    "local_search_traces": [
+      {
+        "path": "/users/dry/orion-c6-state/glove-m4-tuning/capture/tuning-1000/local_search_traces.jsonl",
+        "sha256": "d0aa93976452d0862a462eef98ee1ee563fc9b8dcbb80f16509caad1afe61d1c"
+      }
+    ],
+    "route_trace_sha256": "208ec49d8320db68d4912d7a786873dcd1e310fbc0935c8bee710eb1749c4af8"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-09-01T01:28:42Z"
+}

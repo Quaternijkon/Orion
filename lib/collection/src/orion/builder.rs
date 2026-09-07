@@ -213,7 +213,7 @@ mod tests {
                 .map(|index| OrionUpperNode {
                     label: id(1_000 + index),
                     vector: vec![index as f32, (index % 3) as f32],
-                    shard_membership: vec![(index % 4) as u32],
+                    owner_shard: (index % 4) as u32,
                 })
                 .collect(),
             upper_graph: None,

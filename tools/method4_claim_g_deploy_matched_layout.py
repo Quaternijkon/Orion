@@ -143,6 +143,7 @@ def main() -> int:
         "map",
         peer_ids,
         placement_map,
+        force_hnsw_for_nonempty_shards=True,
     )
     metadata = {
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

@@ -549,7 +549,7 @@ def install_transition_runtime_fakes(
 
 def write_orion_artifact(module, tmp_path, generation=7):
     payload = {
-        "format_version": 1,
+        "format_version": 2,
         "generation": generation,
         "vector_schema": {
             "vector_name": "",
@@ -566,7 +566,7 @@ def write_orion_artifact(module, tmp_path, generation=7):
         "dynamic_ef_base": 20,
         "dynamic_ef_factor": 4,
         "upper_nodes": [
-            {"label": 1, "vector": [1.0, 0.0], "shard_membership": [0]}
+            {"label": 1, "vector": [1.0, 0.0], "owner_shard": 0}
         ],
         "upper_graph": {
             "entry_point": 1,
@@ -4238,7 +4238,7 @@ def test_local_orion_artifact_enforces_canonical_file_checksum_and_generation(
 
 def test_local_orion_artifact_rejects_graphless_production_input(tmp_path):
     module = load_module()
-    payload = {"format_version": 1, "generation": 7}
+    payload = {"format_version": 2, "generation": 7}
     artifact = tmp_path / "graphless.json"
     artifact.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
 

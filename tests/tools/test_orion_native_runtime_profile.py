@@ -30,7 +30,8 @@ def faithful_parameters() -> dict[str, object]:
         "upper_sample_seed": 100,
         "upper_m": 32,
         "upper_ef_construction": 100,
-        "attachment_search_ef": 100,
+        "attachment_search_ef": 10,
+        "efs": 10,
         "upper_search_ef": 2,
         "upper_k": 2,
         "allow_decoupled_runtime_upper_search": False,
@@ -42,10 +43,16 @@ def faithful_parameters() -> dict[str, object]:
         "kmeans_seed": 1,
         "topology_iters": 50,
         "use_multi_assign": True,
+        "multi_assign_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
         "multi_assign_min_max_vote": 2,
         "multi_assign_vote_delta": 0,
         "multi_assign_max_shards": 0,
-        "enable_fission": True,
+        "enable_fission": False,
+        "balance_mode": "none",
+        "initial_partition": "kmeans_without_capacity_correction",
+        "lower_hnsw_construction": "independent_full_multilayer_per_shard",
+        "lower_hnsw_retains_non_base_layers": True,
+        "routed_search_start_level": 0,
         "upper_graph_seed": 100,
         "cargo_target_dir": "/tmp/source-cargo-target",
     }
@@ -78,7 +85,7 @@ def write_source_bundle(module, source_dir: Path) -> dict[str, object]:
         ],
     }
     graphless = {
-        "format_version": 1,
+        "format_version": 2,
         "generation": 7,
         "vector_schema": {
             "vector_name": "",
@@ -95,8 +102,8 @@ def write_source_bundle(module, source_dir: Path) -> dict[str, object]:
         "dynamic_ef_base": 20,
         "dynamic_ef_factor": 4,
         "upper_nodes": [
-            {"label": 0, "vector": [1.0, 0.0], "shard_membership": [0]},
-            {"label": 2, "vector": [0.0, 1.0], "shard_membership": [1]},
+            {"label": 0, "vector": [1.0, 0.0], "owner_shard": 0},
+            {"label": 2, "vector": [0.0, 1.0], "owner_shard": 1},
         ],
     }
     graphless_path = source_dir / module.layout_common.GRAPHLESS_NAME
@@ -215,26 +222,34 @@ def runtime_args(module, source_dir: Path, output_dir: Path, *extra: str):
 def patch_rust_builder(module, monkeypatch, upper_graph):
     calls = []
 
-    def fake_builder(args, graphless_path, production_path):
+    def fake_rebind(args, source_path, sidecar_path, production_path, *, mode):
         calls.append(
             {
-                "seed": args.upper_graph_seed,
-                "m": args.upper_m,
-                "ef": args.upper_ef_construction,
                 "cargo": args.cargo,
                 "cargo_target_dir": args.cargo_target_dir,
+                "mode": mode,
             }
         )
-        payload = json.loads(graphless_path.read_text(encoding="utf-8"))
-        payload["upper_graph"] = upper_graph
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        payload.update(
+            {
+                "generation": sidecar["generation"],
+                "upper_k": sidecar["upper_k"],
+                "upper_ef_search": sidecar["upper_ef_search"],
+                "dynamic_ef_base": sidecar["dynamic_ef_base"],
+                "dynamic_ef_factor": sidecar["dynamic_ef_factor"],
+            }
+        )
+        assert payload["upper_graph"] == upper_graph
         module.layout_common.write_json_new(production_path, payload)
         Path(f"{production_path}.sha256").write_text(
             module.layout_common.sha256_path(production_path) + "\n",
             encoding="utf-8",
         )
-        return ["mock-cargo", "orion_build_artifact"]
+        return ["mock-cargo", "orion_rebind_memberships", "--runtime-profile"]
 
-    monkeypatch.setattr(module.layout_common, "run_rust_builder", fake_builder)
+    monkeypatch.setattr(module.layout_common, "run_rust_rebind", fake_rebind)
     return calls
 
 
@@ -258,11 +273,9 @@ def test_derives_runtime_profile_with_identical_layout_and_hardlinked_import_pay
 
     assert calls == [
         {
-            "seed": 100,
-            "m": 32,
-            "ef": 100,
             "cargo": "cargo",
             "cargo_target_dir": None,
+            "mode": "runtime-profile",
         }
     ]
     assert summary["layout_sha256"] == source["graphless"]["layout_sha256"]
@@ -339,6 +352,15 @@ def test_derives_runtime_profile_with_identical_layout_and_hardlinked_import_pay
     assert build_manifest["derivation"]["allowed_parameter_changes"] == list(
         module.RUNTIME_PARAMETER_KEYS
     )
+    assert build_manifest["derivation"]["upper_graph_reuse"][
+        "performed_without_rebuild"
+    ] is True
+    assert build_manifest["outputs"]["rust_builder_command"] is None
+    assert build_manifest["outputs"]["rust_rebind_command"] == [
+        "mock-cargo",
+        "orion_rebind_memberships",
+        "--runtime-profile",
+    ]
 
     loaded = module.prepare.load_routed_layout("orion", output_dir)
     assert loaded["generation"] == 8
@@ -429,6 +451,7 @@ def test_balance_profile_preserves_complete_balance_proof_and_layout(
             "use_multi_assign": False,
             "enable_fission": False,
             "balance_mode": "capacity_constrained",
+            "attachment_search_ef": 100,
         }
     )
     manifest["routing"].update(
@@ -619,7 +642,7 @@ def test_graphless_binding_accepts_equivalent_float32_decimal_spellings():
             {
                 "label": 7,
                 "vector": [0.10000000149011612, -0.20000000298023224],
-                "shard_membership": [1, 3],
+                "owner_shard": 1,
             }
         ],
     }
@@ -629,7 +652,7 @@ def test_graphless_binding_accepts_equivalent_float32_decimal_spellings():
             {
                 "label": 7,
                 "vector": [0.1, -0.2],
-                "shard_membership": [1, 3],
+                "owner_shard": 1,
             }
         ],
     }

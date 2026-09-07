@@ -1,0 +1,30 @@
+{
+  "P0": [
+    {
+      "fixed_p": 1,
+      "uniform_ef_search": 64
+    }
+  ],
+  "P1": [
+    {
+      "uniform_ef_search": 32
+    }
+  ],
+  "P2": [
+    {
+      "fixed_p": 1,
+      "alpha": 1,
+      "beta": 4,
+      "ef_min": 8,
+      "ef_max": 512
+    }
+  ],
+  "P3": [
+    {
+      "alpha": 1,
+      "beta": 4,
+      "ef_min": 8,
+      "ef_max": 512
+    }
+  ]
+}

@@ -86,7 +86,29 @@ def test_prebuilt_importer_command_skips_cargo(tmp_path):
     )
     assert command[0] == str(importer.resolve())
     assert "cargo" not in " ".join(command)
+    assert command[command.index("--queue-capacity-batches") + 1] == "4"
+    assert command[command.index("--max-concurrent-requests") + 1] == "16"
+    assert command[command.index("--max-retries") + 1] == "3"
+    assert command[command.index("--retry-backoff-ms") + 1] == "100"
+    assert command[command.index("--completion-timeout-secs") + 1] == "7200"
+    assert command[command.index("--wait") + 1] == "wal"
     assert command[-1] == "--resume"
+
+
+@pytest.mark.parametrize(
+    ("option", "value", "message"),
+    [
+        ("--queue-capacity-batches", "0", "queue-capacity-batches"),
+        ("--max-concurrent-requests", "0", "max-concurrent-requests"),
+        ("--max-retries", "-1", "max-retries"),
+        ("--retry-backoff-ms", "0", "retry-backoff-ms"),
+    ],
+)
+def test_import_pipeline_limits_are_validated(tmp_path, option, value, message):
+    module = load_module()
+    args = args_for(module, tmp_path, "orion", option, value)
+    with pytest.raises(ValueError, match=message):
+        module.validate_args(args)
 
 
 def test_checkpoint_preservation_rejects_resume_and_hashall(tmp_path):
@@ -244,7 +266,8 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         "upper_sample_seed": 100,
         "upper_m": 32,
         "upper_ef_construction": 100,
-        "attachment_search_ef": 100,
+        "attachment_search_ef": 10,
+        "efs": 10,
         "upper_k": 36,
         "upper_search_ef": 36,
         "dynamic_ef_base": 48,
@@ -254,10 +277,16 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         "kmeans_seed": 1,
         "topology_iters": 50,
         "use_multi_assign": True,
+        "multi_assign_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
         "multi_assign_min_max_vote": 2,
         "multi_assign_vote_delta": 0,
         "multi_assign_max_shards": 0,
-        "enable_fission": True,
+        "enable_fission": False,
+        "balance_mode": "none",
+        "initial_partition": "kmeans_without_capacity_correction",
+        "lower_hnsw_construction": "independent_full_multilayer_per_shard",
+        "lower_hnsw_retains_non_base_layers": True,
+        "routed_search_start_level": 0,
         "upper_graph_seed": 100,
         "allow_decoupled_runtime_upper_search": False,
     }
@@ -268,7 +297,7 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         "dynamic_ef_factor": 15,
     }
 
-    assert module.validate_faithful_orion_build_parameters(parameters, artifact) == 100
+    assert module.validate_faithful_orion_build_parameters(parameters, artifact) == 10
 
     scaled_parameters = dict(parameters, initial_num_shards=13)
     assert (
@@ -277,7 +306,7 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
             artifact,
             allow_scaling_initial_num_shards=True,
         )
-        == 100
+        == 10
     )
 
     balanced_parameters = dict(
@@ -286,6 +315,7 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         use_multi_assign=False,
         enable_fission=False,
         balance_mode="capacity_constrained",
+        attachment_search_ef=100,
     )
     with pytest.raises(RuntimeError, match="main-idea parameter drift"):
         module.validate_faithful_orion_build_parameters(
@@ -302,8 +332,8 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         == 100
     )
 
-    invalid_attachment = dict(parameters, attachment_search_ef=99)
-    with pytest.raises(RuntimeError, match="attachment_search_ef must be 100"):
+    invalid_attachment = dict(parameters, attachment_search_ef=9)
+    with pytest.raises(RuntimeError, match="canonical build efs 10"):
         module.validate_faithful_orion_build_parameters(
             invalid_attachment, artifact
         )
@@ -327,6 +357,7 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         ("upper_sample_seed", 99),
         ("upper_m", 16),
         ("upper_ef_construction", 200),
+        ("efs", 8),
         ("k_overlap", 8),
         ("kmeans_iters", 20),
         ("kmeans_seed", 7),
@@ -335,7 +366,7 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
         ("multi_assign_min_max_vote", 3),
         ("multi_assign_vote_delta", 1),
         ("multi_assign_max_shards", 2),
-        ("enable_fission", False),
+        ("enable_fission", True),
         ("upper_graph_seed", 101),
         ("allow_decoupled_runtime_upper_search", True),
     ):
@@ -343,6 +374,78 @@ def test_faithful_orion_build_parameters_bind_offline_and_runtime_semantics():
             module.validate_faithful_orion_build_parameters(
                 dict(parameters, **{field: non_faithful_value}), artifact
             )
+
+
+def test_canonical_orion_navigation_binding_proves_one_qdrant_graph(tmp_path):
+    module = load_module()
+    graph = {
+        "entry_point": 0,
+        "max_level": 0,
+        "nodes": [{"label": 0, "neighbors_by_level": [[]]}],
+    }
+    source_path = tmp_path / "upper-source-generation-7.json"
+    source_path.write_text(
+        json.dumps({"generation": 7, "upper_graph": graph}), encoding="utf-8"
+    )
+    hits_path = tmp_path / "upper-attachments.u64le"
+    hits_path.write_bytes((0).to_bytes(8, "little"))
+    attachment_manifest_path = tmp_path / "upper-attachments.manifest.json"
+    source_sha = module.layout_common.sha256_path(source_path)
+    hits_sha = module.layout_common.sha256_path(hits_path)
+    attachment_manifest_path.write_text(
+        json.dumps({"artifact_sha256": source_sha, "hits_sha256": hits_sha}),
+        encoding="utf-8",
+    )
+    manifest_sha = module.layout_common.sha256_path(attachment_manifest_path)
+    graph_sha = module.canonical_json_sha256(graph)
+    artifact = {"layout_sha256": "a" * 64, "upper_graph": graph}
+    build_parameters = {
+        "attachment_navigator": "qdrant_production_upper_graph",
+        "single_upper_graph_build": True,
+    }
+    binding = {
+        "single_upper_graph_build": True,
+        "attachment_navigator": "qdrant_production_upper_graph",
+        "upper_source_artifact_sha256": source_sha,
+        "upper_graph_sha256": graph_sha,
+        "attachments_sha256": hits_sha,
+        "attachments_manifest_sha256": manifest_sha,
+        "attachments_source_artifact_sha256": source_sha,
+        "layout_sha256": "a" * 64,
+        "final_upper_graph_sha256": graph_sha,
+        "graph_identity_verified_after_finalization": True,
+    }
+    build_manifest = {
+        "navigation_binding": binding,
+        "outputs": {
+            "upper_source_artifact": source_path.name,
+            "upper_attachments": hits_path.name,
+            "upper_attachments_manifest": attachment_manifest_path.name,
+        },
+    }
+    checksums = {
+        path.name: module.layout_common.sha256_path(path)
+        for path in (source_path, hits_path, attachment_manifest_path)
+    }
+
+    proof = module.validate_canonical_orion_navigation_binding(
+        build_manifest,
+        build_parameters,
+        artifact,
+        tmp_path,
+        checksums,
+    )
+    assert proof["upper_graph_sha256"] == graph_sha
+
+    binding["attachments_source_artifact_sha256"] = "0" * 64
+    with pytest.raises(RuntimeError, match="attachment source binding"):
+        module.validate_canonical_orion_navigation_binding(
+            build_manifest,
+            build_parameters,
+            artifact,
+            tmp_path,
+            checksums,
+        )
 
 
 def test_orion_balance_layout_requires_complete_l0_proof():
@@ -2407,16 +2510,19 @@ def patch_common_cluster(module, monkeypatch, tmp_path):
         "collection_cluster_info",
         lambda *_args: {"peer_id": 101, "shard_count": 4},
     )
+    def wait_collection_indexed(_base_url, _collection, expected_points, **_kwargs):
+        return {
+            "status": "green",
+            "optimizer_status": "ok",
+            "points_count": expected_points,
+            "indexed_vectors_count": expected_points,
+            "segments_count": 8 if expected_points else 0,
+        }
+
     monkeypatch.setattr(
         module.experiment,
         "wait_collection_indexed",
-        lambda *_args, **_kwargs: {
-            "status": "green",
-            "optimizer_status": "ok",
-            "points_count": 0,
-            "indexed_vectors_count": 0,
-            "segments_count": 0,
-        },
+        wait_collection_indexed,
     )
     monkeypatch.setattr(
         module,
@@ -2570,7 +2676,7 @@ def test_routed_prepare_runs_importer_and_matching_installer(
         "shard_count": 4,
         "logical_point_count": 3,
         "physical_point_count": 3,
-        "attachment_search_ef": 100,
+        "attachment_search_ef": 10,
         "smoke_vector": [1.0, 0.0],
         "checksums": {"generation-7.json": "a" * 64},
     }
@@ -2647,7 +2753,7 @@ def test_routed_prepare_runs_importer_and_matching_installer(
     envelope = provenance[module.PROVENANCE_METADATA_KEY]
     assert envelope["schema_version"] == 2
     if method == "orion":
-        assert envelope["provenance"]["routing"]["attachment_search_ef"] == 100
+        assert envelope["provenance"]["routing"]["attachment_search_ef"] == 10
 
 
 def test_validate_collection_configuration_rejects_hnsw_policy_and_count_drift():

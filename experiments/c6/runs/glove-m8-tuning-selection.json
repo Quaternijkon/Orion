@@ -1,0 +1,122 @@
+{
+  "dataset": "glove-200-angular",
+  "format_version": 1,
+  "logical_shards": 8,
+  "query_count": 1000,
+  "query_start": 0,
+  "run_id": "glove-m8-tuning",
+  "selected": {
+    "P0": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 4,
+        "policy": "P0",
+        "uniform_ef_search": 256
+      },
+      "config_id": "3dab823a01b35c5e",
+      "summary": {
+        "aggregate_distance_computations_per_query": 32899.967,
+        "aggregate_nodes_visited_per_query": 1033.539,
+        "max_shard_distance_computations_mean": 10375.015,
+        "mean_shards_per_query": 4.0,
+        "p5_per_query_recall": 0.6,
+        "p95_aggregate_distance_computations": 44742.25,
+        "p95_max_shard_distance_computations": 12891.05,
+        "p95_max_shard_nodes_visited": 276.0,
+        "p95_shards_per_query": 4.0,
+        "p99_max_shard_distance_computations": 13347.16,
+        "query_count": 1000,
+        "recall_at_10": 0.9094,
+        "worker_cpu_time_us_per_query": 10240.167
+      }
+    },
+    "P1": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P1",
+        "uniform_ef_search": 256
+      },
+      "config_id": "506ed44810159d6b",
+      "summary": {
+        "aggregate_distance_computations_per_query": 37785.109,
+        "aggregate_nodes_visited_per_query": 1154.433,
+        "max_shard_distance_computations_mean": 10267.407,
+        "mean_shards_per_query": 4.486,
+        "p5_per_query_recall": 0.7,
+        "p95_aggregate_distance_computations": 66392.84999999999,
+        "p95_max_shard_distance_computations": 13013.099999999999,
+        "p95_max_shard_nodes_visited": 271.0,
+        "p95_shards_per_query": 7.0,
+        "p99_max_shard_distance_computations": 13455.119999999999,
+        "query_count": 1000,
+        "recall_at_10": 0.9321,
+        "worker_cpu_time_us_per_query": 11605.686
+      }
+    },
+    "P2": {
+      "config": {
+        "alpha": 8,
+        "beta": 8,
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 7,
+        "policy": "P2"
+      },
+      "config_id": "97c8904775d72ed5",
+      "summary": {
+        "aggregate_distance_computations_per_query": 17011.046,
+        "aggregate_nodes_visited_per_query": 515.543,
+        "max_shard_distance_computations_mean": 8321.117,
+        "mean_shards_per_query": 7.0,
+        "p5_per_query_recall": 0.5,
+        "p95_aggregate_distance_computations": 23262.25,
+        "p95_max_shard_distance_computations": 13304.3,
+        "p95_max_shard_nodes_visited": 392.0,
+        "p95_shards_per_query": 7.0,
+        "p99_max_shard_distance_computations": 14777.22,
+        "query_count": 1000,
+        "recall_at_10": 0.9021,
+        "worker_cpu_time_us_per_query": 5747.809
+      }
+    },
+    "P3": {
+      "config": {
+        "alpha": 8,
+        "beta": 16,
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P3"
+      },
+      "config_id": "ccc466d26ad2afba",
+      "summary": {
+        "aggregate_distance_computations_per_query": 16425.311,
+        "aggregate_nodes_visited_per_query": 495.511,
+        "max_shard_distance_computations_mean": 8544.256,
+        "mean_shards_per_query": 4.486,
+        "p5_per_query_recall": 0.5,
+        "p95_aggregate_distance_computations": 24696.6,
+        "p95_max_shard_distance_computations": 13566.55,
+        "p95_max_shard_nodes_visited": 400.0,
+        "p95_shards_per_query": 7.0,
+        "p99_max_shard_distance_computations": 15092.5,
+        "query_count": 1000,
+        "recall_at_10": 0.9038999999999999,
+        "worker_cpu_time_us_per_query": 5284.539
+      }
+    }
+  },
+  "sources": {
+    "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+    "local_search_traces": [
+      {
+        "path": "/users/dry/orion-c6-state/glove-m8-tuning/capture/tuning-1000/local_search_traces.jsonl",
+        "sha256": "e7401c507bfd26413bf953c88320a89afa11ebef31647bc8146c838069bd07e0"
+      }
+    ],
+    "route_trace_sha256": "3c4321c0d05c1b4cb336721c115110010500afd140603cb7a52fce8e48ad050f"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-09-01T02:08:55Z"
+}

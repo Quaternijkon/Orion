@@ -21,8 +21,8 @@ mod tests {
     use segment::payload_json;
     use segment::segment_constructor::simple_segment_constructor::{VECTOR1_NAME, VECTOR2_NAME};
     use segment::types::{
-        Distance, HnswConfig, HnswGlobalConfig, PayloadSchemaType, QuantizationConfig, SegmentType,
-        VectorNameBuf,
+        Distance, HnswConfig, HnswGlobalConfig, Indexes, PayloadSchemaType, QuantizationConfig,
+        SegmentType, VectorNameBuf,
     };
     use shard::operations::optimization::OptimizerThresholds;
     use shard::optimizers::segment_optimizer::SegmentOptimizer;
@@ -492,6 +492,72 @@ mod tests {
             &hw_counter,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_internal_zero_threshold_indexes_single_point_segment() {
+        init();
+
+        let dim = 256;
+        let segments_dir = Builder::new().prefix("segments_dir").tempdir().unwrap();
+        let segments_temp_dir = Builder::new()
+            .prefix("segments_temp_dir")
+            .tempdir()
+            .unwrap();
+        let segment = random_segment(segments_dir.path(), 101, 1, dim);
+        let segment_config = segment.segment_config.clone();
+        let mut holder = SegmentHolder::default();
+        let segment_id = holder.add_new(segment);
+        let locked_holder = LockedSegmentHolder::new(holder);
+        let index_optimizer = new_indexing_optimizer(
+            1,
+            OptimizerThresholds {
+                max_segment_size_kb: 1_000,
+                memmap_threshold_kb: usize::MAX,
+                indexing_threshold_kb: 0,
+                deferred_internal_id: None,
+            },
+            segments_dir.path().to_owned(),
+            segments_temp_dir.path().to_owned(),
+            CollectionParams {
+                vectors: VectorsConfig::Single(
+                    VectorParamsBuilder::new(
+                        segment_config.vector_data[DEFAULT_VECTOR_NAME].size as u64,
+                        segment_config.vector_data[DEFAULT_VECTOR_NAME].distance,
+                    )
+                    .build(),
+                ),
+                ..CollectionParams::empty()
+            },
+            Default::default(),
+            HnswGlobalConfig::default(),
+            Default::default(),
+        );
+
+        let planned = index_optimizer.plan_optimizations_for_test(&locked_holder);
+        assert_eq!(planned, vec![vec![segment_id]]);
+        index_optimizer.optimize_for_test(locked_holder.clone(), planned[0].clone());
+
+        let holder = locked_holder.read();
+        assert_eq!(holder.len(), 2);
+        let mut nonempty_hnsw = 0;
+        let mut empty_appendable = 0;
+        for (_segment_id, segment) in holder.iter() {
+            let segment = segment.get().read();
+            match segment.info().num_points {
+                0 => empty_appendable += 1,
+                1 => {
+                    assert!(matches!(
+                        segment.config().vector_data[DEFAULT_VECTOR_NAME].index,
+                        Indexes::Hnsw(_)
+                    ));
+                    nonempty_hnsw += 1;
+                }
+                count => panic!("unexpected optimized point count: {count}"),
+            }
+        }
+        assert_eq!(nonempty_hnsw, 1);
+        assert_eq!(empty_appendable, 1);
     }
 
     /// Test that indexing optimizer maintain expected number of during the optimization duty

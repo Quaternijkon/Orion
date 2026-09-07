@@ -1,0 +1,14 @@
+{
+  "controller": [
+    "0-19"
+  ],
+  "qdrant_shard_1": [
+    "0-19"
+  ],
+  "qdrant_shard_2": [
+    "0-19"
+  ],
+  "qdrant_shard_3": [
+    "0-19"
+  ]
+}

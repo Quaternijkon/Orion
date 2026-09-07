@@ -684,8 +684,11 @@ impl GraphLayers {
                 return Ok(nearest.into_iter_sorted().take(top).collect_vec());
             }
 
-            // Routed entry points are search hints. A segment which does not contain any of
-            // them must still be searched from its regular HNSW entry point.
+            // Explicit routed entry points define the only legal traversal
+            // seeds. This segment does not contain any of them, so it must not
+            // fall back to its regular HNSW entry point or traverse upper
+            // layers. Another segment in the same shard may contain the entry.
+            return Ok(Vec::new());
         }
 
         let Some(entry_point) = self.get_entry_point(points_scorer.filters(), custom_entry_points)
@@ -1190,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_custom_entry_points_fall_back_to_default_entry_point() {
+    fn empty_custom_entry_points_do_not_fall_back_to_default_entry_point() {
         let dim = 2;
         let hnsw_m = HnswM::new2(8);
         let num_vectors = 2;
@@ -1245,11 +1248,10 @@ mod tests {
         };
 
         let default_result = search(None);
-        let fallback_result = search(Some(&[]));
+        let routed_result = search(Some(&[]));
 
-        assert!(!fallback_result.is_empty());
-        assert_eq!(fallback_result, default_result);
-        assert_eq!(fallback_result[0].idx, 1);
+        assert_eq!(default_result[0].idx, 1);
+        assert!(routed_result.is_empty());
     }
 
     #[rstest]

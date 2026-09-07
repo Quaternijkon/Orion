@@ -11,9 +11,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use api::grpc::qdrant::auto_shard_policy::Policy as AutoShardPolicyVariant;
 use api::grpc::qdrant::collections_internal_client::CollectionsInternalClient;
 use api::grpc::qdrant::point_id::PointIdOptions;
@@ -32,6 +33,9 @@ use fs_err::File;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::{Semaphore, mpsc};
+use tokio::task::JoinSet;
+use tokio::time::sleep;
 use tonic::metadata::MetadataValue;
 use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, codec::CompressionEncoding};
@@ -40,7 +44,7 @@ const LEGACY_ORION_MANIFEST_FORMAT_VERSION: u32 = 1;
 const GENERIC_MANIFEST_FORMAT_VERSION: u32 = 2;
 const CHECKPOINT_FORMAT_VERSION: u32 = 2;
 
-#[derive(Debug, Parser)]
+#[derive(Clone, Debug, Parser)]
 #[command(
     name = "orion-numeric-shard-import",
     about = "Import an offline static-routing layout into numeric Qdrant shards",
@@ -64,16 +68,36 @@ struct Args {
     #[arg(long)]
     collection: String,
 
-    /// Number of logical points read before flushing per-shard requests.
+    /// Maximum point copies in one shard upsert RPC.
     #[arg(long, default_value = "512")]
     batch_size: NonZeroUsize,
+
+    /// Number of complete point batches buffered independently for each shard.
+    #[arg(long, default_value = "4")]
+    queue_capacity_batches: NonZeroUsize,
+
+    /// Global upper bound for simultaneously in-flight shard upsert RPCs.
+    #[arg(long, default_value = "16")]
+    max_concurrent_requests: NonZeroUsize,
+
+    /// Idempotent retries after the first failed shard upsert attempt.
+    #[arg(long, default_value = "3")]
+    max_retries: u32,
+
+    /// Initial retry delay; subsequent retries use bounded exponential backoff.
+    #[arg(long, default_value = "100")]
+    retry_backoff_ms: NonZeroU64,
 
     /// Server and gRPC request timeout.
     #[arg(long, default_value = "120")]
     request_timeout_secs: NonZeroU64,
 
+    /// Maximum time to wait for all WAL-acknowledged batches to become visible on every shard.
+    #[arg(long, default_value = "7200")]
+    completion_timeout_secs: NonZeroU64,
+
     /// Wait until each upsert reaches this durability/visibility stage.
-    #[arg(long, value_enum, default_value_t = ImportWait::Visible)]
+    #[arg(long, value_enum, default_value_t = ImportWait::Wal)]
     wait: ImportWait,
 
     /// Medium is normally preferred; weak is intentionally unsupported because
@@ -403,6 +427,18 @@ struct ImportStats {
     logical_points: u64,
     point_copies: u64,
     grpc_requests: u64,
+    retry_attempts: u64,
+    queue_backpressure_events: u64,
+    max_observed_queue_batches: usize,
+    shard_workers: usize,
+}
+
+#[derive(Debug)]
+struct ShardWorkerStats {
+    shard_id: u32,
+    point_copies: u64,
+    grpc_requests: u64,
+    retry_attempts: u64,
 }
 
 #[tokio::main]
@@ -428,26 +464,35 @@ async fn main() -> Result<()> {
     }
     validate_checkpoint_mode(&args, &input)?;
 
-    let timeout = Duration::from_secs(args.request_timeout_secs.get());
-    let endpoint = Endpoint::from_shared(args.uri.clone())?
-        .connect_timeout(timeout)
-        .timeout(timeout);
-    let channel = endpoint
-        .connect()
-        .await
-        .with_context(|| format!("failed to connect to internal gRPC endpoint {}", args.uri))?;
-    let mut points_client = PointsInternalClient::new(channel)
-        .send_compressed(CompressionEncoding::Gzip)
-        .accept_compressed(CompressionEncoding::Gzip);
     let placement = discover_shard_owners(&args, &input).await?;
     preflight_collection(&placement, &args, &input).await?;
+    println!(
+        "import pipeline: shard_workers={} batch_size={} queue_capacity_batches_per_shard={} max_concurrent_requests={} max_retries={} retry_backoff_ms={}",
+        input.manifest.shard_count,
+        args.batch_size,
+        args.queue_capacity_batches,
+        args.max_concurrent_requests,
+        args.max_retries,
+        args.retry_backoff_ms,
+    );
     write_checkpoint(&args, &input, "in_progress")?;
-    let stats = import(&input, &args, &mut points_client).await?;
+    let import_started = Instant::now();
+    let stats = import(&input, &args, &placement).await?;
+    let import_elapsed = import_started.elapsed();
     verify_imported_counts(&placement, &args, &input).await?;
     write_checkpoint(&args, &input, "complete")?;
     println!(
-        "import complete: logical_points={} point_copies={} grpc_requests={}",
-        stats.logical_points, stats.point_copies, stats.grpc_requests,
+        "import complete: logical_points={} point_copies={} grpc_requests={} retries={} backpressure_events={} max_queue_batches={} shard_workers={} elapsed_seconds={:.3} logical_points_per_second={:.3} copies_per_second={:.3}",
+        stats.logical_points,
+        stats.point_copies,
+        stats.grpc_requests,
+        stats.retry_attempts,
+        stats.queue_backpressure_events,
+        stats.max_observed_queue_batches,
+        stats.shard_workers,
+        import_elapsed.as_secs_f64(),
+        stats.logical_points as f64 / import_elapsed.as_secs_f64().max(f64::EPSILON),
+        stats.point_copies as f64 / import_elapsed.as_secs_f64().max(f64::EPSILON),
     );
     Ok(())
 }
@@ -1438,34 +1483,73 @@ async fn verify_imported_counts(
     args: &Args,
     input: &ValidatedInput,
 ) -> Result<()> {
-    let counts = exact_counts_by_owner(placement, args).await?;
-    let mut actual_total = 0_u64;
-    for (shard_id, (&expected, actual)) in input.copies_per_shard.iter().zip(counts).enumerate() {
-        ensure!(
-            actual == expected,
-            "numeric shard {shard_id} contains {actual} points after import; expected {expected}"
-        );
-        actual_total = actual_total
-            .checked_add(actual)
-            .context("post-import point-copy count overflowed u64")?;
+    let deadline = Instant::now() + Duration::from_secs(args.completion_timeout_secs.get());
+    loop {
+        let counts = exact_counts_by_owner(placement, args).await?;
+        let mut actual_total = 0_u64;
+        let mut complete = true;
+        for (shard_id, (&expected, actual)) in
+            input.copies_per_shard.iter().zip(&counts).enumerate()
+        {
+            ensure!(
+                *actual <= expected,
+                "numeric shard {shard_id} contains {actual} points after import; expected at most {expected}"
+            );
+            complete &= *actual == expected;
+            actual_total = actual_total
+                .checked_add(*actual)
+                .context("post-import point-copy count overflowed u64")?;
+        }
+        if complete {
+            ensure!(
+                actual_total == input.total_copies,
+                "post-import shards contain {actual_total} point copies; manifest requires {}",
+                input.total_copies
+            );
+            println!(
+                "post-import exact count verification passed for {} point copies across {} shards",
+                actual_total, input.manifest.shard_count
+            );
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "timed out waiting for WAL-acknowledged point copies to become visible: counts={counts:?}, expected={:?}",
+                input.copies_per_shard,
+            );
+        }
+        sleep(Duration::from_millis(200)).await;
     }
-    ensure!(
-        actual_total == input.total_copies,
-        "post-import shards contain {actual_total} point copies; manifest requires {}",
-        input.total_copies
-    );
-    println!(
-        "post-import exact count verification passed for {} point copies across {} shards",
-        actual_total, input.manifest.shard_count
-    );
-    Ok(())
 }
 
 async fn import(
     input: &ValidatedInput,
     args: &Args,
-    client: &mut PointsInternalClient<Channel>,
+    placement: &ShardPlacement,
 ) -> Result<ImportStats> {
+    ensure!(
+        placement.owner_uri_by_shard.len() == input.manifest.shard_count as usize,
+        "shard placement has {} owners, expected {}",
+        placement.owner_uri_by_shard.len(),
+        input.manifest.shard_count,
+    );
+    let queue_capacity = args.queue_capacity_batches.get();
+    let request_budget = Arc::new(Semaphore::new(args.max_concurrent_requests.get()));
+    let mut senders = Vec::with_capacity(input.manifest.shard_count as usize);
+    let mut workers = JoinSet::new();
+    for (shard_index, owner_uri) in placement.owner_uri_by_shard.iter().enumerate() {
+        let shard_id = u32::try_from(shard_index).context("shard index does not fit u32")?;
+        let (sender, receiver) = mpsc::channel(queue_capacity);
+        senders.push(sender);
+        workers.spawn(run_shard_worker(
+            shard_id,
+            owner_uri.clone(),
+            receiver,
+            args.clone(),
+            Arc::clone(&request_budget),
+        ));
+    }
+
     let assignments_file = File::open(&input.assignments_path)?;
     let mut assignments = BufReader::new(assignments_file);
     let vectors_file = File::open(&input.vectors_path)?;
@@ -1474,8 +1558,13 @@ async fn import(
     let mut assignment_line = String::new();
     let mut vectors_digest = Sha256::new();
     let mut assignments_digest = Sha256::new();
-    let mut batches: BTreeMap<u32, Vec<PointStruct>> = BTreeMap::new();
-    let mut stats = ImportStats::default();
+    let mut batches = (0..input.manifest.shard_count)
+        .map(|_| Vec::with_capacity(args.batch_size.get()))
+        .collect::<Vec<Vec<PointStruct>>>();
+    let mut stats = ImportStats {
+        shard_workers: senders.len(),
+        ..Default::default()
+    };
 
     for row_index in 0..input.manifest.point_count {
         let line_number = row_index + 1;
@@ -1495,15 +1584,36 @@ async fn import(
         })?;
         vectors_digest.update(&row_bytes);
         let vector = decode_vector(&row_bytes, line_number)?;
-        queue_point_copies(&mut batches, &record, vector, &input.manifest.vector_name);
         stats.logical_points += 1;
         stats.point_copies += u64::try_from(record.shards.len()).unwrap();
-
-        if (row_index + 1) % args.batch_size.get() == 0 {
-            flush_batches(client, args, &mut batches, &mut stats).await?;
+        for &shard_id in &record.shards {
+            let shard_index = shard_id as usize;
+            batches[shard_index].push(PointStruct {
+                id: Some(record.id.to_grpc()),
+                payload: HashMap::new(),
+                vectors: Some(grpc_vectors(vector.clone(), &input.manifest.vector_name)),
+            });
+            if batches[shard_index].len() == args.batch_size.get() {
+                let points = std::mem::replace(
+                    &mut batches[shard_index],
+                    Vec::with_capacity(args.batch_size.get()),
+                );
+                enqueue_shard_batch(&senders[shard_index], shard_id, points, &mut stats).await?;
+            }
         }
     }
-    flush_batches(client, args, &mut batches, &mut stats).await?;
+    for (shard_index, points) in batches.into_iter().enumerate() {
+        if !points.is_empty() {
+            enqueue_shard_batch(
+                &senders[shard_index],
+                u32::try_from(shard_index).unwrap(),
+                points,
+                &mut stats,
+            )
+            .await?;
+        }
+    }
+    drop(senders);
 
     assignment_line.clear();
     ensure!(
@@ -1534,7 +1644,154 @@ async fn import(
         stats.point_copies,
         input.total_copies
     );
+    let mut completed_workers = 0_usize;
+    while let Some(joined) = workers.join_next().await {
+        let worker = joined.context("shard import worker task panicked")??;
+        let expected_copies = input.copies_per_shard[worker.shard_id as usize];
+        ensure!(
+            worker.point_copies == expected_copies,
+            "shard {} acknowledged {} point copies, expected {}",
+            worker.shard_id,
+            worker.point_copies,
+            expected_copies,
+        );
+        stats.grpc_requests += worker.grpc_requests;
+        stats.retry_attempts += worker.retry_attempts;
+        completed_workers += 1;
+    }
+    ensure!(
+        completed_workers == stats.shard_workers,
+        "only {completed_workers} of {} shard workers drained",
+        stats.shard_workers,
+    );
     Ok(stats)
+}
+
+async fn enqueue_shard_batch(
+    sender: &mpsc::Sender<Vec<PointStruct>>,
+    shard_id: u32,
+    points: Vec<PointStruct>,
+    stats: &mut ImportStats,
+) -> Result<()> {
+    match sender.try_send(points) {
+        Ok(()) => {
+            stats.max_observed_queue_batches = stats
+                .max_observed_queue_batches
+                .max(sender.max_capacity().saturating_sub(sender.capacity()));
+            Ok(())
+        }
+        Err(mpsc::error::TrySendError::Full(points)) => {
+            stats.queue_backpressure_events += 1;
+            stats.max_observed_queue_batches =
+                stats.max_observed_queue_batches.max(sender.max_capacity());
+            sender.send(points).await.map_err(|_| {
+                anyhow!("shard {shard_id} import worker stopped while applying backpressure")
+            })
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => Err(anyhow!(
+            "shard {shard_id} import worker stopped before accepting its batch"
+        )),
+    }
+}
+
+async fn run_shard_worker(
+    shard_id: u32,
+    owner_uri: String,
+    mut receiver: mpsc::Receiver<Vec<PointStruct>>,
+    args: Args,
+    request_budget: Arc<Semaphore>,
+) -> Result<ShardWorkerStats> {
+    let mut client = connect_points_internal(&owner_uri, &args).await?;
+    let mut stats = ShardWorkerStats {
+        shard_id,
+        point_copies: 0,
+        grpc_requests: 0,
+        retry_attempts: 0,
+    };
+    while let Some(points) = receiver.recv().await {
+        let point_count = points.len();
+        let retries = upsert_batch_with_retry(
+            &mut client,
+            &args,
+            Arc::clone(&request_budget),
+            shard_id,
+            points,
+        )
+        .await?;
+        stats.point_copies += u64::try_from(point_count).unwrap();
+        stats.grpc_requests += 1;
+        stats.retry_attempts += retries;
+        println!(
+            "upserted shard={} points={} requests={} retries={} queued_batches={}",
+            shard_id,
+            point_count,
+            stats.grpc_requests,
+            stats.retry_attempts,
+            receiver.len(),
+        );
+    }
+    Ok(stats)
+}
+
+async fn upsert_batch_with_retry(
+    client: &mut PointsInternalClient<Channel>,
+    args: &Args,
+    request_budget: Arc<Semaphore>,
+    shard_id: u32,
+    points: Vec<PointStruct>,
+) -> Result<u64> {
+    let mut last_error = String::new();
+    for attempt in 0..=args.max_retries {
+        let permit = Arc::clone(&request_budget)
+            .acquire_owned()
+            .await
+            .map_err(|_| anyhow!("global import request budget closed"))?;
+        let request = build_request(args, shard_id, points.clone())?;
+        let attempt_result = match client.upsert(request).await {
+            Ok(response) => match response.into_inner().result {
+                Some(result) => {
+                    let status = UpdateStatus::try_from(result.status)
+                        .unwrap_or(UpdateStatus::UnknownUpdateStatus);
+                    if matches!(status, UpdateStatus::Acknowledged | UpdateStatus::Completed) {
+                        Ok(())
+                    } else {
+                        Err(format!("shard returned status {}", status.as_str_name()))
+                    }
+                }
+                None => Err("shard returned no update result".to_string()),
+            },
+            Err(error) => Err(error.to_string()),
+        };
+        drop(permit);
+
+        match attempt_result {
+            Ok(()) => return Ok(u64::from(attempt)),
+            Err(error) => last_error = error,
+        }
+        if attempt == args.max_retries {
+            break;
+        }
+        let delay_ms = retry_delay_ms(args.retry_backoff_ms.get(), attempt);
+        eprintln!(
+            "retrying shard={} batch_points={} attempt={}/{} delay_ms={} error={}",
+            shard_id,
+            points.len(),
+            attempt + 1,
+            args.max_retries,
+            delay_ms,
+            last_error,
+        );
+        sleep(Duration::from_millis(delay_ms)).await;
+    }
+    bail!(
+        "PointsInternal/Upsert failed for numeric shard {shard_id} after {} attempts: {last_error}",
+        u64::from(args.max_retries) + 1,
+    )
+}
+
+fn retry_delay_ms(base_ms: u64, retry_index: u32) -> u64 {
+    let multiplier = 1_u64.checked_shl(retry_index.min(16)).unwrap_or(u64::MAX);
+    base_ms.saturating_mul(multiplier).min(10_000)
 }
 
 fn decode_vector(bytes: &[u8], line_number: usize) -> Result<Vec<f32>> {
@@ -1551,6 +1808,7 @@ fn decode_vector(bytes: &[u8], line_number: usize) -> Result<Vec<f32>> {
     Ok(vector)
 }
 
+#[cfg(test)]
 fn queue_point_copies(
     batches: &mut BTreeMap<u32, Vec<PointStruct>>,
     record: &AssignmentRecord,
@@ -1586,49 +1844,6 @@ fn grpc_vectors(vector: Vec<f32>, vector_name: &str) -> Vectors {
     Vectors {
         vectors_options: Some(vectors_options),
     }
-}
-
-async fn flush_batches(
-    client: &mut PointsInternalClient<Channel>,
-    args: &Args,
-    batches: &mut BTreeMap<u32, Vec<PointStruct>>,
-    stats: &mut ImportStats,
-) -> Result<()> {
-    let queued = std::mem::take(batches);
-    for (shard_id, points) in queued {
-        let point_count = points.len();
-        let request = build_request(args, shard_id, points)?;
-        let response = client
-            .upsert(request)
-            .await
-            .with_context(|| {
-                format!(
-                    "PointsInternal/Upsert failed for numeric shard {shard_id} after {} successful requests",
-                    stats.grpc_requests
-                )
-            })?
-            .into_inner();
-        let result = response
-            .result
-            .with_context(|| format!("shard {shard_id} returned no update result"))?;
-        let status =
-            UpdateStatus::try_from(result.status).unwrap_or(UpdateStatus::UnknownUpdateStatus);
-        if !matches!(status, UpdateStatus::Acknowledged | UpdateStatus::Completed) {
-            bail!(
-                "shard {shard_id} rejected batch with status {}",
-                status.as_str_name()
-            );
-        }
-        stats.grpc_requests += 1;
-        println!(
-            "upserted shard={} points={} status={} requests={}",
-            shard_id,
-            point_count,
-            status.as_str_name(),
-            stats.grpc_requests,
-        );
-    }
-    Ok(())
 }
 
 fn build_request(
@@ -1681,8 +1896,13 @@ mod tests {
             http_url: None,
             collection: "orion-test".to_string(),
             batch_size: NonZeroUsize::new(2).unwrap(),
+            queue_capacity_batches: NonZeroUsize::new(2).unwrap(),
+            max_concurrent_requests: NonZeroUsize::new(2).unwrap(),
+            max_retries: 3,
+            retry_backoff_ms: NonZeroU64::new(100).unwrap(),
             request_timeout_secs: NonZeroU64::new(30).unwrap(),
-            wait: ImportWait::Visible,
+            completion_timeout_secs: NonZeroU64::new(300).unwrap(),
+            wait: ImportWait::Wal,
             ordering: ImportOrdering::Medium,
             api_key: None,
             resume: false,
@@ -1803,6 +2023,37 @@ mod tests {
         bytes.extend_from_slice(&1.5_f32.to_le_bytes());
         bytes.extend_from_slice(&(-2.25_f32).to_le_bytes());
         assert_eq!(decode_vector(&bytes, 1).unwrap(), vec![1.5, -2.25]);
+    }
+
+    #[test]
+    fn retry_backoff_is_exponential_and_bounded() {
+        assert_eq!(retry_delay_ms(100, 0), 100);
+        assert_eq!(retry_delay_ms(100, 1), 200);
+        assert_eq!(retry_delay_ms(100, 5), 3_200);
+        assert_eq!(retry_delay_ms(100, 20), 10_000);
+    }
+
+    #[tokio::test]
+    async fn bounded_shard_queue_reports_backpressure_and_drains() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        let mut stats = ImportStats::default();
+        enqueue_shard_batch(&sender, 7, Vec::new(), &mut stats)
+            .await
+            .unwrap();
+        let drain = tokio::spawn(async move {
+            sleep(Duration::from_millis(10)).await;
+            let first = receiver.recv().await;
+            let second = receiver.recv().await;
+            (first, second)
+        });
+        enqueue_shard_batch(&sender, 7, Vec::new(), &mut stats)
+            .await
+            .unwrap();
+        assert_eq!(stats.queue_backpressure_events, 1);
+        assert_eq!(stats.max_observed_queue_batches, 1);
+        let (first, second) = drain.await.unwrap();
+        assert!(first.is_some());
+        assert!(second.is_some());
     }
 
     #[test]

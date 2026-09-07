@@ -19,7 +19,7 @@ use segment::segment_constructor::segment_builder::SegmentBuilder;
 use segment::types::{HnswGlobalConfig, Indexes, VectorStorageType};
 use uuid::Uuid;
 
-use super::config::SegmentOptimizerConfig;
+use super::config::{SegmentOptimizerConfig, indexing_threshold_reached};
 use crate::locked_segment::LockedSegment;
 use crate::operations::optimization::OptimizerThresholds;
 use crate::optimize::{OptimizationPaths, OptimizationStrategy, execute_optimization};
@@ -197,8 +197,10 @@ pub trait SegmentOptimizer: Sync {
         let thresholds = self.threshold_config();
         let segment_optimizer_config = self.segment_optimizer_config();
 
-        let threshold_is_indexed = maximal_vector_store_size_bytes
-            >= thresholds.indexing_threshold_kb.saturating_mul(BYTES_IN_KB);
+        let threshold_is_indexed = indexing_threshold_reached(
+            maximal_vector_store_size_bytes,
+            thresholds.indexing_threshold_kb,
+        );
 
         let threshold_is_on_disk = maximal_vector_store_size_bytes
             >= thresholds.memmap_threshold_kb.saturating_mul(BYTES_IN_KB);

@@ -1,0 +1,73 @@
+{
+  "binary": "/tmp/orion-c6-target/release/qdrant",
+  "binary_sha256": "6679a2489285fc62a86cd6dc08f4a4d2688b49d3797c6cba1d56c33c6b857639",
+  "cluster": {
+    "result": {
+      "consensus_thread_status": {
+        "consensus_thread_status": "working",
+        "last_update": "2026-08-31T20:46:51.338008438Z"
+      },
+      "message_send_failures": {},
+      "peer_id": 7627518970245926,
+      "peers": {
+        "1430928211637339": {
+          "uri": "http://10.10.1.4:6335/"
+        },
+        "3970109462493130": {
+          "uri": "http://10.10.1.2:6335/"
+        },
+        "579002155394411": {
+          "uri": "http://10.10.1.3:6335/"
+        },
+        "7627518970245926": {
+          "uri": "http://10.10.1.1:6335/"
+        }
+      },
+      "raft_info": {
+        "commit": 12,
+        "is_voter": true,
+        "leader": 7627518970245926,
+        "pending_operations": 0,
+        "role": "Leader",
+        "term": 1
+      },
+      "status": "enabled"
+    },
+    "status": "ok",
+    "time": 8.1393e-05
+  },
+  "config_sha256": "205a0b4f3234be624069089737f543dc49375c8c763e35922eadc1c0a379ae14",
+  "nodes": [
+    {
+      "binary_sha256": "6679a2489285fc62a86cd6dc08f4a4d2688b49d3797c6cba1d56c33c6b857639",
+      "pid": 105541,
+      "private_ip": "10.10.1.1",
+      "role": "controller",
+      "root": "/users/dry/orion-c6-runtime/c6-sift-m4-stage1-20260831a/controller"
+    },
+    {
+      "binary_sha256": "6679a2489285fc62a86cd6dc08f4a4d2688b49d3797c6cba1d56c33c6b857639",
+      "pid": 3716,
+      "private_ip": "10.10.1.2",
+      "role": "qdrant_shard_1",
+      "root": "/users/dry/orion-c6-runtime/c6-sift-m4-stage1-20260831a/qdrant_shard_1"
+    },
+    {
+      "binary_sha256": "6679a2489285fc62a86cd6dc08f4a4d2688b49d3797c6cba1d56c33c6b857639",
+      "pid": 3455,
+      "private_ip": "10.10.1.3",
+      "role": "qdrant_shard_2",
+      "root": "/users/dry/orion-c6-runtime/c6-sift-m4-stage1-20260831a/qdrant_shard_2"
+    },
+    {
+      "binary_sha256": "6679a2489285fc62a86cd6dc08f4a4d2688b49d3797c6cba1d56c33c6b857639",
+      "pid": 3384,
+      "private_ip": "10.10.1.4",
+      "role": "qdrant_shard_3",
+      "root": "/users/dry/orion-c6-runtime/c6-sift-m4-stage1-20260831a/qdrant_shard_3"
+    }
+  ],
+  "record_type": "c6_native_cluster_deploy",
+  "run_id": "c6-sift-m4-stage1-20260831a",
+  "timestamp": "2026-08-31T20:46:51Z"
+}

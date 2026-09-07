@@ -87,9 +87,15 @@ impl VectorIndex for PlainVectorIndex {
         filter: Option<&Filter>,
         top: usize,
         params: Option<&SearchParams>,
-        _custom_entry_points: Option<&[PointOffsetType]>,
+        custom_entry_points: Option<&[PointOffsetType]>,
         query_context: &VectorQueryContext,
     ) -> OperationResult<Vec<Vec<ScoredPointOffset>>> {
+        if custom_entry_points.is_some() {
+            // A routed Orion search must start from the supplied entry points
+            // on an HNSW L0 graph. Plain segments have no graph and therefore
+            // cannot legally participate in this search path.
+            return Ok(vec![vec![]; query_vectors.len()]);
+        }
         let is_indexed_only = params.map(|p| p.indexed_only).unwrap_or(false);
         if is_indexed_only
             && !self.is_small_enough_for_unindexed_search(

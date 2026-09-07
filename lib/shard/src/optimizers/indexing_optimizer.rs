@@ -8,7 +8,7 @@ use segment::entry::ReadSegmentEntry as _;
 use segment::segment::Segment;
 use segment::types::HnswGlobalConfig;
 
-use super::config::SegmentOptimizerConfig;
+use super::config::{SegmentOptimizerConfig, indexing_threshold_reached};
 use super::segment_optimizer::{OptimizationPlanner, SegmentOptimizer};
 use crate::operations::optimization::OptimizerThresholds;
 use crate::segment_holder::SegmentId;
@@ -53,10 +53,6 @@ impl IndexingOptimizer {
 
     fn is_optimization_required(&self, segment: &Segment) -> bool {
         let segment_data_config = segment.config();
-        let indexing_threshold_bytes = self
-            .thresholds_config
-            .indexing_threshold_kb
-            .saturating_mul(BYTES_IN_KB);
         let mmap_threshold_bytes = self
             .thresholds_config
             .memmap_threshold_kb
@@ -72,7 +68,10 @@ impl IndexingOptimizer {
                     .available_vectors_size_in_bytes(vector_name)
                     .unwrap_or_default();
 
-                let is_big_for_index = storage_size_bytes >= indexing_threshold_bytes;
+                let is_big_for_index = indexing_threshold_reached(
+                    storage_size_bytes,
+                    self.thresholds_config.indexing_threshold_kb,
+                );
                 let is_big_for_mmap = storage_size_bytes >= mmap_threshold_bytes;
 
                 let optimize_for_index = is_big_for_index && !is_indexed;
@@ -99,7 +98,10 @@ impl IndexingOptimizer {
                     .available_vectors_size_in_bytes(sparse_vector_name)
                     .unwrap_or_default();
 
-                let is_big_for_index = storage_size >= indexing_threshold_bytes;
+                let is_big_for_index = indexing_threshold_reached(
+                    storage_size,
+                    self.thresholds_config.indexing_threshold_kb,
+                );
                 let is_big_for_mmap = storage_size >= mmap_threshold_bytes;
 
                 let is_big = is_big_for_index || is_big_for_mmap;

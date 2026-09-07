@@ -3,3 +3,6 @@ tests/storage-compat/collection.snapshot.gz filter=lfs diff=lfs merge=lfs -text
 tests/e2e_tests/test_data/storage.tar.xz filter=lfs diff=lfs merge=lfs -text
 tests/storage-compat/full-snapshot.snapshot.gz filter=lfs diff=lfs merge=lfs -text
 *.sh text eol=lf
+experiments/c6/RESULTS.md -whitespace
+experiments/c6/runs/*.csv -whitespace
+experiments/c6/runs/*/*.csv -whitespace

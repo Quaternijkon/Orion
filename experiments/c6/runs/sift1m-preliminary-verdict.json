@@ -1,0 +1,22 @@
+{
+  "C6-a": "SUPPORTED",
+  "C6-b": "CONTRADICTED_AS_GENERAL_CLAIM_SCALE_DEPENDENT",
+  "C6-c": "CONTRADICTED_CURRENT_LINEAR_EP_POLICY",
+  "C6-d": "CONTRADICTED_CURRENT_FULL_POLICY",
+  "notes": {
+    "C6-b": "supported at M4, worsens at M8/M16, marginal work benefit at M32",
+    "C6-c": "P2 increases isolated work at every M",
+    "C6-d": "P3 exceeds P0 work at every M and retains large P6 headroom"
+  },
+  "physical_validation": {
+    "source": "/users/dry/Orion/experiments/c6/runs/c6_physical_validation_summary.csv",
+    "status": "INSUFFICIENT_UNSTABLE_POLICY_REPETITIONS",
+    "valid_by_policy": {
+      "P0": true,
+      "P1": true,
+      "P2": false,
+      "P3": true
+    }
+  },
+  "scope": "SIFT1M M=4,8,16,32 algorithmic evidence"
+}

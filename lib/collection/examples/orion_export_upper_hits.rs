@@ -14,10 +14,11 @@ use sha2::{Digest, Sha256};
 fn usage(program: &str) -> String {
     format!(
         "Usage: {program} <artifact.json> <vectors.f32le> <row-count> <dimension> <top-k> <search-ef> \
-         <hits.u64le> <manifest.json>\n\
+         <hits.bin> <manifest.json>\n\
          \n\
-         Export the first top-k production upper-HNSW hits for every input row.\n\
-         Hits are row-major little-endian u64 point IDs. Existing outputs are never overwritten."
+         Export up to top-k production upper-HNSW hits for every input row.\n\
+         Each row is encoded as a little-endian u32 count followed by that many little-endian\n\
+         u64 point IDs. Existing outputs are never overwritten."
     )
 }
 
@@ -49,8 +50,12 @@ struct ExportManifest {
     top_k: usize,
     search_ef: usize,
     hits_path: String,
+    hits_format: &'static str,
     hits_sha256: String,
     hits_size_bytes: u64,
+    total_hits: u64,
+    min_hits_per_row: usize,
+    max_hits_per_row: usize,
     elapsed_seconds: f64,
 }
 
@@ -101,7 +106,11 @@ fn parse_args() -> Result<Options, Box<dyn Error>> {
     })
 }
 
-fn checked_size(row_count: usize, width: usize, element_size: usize) -> Result<usize, Box<dyn Error>> {
+fn checked_size(
+    row_count: usize,
+    width: usize,
+    element_size: usize,
+) -> Result<usize, Box<dyn Error>> {
     row_count
         .checked_mul(width)
         .and_then(|elements| elements.checked_mul(element_size))
@@ -113,10 +122,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn temporary_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .unwrap_or_default()
-        .to_os_string();
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".tmp.{}", std::process::id()));
     path.with_file_name(name)
 }
@@ -135,7 +141,10 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
         if output.exists() {
             return Err(format!("refusing to overwrite {}", output.display()).into());
         }
-        if let Some(parent) = output.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = output
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             fs_err::create_dir_all(parent)?;
         }
     }
@@ -158,9 +167,9 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
         )
         .into());
     }
-    if options.search_ef < options.top_k {
+    if options.search_ef != options.top_k {
         return Err(format!(
-            "search-ef {} must be at least top-k {}",
+            "canonical Orion requires search-ef {} to equal top-k {}",
             options.search_ef, options.top_k
         )
         .into());
@@ -169,18 +178,15 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
     let upper_graph_present = artifact.upper_graph.is_some();
     let source_upper_k = artifact.upper_k;
     let source_upper_ef_search = artifact.upper_ef_search;
-    // Attachment construction deliberately uses a larger search budget than online routing.
-    // Mutating only these two runtime budgets preserves every graph byte, vector, preprocessing
-    // rule, and traversal implementation while reproducing the explicit attachment contract.
+    // Partition/assignment construction deliberately uses one budget: efs is both
+    // the HNSW search EF and the number of returned voting results. Runtime upper
+    // routing may use a different explicitly bound budget without changing graph bytes.
     artifact.upper_k = options.top_k;
     artifact.upper_ef_search = options.search_ef;
     let router = OrionRouter::new(artifact)?;
 
-    let expected_vector_bytes = checked_size(
-        options.row_count,
-        options.dimension,
-        size_of::<f32>(),
-    )?;
+    let expected_vector_bytes =
+        checked_size(options.row_count, options.dimension, size_of::<f32>())?;
     let actual_vector_bytes = usize::try_from(fs_err::metadata(&options.vectors_path)?.len())?;
     if actual_vector_bytes != expected_vector_bytes {
         return Err(format!(
@@ -195,12 +201,15 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
         return Err(format!("temporary output already exists: {}", hits_tmp.display()).into());
     }
     let started = Instant::now();
-    let result = (|| -> Result<(String, String), Box<dyn Error>> {
+    let result = (|| -> Result<(String, String, u64, usize, usize), Box<dyn Error>> {
         let mut reader = BufReader::new(File::open(&options.vectors_path)?);
         let mut writer = BufWriter::new(File::create_new(&hits_tmp)?);
         let mut row_bytes = vec![0_u8; options.dimension * size_of::<f32>()];
         let mut vectors_digest = Sha256::new();
         let mut hits_digest = Sha256::new();
+        let mut total_hits = 0_u64;
+        let mut min_hits_per_row = usize::MAX;
+        let mut max_hits_per_row = 0_usize;
 
         for row_index in 0..options.row_count {
             reader.read_exact(&mut row_bytes)?;
@@ -220,7 +229,17 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let hits = router.search_upper(&query)?;
-            for hit in hits.into_iter().take(options.top_k) {
+            let hit_count = hits.len().min(options.top_k);
+            let hit_count_u32 = u32::try_from(hit_count)?;
+            let count_bytes = hit_count_u32.to_le_bytes();
+            writer.write_all(&count_bytes)?;
+            hits_digest.update(count_bytes);
+            total_hits = total_hits
+                .checked_add(u64::from(hit_count_u32))
+                .ok_or("total exported upper-hit count overflowed u64")?;
+            min_hits_per_row = min_hits_per_row.min(hit_count);
+            max_hits_per_row = max_hits_per_row.max(hit_count);
+            for hit in hits.into_iter().take(hit_count) {
                 let bytes = numeric_id(hit.label)?.to_le_bytes();
                 writer.write_all(&bytes)?;
                 hits_digest.update(bytes);
@@ -238,10 +257,14 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
         Ok((
             format!("{:x}", vectors_digest.finalize()),
             format!("{:x}", hits_digest.finalize()),
+            total_hits,
+            min_hits_per_row,
+            max_hits_per_row,
         ))
     })();
 
-    let (vectors_sha256, hits_sha256) = match result {
+    let (vectors_sha256, hits_sha256, total_hits, min_hits_per_row, max_hits_per_row) = match result
+    {
         Ok(digests) => digests,
         Err(error) => {
             fs_err::remove_file(&hits_tmp).ok();
@@ -250,11 +273,13 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
     };
     fs_err::rename(&hits_tmp, &options.hits_path)?;
     let hits_size_bytes = fs_err::metadata(&options.hits_path)?.len();
-    let expected_hits_bytes = u64::try_from(checked_size(
-        options.row_count,
-        options.top_k,
-        size_of::<u64>(),
-    )?)?;
+    let count_bytes = u64::try_from(checked_size(options.row_count, 1, size_of::<u32>())?)?;
+    let id_bytes = total_hits
+        .checked_mul(u64::try_from(size_of::<u64>())?)
+        .ok_or("exported upper-hit byte size overflowed u64")?;
+    let expected_hits_bytes = count_bytes
+        .checked_add(id_bytes)
+        .ok_or("exported upper-hit byte size overflowed u64")?;
     if hits_size_bytes != expected_hits_bytes {
         return Err(format!(
             "hit output has {hits_size_bytes} bytes; expected {expected_hits_bytes}"
@@ -263,7 +288,7 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
     }
 
     let manifest = ExportManifest {
-        format_version: 1,
+        format_version: 2,
         artifact_path: options.artifact_path.display().to_string(),
         artifact_sha256,
         generation,
@@ -277,8 +302,12 @@ fn export(options: &Options) -> Result<ExportManifest, Box<dyn Error>> {
         top_k: options.top_k,
         search_ef: options.search_ef,
         hits_path: options.hits_path.display().to_string(),
+        hits_format: "counted_rows_u32le_then_u64le_v1",
         hits_sha256,
         hits_size_bytes,
+        total_hits,
+        min_hits_per_row,
+        max_hits_per_row,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
     let manifest_tmp = temporary_path(&options.manifest_path);

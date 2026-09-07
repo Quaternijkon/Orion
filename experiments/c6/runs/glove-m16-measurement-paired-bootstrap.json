@@ -1,0 +1,26 @@
+{
+  "P1": {
+    "bootstrap_repetitions": 10000.0,
+    "ci95_high": -0.22401426565558283,
+    "ci95_low": -0.24990772775114564,
+    "mean_relative_reduction": -0.23698533075330205
+  },
+  "P2": {
+    "bootstrap_repetitions": 10000.0,
+    "ci95_high": 0.4494180264046133,
+    "ci95_low": 0.44702327891567356,
+    "mean_relative_reduction": 0.44822563143278843
+  },
+  "P3": {
+    "bootstrap_repetitions": 10000.0,
+    "ci95_high": 0.49851277388508053,
+    "ci95_low": 0.4920872548178637,
+    "mean_relative_reduction": 0.49529483519456424
+  },
+  "P6": {
+    "bootstrap_repetitions": 10000.0,
+    "ci95_high": 0.8304681721350673,
+    "ci95_low": 0.8206041550278611,
+    "mean_relative_reduction": 0.8255847508260344
+  }
+}

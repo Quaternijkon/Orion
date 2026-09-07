@@ -1,0 +1,12 @@
+{
+  "P2": [
+    {
+      "alpha": 16,
+      "beta": 4,
+      "ef_max": 512,
+      "ef_min": 8,
+      "fixed_p": 14,
+      "policy": "P2"
+    }
+  ]
+}

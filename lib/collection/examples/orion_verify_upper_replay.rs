@@ -645,17 +645,17 @@ mod tests {
                 OrionUpperNode {
                     label: 10_u64.into(),
                     vector: vec![1.0, -0.0],
-                    shard_membership: if rebound { vec![2, 0] } else { vec![0, 1] },
+                    owner_shard: if rebound { 2 } else { 0 },
                 },
                 OrionUpperNode {
                     label: 20_u64.into(),
                     vector: vec![0.0, 1.0],
-                    shard_membership: if rebound { vec![1, 2] } else { vec![1] },
+                    owner_shard: 1,
                 },
                 OrionUpperNode {
                     label: 30_u64.into(),
                     vector: vec![-1.0, 0.0],
-                    shard_membership: if rebound { vec![0] } else { vec![0] },
+                    owner_shard: 0,
                 },
             ],
             upper_graph: Some(OrionUpperHnswGraph {

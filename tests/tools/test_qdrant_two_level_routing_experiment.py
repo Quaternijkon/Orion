@@ -543,6 +543,124 @@ def test_create_collection_uses_configured_qdrant_distance(monkeypatch):
     assert calls[0]["body"]["vectors"]["distance"] == "Euclid"
 
 
+def test_create_collection_can_force_small_nonempty_shards_over_index_threshold(
+    monkeypatch,
+):
+    module = load_module()
+    calls = []
+
+    def fake_request_json(base_url, method, path, body=None, timeout=300.0):
+        calls.append(body)
+        return {"result": {}}
+
+    monkeypatch.setattr(module, "request_json", fake_request_json)
+
+    module.create_collection(
+        "http://qdrant",
+        "collection",
+        dim=200,
+        m=32,
+        ef_construct=100,
+        indexing_threshold=1,
+    )
+
+    assert calls[0]["optimizers_config"]["indexing_threshold"] == 1
+
+
+def test_force_hnsw_collection_gate_rejects_unindexed_point_copies(monkeypatch):
+    module = load_module()
+    train = module.np.zeros((2, 2), dtype=module.np.float32)
+
+    monkeypatch.setattr(module, "collection_exists", lambda *_args: True)
+    monkeypatch.setattr(module, "validate_existing_collection", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        module,
+        "wait_collection_indexed",
+        lambda *_args, **_kwargs: {
+            "points_count": 2,
+            "indexed_vectors_count": 1,
+            "segments_count": 4,
+        },
+    )
+    monkeypatch.setattr(module, "collection_cluster_info", lambda *_args: None)
+
+    with pytest.raises(RuntimeError, match="every non-empty shard"):
+        module.ensure_collection_from_point_shards(
+            "http://qdrant",
+            "collection",
+            train,
+            [[0], [1]],
+            module.np.asarray([0, 1], dtype=module.np.int64),
+            2,
+            32,
+            100,
+            1,
+            True,
+            "none",
+            [],
+            force_hnsw_for_nonempty_shards=True,
+        )
+
+
+def test_point_shard_uploads_run_concurrently_but_preserve_per_shard_order(monkeypatch):
+    module = load_module()
+    train = module.np.asarray(
+        [[1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [0.0, 2.0]],
+        dtype=module.np.float32,
+    )
+    monkeypatch.setattr(module, "collection_exists", lambda *_args: False)
+    monkeypatch.setattr(module, "delete_collection_if_exists", lambda *_args: None)
+    monkeypatch.setattr(module, "create_collection", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module, "create_shard_key", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        module,
+        "wait_collection_indexed",
+        lambda *_args, **_kwargs: {
+            "points_count": 4,
+            "indexed_vectors_count": 4,
+            "segments_count": 4,
+        },
+    )
+    monkeypatch.setattr(module, "collection_cluster_info", lambda *_args: None)
+
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+    ids_by_shard = {"centroid_00": [], "centroid_01": []}
+
+    def fake_upsert(_base_url, _collection, shard_key, ids, _vectors, source_ids=None):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        module.time.sleep(0.02)
+        with lock:
+            ids_by_shard[shard_key].extend(source_ids)
+            active -= 1
+
+    monkeypatch.setattr(module, "upsert_points", fake_upsert)
+    result = module.ensure_collection_from_point_shards(
+        "http://qdrant",
+        "collection",
+        train,
+        [[0], [0], [1], [1]],
+        module.np.asarray([0, 2], dtype=module.np.int64),
+        2,
+        32,
+        100,
+        1,
+        False,
+        "none",
+        [],
+        upload_concurrency=2,
+    )
+
+    assert max_active == 2
+    assert ids_by_shard == {"centroid_00": [0, 1], "centroid_01": [2, 3]}
+    assert result["upload_concurrency"] == 2
+    assert result["upload_request_count"] == 4
+
+
 def test_create_collection_stores_canonical_routing_build_metadata(monkeypatch):
     module = load_module()
     calls = []
@@ -1616,11 +1734,63 @@ def test_reuse_validation_rejects_routing_build_seed_mismatch():
         allowed_peer_ids=[202, 303, 404],
         expected_routing_build_metadata=expected,
     )
-
     assert any("routing build metadata" in item for item in mismatches)
     validation = module.collection_routing_build_metadata_validation(info, expected)
     assert validation["status"] == "mismatch"
     assert validation["verified"] is False
+
+
+def test_canonical_build_metadata_binds_efs_strict_votes_and_full_lower_hnsw():
+    module = load_module()
+    args = SimpleNamespace(
+        routing_mode="faithful_original_rest",
+        claim_a_partition_family="none",
+        num_shards=8,
+        hnsw_m=32,
+        ef_construct=100,
+        upper_m=32,
+        upper_ef_construction=100,
+        upper_search_ef=100,
+        upper_k_candidates=[100],
+        upper_sample_seed=100,
+        kmeans_rand_seed=1,
+        kmeans_iters=10,
+        cpp_kmeans_train_size=10000,
+        sample_denominator=32,
+        k_overlap=10,
+        topology_iters=50,
+        disable_multi_assign=False,
+        orion_multi_assign_min_max_vote=2,
+        orion_multi_assign_vote_delta=0,
+        orion_multi_assign_max_shards=0,
+        simple_kmeans_multi_assign_alpha=1.0,
+        simple_kmeans_multi_assign_chunk_size=50000,
+        disable_fission=False,
+        orion_balance_mode="none",
+        claim_a_random_seed=12345,
+        seed=42,
+        sample_size=50000,
+    )
+
+    metadata = module.build_routing_build_metadata(
+        args,
+        train_count=1000,
+        effective_num_shards=8,
+        vector_distance="Cosine",
+    )
+
+    assert metadata["upper_hnsw_search_ef_during_routing_build"] == 10
+    assert metadata["multi_assign"]["policy"] == (
+        "all_max_vote_ties_else_nearest_when_max_vote_is_one"
+    )
+    assert metadata["fission"]["enabled"] is False
+    assert metadata["orion_balance"] == {"mode": "none", "intervention": False}
+    assert metadata["lower_hnsw"] == {
+        "construction": "independent_full_multilayer_per_shard",
+        "retain_non_base_layers": True,
+        "routed_search_start_level": 0,
+        "routed_entry_points_required": True,
+    }
 
 
 def test_missing_routing_build_metadata_is_backward_compatible_but_unverified():
@@ -2126,6 +2296,85 @@ def test_global_upper_indices_uses_one_global_sample_before_partitioning():
     assert first.tolist() == second.tolist()
 
 
+def test_compute_point_to_l1s_sets_build_ef_equal_to_returned_topk():
+    module = load_module()
+
+    class FakeIndex:
+        def __init__(self):
+            self.efs = []
+
+        def get_current_count(self):
+            return 10
+
+        def set_ef(self, ef):
+            self.efs.append(ef)
+
+        def knn_query(self, rows, k):
+            assert k == 3
+            count = len(rows)
+            return (
+                module.np.tile(module.np.asarray([[3, 2, 1]]), (count, 1)),
+                module.np.tile(module.np.asarray([[0.3, 0.2, 0.1]]), (count, 1)),
+            )
+
+    index = FakeIndex()
+    rows = module.compute_point_to_l1s(
+        index,
+        module.np.zeros((2, 2), dtype=module.np.float32),
+        k_overlap=3,
+        batch_size=1,
+    )
+
+    assert index.efs == [3]
+    assert rows == [[1, 2, 3], [1, 2, 3]]
+
+
+def test_strict_vote_assignment_uses_all_max_ties_and_nearest_for_all_one():
+    module = load_module()
+    reference = [-1] * 20
+    for label, shard in {1: 2, 2: 0, 3: 2, 4: 0, 5: 1}.items():
+        reference[label] = shard
+
+    assert module.strict_target_shards_from_votes([1, 2, 3, 4, 5], reference) == [2, 0]
+    assert module.strict_target_shards_from_votes([5, 2, 1], reference) == [1]
+    with pytest.raises(RuntimeError, match="no shard-labelled"):
+        module.strict_target_shards_from_votes([19], reference)
+
+
+def test_canonical_routing_has_no_balance_or_fission_and_keeps_all_vote_ties(monkeypatch):
+    module = load_module()
+    train = module.np.zeros((4, 2), dtype=module.np.float32)
+    upper_indices = module.np.asarray([0, 1, 2, 3], dtype=module.np.int64)
+    point_to_l1s = [
+        [0, 1, 2, 3],
+        [1, 0, 2, 3],
+        [2, 3, 0, 1],
+        [3, 2, 0, 1],
+    ]
+    monkeypatch.setattr(
+        module,
+        "initial_l1_shards_by_kmeans",
+        lambda *_args, **_kwargs: [0, 0, 1, 1],
+    )
+
+    routing = module.build_canonical_routing_state(
+        train,
+        upper_indices,
+        point_to_l1s,
+        num_shards=2,
+        kmeans_iters=1,
+        kmeans_seed=1,
+        topology_iters=5,
+    )
+
+    assert routing.l1_to_shard == [0, 0, 1, 1]
+    assert routing.point_to_shards == [[0, 1], [0, 1], [1, 0], [1, 0]]
+    assert routing.shard_counts.tolist() == [4, 4]
+    assert routing.fission_events == []
+    assert routing.balance_diagnostics is None
+    assert routing.num_shards == 2
+
+
 def test_assign_points_by_l1_vote_matches_original_multi_assign_rules():
     module = load_module()
 
@@ -2476,6 +2725,34 @@ def test_capacity_constrained_multi_assignment_preserves_physical_copy_count():
     assert diagnostics["all_assignments_have_navigation_evidence"] is True
 
 
+def test_capacity_assignment_accepts_frozen_copy_count_override():
+    module = load_module()
+    reference_l1_shard = [0, 0, 1, 1, 2, 2]
+    point_to_l1s = [[0, 1, 2, 3, 4] for _ in range(12)]
+    required = module.np.asarray(
+        [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2], dtype=module.np.int16
+    )
+
+    _primary, assignments, diagnostics = (
+        module.assign_points_by_l1_vote_capacity_constrained(
+            point_to_l1s,
+            reference_l1_shard,
+            num_shards=3,
+            use_multi_assign=True,
+            min_load_ratio=0.9,
+            max_load_ratio=1.1,
+            max_passes=8,
+            max_vote_loss=1,
+            required_copies_override=required,
+        )
+    )
+
+    assert [len(row) for row in assignments] == required.tolist()
+    assert diagnostics["requested_total_copies"] == int(required.sum())
+    assert diagnostics["required_copy_count_source"] == "explicit_override"
+    assert diagnostics["copy_count_preserved"] is True
+
+
 def test_capacity_constrained_assignment_reports_evidence_graph_infeasibility():
     module = load_module()
     reference_l1_shard = [0, 0]
@@ -2727,6 +3004,29 @@ def test_point_indices_by_shard_preserves_multi_assignment_expansion():
     assert module.expansion_ratio_from_assigned_points(6, 4) == 1.5
 
 
+def test_iter_shard_upload_batches_is_bounded_point_major_and_upper_first():
+    module = load_module()
+    point_to_shards = [[0, 1], [1], [0], [0, 1], [1]]
+    upper = module.np.asarray([3, 1], dtype=module.np.int64)
+
+    batches = [
+        (shard_id, point_ids.tolist())
+        for shard_id, point_ids in module.iter_shard_upload_batches(
+            point_to_shards,
+            num_shards=2,
+            batch_size=2,
+            upper_indices=upper,
+        )
+    ]
+
+    assert batches == [
+        (1, [3, 1]),
+        (0, [3, 0]),
+        (1, [0, 4]),
+        (0, [2]),
+    ]
+
+
 def test_expansion_ratio_rejects_empty_logical_points():
     module = load_module()
 
@@ -2760,6 +3060,36 @@ def test_hash_point_to_shards_assigns_each_point_to_one_modulo_shard():
     assert point_to_shards == [[0], [1], [2], [0], [1], [2], [0], [1]]
 
 
+def test_upper_seed_graphless_artifact_is_neutral_and_streams_full_layout(tmp_path):
+    module = load_module()
+    train = module.np.asarray(
+        [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]], dtype=module.np.float32
+    )
+    path = module.write_orion_upper_seed_graphless_artifact(
+        train,
+        module.np.asarray([2, 0], dtype=module.np.int64),
+        tmp_path / "upper-seed.json",
+        generation=7,
+        vector_distance="cosine",
+        upper_k=2,
+        upper_ef_search=4,
+        dynamic_ef_base=20,
+        dynamic_ef_factor=4,
+    )
+
+    artifact = module.json.loads(path.read_text(encoding="utf-8"))
+    assert artifact["shard_count"] == 1
+    assert artifact["logical_point_count"] == 3
+    assert artifact["physical_point_count"] == 3
+    assert artifact["layout_sha256"] == module.orion_layout_sha256(
+        [[0], [0], [0]], 1
+    )
+    assert [node["label"] for node in artifact["upper_nodes"]] == [2, 0]
+    assert artifact["format_version"] == 2
+    assert all(node["owner_shard"] == 0 for node in artifact["upper_nodes"])
+    assert "upper_graph" not in artifact
+
+
 def test_write_orion_numeric_shard_import_bundle_preserves_external_ids_and_membership(
     tmp_path,
 ):
@@ -2773,6 +3103,7 @@ def test_write_orion_numeric_shard_import_bundle_preserves_external_ids_and_memb
         train,
         module.np.array([0, 2], dtype=module.np.int64),
         point_to_shards,
+        [0, 1, 2],
         num_shards=3,
         output_path=tmp_path / "graphless.json",
         generation=7,
@@ -2791,12 +3122,12 @@ def test_write_orion_numeric_shard_import_bundle_preserves_external_ids_and_memb
         {
             "label": 0,
             "vector": [1.0, 2.0],
-            "shard_membership": [0, 2],
+            "owner_shard": 0,
         },
         {
             "label": 2,
             "vector": [5.0, 6.0],
-            "shard_membership": [2],
+            "owner_shard": 2,
         },
     ]
     artifact["upper_graph"] = {"entry_point": 0, "max_level": 0, "nodes": []}
@@ -2849,6 +3180,127 @@ def test_write_orion_numeric_shard_import_bundle_preserves_external_ids_and_memb
     assert records[0]["id"] == 0
     assert records[0]["shards"] == [0, 2]
     assert all("source_id" not in record and "payload" not in record for record in records)
+
+
+def test_graphless_artifact_rejects_upper_owner_without_lower_copy(tmp_path):
+    module = load_module()
+    train = module.np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=module.np.float32)
+
+    with pytest.raises(ValueError, match="owner shard 0 has no lower-tier copy"):
+        module.write_orion_graphless_artifact(
+            train,
+            module.np.asarray([0], dtype=module.np.int64),
+            [[1], [0]],
+            [0, 0],
+            num_shards=2,
+            output_path=tmp_path / "invalid.json",
+            generation=7,
+            vector_distance="cosine",
+            upper_k=1,
+            upper_ef_search=1,
+            dynamic_ef_base=20,
+            dynamic_ef_factor=4,
+        )
+
+
+def test_batch_routing_prefers_single_upper_owner_over_lower_multi_assignment(monkeypatch):
+    module = load_module()
+    captured = {}
+    monkeypatch.setattr(
+        module,
+        "compute_upper_labels",
+        lambda _index, _queries, _upper_k: module.np.asarray([[0, 1]], dtype=module.np.int64),
+    )
+
+    def fake_execute(_base_url, _collection, query_plans, *_args, **_kwargs):
+        captured["query_plans"] = query_plans
+        return {"status": "ok"}
+
+    monkeypatch.setattr(module, "execute_query_plans_once", fake_execute)
+    result = module.evaluate_routed_config_batch(
+        "http://unused",
+        "collection",
+        module.np.asarray([[1.0, 0.0]], dtype=module.np.float32),
+        module.np.asarray([[0]], dtype=module.np.int64),
+        top_k=1,
+        upper_index=object(),
+        upper_k=2,
+        base_ef=20,
+        factor=4,
+        label_to_shard={0: "centroid_00", 1: "centroid_01"},
+        point_to_shards=[[0, 2], [1, 2]],
+        num_shards=3,
+        routed_execution_mode="compact_multi_ep",
+    )
+
+    assert result == {"status": "ok"}
+    plan = captured["query_plans"][0]
+    assert plan["upper_hits"] == 2
+    request = plan["searches"][0]
+    assert request["shard_key"] == ["centroid_00", "centroid_01"]
+    assert request["hnsw_entry_points_by_shard"] == {
+        "centroid_00": [0],
+        "centroid_01": [1],
+    }
+    assert "centroid_02" not in request["hnsw_entry_points_by_shard"]
+
+
+def test_numeric_import_bundle_reuses_exact_prewritten_attachment_vectors(tmp_path):
+    module = load_module()
+    train = module.np.asarray(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=module.np.float32
+    )
+    point_to_shards = [[0], [1]]
+    graphless_path = module.write_orion_graphless_artifact(
+        train,
+        module.np.asarray([0, 1], dtype=module.np.int64),
+        point_to_shards,
+        [0, 1],
+        num_shards=2,
+        output_path=tmp_path / "graphless.json",
+        generation=8,
+        vector_distance="cosine",
+        upper_k=2,
+        upper_ef_search=2,
+        dynamic_ef_base=20,
+        dynamic_ef_factor=4,
+    )
+    artifact = module.json.loads(graphless_path.read_text(encoding="utf-8"))
+    artifact["upper_graph"] = {"entry_point": 0, "max_level": 0, "nodes": []}
+    production_path = tmp_path / "generation-8.json"
+    production_path.write_text(module.json.dumps(artifact), encoding="utf-8")
+    vectors_path = tmp_path / "orion_numeric_import.f32le"
+    vector_sha = module.write_orion_numeric_vector_file(
+        train, vectors_path, row_chunk_size=1
+    )
+
+    manifest_path = module.write_orion_numeric_shard_import_bundle(
+        train,
+        point_to_shards,
+        num_shards=2,
+        output_dir=tmp_path,
+        orion_artifact_path=production_path,
+        row_chunk_size=1,
+        prewritten_vectors_path=vectors_path,
+    )
+
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["vectors_sha256"] == vector_sha
+    assert module.sha256_path(vectors_path) == vector_sha
+
+    vectors_path.write_bytes(b"corrupt")
+    (tmp_path / "orion_numeric_import.assignments.jsonl").unlink()
+    manifest_path.unlink()
+    with pytest.raises(ValueError, match="size does not match"):
+        module.write_orion_numeric_shard_import_bundle(
+            train,
+            point_to_shards,
+            num_shards=2,
+            output_dir=tmp_path,
+            orion_artifact_path=production_path,
+            row_chunk_size=1,
+            prewritten_vectors_path=vectors_path,
+        )
 
 
 def test_write_simple_kmeans_graphless_artifact_and_generic_v2_bundle(tmp_path):

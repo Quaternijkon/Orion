@@ -181,6 +181,20 @@ pub fn get_indexing_threshold_kb(indexing_threshold: Option<usize>) -> usize {
     }
 }
 
+/// Check whether a segment must be indexed for the resolved internal threshold.
+///
+/// Public `indexing_threshold = 0` is normalized to `usize::MAX` by
+/// [`get_indexing_threshold_kb`] and therefore still disables indexing. An
+/// internal threshold of zero is reserved for static Orion shards and means
+/// "index every non-empty segment".
+pub fn indexing_threshold_reached(storage_size_bytes: usize, indexing_threshold_kb: usize) -> bool {
+    if indexing_threshold_kb == 0 {
+        storage_size_bytes > 0
+    } else {
+        storage_size_bytes >= indexing_threshold_kb.saturating_mul(BYTES_IN_KB)
+    }
+}
+
 /// Resolve max segment size in KB: custom value or per-thread default.
 pub fn get_max_segment_size_kb(
     max_segment_size: Option<usize>,
@@ -201,4 +215,28 @@ pub fn get_deferred_points_threshold_bytes(
     (prevent_unoptimized == Some(true))
         .then(|| indexing_threshold_kb.saturating_mul(BYTES_IN_KB))
         .and_then(NonZeroUsize::new)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_zero_still_disables_indexing() {
+        let threshold = get_indexing_threshold_kb(Some(0));
+        assert_eq!(threshold, usize::MAX);
+        assert!(!indexing_threshold_reached(usize::MAX / 2, threshold));
+    }
+
+    #[test]
+    fn internal_zero_indexes_every_nonempty_segment_only() {
+        assert!(!indexing_threshold_reached(0, 0));
+        assert!(indexing_threshold_reached(1, 0));
+    }
+
+    #[test]
+    fn ordinary_threshold_keeps_kilobyte_semantics() {
+        assert!(!indexing_threshold_reached(BYTES_IN_KB - 1, 1));
+        assert!(indexing_threshold_reached(BYTES_IN_KB, 1));
+    }
 }

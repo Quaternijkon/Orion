@@ -1,0 +1,69 @@
+{
+  "C6-a": "SUPPORTED",
+  "C6-b": "CONTRADICTED_AS_GENERAL_CLAIM_DATASET_OR_SCALE_DEPENDENT",
+  "C6-c": "CONTRADICTED_AS_GENERAL_CLAIM_DATASET_OR_SCALE_DEPENDENT",
+  "C6-d": "CONTRADICTED_NEAR_ORACLE_OR_GENERAL_FULL_POLICY_CLAIM",
+  "notes": {
+    "C6-b_improvement_by_valid_row": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true
+    ],
+    "C6-c_improvement_by_valid_row": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ],
+    "C6-d_near_oracle_by_valid_row": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "C6-d_static_improvement_by_valid_row": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ],
+    "recall_invalid_E2_rows": [
+      [
+        "glove-200-angular",
+        16
+      ]
+    ],
+    "recall_invalid_E3_rows": []
+  },
+  "physical_validation": {
+    "source": "/users/dry/Orion/experiments/c6/runs/c6_physical_validation_summary.csv",
+    "status": "INSUFFICIENT_UNSTABLE_POLICY_REPETITIONS",
+    "valid_by_dataset_policy": {
+      "glove-200-angular:P0": true,
+      "glove-200-angular:P1": true,
+      "glove-200-angular:P2": true,
+      "glove-200-angular:P3": true,
+      "sift1m:P0": true,
+      "sift1m:P1": true,
+      "sift1m:P2": false,
+      "sift1m:P3": true
+    }
+  },
+  "scope": "glove-200-angular, sift1m M=4,8,16,32 algorithmic evidence"
+}

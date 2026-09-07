@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -97,10 +97,33 @@ struct PerShardTrace {
 #[derive(Debug, Serialize)]
 struct PerQueryTrace {
     query_index: usize,
+    navigation_candidate_count: usize,
+    candidate_shard_count: usize,
+    candidates: Vec<PerQueryCandidate>,
+    ranked_candidate_shards: Vec<u32>,
+    shard_evidence: Vec<PerQueryShardEvidence>,
     visited_shards: u64,
     entry_point_count: u64,
     ef_sum: u64,
     targets: Vec<PerQueryShardTarget>,
+}
+
+#[derive(Debug, Serialize)]
+struct PerQueryCandidate {
+    rank: usize,
+    label: ExtendedPointId,
+    distance: f32,
+    shard_ids: Vec<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct PerQueryShardEvidence {
+    shard_id: u32,
+    candidate_count: usize,
+    best_candidate_rank: usize,
+    minimum_candidate_distance: f32,
+    mean_candidate_distance: f64,
+    entry_points: Vec<ExtendedPointId>,
 }
 
 #[derive(Debug, Serialize)]
@@ -115,6 +138,15 @@ struct ShardAccumulator {
     query_visits: u64,
     ef_sum: u64,
     entry_point_sum: u64,
+}
+
+#[derive(Default)]
+struct QueryShardEvidenceAccumulator {
+    candidate_count: usize,
+    best_candidate_rank: usize,
+    minimum_candidate_distance: f32,
+    distance_sum: f64,
+    entry_points: Vec<ExtendedPointId>,
 }
 
 fn parse_positive_usize(name: &str, value: OsString) -> Result<usize, Box<dyn Error>> {
@@ -222,6 +254,11 @@ fn generate_trace(options: &TraceOptions) -> Result<TraceOutput, Box<dyn Error>>
         )
         .into());
     }
+    let upper_memberships: HashMap<ExtendedPointId, Vec<u32>> = artifact
+        .upper_nodes
+        .iter()
+        .map(|node| (node.label, vec![node.owner_shard]))
+        .collect();
     let artifact_metadata = ArtifactTraceMetadata {
         path: options.artifact_path.display().to_string(),
         generation: artifact.generation,
@@ -279,9 +316,65 @@ fn generate_trace(options: &TraceOptions) -> Result<TraceOutput, Box<dyn Error>>
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let upper_hits = router.search_upper(&query).map_err(|error| {
+            format!("failed to search upper graph for query {query_index}: {error}")
+        })?;
         let targets = router
-            .route_query(&query)
+            .route_upper_hits(&upper_hits)
             .map_err(|error| format!("failed to route query {query_index}: {error}"))?;
+
+        let mut candidates = Vec::with_capacity(upper_hits.len());
+        let mut evidence_accumulators: BTreeMap<u32, QueryShardEvidenceAccumulator> =
+            BTreeMap::new();
+        for (offset, hit) in upper_hits.iter().enumerate() {
+            let rank = offset + 1;
+            let shard_ids = upper_memberships
+                .get(&hit.label)
+                .ok_or_else(|| format!("upper hit {} has no artifact membership", hit.label))?;
+            candidates.push(PerQueryCandidate {
+                rank,
+                label: hit.label,
+                distance: hit.distance,
+                shard_ids: shard_ids.clone(),
+            });
+            for &shard_id in shard_ids {
+                let accumulator = evidence_accumulators.entry(shard_id).or_default();
+                if accumulator.candidate_count == 0 {
+                    accumulator.best_candidate_rank = rank;
+                    accumulator.minimum_candidate_distance = hit.distance;
+                } else {
+                    accumulator.minimum_candidate_distance =
+                        accumulator.minimum_candidate_distance.min(hit.distance);
+                }
+                accumulator.candidate_count += 1;
+                accumulator.distance_sum += f64::from(hit.distance);
+                accumulator.entry_points.push(hit.label);
+            }
+        }
+        let mut shard_evidence = evidence_accumulators
+            .into_iter()
+            .map(|(shard_id, accumulator)| PerQueryShardEvidence {
+                shard_id,
+                candidate_count: accumulator.candidate_count,
+                best_candidate_rank: accumulator.best_candidate_rank,
+                minimum_candidate_distance: accumulator.minimum_candidate_distance,
+                mean_candidate_distance: accumulator.distance_sum
+                    / accumulator.candidate_count as f64,
+                entry_points: accumulator.entry_points,
+            })
+            .collect::<Vec<_>>();
+        let mut ranked_candidate_shards = shard_evidence
+            .iter()
+            .map(|row| (row.shard_id, row.candidate_count, row.best_candidate_rank))
+            .collect::<Vec<_>>();
+        ranked_candidate_shards.sort_unstable_by_key(|&(shard_id, count, best_rank)| {
+            (std::cmp::Reverse(count), best_rank, shard_id)
+        });
+        let ranked_candidate_shards = ranked_candidate_shards
+            .into_iter()
+            .map(|(shard_id, _, _)| shard_id)
+            .collect::<Vec<_>>();
+        shard_evidence.sort_unstable_by_key(|row| row.shard_id);
 
         let query_visited = u64::try_from(targets.len())?;
         let query_entry_points = targets.iter().try_fold(0_u64, |total, target| {
@@ -315,6 +408,11 @@ fn generate_trace(options: &TraceOptions) -> Result<TraceOutput, Box<dyn Error>>
         if let Some(per_query) = &mut per_query {
             per_query.push(PerQueryTrace {
                 query_index,
+                navigation_candidate_count: candidates.len(),
+                candidate_shard_count: shard_evidence.len(),
+                candidates,
+                ranked_candidate_shards,
+                shard_evidence,
                 visited_shards: query_visited,
                 entry_point_count: query_entry_points,
                 ef_sum: query_ef_sum,
@@ -428,12 +526,12 @@ mod tests {
                 OrionUpperNode {
                     label: 10_u64.into(),
                     vector: vec![1.0, 0.0],
-                    shard_membership: vec![0, 1],
+                    owner_shard: 0,
                 },
                 OrionUpperNode {
                     label: 20_u64.into(),
                     vector: vec![0.0, 1.0],
-                    shard_membership: vec![1],
+                    owner_shard: 1,
                 },
             ],
             upper_graph: with_graph.then(|| OrionUpperHnswGraph {
@@ -487,18 +585,31 @@ mod tests {
         assert_eq!(trace.artifact.generation, 9);
         assert_eq!(trace.artifact.layout_sha256, "a".repeat(64));
         assert_eq!(trace.artifact.sha256, trace.artifact.file_sha256);
-        assert_eq!(trace.aggregate.visited_shards.average, 1.5);
+        assert_eq!(trace.aggregate.visited_shards.average, 1.0);
         assert_eq!(trace.aggregate.visited_shards.min, 1);
-        assert_eq!(trace.aggregate.visited_shards.max, 2);
+        assert_eq!(trace.aggregate.visited_shards.max, 1);
         assert_eq!(trace.aggregate.visited_shards.p50, 1);
-        assert_eq!(trace.aggregate.visited_shards.p95, 2);
-        assert_eq!(trace.aggregate.entry_point_count.average, 1.5);
-        assert_eq!(trace.aggregate.ef_sum_per_query.average, 36.0);
+        assert_eq!(trace.aggregate.visited_shards.p95, 1);
+        assert_eq!(trace.aggregate.entry_point_count.average, 1.0);
+        assert_eq!(trace.aggregate.ef_sum_per_query.average, 24.0);
         assert_eq!(trace.aggregate.per_shard.len(), 2);
         assert_eq!(trace.aggregate.per_shard[0].query_visits, 1);
         assert_eq!(trace.aggregate.per_shard[0].average_ef_when_visited, 24.0);
-        assert_eq!(trace.aggregate.per_shard[1].query_visits, 2);
+        assert_eq!(trace.aggregate.per_shard[1].query_visits, 1);
         assert_eq!(trace.per_query.as_ref().unwrap().len(), 2);
+        let first_query = &trace.per_query.as_ref().unwrap()[0];
+        assert_eq!(first_query.navigation_candidate_count, 1);
+        assert_eq!(first_query.candidate_shard_count, 1);
+        assert_eq!(first_query.candidates[0].rank, 1);
+        assert_eq!(first_query.candidates[0].shard_ids, vec![0]);
+        assert_eq!(first_query.ranked_candidate_shards, vec![0]);
+        assert_eq!(first_query.shard_evidence.len(), 1);
+        assert_eq!(first_query.shard_evidence[0].candidate_count, 1);
+        assert_eq!(first_query.shard_evidence[0].best_candidate_rank, 1);
+        assert_eq!(
+            first_query.shard_evidence[0].entry_points,
+            vec![10_u64.into()]
+        );
         assert!(options.output_path.exists());
         assert!(
             write_trace(&options)

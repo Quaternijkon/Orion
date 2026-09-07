@@ -1,0 +1,122 @@
+{
+  "dataset": "glove-200-angular",
+  "format_version": 1,
+  "logical_shards": 16,
+  "query_count": 1000,
+  "query_start": 0,
+  "run_id": "glove-m16-tuning",
+  "selected": {
+    "P0": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 5,
+        "policy": "P0",
+        "uniform_ef_search": 256
+      },
+      "config_id": "ca5880e647a3755f",
+      "summary": {
+        "aggregate_distance_computations_per_query": 39878.396,
+        "aggregate_nodes_visited_per_query": 1291.339,
+        "max_shard_distance_computations_mean": 10799.355,
+        "mean_shards_per_query": 5.0,
+        "p5_per_query_recall": 0.6,
+        "p95_aggregate_distance_computations": 51049.65,
+        "p95_max_shard_distance_computations": 12664.1,
+        "p95_max_shard_nodes_visited": 273.0,
+        "p95_shards_per_query": 5.0,
+        "p99_max_shard_distance_computations": 12978.06,
+        "query_count": 1000,
+        "recall_at_10": 0.9017999999999999,
+        "worker_cpu_time_us_per_query": 12085.214
+      }
+    },
+    "P1": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P1",
+        "uniform_ef_search": 256
+      },
+      "config_id": "506ed44810159d6b",
+      "summary": {
+        "aggregate_distance_computations_per_query": 51935.929,
+        "aggregate_nodes_visited_per_query": 1611.014,
+        "max_shard_distance_computations_mean": 10300.834,
+        "mean_shards_per_query": 6.263,
+        "p5_per_query_recall": 0.7,
+        "p95_aggregate_distance_computations": 100608.04999999999,
+        "p95_max_shard_distance_computations": 12726.15,
+        "p95_max_shard_nodes_visited": 271.0,
+        "p95_shards_per_query": 11.0,
+        "p99_max_shard_distance_computations": 12990.04,
+        "query_count": 1000,
+        "recall_at_10": 0.9382,
+        "worker_cpu_time_us_per_query": 15394.911
+      }
+    },
+    "P2": {
+      "config": {
+        "alpha": 8,
+        "beta": 16,
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 11,
+        "policy": "P2"
+      },
+      "config_id": "3f26c477c875408b",
+      "summary": {
+        "aggregate_distance_computations_per_query": 21985.875,
+        "aggregate_nodes_visited_per_query": 664.603,
+        "max_shard_distance_computations_mean": 7552.786,
+        "mean_shards_per_query": 11.0,
+        "p5_per_query_recall": 0.5,
+        "p95_aggregate_distance_computations": 28033.399999999998,
+        "p95_max_shard_distance_computations": 12732.499999999998,
+        "p95_max_shard_nodes_visited": 400.0,
+        "p95_shards_per_query": 11.0,
+        "p99_max_shard_distance_computations": 14252.34,
+        "query_count": 1000,
+        "recall_at_10": 0.9018999999999999,
+        "worker_cpu_time_us_per_query": 7184.606
+      }
+    },
+    "P3": {
+      "config": {
+        "alpha": 8,
+        "beta": 32,
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P3"
+      },
+      "config_id": "d784bfe0d0b18bd6",
+      "summary": {
+        "aggregate_distance_computations_per_query": 20737.776,
+        "aggregate_nodes_visited_per_query": 627.766,
+        "max_shard_distance_computations_mean": 7978.965,
+        "mean_shards_per_query": 6.263,
+        "p5_per_query_recall": 0.6,
+        "p95_aggregate_distance_computations": 33500.799999999996,
+        "p95_max_shard_distance_computations": 13157.1,
+        "p95_max_shard_nodes_visited": 416.0,
+        "p95_shards_per_query": 11.0,
+        "p99_max_shard_distance_computations": 14731.71,
+        "query_count": 1000,
+        "recall_at_10": 0.9078999999999999,
+        "worker_cpu_time_us_per_query": 6431.574
+      }
+    }
+  },
+  "sources": {
+    "dataset_sha256": "4839085e5a8bb293434a1a66e1aa0193afc3f07c6797a85f1dbd91656172da20",
+    "local_search_traces": [
+      {
+        "path": "/users/dry/orion-c6-state/glove-m16-tuning/capture/tuning-1000/local_search_traces.jsonl",
+        "sha256": "0591ca9cf6fd372c815de50ffc35ba445ba70984c3c79e803a365787cbd2ea42"
+      }
+    ],
+    "route_trace_sha256": "5dd02500ff074efb3acd25764654bbaa993b4fec520049369723a0287858461d"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-09-01T02:14:43Z"
+}

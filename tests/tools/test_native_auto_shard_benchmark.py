@@ -74,7 +74,7 @@ def write_dataset(module, path: Path) -> None:
 
 def write_orion_artifact(module, path: Path) -> tuple[dict, str]:
     payload = {
-        "format_version": 1,
+        "format_version": 2,
         "generation": 7,
         "vector_schema": {
             "vector_name": "",
@@ -91,8 +91,8 @@ def write_orion_artifact(module, path: Path) -> tuple[dict, str]:
         "dynamic_ef_base": 20,
         "dynamic_ef_factor": 4,
         "upper_nodes": [
-            {"label": 0, "vector": [1.0, 0.0], "shard_membership": [0, 1]},
-            {"label": 1, "vector": [0.0, 1.0], "shard_membership": [1, 2]},
+            {"label": 0, "vector": [1.0, 0.0], "owner_shard": 0},
+            {"label": 1, "vector": [0.0, 1.0], "owner_shard": 1},
         ],
         "upper_graph": {
             "entry_point": 0,

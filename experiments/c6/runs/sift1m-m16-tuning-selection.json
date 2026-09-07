@@ -1,0 +1,117 @@
+{
+  "dataset": "sift1m",
+  "format_version": 1,
+  "logical_shards": 16,
+  "query_count": 1000,
+  "query_start": 0,
+  "run_id": "sift1m-m16-tuning",
+  "selected": {
+    "P0": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 3,
+        "policy": "P0",
+        "uniform_ef_search": 32
+      },
+      "config_id": "c6de7039a08707d0",
+      "summary": {
+        "aggregate_distance_computations_per_query": 2578.999,
+        "aggregate_nodes_visited_per_query": 101.497,
+        "max_shard_distance_computations_mean": 974.062,
+        "mean_shards_per_query": 3.0,
+        "p5_per_query_recall": 0.7,
+        "p95_aggregate_distance_computations": 3213.25,
+        "p95_max_shard_distance_computations": 1249.1499999999999,
+        "p95_max_shard_nodes_visited": 45.0,
+        "p95_shards_per_query": 3.0,
+        "p99_max_shard_distance_computations": 1379.05,
+        "query_count": 1000,
+        "recall_at_10": 0.9422,
+        "worker_cpu_time_us_per_query": 832.478
+      }
+    },
+    "P1": {
+      "config": {
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P1",
+        "uniform_ef_search": 32
+      },
+      "config_id": "b89c88bbdb3386d5",
+      "summary": {
+        "aggregate_distance_computations_per_query": 3350.649,
+        "aggregate_nodes_visited_per_query": 130.174,
+        "max_shard_distance_computations_mean": 941.225,
+        "mean_shards_per_query": 3.95,
+        "p5_per_query_recall": 0.8,
+        "p95_aggregate_distance_computations": 5809.0999999999985,
+        "p95_max_shard_distance_computations": 1187.05,
+        "p95_max_shard_nodes_visited": 38.049999999999955,
+        "p95_shards_per_query": 7.0,
+        "p99_max_shard_distance_computations": 1305.01,
+        "query_count": 1000,
+        "recall_at_10": 0.957,
+        "worker_cpu_time_us_per_query": 1067.539
+      }
+    },
+    "P2": {
+      "config": {
+        "alpha": 1,
+        "beta": 4,
+        "ef_max": 512,
+        "ef_min": 8,
+        "fixed_p": 2,
+        "policy": "P2"
+      },
+      "config_id": "67e09a5a3d3496ef",
+      "summary": {
+        "aggregate_distance_computations_per_query": 2377.748,
+        "aggregate_nodes_visited_per_query": 103.052,
+        "max_shard_distance_computations_mean": 1693.846,
+        "mean_shards_per_query": 2.0,
+        "p5_per_query_recall": 0.7,
+        "p95_aggregate_distance_computations": 3163.05,
+        "p95_max_shard_distance_computations": 2583.0,
+        "p95_max_shard_nodes_visited": 104.0,
+        "p95_shards_per_query": 2.0,
+        "p99_max_shard_distance_computations": 2861.22,
+        "query_count": 1000,
+        "recall_at_10": 0.9296,
+        "worker_cpu_time_us_per_query": 745.599
+      }
+    },
+    "P3": {
+      "config": {
+        "alpha": 1,
+        "beta": 4,
+        "ef_max": 512,
+        "ef_min": 8,
+        "policy": "P3"
+      },
+      "config_id": "e7972f0fb23a4132",
+      "summary": {
+        "aggregate_distance_computations_per_query": 3164.153,
+        "aggregate_nodes_visited_per_query": 130.762,
+        "max_shard_distance_computations_mean": 1693.942,
+        "mean_shards_per_query": 3.95,
+        "p5_per_query_recall": 0.9,
+        "p95_aggregate_distance_computations": 4571.4,
+        "p95_max_shard_distance_computations": 2583.0,
+        "p95_max_shard_nodes_visited": 104.0,
+        "p95_shards_per_query": 7.0,
+        "p99_max_shard_distance_computations": 2861.22,
+        "query_count": 1000,
+        "recall_at_10": 0.9867,
+        "worker_cpu_time_us_per_query": 1045.959
+      }
+    }
+  },
+  "sources": {
+    "dataset_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+    "local_search_traces_sha256": "9cfb87c13e80b0e7131a48ac5e3abc9c873230ae27e6cfb6dc6463986154b505",
+    "route_trace_sha256": "5cc297be970a9c38f02d09483286bbeb841a744cb13965694b22d484d142ee77"
+  },
+  "target_recall": 0.9,
+  "timestamp": "2026-08-31T23:49:23Z"
+}

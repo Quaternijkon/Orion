@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build a native Orion routing layout without duplicating the Orion algorithm.
 
-This entry point is deliberately a thin orchestration layer. Dataset preparation,
-upper sampling/indexing, L0-to-L1 attachment, topology convergence, fission,
-multi-assignment, artifact serialization, and import-bundle serialization are all
-delegated to ``qdrant_two_level_routing_experiment``.
+This entry point is deliberately an orchestration layer around one immutable
+Qdrant/Rust upper HNSW.  It builds that graph once, exports every offline
+L0-to-L1 attachment through the production ``OrionRouter``, derives topology and
+memberships, then finalizes those memberships onto the unchanged graph.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import struct
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -28,6 +29,10 @@ from tools import qdrant_two_level_routing_experiment as experiment  # noqa: E40
 
 
 GRAPHLESS_NAME = "graphless-orion.json"
+UPPER_SEED_GRAPHLESS_NAME = "upper-seed-graphless-orion.json"
+ATTACHMENT_HITS_NAME = "upper-attachments.counted.bin"
+ATTACHMENT_MANIFEST_NAME = "upper-attachments.manifest.json"
+FINALIZATION_SIDECAR_NAME = "finalize-memberships.json"
 BUILD_MANIFEST_NAME = "build-manifest.json"
 CHECKSUMS_NAME = "checksums.sha256"
 DETERMINISTIC_ATTACHMENT_BUILD_THREADS = 1
@@ -68,10 +73,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--attachment-search-ef",
         type=int,
-        default=100,
+        default=10,
         help=(
-            "Offline L0-to-L1 attachment HNSW EF. Faithful Method4/Orion "
-            "builds keep this at 100 independently of the runtime upper EF."
+            "Canonical build-time efs. It must equal --k-overlap, so the search "
+            "budget and the number of voting results are the same."
         ),
     )
     parser.add_argument("--upper-search-ef", type=int, default=100)
@@ -95,17 +100,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--disable-topology-refinement",
         action="store_true",
-        help=(
-            "Build the P2-A ablation: retain the navigation graph, initial balanced "
-            "K-Means labels, and search-based point assignment, but skip iterative "
-            "self-search topology refinement."
-        ),
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--disable-multi-assign", action="store_true")
-    parser.add_argument("--multi-assign-min-max-vote", type=int, default=2)
-    parser.add_argument("--multi-assign-vote-delta", type=int, default=0)
-    parser.add_argument("--multi-assign-max-shards", type=int, default=0)
-    parser.add_argument("--disable-fission", action="store_true")
+    parser.add_argument(
+        "--disable-multi-assign", action="store_true", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--multi-assign-min-max-vote", type=int, default=2, help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--multi-assign-vote-delta", type=int, default=0, help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--multi-assign-max-shards", type=int, default=0, help=argparse.SUPPRESS
+    )
+    parser.add_argument("--disable-fission", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--balance-mode",
         choices=(
@@ -114,35 +123,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "post_layout_capacity_constrained",
         ),
         default="none",
-        help=(
-            "Optional offline balance mode. capacity_constrained uses a fixed P and "
-            "disables fission. post_layout_capacity_constrained preserves the "
-            "original Orion topology/fission/multi-assignment result, freezes its "
-            "final P, and minimally repairs physical-copy placement. Both keep the "
-            "upper graph and online router unchanged and use only navigation-supported "
-            "shards."
-        ),
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--balance-min-load-ratio", type=float, default=0.99)
-    parser.add_argument("--balance-max-load-ratio", type=float, default=1.01)
-    parser.add_argument("--balance-max-passes", type=int, default=8)
+    parser.add_argument(
+        "--balance-min-load-ratio", type=float, default=0.99, help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--balance-max-load-ratio", type=float, default=1.01, help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--balance-max-passes", type=int, default=8, help=argparse.SUPPRESS
+    )
     parser.add_argument(
         "--balance-max-vote-loss",
         type=int,
         default=3,
-        help="Shared default vote-loss bound for L1 and L0.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--balance-l1-max-vote-loss",
         type=int,
         default=None,
-        help="Optional L1 topology vote-loss override.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--balance-l0-max-vote-loss",
         type=int,
         default=None,
-        help="Optional L0 physical-copy vote-loss override.",
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -161,6 +169,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--rust-upper-hits-binary",
+        default=None,
+        help=(
+            "Optional prebuilt orion_export_upper_hits executable. The canonical "
+            "build uses it to generate every offline attachment from the frozen "
+            "Qdrant upper graph."
+        ),
+    )
+    parser.add_argument(
+        "--rust-rebind-binary",
+        default=None,
+        help=(
+            "Optional prebuilt orion_rebind_memberships executable used only to "
+            "finalize memberships onto the already-built upper graph."
+        ),
+    )
+    parser.add_argument(
         "--cargo-target-dir",
         default=None,
         help=(
@@ -173,7 +198,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--graphless-only",
         action="store_true",
-        help="Stop after the graphless artifact and build evidence; do not invoke Rust.",
+        help=(
+            "Stop after the final graphless layout and attachment evidence. The "
+            "Qdrant upper graph is still built exactly once because canonical "
+            "attachments must come from it; membership finalization and the import "
+            "manifest are skipped."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -207,26 +237,20 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--multi-assign-vote-delta must be non-negative")
     if int(args.multi_assign_max_shards) < 0:
         raise ValueError("--multi-assign-max-shards must be non-negative")
-    experiment.validate_capacity_balance_parameters(
-        float(args.balance_min_load_ratio),
-        float(args.balance_max_load_ratio),
-        int(args.balance_max_passes),
-        int(args.balance_max_vote_loss),
-    )
-    l1_vote_loss, l0_vote_loss = experiment.resolve_capacity_balance_vote_losses(
-        int(args.balance_max_vote_loss),
-        args.balance_l1_max_vote_loss,
-        args.balance_l0_max_vote_loss,
-    )
-    for stage_vote_loss in (l1_vote_loss, l0_vote_loss):
-        experiment.validate_capacity_balance_parameters(
-            float(args.balance_min_load_ratio),
-            float(args.balance_max_load_ratio),
-            int(args.balance_max_passes),
-            stage_vote_loss,
-        )
-    if int(args.attachment_search_ef) < int(args.k_overlap):
-        raise ValueError("--attachment-search-ef must be at least --k-overlap")
+    if int(args.attachment_search_ef) != int(args.k_overlap):
+        raise ValueError("canonical build requires --attachment-search-ef == --k-overlap")
+    if bool(args.disable_topology_refinement):
+        raise ValueError("canonical build requires upper self-vote refinement")
+    if bool(args.disable_multi_assign):
+        raise ValueError("canonical multi-assignment cannot be disabled")
+    if int(args.multi_assign_min_max_vote) != 2:
+        raise ValueError("canonical multi-assignment uses max_vote > 1")
+    if int(args.multi_assign_vote_delta) != 0:
+        raise ValueError("canonical multi-assignment includes only maximum-vote ties")
+    if int(args.multi_assign_max_shards) != 0:
+        raise ValueError("canonical multi-assignment cannot cap maximum-vote ties")
+    if str(args.balance_mode) != "none":
+        raise ValueError("canonical build currently excludes load-balancing intervention")
     if int(args.upper_search_ef) < int(args.upper_k):
         raise ValueError("--upper-search-ef must be at least --upper-k")
     if (
@@ -239,16 +263,19 @@ def validate_args(args: argparse.Namespace) -> None:
         )
     if not args.bundle_prefix or Path(args.bundle_prefix).name != args.bundle_prefix:
         raise ValueError("--bundle-prefix must be a non-empty file-name component")
-    if args.rust_builder_binary is not None:
-        builder_binary = Path(args.rust_builder_binary).expanduser().resolve()
-        if not builder_binary.is_file():
-            raise FileNotFoundError(
-                f"Rust builder binary not found: {builder_binary}"
-            )
-        if not os.access(builder_binary, os.X_OK):
-            raise PermissionError(
-                f"Rust builder binary is not executable: {builder_binary}"
-            )
+    for field, label in (
+        ("rust_builder_binary", "Rust builder"),
+        ("rust_upper_hits_binary", "Rust upper-hits exporter"),
+        ("rust_rebind_binary", "Rust membership finalizer"),
+    ):
+        raw = getattr(args, field)
+        if raw is None:
+            continue
+        binary = Path(raw).expanduser().resolve()
+        if not binary.is_file():
+            raise FileNotFoundError(f"{label} binary not found: {binary}")
+        if not os.access(binary, os.X_OK):
+            raise PermissionError(f"{label} binary is not executable: {binary}")
 
 
 def sha256_path(path: Path) -> str:
@@ -361,6 +388,126 @@ def run_rust_builder(
     return command
 
 
+def rust_upper_hits_command(
+    args: argparse.Namespace,
+    production_path: Path,
+    vectors_path: Path,
+    row_count: int,
+    dimension: int,
+    hits_path: Path,
+    manifest_path: Path,
+) -> list[str]:
+    exporter_args = [
+        str(production_path),
+        str(vectors_path),
+        str(int(row_count)),
+        str(int(dimension)),
+        str(int(args.k_overlap)),
+        str(int(args.attachment_search_ef)),
+        str(hits_path),
+        str(manifest_path),
+    ]
+    if args.rust_upper_hits_binary is not None:
+        return [
+            str(Path(args.rust_upper_hits_binary).expanduser().resolve()),
+            *exporter_args,
+        ]
+    return [
+        str(args.cargo),
+        "run",
+        "--release",
+        "-p",
+        "collection",
+        "--example",
+        "orion_export_upper_hits",
+        "--",
+        *exporter_args,
+    ]
+
+
+def run_rust_upper_hits_export(
+    args: argparse.Namespace,
+    production_path: Path,
+    vectors_path: Path,
+    row_count: int,
+    dimension: int,
+    hits_path: Path,
+    manifest_path: Path,
+) -> list[str]:
+    command = rust_upper_hits_command(
+        args,
+        production_path,
+        vectors_path,
+        row_count,
+        dimension,
+        hits_path,
+        manifest_path,
+    )
+    environment = os.environ.copy()
+    cargo_target_dir = effective_cargo_target_dir(args)
+    if cargo_target_dir:
+        environment["CARGO_TARGET_DIR"] = cargo_target_dir
+    subprocess.run(command, cwd=REPO_ROOT, check=True, env=environment)
+    return command
+
+
+def rust_rebind_command(
+    args: argparse.Namespace,
+    source_path: Path,
+    sidecar_path: Path,
+    production_path: Path,
+    *,
+    mode: str,
+) -> list[str]:
+    if mode not in {"finalize-build", "runtime-profile"}:
+        raise ValueError(f"unsupported Orion rebind mode: {mode}")
+    rebind_args = [
+        str(source_path),
+        str(sidecar_path),
+        str(production_path),
+        f"--{mode}",
+    ]
+    if args.rust_rebind_binary is not None:
+        return [
+            str(Path(args.rust_rebind_binary).expanduser().resolve()),
+            *rebind_args,
+        ]
+    return [
+        str(args.cargo),
+        "run",
+        "--release",
+        "-p",
+        "collection",
+        "--example",
+        "orion_rebind_memberships",
+        "--",
+        *rebind_args,
+    ]
+
+
+def run_rust_rebind(
+    args: argparse.Namespace,
+    source_path: Path,
+    sidecar_path: Path,
+    production_path: Path,
+    *,
+    mode: str,
+) -> list[str]:
+    command = rust_rebind_command(
+        args,
+        source_path,
+        sidecar_path,
+        production_path,
+        mode=mode,
+    )
+    environment = os.environ.copy()
+    cargo_target_dir = effective_cargo_target_dir(args)
+    if cargo_target_dir:
+        environment["CARGO_TARGET_DIR"] = cargo_target_dir
+    subprocess.run(command, cwd=REPO_ROOT, check=True, env=environment)
+    return command
+
+
 def verify_production_artifact(production_path: Path) -> str:
     checksum_path = Path(f"{production_path}.sha256")
     if not production_path.is_file():
@@ -380,6 +527,121 @@ def verify_production_artifact(production_path: Path) -> str:
     if not isinstance(payload, dict) or not isinstance(payload.get("upper_graph"), dict):
         raise RuntimeError("Rust builder output is not a production artifact with upper_graph")
     return actual
+
+
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def production_upper_graph_sha256(production_path: Path) -> str:
+    payload = json.loads(production_path.read_text(encoding="utf-8"))
+    graph = payload.get("upper_graph") if isinstance(payload, dict) else None
+    if not isinstance(graph, dict):
+        raise RuntimeError(f"production artifact {production_path} has no upper_graph")
+    return canonical_json_sha256(graph)
+
+
+def verify_attachment_export(
+    args: argparse.Namespace,
+    production_path: Path,
+    vectors_path: Path,
+    hits_path: Path,
+    manifest_path: Path,
+    *,
+    row_count: int,
+    dimension: int,
+) -> dict[str, Any]:
+    if not hits_path.is_file() or not manifest_path.is_file():
+        raise RuntimeError("Rust upper-hits exporter did not publish both outputs")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise RuntimeError("upper attachment manifest root must be an object")
+    expected = {
+        "format_version": 2,
+        "artifact_sha256": sha256_path(production_path),
+        "upper_graph_present": True,
+        "vectors_sha256": sha256_path(vectors_path),
+        "row_count": int(row_count),
+        "dimension": int(dimension),
+        "top_k": int(args.k_overlap),
+        "search_ef": int(args.attachment_search_ef),
+        "hits_format": "counted_rows_u32le_then_u64le_v1",
+        "hits_sha256": sha256_path(hits_path),
+    }
+    mismatches = {
+        field: {"expected": value, "actual": manifest.get(field)}
+        for field, value in expected.items()
+        if manifest.get(field) != value
+    }
+    if mismatches:
+        raise RuntimeError(f"upper attachment manifest mismatch: {mismatches}")
+    total_hits = manifest.get("total_hits")
+    min_hits = manifest.get("min_hits_per_row")
+    max_hits = manifest.get("max_hits_per_row")
+    hits_size_bytes = manifest.get("hits_size_bytes")
+    for name, value in (
+        ("total_hits", total_hits),
+        ("min_hits_per_row", min_hits),
+        ("max_hits_per_row", max_hits),
+        ("hits_size_bytes", hits_size_bytes),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RuntimeError(f"upper attachment manifest {name} must be non-negative")
+    if min_hits > max_hits or max_hits > int(args.k_overlap):
+        raise RuntimeError("upper attachment per-row hit counts are invalid")
+    if not min_hits * int(row_count) <= total_hits <= max_hits * int(row_count):
+        raise RuntimeError("upper attachment total hit count is inconsistent")
+    expected_size = int(row_count) * 4 + int(total_hits) * 8
+    if hits_size_bytes != expected_size or hits_path.stat().st_size != expected_size:
+        raise RuntimeError("upper attachment counted-row file has the wrong size")
+    return manifest
+
+
+def load_point_to_l1s_from_upper_hits(
+    hits_path: Path,
+    *,
+    row_count: int,
+    top_k: int,
+    upper_labels: set[int],
+) -> list[list[int]]:
+    point_to_l1s: list[list[int]] = []
+    with hits_path.open("rb") as handle:
+        for row_index in range(int(row_count)):
+            count_bytes = handle.read(4)
+            if len(count_bytes) != 4:
+                raise RuntimeError(
+                    f"upper attachment counted-row file ends before row {row_index}"
+                )
+            hit_count = struct.unpack("<I", count_bytes)[0]
+            if hit_count > int(top_k):
+                raise RuntimeError(
+                    f"upper attachment row {row_index} has {hit_count} hits, exceeding {top_k}"
+                )
+            row_bytes = handle.read(int(hit_count) * 8)
+            if len(row_bytes) != int(hit_count) * 8:
+                raise RuntimeError(
+                    f"upper attachment row {row_index} is truncated"
+                )
+            labels = [
+                int(value[0])
+                for value in struct.iter_unpack("<Q", row_bytes)
+            ]
+            unknown = next((label for label in labels if label not in upper_labels), None)
+            if unknown is not None:
+                raise RuntimeError(
+                    f"upper attachment row {row_index} references unknown upper label {unknown}"
+                )
+            point_to_l1s.append(labels)
+        if handle.read(1):
+            raise RuntimeError("upper attachment counted-row file has trailing bytes")
+    return point_to_l1s
 
 
 def read_graphless_binding(
@@ -418,6 +680,121 @@ def read_graphless_binding(
     }
 
 
+def write_finalization_sidecar(
+    path: Path,
+    *,
+    source_artifact_path: Path,
+    graphless_path: Path,
+    upper_indices: Any,
+    upper_owner_by_point: list[int],
+) -> Path:
+    source = json.loads(source_artifact_path.read_text(encoding="utf-8"))
+    graphless = json.loads(graphless_path.read_text(encoding="utf-8"))
+    if not isinstance(source, dict) or not isinstance(graphless, dict):
+        raise RuntimeError("Orion finalization inputs must be JSON objects")
+    source_generation = int(source.get("generation") or 0)
+    final_generation = int(graphless.get("generation") or 0)
+    if source_generation <= 0 or source_generation != final_generation:
+        raise RuntimeError("build finalization must preserve the source generation")
+    upper_owner_shards = [
+        int(upper_owner_by_point[int(point_id)]) for point_id in upper_indices.tolist()
+    ]
+    if len(upper_owner_shards) != len(source.get("upper_nodes") or []):
+        raise RuntimeError("finalization owners do not match source upper-node order")
+    sidecar = {
+        "format_version": 2,
+        "source_artifact_sha256": sha256_path(source_artifact_path),
+        "source_generation": source_generation,
+        "generation": final_generation,
+        "layout_sha256": str(graphless.get("layout_sha256") or ""),
+        "shard_count": int(graphless.get("shard_count") or 0),
+        "physical_point_count": int(graphless.get("physical_point_count") or 0),
+        "upper_owner_shards": upper_owner_shards,
+    }
+    write_json_new(path, sidecar)
+    return path
+
+
+def verify_finalized_artifact(
+    source_path: Path,
+    graphless_path: Path,
+    production_path: Path,
+) -> dict[str, str]:
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    graphless = json.loads(graphless_path.read_text(encoding="utf-8"))
+    production = json.loads(production_path.read_text(encoding="utf-8"))
+    for name, payload in (
+        ("source", source),
+        ("graphless", graphless),
+        ("production", production),
+    ):
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"{name} artifact root must be an object")
+    source_graph = source.get("upper_graph")
+    production_graph = production.get("upper_graph")
+    if not isinstance(source_graph, dict) or production_graph != source_graph:
+        raise RuntimeError("membership finalization changed the frozen upper graph")
+    production_without_graph = dict(production)
+    production_without_graph.pop("upper_graph", None)
+    graphless_without_nodes = dict(graphless)
+    production_without_nodes = dict(production_without_graph)
+    graphless_nodes = graphless_without_nodes.pop("upper_nodes", None)
+    finalized_nodes = production_without_nodes.pop("upper_nodes", None)
+    if production_without_nodes != graphless_without_nodes:
+        raise RuntimeError(
+            "final production artifact differs from graphless layout outside "
+            "upper_graph/upper_nodes"
+        )
+    if not isinstance(graphless_nodes, list) or not isinstance(finalized_nodes, list):
+        raise RuntimeError("finalization artifacts must contain upper_nodes arrays")
+    if len(graphless_nodes) != len(finalized_nodes):
+        raise RuntimeError("finalization changed upper_nodes length")
+    for index, (expected_node, actual_node) in enumerate(
+        zip(graphless_nodes, finalized_nodes, strict=True)
+    ):
+        if expected_node.get("label") != actual_node.get("label") or expected_node.get(
+            "owner_shard"
+        ) != actual_node.get("owner_shard"):
+            raise RuntimeError(
+                f"final production artifact changed upper node {index} identity or membership"
+            )
+        expected_vector = experiment.np.asarray(
+            expected_node.get("vector"), dtype="<f4"
+        )
+        actual_vector = experiment.np.asarray(actual_node.get("vector"), dtype="<f4")
+        if expected_vector.shape != actual_vector.shape or expected_vector.tobytes() != (
+            actual_vector.tobytes()
+        ):
+            raise RuntimeError(
+                f"final production artifact changed upper node {index} vector bits"
+            )
+    source_nodes = source.get("upper_nodes") or []
+    production_nodes = production.get("upper_nodes") or []
+    if len(source_nodes) != len(production_nodes):
+        raise RuntimeError("membership finalization changed upper-node count")
+    for index, (source_node, production_node) in enumerate(
+        zip(source_nodes, production_nodes, strict=True)
+    ):
+        if source_node.get("label") != production_node.get("label"):
+            raise RuntimeError(f"membership finalization changed upper label {index}")
+        source_vector = experiment.np.asarray(source_node.get("vector"), dtype="<f4")
+        production_vector = experiment.np.asarray(
+            production_node.get("vector"), dtype="<f4"
+        )
+        if source_vector.shape != production_vector.shape or source_vector.tobytes() != (
+            production_vector.tobytes()
+        ):
+            raise RuntimeError(
+                f"membership finalization changed upper vector bits at node {index}"
+            )
+    graph_sha256 = canonical_json_sha256(source_graph)
+    return {
+        "upper_graph_sha256": graph_sha256,
+        "source_artifact_sha256": sha256_path(source_path),
+        "production_artifact_sha256": sha256_path(production_path),
+    }
+
+
 def relative_file_records(output_dir: Path, excluded: set[str]) -> dict[str, dict[str, Any]]:
     records: dict[str, dict[str, Any]] = {}
     for path in sorted(item for item in output_dir.rglob("*") if item.is_file()):
@@ -447,14 +824,19 @@ def write_checksums(output_dir: Path) -> Path:
 
 
 def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
-    l1_vote_loss, l0_vote_loss = experiment.resolve_capacity_balance_vote_losses(
-        int(args.balance_max_vote_loss),
-        args.balance_l1_max_vote_loss,
-        args.balance_l0_max_vote_loss,
-    )
     builder_binary = (
         Path(args.rust_builder_binary).expanduser().resolve()
         if args.rust_builder_binary is not None
+        else None
+    )
+    upper_hits_binary = (
+        Path(args.rust_upper_hits_binary).expanduser().resolve()
+        if args.rust_upper_hits_binary is not None
+        else None
+    )
+    rebind_binary = (
+        Path(args.rust_rebind_binary).expanduser().resolve()
+        if args.rust_rebind_binary is not None
         else None
     )
     return {
@@ -467,6 +849,7 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "upper_m": int(args.upper_m),
         "upper_ef_construction": int(args.upper_ef_construction),
         "attachment_search_ef": int(args.attachment_search_ef),
+        "efs": int(args.k_overlap),
         "upper_search_ef": int(args.upper_search_ef),
         "upper_k": int(args.upper_k),
         "allow_decoupled_runtime_upper_search": bool(
@@ -479,26 +862,37 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "kmeans_iters": int(args.kmeans_iters),
         "kmeans_seed": int(args.kmeans_seed),
         "topology_iters": int(args.topology_iters),
-        "enable_topology_refinement": not bool(args.disable_topology_refinement),
-        "use_multi_assign": not bool(args.disable_multi_assign),
-        "multi_assign_min_max_vote": int(args.multi_assign_min_max_vote),
-        "multi_assign_vote_delta": int(args.multi_assign_vote_delta),
-        "multi_assign_max_shards": int(args.multi_assign_max_shards),
-        "enable_fission": not bool(args.disable_fission),
-        "balance_mode": str(args.balance_mode),
-        "balance_min_load_ratio": float(args.balance_min_load_ratio),
-        "balance_max_load_ratio": float(args.balance_max_load_ratio),
-        "balance_max_passes": int(args.balance_max_passes),
-        "balance_max_vote_loss": int(args.balance_max_vote_loss),
-        "balance_l1_max_vote_loss": int(l1_vote_loss),
-        "balance_l0_max_vote_loss": int(l0_vote_loss),
+        "enable_topology_refinement": True,
+        "initial_partition": "kmeans_without_capacity_correction",
+        "use_multi_assign": True,
+        "multi_assign_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
+        "multi_assign_min_max_vote": 2,
+        "multi_assign_vote_delta": 0,
+        "multi_assign_max_shards": 0,
+        "enable_fission": False,
+        "balance_mode": "none",
+        "lower_hnsw_construction": "independent_full_multilayer_per_shard",
+        "lower_hnsw_retains_non_base_layers": True,
+        "routed_search_start_level": 0,
         "upper_graph_seed": int(args.upper_graph_seed),
+        "attachment_navigator": "qdrant_production_upper_graph",
+        "single_upper_graph_build": True,
         "attachment_index_random_seed": int(args.upper_graph_seed),
         "attachment_index_build_threads": DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
-        "attachment_query_tie_break": "distance_then_label",
+        "attachment_query_tie_break": "qdrant_distance_then_node_index",
         "rust_builder_binary": str(builder_binary) if builder_binary else None,
         "rust_builder_binary_sha256": (
             sha256_path(builder_binary) if builder_binary else None
+        ),
+        "rust_upper_hits_binary": (
+            str(upper_hits_binary) if upper_hits_binary else None
+        ),
+        "rust_upper_hits_binary_sha256": (
+            sha256_path(upper_hits_binary) if upper_hits_binary else None
+        ),
+        "rust_rebind_binary": str(rebind_binary) if rebind_binary else None,
+        "rust_rebind_binary_sha256": (
+            sha256_path(rebind_binary) if rebind_binary else None
         ),
         "cargo_target_dir": effective_cargo_target_dir(args),
     }
@@ -524,24 +918,69 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         int(args.upper_sample_seed),
     )
     validate_dataset_dependent_args(args, len(upper_indices))
-    upper_index = experiment.build_upper_index(
-        train[upper_indices],
-        upper_indices.astype(experiment.np.int64, copy=False),
-        int(train.shape[1]),
-        int(args.upper_m),
-        int(args.upper_ef_construction),
-        int(args.attachment_search_ef),
-        distance_config["hnsw_space"],
-        random_seed=int(args.upper_graph_seed),
-        construction_threads=DETERMINISTIC_ATTACHMENT_BUILD_THREADS,
-    )
-    point_to_l1s = experiment.compute_point_to_l1s(
-        upper_index,
+
+    # Canonical lifecycle: build the Qdrant production upper graph first and
+    # exactly once.  The neutral one-shard memberships exist only to satisfy the
+    # typed artifact schema before the real layout is known.
+    vectors_path = output_dir / f"{str(args.bundle_prefix)}.f32le"
+    vectors_sha256 = experiment.write_orion_numeric_vector_file(
         train,
-        int(args.k_overlap),
-        int(args.upper_build_batch_size),
+        vectors_path,
+        row_chunk_size=int(args.bundle_row_chunk_size),
     )
-    routing = experiment.build_original_routing_state(
+    upper_seed_graphless_path = output_dir / UPPER_SEED_GRAPHLESS_NAME
+    experiment.write_orion_upper_seed_graphless_artifact(
+        train,
+        upper_indices,
+        upper_seed_graphless_path,
+        generation=int(args.generation),
+        vector_distance=distance_config["name"],
+        upper_k=int(args.upper_k),
+        upper_ef_search=int(args.upper_search_ef),
+        dynamic_ef_base=int(args.dynamic_ef_base),
+        dynamic_ef_factor=int(args.dynamic_ef_factor),
+        vector_name=str(args.vector_name),
+    )
+    upper_source_path = output_dir / (
+        f"upper-source-generation-{int(args.generation)}.json"
+    )
+    rust_builder_command_used = run_rust_builder(
+        args,
+        upper_seed_graphless_path,
+        upper_source_path,
+    )
+    upper_source_artifact_sha256 = verify_production_artifact(upper_source_path)
+    upper_graph_sha256 = production_upper_graph_sha256(upper_source_path)
+
+    attachment_hits_path = output_dir / ATTACHMENT_HITS_NAME
+    attachment_manifest_path = output_dir / ATTACHMENT_MANIFEST_NAME
+    rust_attachment_command_used = run_rust_upper_hits_export(
+        args,
+        upper_source_path,
+        vectors_path,
+        len(train),
+        int(train.shape[1]),
+        attachment_hits_path,
+        attachment_manifest_path,
+    )
+    attachment_manifest = verify_attachment_export(
+        args,
+        upper_source_path,
+        vectors_path,
+        attachment_hits_path,
+        attachment_manifest_path,
+        row_count=len(train),
+        dimension=int(train.shape[1]),
+    )
+    if attachment_manifest["vectors_sha256"] != vectors_sha256:
+        raise RuntimeError("upper attachment export used unexpected vector bytes")
+    point_to_l1s = load_point_to_l1s_from_upper_hits(
+        attachment_hits_path,
+        row_count=len(train),
+        top_k=int(args.k_overlap),
+        upper_labels={int(value) for value in upper_indices.tolist()},
+    )
+    routing = experiment.build_canonical_routing_state(
         train,
         upper_indices,
         point_to_l1s,
@@ -549,19 +988,6 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         int(args.kmeans_iters),
         int(args.kmeans_seed),
         int(args.topology_iters),
-        use_multi_assign=not bool(args.disable_multi_assign),
-        enable_fission=not bool(args.disable_fission),
-        multi_assign_min_max_vote=int(args.multi_assign_min_max_vote),
-        multi_assign_vote_delta=int(args.multi_assign_vote_delta),
-        multi_assign_max_shards=int(args.multi_assign_max_shards),
-        enable_topology_refinement=not bool(args.disable_topology_refinement),
-        balance_mode=str(args.balance_mode),
-        balance_min_load_ratio=float(args.balance_min_load_ratio),
-        balance_max_load_ratio=float(args.balance_max_load_ratio),
-        balance_max_passes=int(args.balance_max_passes),
-        balance_max_vote_loss=int(args.balance_max_vote_loss),
-        balance_l1_max_vote_loss=args.balance_l1_max_vote_loss,
-        balance_l0_max_vote_loss=args.balance_l0_max_vote_loss,
     )
 
     graphless_path = output_dir / GRAPHLESS_NAME
@@ -569,6 +995,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         train,
         upper_indices,
         routing.point_to_shards,
+        routing.l1_to_shard,
         int(routing.num_shards),
         graphless_path,
         generation=int(args.generation),
@@ -591,10 +1018,33 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     production_path: Path | None = None
     production_sha256: str | None = None
     import_manifest_path: Path | None = None
+    finalization_sidecar_path: Path | None = None
+    finalized_binding: dict[str, str] | None = None
     if not args.graphless_only:
         production_path = output_dir / f"generation-{int(args.generation)}.json"
-        rust_command = run_rust_builder(args, graphless_path, production_path)
+        finalization_sidecar_path = output_dir / FINALIZATION_SIDECAR_NAME
+        write_finalization_sidecar(
+            finalization_sidecar_path,
+            source_artifact_path=upper_source_path,
+            graphless_path=graphless_path,
+            upper_indices=upper_indices,
+            upper_owner_by_point=routing.l1_to_shard,
+        )
+        rust_command = run_rust_rebind(
+            args,
+            upper_source_path,
+            finalization_sidecar_path,
+            production_path,
+            mode="finalize-build",
+        )
         production_sha256 = verify_production_artifact(production_path)
+        finalized_binding = verify_finalized_artifact(
+            upper_source_path,
+            graphless_path,
+            production_path,
+        )
+        if finalized_binding["upper_graph_sha256"] != upper_graph_sha256:
+            raise RuntimeError("finalized upper graph checksum changed")
         import_manifest_path = experiment.write_orion_numeric_shard_import_bundle(
             train,
             routing.point_to_shards,
@@ -604,6 +1054,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             vector_name=str(args.vector_name),
             prefix=str(args.bundle_prefix),
             row_chunk_size=int(args.bundle_row_chunk_size),
+            prewritten_vectors_path=vectors_path,
         )
 
     payload_files = relative_file_records(
@@ -618,6 +1069,28 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "dataset": dataset_record,
         "parameters": routing_parameters(args),
         "artifact_binding": artifact_binding,
+        "navigation_binding": {
+            "format_version": 1,
+            "single_upper_graph_build": True,
+            "attachment_navigator": "qdrant_production_upper_graph",
+            "upper_source_artifact_sha256": upper_source_artifact_sha256,
+            "upper_graph_sha256": upper_graph_sha256,
+            "attachments_sha256": str(attachment_manifest["hits_sha256"]),
+            "attachments_manifest_sha256": sha256_path(attachment_manifest_path),
+            "attachments_source_artifact_sha256": str(
+                attachment_manifest["artifact_sha256"]
+            ),
+            "vectors_sha256": vectors_sha256,
+            "layout_sha256": artifact_binding["layout_sha256"],
+            "final_upper_graph_sha256": (
+                finalized_binding["upper_graph_sha256"]
+                if finalized_binding is not None
+                else None
+            ),
+            "graph_identity_verified_after_finalization": (
+                finalized_binding is not None
+            ),
+        },
         "routing": {
             "initial_num_shards": int(routing.initial_num_shards),
             "effective_num_shards": int(routing.num_shards),
@@ -629,12 +1102,26 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             "shard_counts": [int(value) for value in routing.shard_counts.tolist()],
             "fission_events": routing.fission_events,
             "balance_diagnostics": getattr(routing, "balance_diagnostics", None),
+            "assignment_policy": "all_max_vote_ties_else_nearest_when_max_vote_is_one",
+            "initial_partition": "kmeans_without_capacity_correction",
+            "self_vote_refinement": True,
+            "upper_routing_ownership": "single_frozen_owner",
+            "lower_multi_assignment_can_widen_routing": False,
         },
         "outputs": {
             "graphless_artifact": graphless_path.name,
+            "upper_seed_graphless_artifact": upper_seed_graphless_path.name,
+            "upper_source_artifact": upper_source_path.name,
+            "upper_attachments": attachment_hits_path.name,
+            "upper_attachments_manifest": attachment_manifest_path.name,
+            "finalization_sidecar": (
+                finalization_sidecar_path.name if finalization_sidecar_path else None
+            ),
             "production_artifact": production_path.name if production_path else None,
             "import_manifest": import_manifest_path.name if import_manifest_path else None,
-            "rust_builder_command": rust_command,
+            "rust_builder_command": rust_builder_command_used,
+            "rust_attachment_export_command": rust_attachment_command_used,
+            "rust_rebind_command": rust_command,
             "files": payload_files,
         },
     }
@@ -647,6 +1134,10 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "graphless_artifact": str(graphless_path),
         "production_artifact": str(production_path) if production_path else None,
         "production_artifact_sha256": production_sha256,
+        "upper_source_artifact": str(upper_source_path),
+        "upper_source_artifact_sha256": upper_source_artifact_sha256,
+        "upper_graph_sha256": upper_graph_sha256,
+        "attachments_sha256": str(attachment_manifest["hits_sha256"]),
         "import_manifest": str(import_manifest_path) if import_manifest_path else None,
         "build_manifest": str(build_manifest_path),
         "checksums": str(checksum_path),

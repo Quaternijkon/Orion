@@ -36,12 +36,12 @@ fn artifact(generation: u64, shard_count: u32, dimension: usize) -> OrionRouting
             OrionUpperNode {
                 label: id(10),
                 vector: vec![0.0; dimension],
-                shard_membership: vec![0],
+                owner_shard: 0,
             },
             OrionUpperNode {
                 label: id(20),
                 vector: vec![1.0; dimension],
-                shard_membership: vec![last_shard],
+                owner_shard: last_shard,
             },
         ],
         upper_graph: Some(OrionUpperHnswGraph {

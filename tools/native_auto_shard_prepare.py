@@ -152,7 +152,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-optimization-threads", type=int)
     parser.add_argument("--max-segment-size-kb", type=int)
     parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--queue-capacity-batches", type=int, default=4)
+    parser.add_argument("--max-concurrent-requests", type=int, default=16)
+    parser.add_argument("--max-retries", type=int, default=3)
+    parser.add_argument("--retry-backoff-ms", type=int, default=100)
     parser.add_argument("--request-timeout-secs", type=int, default=120)
+    parser.add_argument("--completion-timeout-secs", type=int, default=7200)
+    parser.add_argument(
+        "--import-wait",
+        choices=("wal", "segment", "visible"),
+        default="wal",
+    )
     parser.add_argument("--smoke-limit", type=int, default=10)
     parser.add_argument("--transfer-timeout-secs", type=float, default=3600.0)
     parser.add_argument("--transfer-poll-interval-secs", type=float, default=1.0)
@@ -256,7 +266,11 @@ def validate_args(args: argparse.Namespace) -> None:
         "full-scan-threshold": args.full_scan_threshold,
         "indexing-threshold": args.indexing_threshold,
         "batch-size": args.batch_size,
+        "queue-capacity-batches": args.queue_capacity_batches,
+        "max-concurrent-requests": args.max_concurrent_requests,
+        "retry-backoff-ms": args.retry_backoff_ms,
         "request-timeout-secs": args.request_timeout_secs,
+        "completion-timeout-secs": args.completion_timeout_secs,
         "smoke-limit": args.smoke_limit,
         "transfer-timeout-secs": args.transfer_timeout_secs,
     }
@@ -265,6 +279,8 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError(f"--{name} must be positive")
     if args.max_indexing_threads < 0:
         raise ValueError("--max-indexing-threads must be non-negative")
+    if args.max_retries < 0:
+        raise ValueError("--max-retries must be non-negative")
     for name, value in (
         ("max-optimization-threads", args.max_optimization_threads),
         ("max-segment-size-kb", args.max_segment_size_kb),
@@ -424,7 +440,18 @@ def validate_faithful_orion_build_parameters(
         faithful_constants.update(
             {
                 "use_multi_assign": True,
-                "enable_fission": True,
+                "efs": 10,
+                "multi_assign_policy": (
+                    "all_max_vote_ties_else_nearest_when_max_vote_is_one"
+                ),
+                "initial_partition": "kmeans_without_capacity_correction",
+                "enable_fission": False,
+                "balance_mode": "none",
+                "lower_hnsw_construction": (
+                    "independent_full_multilayer_per_shard"
+                ),
+                "lower_hnsw_retains_non_base_layers": True,
+                "routed_search_start_level": 0,
             }
         )
     initial_num_shards = build_parameters.get("initial_num_shards")
@@ -454,9 +481,15 @@ def validate_faithful_orion_build_parameters(
         or attachment_search_ef <= 0
     ):
         raise RuntimeError("Orion layout does not prove a positive attachment_search_ef")
-    if attachment_search_ef != 100:
+    expected_attachment_search_ef = 100 if allow_balance_layout else 10
+    if attachment_search_ef != expected_attachment_search_ef:
         raise RuntimeError(
-            "refusing non-faithful Orion layout: attachment_search_ef must be 100"
+            "refusing non-faithful Orion layout: attachment_search_ef must equal "
+            f"the canonical build efs {expected_attachment_search_ef}"
+        )
+    if not allow_balance_layout and attachment_search_ef != build_parameters.get("k_overlap"):
+        raise RuntimeError(
+            "refusing non-faithful Orion layout: attachment_search_ef must equal k_overlap"
         )
     runtime_bindings = {
         "upper_k": artifact_payload.get("upper_k"),
@@ -480,6 +513,101 @@ def validate_faithful_orion_build_parameters(
             "must equal upper_k"
         )
     return attachment_search_ef
+
+
+def validate_canonical_orion_navigation_binding(
+    build_manifest: dict[str, Any],
+    build_parameters: dict[str, Any],
+    artifact_payload: dict[str, Any],
+    layout_dir: Path,
+    checksums: dict[str, str],
+) -> dict[str, Any] | None:
+    """Validate the one-Qdrant-graph attachment lifecycle when declared.
+
+    Historical bundles predate this binding and remain readable. Any bundle that
+    declares either canonical parameter must provide the complete checksum-bound
+    proof and may not silently fall back to the dual-built hnswlib path.
+    """
+
+    declared = (
+        "attachment_navigator" in build_parameters
+        or "single_upper_graph_build" in build_parameters
+        or "navigation_binding" in build_manifest
+    )
+    if not declared:
+        return None
+    if build_parameters.get("attachment_navigator") != "qdrant_production_upper_graph":
+        raise RuntimeError("canonical Orion attachments must use the Qdrant production graph")
+    if build_parameters.get("single_upper_graph_build") is not True:
+        raise RuntimeError("canonical Orion build does not prove a single upper-graph build")
+    binding = build_manifest.get("navigation_binding")
+    if not isinstance(binding, dict):
+        raise RuntimeError("canonical Orion build is missing navigation_binding")
+    if binding.get("single_upper_graph_build") is not True:
+        raise RuntimeError("Orion navigation binding does not prove a single graph build")
+    if binding.get("attachment_navigator") != "qdrant_production_upper_graph":
+        raise RuntimeError("Orion navigation binding names an unexpected attachment navigator")
+
+    outputs = build_manifest.get("outputs") or {}
+    source_path = safe_child(
+        layout_dir, outputs.get("upper_source_artifact"), "upper_source_artifact"
+    )
+    hits_path = safe_child(
+        layout_dir, outputs.get("upper_attachments"), "upper_attachments"
+    )
+    attachment_manifest_path = safe_child(
+        layout_dir,
+        outputs.get("upper_attachments_manifest"),
+        "upper_attachments_manifest",
+    )
+    for path in (source_path, hits_path, attachment_manifest_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"canonical Orion navigation input is missing: {path}")
+        relative = path.relative_to(layout_dir).as_posix()
+        if checksums.get(relative) != layout_common.sha256_path(path):
+            raise RuntimeError(f"canonical Orion navigation checksum mismatch for {relative}")
+
+    source_sha = layout_common.sha256_path(source_path)
+    hits_sha = layout_common.sha256_path(hits_path)
+    manifest_sha = layout_common.sha256_path(attachment_manifest_path)
+    bound_digests = {
+        "upper_source_artifact_sha256": source_sha,
+        "attachments_sha256": hits_sha,
+        "attachments_manifest_sha256": manifest_sha,
+        "layout_sha256": str(artifact_payload.get("layout_sha256") or ""),
+    }
+    mismatches = {
+        key: {"expected": expected, "actual": binding.get(key)}
+        for key, expected in bound_digests.items()
+        if str(binding.get(key) or "").lower() != str(expected).lower()
+    }
+    if mismatches:
+        raise RuntimeError(f"canonical Orion navigation binding mismatch: {mismatches}")
+
+    source_payload = json.loads(source_path.read_text(encoding="utf-8"))
+    source_graph = source_payload.get("upper_graph") if isinstance(source_payload, dict) else None
+    final_graph = artifact_payload.get("upper_graph")
+    if not isinstance(source_graph, dict) or source_graph != final_graph:
+        raise RuntimeError("canonical Orion source and final upper graphs differ")
+    upper_graph_sha = canonical_json_sha256(source_graph)
+    for field in ("upper_graph_sha256", "final_upper_graph_sha256"):
+        if str(binding.get(field) or "").lower() != upper_graph_sha:
+            raise RuntimeError(f"canonical Orion {field} mismatch")
+    if binding.get("graph_identity_verified_after_finalization") is not True:
+        raise RuntimeError("canonical Orion finalization graph identity was not verified")
+
+    attachment_manifest = json.loads(
+        attachment_manifest_path.read_text(encoding="utf-8")
+    )
+    if not isinstance(attachment_manifest, dict):
+        raise RuntimeError("canonical Orion attachment manifest root must be an object")
+    if attachment_manifest.get("artifact_sha256") != source_sha:
+        raise RuntimeError("canonical Orion attachments were not generated from the source graph")
+    if attachment_manifest.get("hits_sha256") != hits_sha:
+        raise RuntimeError("canonical Orion attachment hit checksum mismatch")
+    if binding.get("attachments_source_artifact_sha256") != source_sha:
+        raise RuntimeError("canonical Orion attachment source binding mismatch")
+    return binding
 
 
 def validate_orion_balance_layout(
@@ -5137,23 +5265,49 @@ def validate_orion_runtime_profile_derivation(
         ORION_RUNTIME_PARAMETER_KEYS
     ):
         raise RuntimeError("Orion runtime-profile allowed parameter set mismatch")
-    rebuild = derivation.get("rebuild")
-    if not isinstance(rebuild, dict):
-        raise RuntimeError("Orion runtime profile is missing rebuild provenance")
-    rebuild_expected = {
-        "upper_graph_seed": build_parameters.get("upper_graph_seed"),
-        "upper_m": build_parameters.get("upper_m"),
-        "upper_ef_construction": build_parameters.get("upper_ef_construction"),
-    }
-    rebuild_mismatches = {
-        key: {"expected": expected, "actual": rebuild.get(key)}
-        for key, expected in rebuild_expected.items()
-        if rebuild.get(key) != expected
-    }
-    if rebuild_mismatches:
-        raise RuntimeError(
-            f"Orion runtime-profile upper graph rebuild mismatch: {rebuild_mismatches}"
+    upper_graph_reuse = derivation.get("upper_graph_reuse")
+    if upper_graph_reuse is not None:
+        if not isinstance(upper_graph_reuse, dict):
+            raise RuntimeError("Orion runtime-profile upper_graph_reuse must be an object")
+        if upper_graph_reuse.get("performed_without_rebuild") is not True:
+            raise RuntimeError("Orion runtime profile did not prove graph reuse")
+        source_graph_sha = cluster_tool.normalize_sha256(
+            str(upper_graph_reuse.get("source_upper_graph_sha256") or "")
         )
+        output_graph_sha = cluster_tool.normalize_sha256(
+            str(upper_graph_reuse.get("output_upper_graph_sha256") or "")
+        )
+        if source_graph_sha != output_graph_sha:
+            raise RuntimeError("Orion runtime-profile upper graph identity mismatch")
+        artifact_graph = artifact_payload.get("upper_graph")
+        if not isinstance(artifact_graph, dict) or canonical_json_sha256(
+            artifact_graph
+        ) != output_graph_sha:
+            raise RuntimeError(
+                "Orion runtime-profile output graph checksum does not match its artifact"
+            )
+    else:
+        # Backward-compatible validation for already accepted historical profiles.
+        # New profiles must use upper_graph_reuse and never reconstruct the graph.
+        rebuild = derivation.get("rebuild")
+        if not isinstance(rebuild, dict):
+            raise RuntimeError(
+                "Orion runtime profile is missing upper-graph reuse or legacy rebuild provenance"
+            )
+        rebuild_expected = {
+            "upper_graph_seed": build_parameters.get("upper_graph_seed"),
+            "upper_m": build_parameters.get("upper_m"),
+            "upper_ef_construction": build_parameters.get("upper_ef_construction"),
+        }
+        rebuild_mismatches = {
+            key: {"expected": expected, "actual": rebuild.get(key)}
+            for key, expected in rebuild_expected.items()
+            if rebuild.get(key) != expected
+        }
+        if rebuild_mismatches:
+            raise RuntimeError(
+                f"Orion runtime-profile upper graph rebuild mismatch: {rebuild_mismatches}"
+            )
 
     source = derivation.get("source")
     if not isinstance(source, dict):
@@ -5602,7 +5756,16 @@ def load_routed_layout(
     runtime_profile_source: dict[str, Any] | None = None
     balance_layout_proof: dict[str, Any] | None = None
     l1_partition_layout_proof: dict[str, Any] | None = None
+    canonical_navigation_binding: dict[str, Any] | None = None
     if method == "orion":
+        if actual_tool == "tools/orion_native_layout.py":
+            canonical_navigation_binding = validate_canonical_orion_navigation_binding(
+                build_manifest,
+                build_parameters,
+                artifact_payload,
+                layout_dir,
+                checksums,
+            )
         if is_orion_l1_partition_layout:
             if actual_tool == ORION_L1_PARTITION_LAYOUT_TOOL:
                 l1_partition_layout_proof = validate_orion_l1_partition_layout(
@@ -5895,6 +6058,7 @@ def load_routed_layout(
         "attachment_search_ef": attachment_search_ef,
         "balance_layout_proof": balance_layout_proof,
         "l1_partition_layout_proof": l1_partition_layout_proof,
+        "canonical_navigation_binding": canonical_navigation_binding,
         "generation": generation,
         "vector_schema": artifact["vector_schema"],
         "shard_count": artifact["shard_count"],
@@ -5984,11 +6148,15 @@ def build_provenance_metadata(
         }
         if method == "orion":
             attachment_search_ef = layout.get("attachment_search_ef")
-            if attachment_search_ef != 100:
+            if (
+                isinstance(attachment_search_ef, bool)
+                or not isinstance(attachment_search_ef, int)
+                or attachment_search_ef <= 0
+            ):
                 raise ValueError(
-                    "routed Orion provenance requires attachment_search_ef=100"
+                    "routed Orion provenance requires a positive attachment_search_ef"
                 )
-            provenance["routing"]["attachment_search_ef"] = 100
+            provenance["routing"]["attachment_search_ef"] = attachment_search_ef
     return {
         PROVENANCE_METADATA_KEY: {
             "schema_version": PROVENANCE_SCHEMA_VERSION,
@@ -6299,10 +6467,20 @@ def importer_command(
         args.collection,
         "--batch-size",
         str(args.batch_size),
+        "--queue-capacity-batches",
+        str(args.queue_capacity_batches),
+        "--max-concurrent-requests",
+        str(args.max_concurrent_requests),
+        "--max-retries",
+        str(args.max_retries),
+        "--retry-backoff-ms",
+        str(args.retry_backoff_ms),
         "--request-timeout-secs",
         str(args.request_timeout_secs),
+        "--completion-timeout-secs",
+        str(args.completion_timeout_secs),
         "--wait",
-        "visible",
+        str(args.import_wait),
         "--ordering",
         "medium",
         *(["--resume"] if args.resume else []),
@@ -6639,14 +6817,28 @@ def prepare(args: argparse.Namespace) -> Path:
             f"collection points_count={populated.get('points_count')!r}, "
             f"expected={physical_count}"
         )
+    wait_kwargs = {"require_fully_indexed": True} if args.method == "orion" else {}
     indexing_readiness = collection_readiness_proof(
         experiment.wait_collection_indexed(
             args.base_url,
             args.collection,
             physical_count,
+            **wait_kwargs,
         ),
         physical_count,
     )
+    if args.method == "orion":
+        if not indexing_readiness["fully_indexed"]:
+            raise RuntimeError(
+                "Orion import completed without every point copy in HNSW"
+            )
+        expected_segments = 2 * shard_count
+        if indexing_readiness["segments_count"] != expected_segments:
+            raise RuntimeError(
+                "Orion requires one complete HNSW and one appendable segment per shard: "
+                f"segments_count={indexing_readiness['segments_count']}, "
+                f"expected={expected_segments}"
+            )
     artifact_installation: dict[str, Any]
     if args.method in ROUTED_METHODS and not args.defer_artifact_install:
         assert layout is not None
@@ -6786,6 +6978,22 @@ def prepare(args: argparse.Namespace) -> Path:
             "indexing_threshold": args.indexing_threshold,
             "max_optimization_threads": args.max_optimization_threads,
             "max_segment_size_kb": args.max_segment_size_kb,
+        },
+        "import_pipeline": {
+            "mode": "per_shard_bounded_async_workers",
+            "batch_size": args.batch_size,
+            "queue_capacity_batches_per_shard": args.queue_capacity_batches,
+            "max_buffered_point_copies": shard_count
+            * (args.queue_capacity_batches + 1)
+            * args.batch_size,
+            "max_concurrent_requests": args.max_concurrent_requests,
+            "max_retries": args.max_retries,
+            "retry_backoff_ms": args.retry_backoff_ms,
+            "wait_until": args.import_wait,
+            "completion_timeout_secs": args.completion_timeout_secs,
+            "per_shard_order_preserved": True,
+            "cross_shard_rpc_concurrency": True,
+            "backpressure": "bounded_mpsc",
         },
         "replication_factor": 1,
         "write_consistency_factor": 1,

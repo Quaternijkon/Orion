@@ -110,20 +110,11 @@ pub enum OrionRoutingError {
         dimension: usize,
     },
 
-    #[error("upper point {label} has no logical shard membership")]
-    EmptyShardMembership { label: ExtendedPointId },
-
     #[error("upper point {label} references shard {shard_id}, but shard_count is {shard_count}")]
     ShardOutOfRange {
         label: ExtendedPointId,
         shard_id: ShardId,
         shard_count: ShardId,
-    },
-
-    #[error("upper point {label} contains duplicate membership for shard {shard_id}")]
-    DuplicateShardMembership {
-        label: ExtendedPointId,
-        shard_id: ShardId,
     },
 
     #[error("serialized Orion upper HNSW graph is required in production mode")]
@@ -212,9 +203,9 @@ pub enum OrionRoutingError {
     NonFiniteQueryVector { dimension: usize },
 
     #[error(
-        "Orion upper HNSW returned only {actual} hits, but the complete routing union requires {expected}"
+        "Orion routed {actual} lower entry points from {expected} actual upper hits; each returned hit must contribute exactly once"
     )]
-    IncompleteUpperSearch { expected: usize, actual: usize },
+    IncompleteUpperRouting { expected: usize, actual: usize },
 
     #[error("distance computation for upper point {label} produced a non-finite value")]
     NonFiniteDistance { label: ExtendedPointId },

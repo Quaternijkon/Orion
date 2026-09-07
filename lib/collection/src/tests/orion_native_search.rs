@@ -26,8 +26,9 @@ use crate::operations::vector_params_builder::VectorParamsBuilder;
 use crate::operations::{CollectionUpdateOperations, OperationWithClockTag};
 use crate::optimizers_builder::OptimizersConfig;
 use crate::orion::{
-    ORION_ROUTING_ARTIFACT_FORMAT_VERSION, OrionRouter, OrionRoutingArtifact, OrionUpperGraphNode,
+    ORION_ROUTING_ARTIFACT_FORMAT_VERSION, OrionRoutingArtifact, OrionUpperGraphNode,
     OrionUpperHnswGraph, OrionUpperNode, OrionVectorDatatype, OrionVectorSchemaFingerprint,
+    routing_artifact_path,
 };
 use crate::shards::channel_service::ChannelService;
 use crate::shards::collection_shard_distribution::CollectionShardDistribution;
@@ -60,27 +61,27 @@ fn artifact() -> OrionRoutingArtifact {
         dynamic_ef_factor: 4,
         upper_nodes: vec![
             OrionUpperNode {
-                label: 10_u64.into(),
+                label: 100_u64.into(),
                 vector: vec![0.0, 1.0],
-                shard_membership: vec![0],
+                owner_shard: 0,
             },
             OrionUpperNode {
-                label: 20_u64.into(),
+                label: 200_u64.into(),
                 vector: vec![1.0, 0.0],
-                shard_membership: vec![1],
+                owner_shard: 1,
             },
         ],
         upper_graph: Some(OrionUpperHnswGraph {
-            entry_point: 10_u64.into(),
+            entry_point: 100_u64.into(),
             max_level: 0,
             nodes: vec![
                 OrionUpperGraphNode {
-                    label: 10_u64.into(),
-                    neighbors_by_level: vec![vec![20_u64.into()]],
+                    label: 100_u64.into(),
+                    neighbors_by_level: vec![vec![200_u64.into()]],
                 },
                 OrionUpperGraphNode {
-                    label: 20_u64.into(),
-                    neighbors_by_level: vec![vec![10_u64.into()]],
+                    label: 200_u64.into(),
+                    neighbors_by_level: vec![vec![100_u64.into()]],
                 },
             ],
         }),
@@ -98,6 +99,15 @@ fn point_operation(id: u64, vector: Vec<f32>) -> CollectionUpdateOperations {
 }
 
 async fn fixture() -> (Collection, TempDir, TempDir) {
+    let collection_dir = Builder::new().prefix("orion_native").tempdir().unwrap();
+    let snapshots_path = Builder::new().prefix("orion_snapshots").tempdir().unwrap();
+    let routing_artifact = artifact();
+    let routing_artifact_bytes = routing_artifact.canonical_json_bytes().unwrap();
+    let routing_artifact_sha256 = routing_artifact.canonical_sha256().unwrap();
+    let routing_artifact_path = routing_artifact_path(collection_dir.path(), 1);
+    fs_err::create_dir_all(routing_artifact_path.parent().unwrap()).unwrap();
+    fs_err::write(&routing_artifact_path, routing_artifact_bytes).unwrap();
+
     let collection_params = CollectionParams {
         vectors: VectorsConfig::Single(VectorParamsBuilder::new(2, Distance::Dot).build()),
         shard_number: NonZeroU32::new(SHARD_COUNT).unwrap(),
@@ -105,9 +115,12 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
         write_consistency_factor: NonZeroU32::new(1).unwrap(),
         ..CollectionParams::empty()
     };
+    let mut optimizer_config = OptimizersConfig::fixture();
+    optimizer_config.default_segment_number = 1;
+    optimizer_config.max_optimization_threads = Some(1);
     let config = CollectionConfigInternal {
         params: collection_params,
-        optimizer_config: OptimizersConfig::fixture(),
+        optimizer_config,
         wal_config: WalConfig {
             wal_capacity_mb: 1,
             wal_segments_ahead: 0,
@@ -118,15 +131,16 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
         strict_mode_config: None,
         uuid: None,
         metadata: None,
-        auto_shard_policy: None,
+        auto_shard_policy: Some(AutoShardPolicy::Orion {
+            generation: 1,
+            artifact_sha256: routing_artifact_sha256,
+        }),
     };
 
-    let collection_dir = Builder::new().prefix("orion_native").tempdir().unwrap();
-    let snapshots_path = Builder::new().prefix("orion_snapshots").tempdir().unwrap();
     let shards = (0..SHARD_COUNT)
         .map(|shard_id| (shard_id, HashSet::from([PEER_ID])))
         .collect::<AHashMap<_, _>>();
-    let mut collection = Collection::new(
+    let collection = Collection::new(
         "orion-native-test".to_string(),
         PEER_ID,
         collection_dir.path(),
@@ -141,7 +155,7 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
         dummy_abort_shard_transfer(),
         None,
         None,
-        ResourceBudget::default(),
+        ResourceBudget::new(2, 2),
         None,
     )
     .await
@@ -171,12 +185,18 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
             .unwrap();
     }
 
-    collection.collection_config.write().await.auto_shard_policy = Some(AutoShardPolicy::Orion {
-        generation: 1,
-        artifact_sha256: "0".repeat(64),
-    });
-    collection.orion_router = Some(Arc::new(OrionRouter::new(artifact()).unwrap()));
-    (collection, collection_dir, snapshots_path)
+    for _ in 0..200 {
+        let info = collection.info(&ShardSelectorInternal::All).await.unwrap();
+        if info.indexed_vectors_count == info.points_count && info.points_count == Some(2) {
+            return (collection, collection_dir, snapshots_path);
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let info = collection.info(&ShardSelectorInternal::All).await.unwrap();
+    panic!(
+        "Orion test fixture did not index all points: indexed={:?}, points={:?}, segments={}",
+        info.indexed_vectors_count, info.points_count, info.segments_count,
+    );
 }
 
 fn core_request(exact: bool) -> shard::search::CoreSearchRequest {

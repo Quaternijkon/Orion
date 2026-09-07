@@ -47,7 +47,7 @@ CONTROLLER_FINGERPRINT_LABEL = "orion.distributed.controller_fingerprint"
 NOFILE_LABEL = "orion.distributed.nofile"
 CONTAINER_NOFILE_SOFT = 65536
 CONTAINER_NOFILE_HARD = 65536
-ORION_ARTIFACT_FORMAT_VERSION = 1
+ORION_ARTIFACT_FORMAT_VERSION = 2
 SIMPLE_KMEANS_ARTIFACT_FORMAT_VERSION = 1
 IMAGE_CANDIDATE_SCHEMA_VERSION = 2
 IMAGE_TRANSITION_SCHEMA_VERSION = 1
@@ -1319,6 +1319,26 @@ def validate_local_orion_artifact(
     vector_schema = payload.get("vector_schema")
     if not isinstance(vector_schema, dict):
         raise ValueError("Orion artifact vector_schema must be a JSON object")
+    upper_nodes = payload.get("upper_nodes")
+    if not isinstance(upper_nodes, list) or not upper_nodes:
+        raise ValueError("Orion artifact upper_nodes must be a non-empty array")
+    for index, node in enumerate(upper_nodes):
+        if not isinstance(node, dict):
+            raise ValueError(f"Orion upper_nodes[{index}] must be a JSON object")
+        owner_shard = node.get("owner_shard")
+        if (
+            isinstance(owner_shard, bool)
+            or not isinstance(owner_shard, int)
+            or owner_shard < 0
+            or owner_shard >= shard_count
+        ):
+            raise ValueError(
+                f"Orion upper_nodes[{index}].owner_shard must be in [0, {shard_count})"
+            )
+        if "shard_membership" in node:
+            raise ValueError(
+                f"Orion upper_nodes[{index}] uses legacy multi-membership routing metadata"
+            )
     return {
         "path": str(path),
         "generation": generation,

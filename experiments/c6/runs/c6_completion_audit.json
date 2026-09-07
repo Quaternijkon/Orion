@@ -1,0 +1,358 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "copy": "/users/dry/Orion/experiments/c6/PLAN.md",
+        "source": "/users/dry/Orion/plan/Orion_C6_Experimental_Protocol.md"
+      },
+      "name": "protocol copied exactly",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/runs",
+      "name": "directory runs",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/runs/per_query",
+      "name": "directory per_query",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/runs/per_shard",
+      "name": "directory per_shard",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/runs/oracle",
+      "name": "directory oracle",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/figures",
+      "name": "directory figures",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/scripts",
+      "name": "directory scripts",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/logs",
+      "name": "directory logs",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9311999999999999,
+        "P1": 0.9486333333333334,
+        "P2": 0.9392555555555555,
+        "P3": 0.9913444444444445
+      },
+      "name": "final measurement sift1m M=4",
+      "passed": true
+    },
+    {
+      "evidence": 4,
+      "name": "E1 sift1m M=4",
+      "passed": true
+    },
+    {
+      "evidence": 4,
+      "name": "isolated E2/E3 sift1m M=4",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9358888888888889,
+        "P1": 0.9568666666666665,
+        "P2": 0.9700111111111112,
+        "P3": 0.9901666666666666
+      },
+      "name": "final measurement sift1m M=8",
+      "passed": true
+    },
+    {
+      "evidence": 8,
+      "name": "E1 sift1m M=8",
+      "passed": true
+    },
+    {
+      "evidence": 8,
+      "name": "isolated E2/E3 sift1m M=8",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9495333333333332,
+        "P1": 0.9650777777777778,
+        "P2": 0.9323666666666666,
+        "P3": 0.9876222222222223
+      },
+      "name": "final measurement sift1m M=16",
+      "passed": true
+    },
+    {
+      "evidence": 16,
+      "name": "E1 sift1m M=16",
+      "passed": true
+    },
+    {
+      "evidence": 16,
+      "name": "isolated E2/E3 sift1m M=16",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9235555555555556,
+        "P1": 0.9168333333333333,
+        "P2": 0.9391111111111111,
+        "P3": 0.9844555555555556
+      },
+      "name": "final measurement sift1m M=32",
+      "passed": true
+    },
+    {
+      "evidence": 32,
+      "name": "E1 sift1m M=32",
+      "passed": true
+    },
+    {
+      "evidence": 32,
+      "name": "isolated E2/E3 sift1m M=32",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9099777777777778,
+        "P1": 0.9159777777777777,
+        "P2": 0.9022555555555556,
+        "P3": 0.9011333333333333
+      },
+      "name": "final measurement glove-200-angular M=4",
+      "passed": true
+    },
+    {
+      "evidence": 4,
+      "name": "E1 glove-200-angular M=4",
+      "passed": true
+    },
+    {
+      "evidence": 4,
+      "name": "isolated E2/E3 glove-200-angular M=4",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9116444444444444,
+        "P1": 0.931188888888889,
+        "P2": 0.9013444444444445,
+        "P3": 0.900411111111111
+      },
+      "name": "final measurement glove-200-angular M=8",
+      "passed": true
+    },
+    {
+      "evidence": 8,
+      "name": "E1 glove-200-angular M=8",
+      "passed": true
+    },
+    {
+      "evidence": 8,
+      "name": "isolated E2/E3 glove-200-angular M=8",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9089888888888888,
+        "P1": 0.9377777777777778,
+        "P2": 0.9005333333333334,
+        "P3": 0.905788888888889
+      },
+      "name": "final measurement glove-200-angular M=16",
+      "passed": true
+    },
+    {
+      "evidence": 16,
+      "name": "E1 glove-200-angular M=16",
+      "passed": true
+    },
+    {
+      "evidence": 16,
+      "name": "isolated E2/E3 glove-200-angular M=16",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "P0": 0.9053666666666667,
+        "P1": 0.9016444444444445,
+        "P2": 0.9000555555555556,
+        "P3": 0.9060888888888889
+      },
+      "name": "final measurement glove-200-angular M=32",
+      "passed": true
+    },
+    {
+      "evidence": 32,
+      "name": "E1 glove-200-angular M=32",
+      "passed": true
+    },
+    {
+      "evidence": 32,
+      "name": "isolated E2/E3 glove-200-angular M=32",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "m32_primary_p3": 0.8982777777777777,
+        "m32_rank1_p3": 0.9060888888888889,
+        "m8_primary_p2": 0.8987666666666666,
+        "m8_rank1_p2": 0.8999444444444444,
+        "m8_rank2_p2": 0.9013444444444445
+      },
+      "name": "invalid primaries and valid preordered fallbacks retained",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 8,
+        "expected": 8
+      },
+      "name": "table c6_query_difficulty_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 8,
+        "expected": 8
+      },
+      "name": "table c6_shard_adaptation_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 8,
+        "expected": 8
+      },
+      "name": "table c6_local_budget_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 56,
+        "expected": 56
+      },
+      "name": "table c6_full_ablation_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 8,
+        "expected": 8
+      },
+      "name": "table c6_oracle_gap_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 8,
+        "expected": 8
+      },
+      "name": "table c6_physical_validation_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 80,
+        "expected": 80
+      },
+      "name": "table c6_sensitivity_summary.csv",
+      "passed": true
+    },
+    {
+      "evidence": "/users/dry/Orion/experiments/c6/runs/c6_latex_table.tex",
+      "name": "LaTeX table",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "c6_combined_adaptivity.pdf",
+        "c6_fig10_max_shard_work.pdf",
+        "c6_fig11_entry_point_count_calibration.pdf",
+        "c6_fig12_physical_tail_latency.pdf",
+        "c6_fig13_full_ablation.pdf",
+        "c6_fig14_full_recall_work_frontier.pdf",
+        "c6_fig15_oracle_gap.pdf",
+        "c6_fig16_physical_end_to_end.pdf",
+        "c6_fig17_physical_qps.pdf",
+        "c6_fig18_physical_p99_latency.pdf",
+        "c6_fig19_physical_work_vs_latency.pdf",
+        "c6_fig1_oracle_shard_difficulty_cdf.pdf",
+        "c6_fig2_oracle_local_budget_cdf.pdf",
+        "c6_fig3_static_waste_breakdown.pdf",
+        "c6_fig4_static_vs_adaptive_fanout.pdf",
+        "c6_fig5_adaptive_vs_oracle_fanout.pdf",
+        "c6_fig6_per_query_shard_savings_cdf.pdf",
+        "c6_fig7_recall_work_frontier_shard_adaptation.pdf",
+        "c6_fig8_uniform_vs_adaptive_ef.pdf",
+        "c6_fig9_local_budget_vs_oracle.pdf"
+      ],
+      "name": "20 required PDF figures",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "glove-200-angular:P0": true,
+        "glove-200-angular:P1": true,
+        "glove-200-angular:P2": true,
+        "glove-200-angular:P3": true,
+        "sift1m:P0": true,
+        "sift1m:P1": true,
+        "sift1m:P2": false,
+        "sift1m:P3": true
+      },
+      "name": "physical E5 retained validity",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "glove-200-angular": [
+          24,
+          48,
+          96
+        ],
+        "sift1m": [
+          50,
+          100,
+          200
+        ]
+      },
+      "name": "dataset-specific E6 navigation K",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "controller": "0-19",
+        "qdrant_shard_1": "0-19",
+        "qdrant_shard_2": "0-19",
+        "qdrant_shard_3": "0-19"
+      },
+      "name": "worker affinities restored",
+      "passed": true
+    },
+    {
+      "evidence": "RESULTS.md",
+      "name": "final verdict appended",
+      "passed": true
+    },
+    {
+      "evidence": "STATUS.md",
+      "name": "status records completion",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "record_type": "c6_completion_audit",
+  "timestamp": "2026-09-01T10:39:36Z"
+}

@@ -15,6 +15,7 @@ import argparse
 import csv
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 from typing import Any, Iterable
@@ -51,6 +52,20 @@ from experiments.multi_assignment.screen_fixed_owner import (  # noqa: E402
 
 
 POLICY_NAMES = ("current_all_max", "single_rank", budgeted_policy.CANDIDATE_ID)
+EDGE_CUT_MAX_RATIO = 1.03
+RETAINED_DEGREE_MIN_RATIO = 0.95
+RETAINED_DEGREE_P10_MAX_DROP = 0.025
+ISOLATED_FRACTION_MAX_DELTA = 0.01
+ISOLATED_FRACTION_ABSOLUTE_MAX = 0.03
+LARGEST_COMPONENT_MEAN_MAX_DROP = 0.02
+LARGEST_COMPONENT_MIN_FLOOR = 0.25
+
+
+@dataclass(frozen=True)
+class NamedOwnerPath:
+    name: str
+    path: Path
+    kind: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,6 +78,16 @@ def parse_args() -> argparse.Namespace:
         default=[],
         metavar="NAME=PATH",
         help="Extract an owner from a generation/graphless artifact.",
+    )
+    parser.add_argument(
+        "--owner-binary",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help=(
+            "Read one zero-based i32le owner per reference upper node. This is "
+            "the input boundary for checksum-bound experimental graph partitioners."
+        ),
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--query-count", type=int, default=0)
@@ -77,21 +102,87 @@ def file_record(path: Path) -> dict[str, Any]:
     }
 
 
-def parse_named_paths(values: Iterable[str]) -> list[tuple[str, Path]]:
-    result: list[tuple[str, Path]] = []
-    names: set[str] = set()
-    for raw in values:
-        name, separator, path_text = raw.partition("=")
-        if not separator or not name or not path_text:
-            raise ValueError(f"invalid NAME=PATH owner specification: {raw}")
-        if name in names or name == "C_CNBR":
-            raise ValueError(f"duplicate/reserved owner name: {name}")
-        path = Path(path_text).expanduser().resolve()
-        if not path.is_file():
-            raise FileNotFoundError(f"owner artifact is missing: {path}")
-        names.add(name)
-        result.append((name, path))
+def canonical_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def parse_named_paths(
+    artifact_values: Iterable[str], binary_values: Iterable[str]
+) -> list[NamedOwnerPath]:
+    result: list[NamedOwnerPath] = []
+    names = {"C_CNBR"}
+    for values, kind in (
+        (artifact_values, "artifact"),
+        (binary_values, "binary"),
+    ):
+        for raw in values:
+            name, separator, path_text = raw.partition("=")
+            if not separator or not name or not path_text:
+                raise ValueError(f"invalid NAME=PATH owner specification: {raw}")
+            if name in names:
+                raise ValueError(f"duplicate/reserved owner name: {name}")
+            path = Path(path_text).expanduser().resolve()
+            if not path.is_file():
+                raise FileNotFoundError(f"owner input is missing: {path}")
+            names.add(name)
+            result.append(NamedOwnerPath(name=name, path=path, kind=kind))
     return result
+
+
+def binary_owner(
+    path: Path,
+    *,
+    reference_labels: np.ndarray,
+    num_partitions: int,
+    reference_artifact_sha256: str,
+    reference_upper_graph_sha256: str,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    expected_bytes = len(reference_labels) * np.dtype("<i4").itemsize
+    if path.stat().st_size != expected_bytes:
+        raise ValueError(
+            f"owner binary has {path.stat().st_size} bytes; expected "
+            f"{expected_bytes}: {path}"
+        )
+    owner = np.asarray(
+        np.memmap(path, dtype="<i4", mode="r", shape=(len(reference_labels),)),
+        dtype=np.int32,
+    )
+    if np.any(owner < 0) or np.any(owner >= num_partitions):
+        raise ValueError(f"owner binary contains an invalid partition: {path}")
+    source: dict[str, Any] = {
+        "source_kind": "frozen_i32le_owner_binary",
+        "owner_binary": file_record(path),
+        "upper_node_count": len(owner),
+        "historical_layout_reproduction_claim": False,
+    }
+    sibling_manifest = path.parent / "attraction-weighted-manifest.json"
+    if not sibling_manifest.is_file():
+        raise ValueError(
+            "owner binary lacks attraction-weighted-manifest.json identity binding"
+        )
+    manifest = _load_json(sibling_manifest)
+    owner_record = manifest.get("owner") or {}
+    if owner_record.get("sha256") != source["owner_binary"]["sha256"]:
+        raise ValueError("owner binary checksum differs from sibling manifest")
+    if (manifest.get("source") or {}).get("upper_node_count") != len(owner):
+        raise ValueError("owner binary upper-node count differs from sibling manifest")
+    if (manifest.get("parameters") or {}).get("num_partitions") != num_partitions:
+        raise ValueError("owner binary partition count differs from sibling manifest")
+    manifest_source = manifest.get("source") or {}
+    if manifest_source.get("artifact_sha256") != reference_artifact_sha256:
+        raise ValueError("owner binary source artifact differs from Phase-A")
+    if manifest_source.get("upper_graph_sha256") != reference_upper_graph_sha256:
+        raise ValueError("owner binary upper graph differs from Phase-A")
+    source["owner_manifest"] = file_record(sibling_manifest)
+    source["owner_generator_record_type"] = manifest.get("record_type")
+    source["owner_generator_contract"] = manifest.get("contract")
+    return owner, source
 
 
 def owner_semantic_sha256(labels: np.ndarray, owner: np.ndarray) -> str:
@@ -213,6 +304,122 @@ def assignment_metrics(
     return result
 
 
+def canonical_cross_owner_gates(
+    observed: dict[str, Any],
+    reference: dict[str, Any],
+    query_count: int,
+) -> dict[str, dict[str, Any]]:
+    def maximum(
+        field: str, threshold: float, *, reference_value: float
+    ) -> dict[str, Any]:
+        value = float(observed[field])
+        return {
+            "observed": value,
+            "operator": "<=",
+            "threshold": threshold,
+            "reference": reference_value,
+            "pass": value <= threshold,
+        }
+
+    def minimum(
+        field: str, threshold: float, *, reference_value: float
+    ) -> dict[str, Any]:
+        value = float(observed[field])
+        return {
+            "observed": value,
+            "operator": ">=",
+            "threshold": threshold,
+            "reference": reference_value,
+            "pass": value >= threshold,
+        }
+
+    ref_cut = float(reference["owner_upper_edge_cut_ratio"])
+    ref_retained = float(reference["owner_retained_degree_mean"])
+    ref_p10 = float(reference["owner_retained_degree_p10"])
+    ref_isolated = float(reference["owner_upper_isolated_fraction"])
+    ref_component_mean = float(reference["owner_largest_component_fraction_mean"])
+    ref_component_min = float(reference["owner_largest_component_fraction_min"])
+    gates = {
+        "owner_upper_edge_cut_ratio": maximum(
+            "owner_upper_edge_cut_ratio",
+            ref_cut * EDGE_CUT_MAX_RATIO,
+            reference_value=ref_cut,
+        ),
+        "owner_retained_degree_mean": minimum(
+            "owner_retained_degree_mean",
+            ref_retained * RETAINED_DEGREE_MIN_RATIO,
+            reference_value=ref_retained,
+        ),
+        "owner_retained_degree_p10": minimum(
+            "owner_retained_degree_p10",
+            ref_p10 - RETAINED_DEGREE_P10_MAX_DROP,
+            reference_value=ref_p10,
+        ),
+        "owner_upper_isolated_fraction": maximum(
+            "owner_upper_isolated_fraction",
+            min(
+                ISOLATED_FRACTION_ABSOLUTE_MAX,
+                ref_isolated + ISOLATED_FRACTION_MAX_DELTA,
+            ),
+            reference_value=ref_isolated,
+        ),
+        "owner_largest_component_fraction_mean": minimum(
+            "owner_largest_component_fraction_mean",
+            ref_component_mean - LARGEST_COMPONENT_MEAN_MAX_DROP,
+            reference_value=ref_component_mean,
+        ),
+        "owner_largest_component_fraction_min": minimum(
+            "owner_largest_component_fraction_min",
+            LARGEST_COMPONENT_MIN_FLOOR,
+            reference_value=ref_component_min,
+        ),
+        "gt_routing_coverage_mean": minimum(
+            "gt_routing_coverage_mean",
+            float(reference["gt_routing_coverage_mean"]) - MAX_COVERAGE_DROP,
+            reference_value=float(reference["gt_routing_coverage_mean"]),
+        ),
+        "gt_queries_full_coverage_fraction": minimum(
+            "gt_queries_full_coverage_fraction",
+            float(reference["gt_queries_full_coverage_fraction"])
+            - MAX_FULL_COVERAGE_DROP,
+            reference_value=float(reference["gt_queries_full_coverage_fraction"]),
+        ),
+        "expansion_ratio": maximum(
+            "expansion_ratio",
+            float(reference["expansion_ratio"]),
+            reference_value=float(reference["expansion_ratio"]),
+        ),
+        "physical_copy_load_max": maximum(
+            "physical_copy_load_max",
+            float(reference["physical_copy_load_max"]),
+            reference_value=float(reference["physical_copy_load_max"]),
+        ),
+    }
+    for field in (
+        "query_owner_transitions_mean",
+        "routed_shards_mean",
+        "route_entry_points_mean",
+        "route_ef_sum_mean",
+    ):
+        reference_value = float(reference[field])
+        gates[field] = maximum(
+            field,
+            reference_value * MAX_ROUTE_WORK_RATIO,
+            reference_value=reference_value,
+        )
+    zero_reference = int(reference["gt_queries_zero_coverage"])
+    zero_limit = min(zero_reference + 2, max(1, int(query_count * 0.001)))
+    zero_observed = int(observed["gt_queries_zero_coverage"])
+    gates["gt_queries_zero_coverage"] = {
+        "observed": zero_observed,
+        "operator": "<=",
+        "threshold": zero_limit,
+        "reference": zero_reference,
+        "pass": zero_observed <= zero_limit,
+    }
+    return gates
+
+
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir).expanduser().resolve()
@@ -235,6 +442,7 @@ def main() -> None:
     artifact, _adj, _vectors, labels, _entry, edge_left, edge_right, navigator_sha = (
         load_upper(artifact_path)
     )
+    upper_graph_sha256 = canonical_sha256(artifact["upper_graph"])
     num_partitions = int(artifact["shard_count"])
     if num_partitions != 32:
         raise ValueError("owner-policy matrix currently requires frozen P=32 inputs")
@@ -313,14 +521,24 @@ def main() -> None:
             },
         )
     ]
-    for name, path in parse_named_paths(args.artifact_owner):
-        owner, source = artifact_owner(
-            path,
-            reference_labels=labels,
-            reference_navigator_sha256=navigator_sha,
-            num_partitions=num_partitions,
-        )
-        owners.append((name, owner, source))
+    for item in parse_named_paths(args.artifact_owner, args.owner_binary):
+        if item.kind == "artifact":
+            owner, source = artifact_owner(
+                item.path,
+                reference_labels=labels,
+                reference_navigator_sha256=navigator_sha,
+                num_partitions=num_partitions,
+            )
+        else:
+            owner, source = binary_owner(
+                item.path,
+                reference_labels=labels,
+                num_partitions=num_partitions,
+                reference_artifact_sha256=artifact_record["sha256"],
+                reference_upper_graph_sha256=upper_graph_sha256,
+            )
+            source["upper_navigator_sha256"] = navigator_sha
+        owners.append((item.name, owner, source))
 
     rows: list[dict[str, Any]] = []
     owner_records: dict[str, Any] = {}
@@ -424,6 +642,23 @@ def main() -> None:
                 )
         rows.extend(owner_rows)
 
+    canonical_by_policy = {
+        row["policy"]: row for row in rows if row["owner"] == "C_CNBR"
+    }
+    for row in rows:
+        reference = canonical_by_policy[row["policy"]]
+        if row["owner"] == "C_CNBR":
+            row["canonical_cross_owner_gate_results"] = {}
+            row["canonical_cross_owner_gates_pass"] = True
+        else:
+            cross_gates = canonical_cross_owner_gates(
+                row, reference, query_count
+            )
+            row["canonical_cross_owner_gate_results"] = cross_gates
+            row["canonical_cross_owner_gates_pass"] = all(
+                bool(gate["pass"]) for gate in cross_gates.values()
+            )
+
     output_dir.mkdir(parents=True)
     manifest = {
         "format_version": 1,
@@ -443,9 +678,12 @@ def main() -> None:
         "owner_records": owner_records,
         "gate_contract": {
             "baseline_within_each_owner": "current_all_max",
+            "canonical_cross_owner_reference": "C_CNBR with the same policy",
             "maximum_gt_coverage_drop": MAX_COVERAGE_DROP,
             "maximum_full_coverage_drop": MAX_FULL_COVERAGE_DROP,
             "maximum_route_work_ratio": MAX_ROUTE_WORK_RATIO,
+            "maximum_edge_cut_ratio": EDGE_CUT_MAX_RATIO,
+            "minimum_retained_degree_ratio": RETAINED_DEGREE_MIN_RATIO,
         },
         "interpretation_boundary": {
             "online_qps_inferred_from_offline_metrics": False,

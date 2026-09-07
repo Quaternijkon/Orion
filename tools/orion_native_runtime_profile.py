@@ -11,8 +11,9 @@ only changes the routing generation and the faithful runtime controls:
 * ``dynamic_ef_base``; and
 * ``dynamic_ef_factor``.
 
-The portable upper HNSW is rebuilt with the source bundle's deterministic graph
-parameters.  Existing output paths are never overwritten.
+The portable upper HNSW bytes are copied from the source artifact without
+reconstruction. A Rust typed rebind changes only the declared runtime fields and
+generation, then validates the unchanged graph through the production router.
 """
 
 from __future__ import annotations
@@ -85,9 +86,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dynamic-ef-factor", required=True, type=int)
     parser.add_argument("--cargo", default="cargo")
     parser.add_argument(
+        "--rust-rebind-binary",
+        default=None,
+        help="Optional prebuilt orion_rebind_memberships executable.",
+    )
+    parser.add_argument(
         "--cargo-target-dir",
         default=None,
-        help="Optional external Cargo target directory used only for the rebuild.",
+        help="Optional external Cargo target directory used by the Rust rebind validator.",
     )
     parser.add_argument(
         "--payload-mode",
@@ -152,6 +158,12 @@ def validate_args(args: argparse.Namespace) -> None:
     ]
     if sum(layout_flags) > 1:
         raise ValueError("Orion layout-family authorization flags are mutually exclusive")
+    if args.rust_rebind_binary is not None:
+        binary = Path(args.rust_rebind_binary).expanduser().resolve()
+        if not binary.is_file():
+            raise FileNotFoundError(f"Rust rebind binary not found: {binary}")
+        if not os.access(binary, os.X_OK):
+            raise PermissionError(f"Rust rebind binary is not executable: {binary}")
 
 
 def canonical_json_sha256(value: Any) -> str:
@@ -206,7 +218,7 @@ def validate_graphless_typed_binding(
     ):
         if not isinstance(source_node, dict) or not isinstance(canonical_node, dict):
             raise RuntimeError(f"upper node {index} is not a JSON object")
-        for field in ("label", "shard_membership"):
+        for field in ("label", "owner_shard"):
             if source_node.get(field) != canonical_node.get(field):
                 raise RuntimeError(
                     f"source graphless upper node {index} {field} differs from "
@@ -532,18 +544,41 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     graphless_path = output_dir / layout_common.GRAPHLESS_NAME
     layout_common.write_json_new(graphless_path, graphless)
     production_path = output_dir / f"generation-{int(args.generation)}.json"
-    builder_args = argparse.Namespace(
+    rebind_sidecar_path = output_dir / "runtime-profile-rebind.json"
+    layout_common.write_json_new(
+        rebind_sidecar_path,
+        {
+            "format_version": 2,
+            "source_artifact_sha256": layout_common.sha256_path(
+                source["production_path"]
+            ),
+            "source_generation": source_generation,
+            "generation": int(args.generation),
+            "layout_sha256": str(source["production"]["layout_sha256"]),
+            "shard_count": int(source["production"]["shard_count"]),
+            "physical_point_count": int(
+                source["production"]["physical_point_count"]
+            ),
+            "upper_owner_shards": [
+                node["owner_shard"] for node in source["production"]["upper_nodes"]
+            ],
+            "upper_k": int(args.upper_k),
+            "upper_ef_search": int(args.upper_k),
+            "dynamic_ef_base": int(args.dynamic_ef_base),
+            "dynamic_ef_factor": int(args.dynamic_ef_factor),
+        },
+    )
+    rebind_args = argparse.Namespace(
         cargo=str(args.cargo),
         cargo_target_dir=args.cargo_target_dir,
-        rust_builder_binary=None,
-        upper_graph_seed=int(parameters["upper_graph_seed"]),
-        upper_m=int(parameters["upper_m"]),
-        upper_ef_construction=int(parameters["upper_ef_construction"]),
+        rust_rebind_binary=args.rust_rebind_binary,
     )
-    rust_command = layout_common.run_rust_builder(
-        builder_args,
-        graphless_path,
+    rust_command = layout_common.run_rust_rebind(
+        rebind_args,
+        source["production_path"],
+        rebind_sidecar_path,
         production_path,
+        mode="runtime-profile",
     )
     production_sha256 = layout_common.verify_production_artifact(production_path)
     production = read_json_object(production_path, "derived production artifact")
@@ -554,8 +589,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("Rust builder changed fields outside upper_graph")
     if production_graph != source["upper_graph"]:
         raise RuntimeError(
-            "deterministic upper graph changed despite identical offline upper nodes "
-            "and graph build parameters"
+            "runtime-profile rebind changed the immutable upper graph"
         )
     prepare.cluster_tool.validate_local_orion_artifact(
         production_path,
@@ -644,12 +678,14 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             "kind": DERIVATION_KIND,
             "allowed_parameter_changes": list(RUNTIME_PARAMETER_KEYS),
             "parameter_changes": parameter_changes,
-            "rebuild": {
-                "upper_graph_seed": int(parameters["upper_graph_seed"]),
-                "upper_m": int(parameters["upper_m"]),
-                "upper_ef_construction": int(parameters["upper_ef_construction"]),
+            "upper_graph_reuse": {
+                "performed_without_rebuild": True,
+                "source_upper_graph_sha256": canonical_json_sha256(
+                    source["upper_graph"]
+                ),
+                "output_upper_graph_sha256": canonical_json_sha256(production_graph),
                 "cargo_target_dir": layout_common.effective_cargo_target_dir(
-                    builder_args
+                    rebind_args
                 ),
             },
             "formal_evidence_eligible": str(args.payload_mode) == "copy",
@@ -663,7 +699,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             "graphless_artifact": graphless_path.name,
             "production_artifact": production_path.name,
             "import_manifest": import_manifest_path.name,
-            "rust_builder_command": rust_command,
+            "runtime_profile_sidecar": rebind_sidecar_path.name,
+            "rust_builder_command": None,
+            "rust_rebind_command": rust_command,
             "files": payload_files,
         },
     }
