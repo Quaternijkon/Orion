@@ -1,0 +1,31 @@
+{
+  "dataset": "sift-128-euclidean.hdf5",
+  "layout": "orion_norep_sift1m_p8",
+  "shards": 8,
+  "recall_target": 0.95,
+  "upper_query_k": 200,
+  "size_skew_max_over_mean": 1.01,
+  "routers": {
+    "oracle": {
+      "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.0593,
+      "load_skew_max_over_mean": 2.3754666666666666,
+      "load_skew_cv": 0.6293806479389084,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 5,
+      "adaptive_mean_fanout": 2.9062,
+      "load_skew_max_over_mean": 1.53824,
+      "load_skew_cv": 0.31288523646858124,
+      "queries_target_unreachable": 0
+    },
+    "orion": {
+      "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.3929,
+      "load_skew_max_over_mean": 1.5725333333333333,
+      "load_skew_cv": 0.25699134442838945,
+      "queries_target_unreachable": 0
+    }
+  }
+}

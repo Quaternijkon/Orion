@@ -1,0 +1,31 @@
+{
+  "dataset": "coco-t2i-512-angular.hdf5",
+  "layout": "orion_norep_coco_p32",
+  "shards": 32,
+  "recall_target": 0.95,
+  "upper_query_k": 200,
+  "size_skew_max_over_mean": 1.0101070731858024,
+  "routers": {
+    "oracle": {
+      "fixed_budget": 4,
+      "adaptive_mean_fanout": 2.839,
+      "load_skew_max_over_mean": 6.2208,
+      "load_skew_cv": 1.212902436307224,
+      "queries_target_unreachable": 0
+    },
+    "centroid": {
+      "fixed_budget": 23,
+      "adaptive_mean_fanout": 13.7835,
+      "load_skew_max_over_mean": 1.391304347826087,
+      "load_skew_cv": 0.5482403755780749,
+      "queries_target_unreachable": 0
+    },
+    "orion": {
+      "fixed_budget": 8,
+      "adaptive_mean_fanout": 6.2468,
+      "load_skew_max_over_mean": 2.4448,
+      "load_skew_cv": 0.491162956665097,
+      "queries_target_unreachable": 0
+    }
+  }
+}

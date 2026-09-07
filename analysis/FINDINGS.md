@@ -43,6 +43,26 @@ with far less locality damage. So Orion's contribution is best stated as *the be
 known way to get balanced shards without paying the usual locality penalty of
 balancing.* That claim holds on every dataset and P here.
 
+*The win is not bought by replication.* Repeating the comparison at **equal
+storage** — `orion_norep` (multi-assignment off, expansion 1.0) against
+`balanced_kmeans` (also 1.0) — Orion still wins every config: 8%–46% lower fan-out
+and 11%–32% lower `W`.
+
+| config | balanced_kmeans W | orion_norep W (equal storage) | Orion Δfan / ΔW |
+|---|---|---|---|
+| sift  P8  | 4.8 | 3.8 | −19% / −21% |
+| sift  P32 | 8.4 | 7.4 | −16% / −12% |
+| glove P8  | 5.2 | 4.6 | −13% / −11% |
+| glove P32 | 20.3 | 16.6 | −8% / −18% |
+| coco  P8  | 5.3 | 3.6 | −38% / −32% |
+| coco  P32 | 21.6 | 15.3 | −46% / −29% |
+
+Turning replication back on adds only a further 2%–8% fan-out reduction, so the
+advantage is genuine partitioning quality, not a storage subsidy. Against
+unbalanced plain k-means the equal-storage `orion_norep` keeps the same pattern as
+the replicated version: it wins on GloVe (16.6 vs 20.1) and coco (15.3 vs 19.4),
+loses on uniform SIFT (7.4 vs 4.5).
+
 **2. Against unbalanced plain k-means, Orion wins on the two realistic datasets
 and loses only on uniform SIFT.** Plain k-means has the lowest fan-out, but buys
 it with a 1.47x–2.12x size imbalance — every node must be provisioned for the

@@ -106,6 +106,9 @@ FINDINGS' Headline; `W = fan-out × load_skew`, lower is better:
   requires balanced shards for memory efficiency (the usual case for a
   memory-bound vector store), Orion is the best option and this decision's target
   should have been balanced k-means, which Orion beats — not plain k-means.
+  This survives at **equal storage**: `orion_norep` (expansion 1.0) still beats
+  `balanced_kmeans` by 8%–46% fan-out / 11%–32% `W`, so the win is partitioning
+  quality, not replication (which adds only 2%–8% on top).
 - **Against unbalanced plain k-means, Orion wins on GloVe and coco**, losing only
   on uniform SIFT, and plain k-means only wins there by tolerating a 1.48x–2.12x
   size imbalance (up to ~half the memory wasted at P = 32).
