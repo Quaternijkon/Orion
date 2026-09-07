@@ -45,11 +45,17 @@ the effect of Orion's replication.
 
 Plain k-means has the best locality of any layout tested — but only because it is
 allowed to be lopsided. Its max/mean shard size reaches 1.50 on SIFT and 2.72 on
-GloVe. A shard carrying 2.7x the mean sets the tail latency and caps useful
-scale-out, so unbalanced k-means is not a layout anyone can actually deploy at
-scale. Comparing against it alone is what made an earlier version of this
+GloVe. Comparing against it alone is what made an earlier version of this
 document conclude that Orion's partitioner was dominated. That conclusion was an
 artifact of the unfair baseline and is **withdrawn**.
+
+An earlier draft also argued that a shard carrying 2.7x the mean "sets the tail
+latency and caps useful scale-out". That is wrong for a graph index and is
+**withdrawn** too: at fixed `ef` an HNSW search costs roughly
+O(ef * M * log n) distance computations, so an oversized shard barely raises
+per-query cost. Size imbalance costs memory provisioning, not query latency. The
+quantity that does cap throughput is query load skew, which Finding 4 measures
+and which turns out not to follow size skew at all.
 
 Once the baseline is forced to the same balance Orion achieves, the ranking
 inverts. Router-independent oracle adaptive floor at R = 0.95, in shards per
@@ -61,10 +67,10 @@ query (lower is better):
 | sift  |  8 | 1.21 | 1.71 | **1.50** | 1.57 |
 | sift  | 16 | 1.47 | 2.02 | **1.74** | 1.67 |
 | sift  | 32 | 1.81 | **2.24** | 2.14 | 2.30 |
-| glove |  4 | 1.54 | 1.94 | **1.62** | pending |
-| glove |  8 | 1.72 | 2.55 | **2.17** | pending |
-| glove | 16 | 2.10 | 2.67 | **2.30** | pending |
-| glove | 32 | 2.41 | 3.12 | **2.75** | pending |
+| glove |  4 | 1.54 | 1.94 | **1.62** | 1.67 |
+| glove |  8 | 1.72 | 2.55 | **2.17** | 2.29 |
+| glove | 16 | 2.10 | 2.67 | **2.30** | 2.45 |
+| glove | 32 | 2.41 | 3.12 | **2.75** | 2.96 |
 
 **At matched balance Orion's navigation-derived layout beats the geometric one in
 all 8 configurations**, by 8% to 18% on the oracle floor. Because the oracle
@@ -96,8 +102,10 @@ marginally behind `balanced_kmeans` (2.30 versus 2.24), so at that scale Orion's
 competitiveness depends on its 12.4% storage premium. Whether that trade is worth
 it is a deployment question, not one this analysis settles.
 
-The GloVe replication control has not been run yet (see Status below), so it is
-not yet known whether the P = 32 reversal is dataset-specific.
+On GloVe the reversal does not happen: `orion_norep` beats `balanced_kmeans` at
+every P (1.67/2.29/2.45/2.96 against 1.94/2.55/2.67/3.12). So the SIFT P = 32
+result is the single exception across 8 matched-storage comparisons, and it is a
+0.06-shard margin that one seed could plausibly move.
 
 ## Finding 3: The largest headroom is in routing, on every layout
 
@@ -112,59 +120,86 @@ The substantive point is that this gap is large on *all* layouts, so the biggest
 single lever available is adaptive, well-ordered routing rather than placement.
 Placement decides the floor; routing decides how close you get to it.
 
+## Finding 4: Equal shard sizes do not produce equal query load
+
+`load_skew.py` counts how many queries touch each shard, rather than how many
+shards a query touches. Throughput is set by the busiest shard, so this is the
+quantity that caps scale-out. At P = 32, R = 0.95, under the oracle ordering:
+
+| layout | size skew (sift / glove) | query load skew (sift / glove) |
+|---|---|---|
+| kmeans | 1.48 / 2.05 | 6.77 / 5.72 |
+| balanced_kmeans | 1.00 / 1.00 | 6.05 / 4.55 |
+| orion | 1.01 / 1.01 | 6.11 / 5.37 |
+| orion_norep | 1.01 / 1.01 | 5.73 / 4.87 |
+
+Driving size skew from 2.05 down to 1.00 moves load skew by roughly 20% —
+nowhere near proportionally. **Orion's capacity-constrained balancing spends the
+entire offline pipeline equalizing a quantity that does not set throughput.**
+Load skew is a property of where queries cluster in dense data regions, which
+placement barely controls.
+
+Combining the two halves: the busiest shard's load is proportional to
+(shards probed) x (load skew), so that product is inverse normalized throughput.
+Under the oracle ordering at P = 32 it spans 17.2–20.3 on SIFT and 21.5–24.4 on
+GloVe across all four layouts — a 13%–18% spread. The choice of partitioner
+barely moves the throughput ceiling.
+
+There is also a tension worth building on. Oracle routing minimizes total work
+(3 shards on SIFT at P = 32) but concentrates load 6.1x; centroid routing spreads
+load to 1.76x but needs 7 shards. Getting low work *and* low skew simultaneously
+is an open problem, and replication is a natural instrument for it — a hot
+point placed on two shards lets its queries be split. That is a better
+justification for multi-assignment than the locality one, and it is untested.
+
+This finding drove the decision recorded in
+`docs/decisions/0001-plain-kmeans-placement.md`.
+
 ## Full table at R = 0.95, k = 10
 
 `bal` is max/mean shard size, `exp` is physical copies per logical point.
 
 ```
 dataset   P layout              fanout  p95   bal   exp | orc.fix  orc.ad cen.fix  cen.ad |  H_ord  H_adp  H_tot
-glove    4 kmeans                1.99    3  1.69 1.000 |       2    1.54       3    1.60 |  1.50x  1.87x  1.95x
 glove    4 balanced_kmeans       2.44    4  1.00 1.000 |       3    1.94       4    2.09 |  1.33x  1.91x  2.06x
+glove    4 kmeans                1.99    3  1.69 1.000 |       2    1.54       3    1.60 |  1.50x  1.87x  1.95x
 glove    4 orion                 2.11    4  1.00 1.072 |       3    1.62       4    1.89 |  1.33x  2.11x  2.47x
-glove    8 kmeans                2.22    4  2.41 1.000 |       3    1.72       4    1.91 |  1.33x  2.09x  2.32x
+glove    4 orion_norep           2.16    4  1.00 1.000 |       3    1.67       4    1.95 |  1.33x  2.05x  2.39x
 glove    8 balanced_kmeans       3.05    6  1.00 1.000 |       4    2.55       6    3.03 |  1.50x  1.98x  2.35x
+glove    8 kmeans                2.22    4  2.41 1.000 |       3    1.72       4    1.91 |  1.33x  2.09x  2.32x
 glove    8 orion                 2.67    5  1.00 1.124 |       3    2.17       6    2.91 |  2.00x  2.06x  2.76x
+glove    8 orion_norep           2.79    5  1.01 1.000 |       4    2.29       6    3.05 |  1.50x  1.97x  2.62x
+glove   16 balanced_kmeans       3.17    7  1.00 1.000 |       4    2.67      10    3.86 |  2.50x  2.59x  3.74x
 glove   16 kmeans                2.60    5  2.72 1.000 |       3    2.10       7    2.68 |  2.33x  2.61x  3.34x
-glove   16 balanced_kmeans       3.17    7  1.00 1.000 |       4    2.67      10    3.86 |  2.50x  2.59x  3.75x
 glove   16 orion                 2.80    6  1.01 1.143 |       4    2.30       9    3.55 |  2.25x  2.54x  3.91x
-glove   32 kmeans                2.91    6  2.05 1.000 |       4    2.41      12    3.88 |  3.00x  3.09x  4.97x
+glove   16 orion_norep           2.95    6  1.01 1.000 |       4    2.45      10    3.77 |  2.50x  2.65x  4.09x
 glove   32 balanced_kmeans       3.62    7  1.00 1.000 |       5    3.12      17    6.16 |  3.40x  2.76x  5.45x
+glove   32 kmeans                2.91    6  2.05 1.000 |       4    2.41      12    3.88 |  3.00x  3.09x  4.97x
 glove   32 orion                 3.25    7  1.01 1.181 |       4    2.75      16    5.54 |  4.00x  2.89x  5.82x
+glove   32 orion_norep           3.46    7  1.01 1.000 |       5    2.96      17    6.14 |  3.40x  2.77x  5.74x
+sift     4 balanced_kmeans       1.59    3  1.00 1.000 |       2    1.24       3    1.41 |  1.50x  2.12x  2.43x
 sift     4 kmeans                1.28    2  1.07 1.000 |       2    1.04       2    1.05 |  1.00x  1.90x  1.92x
-sift     4 balanced_kmeans       1.59    3  1.00 1.000 |       2    1.24       3    1.41 |  1.50x  2.12x  2.42x
 sift     4 orion                 1.42    2  1.01 1.038 |       2    1.11       2    1.37 |  1.00x  1.46x  1.80x
 sift     4 orion_norep           1.43    2  1.01 1.000 |       2    1.13       2    1.38 |  1.00x  1.45x  1.77x
-sift     8 kmeans                1.55    3  1.47 1.000 |       2    1.21       2    1.23 |  1.00x  1.63x  1.66x
 sift     8 balanced_kmeans       2.21    5  1.00 1.000 |       3    1.71       5    2.07 |  1.67x  2.41x  2.92x
+sift     8 kmeans                1.55    3  1.47 1.000 |       2    1.21       2    1.23 |  1.00x  1.63x  1.66x
 sift     8 orion                 1.98    4  1.01 1.070 |       2    1.50       5    2.00 |  2.50x  2.50x  3.33x
-sift     8 orion_norep           2.06    4  1.01 1.000 |       3    1.57       5    2.07 |  1.67x  2.41x  3.18x
-sift    16 kmeans                1.91    4  1.50 1.000 |       2    1.47       3    1.51 |  1.50x  1.98x  2.04x
+sift     8 orion_norep           2.06    4  1.01 1.000 |       3    1.57       5    2.07 |  1.67x  2.41x  3.19x
 sift    16 balanced_kmeans       2.52    5  1.00 1.000 |       3    2.02       7    2.55 |  2.33x  2.74x  3.47x
+sift    16 kmeans                1.91    4  1.50 1.000 |       2    1.47       3    1.51 |  1.50x  1.98x  2.04x
 sift    16 orion                 2.24    4  1.01 1.077 |       3    1.74       4    2.02 |  1.33x  1.98x  2.30x
 sift    16 orion_norep           2.17    4  1.01 1.000 |       3    1.67       4    1.91 |  1.33x  2.09x  2.40x
+sift    32 balanced_kmeans       2.74    5  1.00 1.000 |       3    2.24       6    2.53 |  2.00x  2.37x  2.67x
 sift    32 kmeans                2.31    4  1.48 1.000 |       3    1.81       4    1.95 |  1.33x  2.05x  2.21x
-sift    32 balanced_kmeans       2.74    5  1.00 1.000 |       3    2.24       6    2.53 |  2.00x  2.37x  2.68x
 sift    32 orion                 2.64    5  1.01 1.124 |       3    2.14       7    2.87 |  2.33x  2.44x  3.28x
 sift    32 orion_norep           2.80    5  1.01 1.000 |       3    2.30       8    3.10 |  2.67x  2.58x  3.48x
 ```
 
 ## Status
 
-The four GloVe `orion_norep` runs are outstanding. Their layouts are already
-built at `layouts/orion_norep_glove_p{4,8,16,32}.npz`; only the analysis step is
-missing. The shell environment became unresponsive partway through, twice,
-including on a bare `echo`, so this is an environment failure rather than a
-script failure. Memory pressure from the GloVe runs is the leading suspect but is
-unverified. Resume with:
-
-```sh
-for P in 4 8 16 32; do
-  python3 fanout_headroom.py --hdf5 <path>/glove-200-angular.hdf5 \
-    --method layout_file --layout-file layouts/orion_norep_glove_p$P.npz \
-    --label orion_norep --normalize --recall-targets 0.90 0.95 \
-    --out out/glove_orionnorep_p$P.json
-done
-```
+The fan-out table is complete for all four layouts at P = 4, 8, 16, 32 on both
+datasets. Load skew is measured at P = 8 and P = 32 on SIFT and P = 32 on GloVe;
+the remaining load-skew points are not yet run.
 
 ## Caveats
 
