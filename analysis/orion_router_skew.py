@@ -135,11 +135,48 @@ def main() -> int:
 
     masks = neighbor_masks(layout, ground_truth, args.top_k)
     centroids = shard_centroids(layout, train)
+    orion_order = orion_navigation_order(upper_labels, layout)
     orders = {
         "oracle": greedy_coverage_order(masks, args.top_k),
         "centroid": centroid_order(queries, centroids),
-        "orion": orion_navigation_order(upper_labels, layout),
+        "orion": orion_order,
     }
+
+    # Deployed selection is a SET: route_upper_labels_to_shard_eps probes every shard
+    # owning any of the top-`upper_k` L1 hits, with no per-query early stop. upper_k is a
+    # global tuning knob (like nprobe, default 100), swept to reach the recall target.
+    # Faithful deployed fan-out = distinct shards hit at the smallest global upper_k that
+    # reaches mean routing recall >= target. Different queries hit different counts at that
+    # k, so this exceeds the recall-truncated order-prefix fan-out reported above.
+    from fanout_headroom import popcount_table  # local import to avoid top clutter
+
+    table = popcount_table(args.top_k)
+    n_q, max_k = upper_labels.shape
+    recall_k = np.empty((n_q, max_k), dtype=np.float64)
+    fanout_k = np.empty((n_q, max_k), dtype=np.int32)
+    for q in range(n_q):
+        seen = np.zeros(layout.shards, dtype=bool)
+        mask = np.uint32(0)
+        count = 0
+        row_r = recall_k[q]
+        row_f = fanout_k[q]
+        labels = upper_labels[q]
+        for i in range(max_k):
+            point = int(labels[i])
+            if 0 <= point < layout.points:
+                for shard in layout.shards_of(point):
+                    if not seen[shard]:
+                        seen[shard] = True
+                        mask |= masks[q, shard]
+                        count += 1
+            row_r[i] = table[mask] / args.top_k
+            row_f[i] = count
+    mean_recall_k = recall_k.mean(axis=0)
+    reached = np.nonzero(mean_recall_k >= args.target)[0]
+    tuned_k = int(reached[0]) + 1 if reached.size else max_k
+    deployed_fanout_mean = float(fanout_k[:, tuned_k - 1].mean())
+    deployed_fanout_max = int(fanout_k[:, tuned_k - 1].max())
+    emergent_hit_shards = fanout_k[:, -1]  # at max_k, i.e. no tuning
 
     report: dict[str, object] = {
         "dataset": Path(args.hdf5).name,
@@ -154,6 +191,11 @@ def main() -> int:
             name: router_stats(order, masks, args.top_k, args.target, layout.shards)
             for name, order in orders.items()
         },
+        "orion_deployed_tuned_k": tuned_k,
+        "orion_deployed_fanout_mean": deployed_fanout_mean,
+        "orion_deployed_fanout_max": deployed_fanout_max,
+        "orion_emergent_fanout_mean": float(emergent_hit_shards.mean()),
+        "orion_emergent_fanout_max": int(emergent_hit_shards.max()),
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -167,6 +209,14 @@ def main() -> int:
             f"{stats['adaptive_mean_fanout']:13.2f} "
             f"{stats['queries_target_unreachable']:10d}"
         )
+    print(
+        f"orion DEPLOYED (tuned upper_k={tuned_k} to reach {args.target} routing recall): "
+        f"fanout mean={deployed_fanout_mean:.2f} max={deployed_fanout_max} of P={layout.shards}"
+    )
+    print(
+        f"  for reference: order-prefix (my headline)={report['routers']['orion']['adaptive_mean_fanout']:.2f}, "
+        f"untuned k={query_k}={report['orion_emergent_fanout_mean']:.2f}"
+    )
     return 0
 
 

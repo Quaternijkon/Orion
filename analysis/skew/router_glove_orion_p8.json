@@ -8,24 +8,29 @@
   "routers": {
     "oracle": {
       "fixed_budget": 3,
+      "adaptive_mean_fanout": 2.673,
       "load_skew_max_over_mean": 2.152,
       "load_skew_cv": 0.5223528309485841,
-      "adaptive_mean_fanout": 2.673,
       "queries_target_unreachable": 0
     },
     "centroid": {
       "fixed_budget": 6,
+      "adaptive_mean_fanout": 4.097799999999999,
       "load_skew_max_over_mean": 1.1265333333333334,
       "load_skew_cv": 0.14802708460878966,
-      "adaptive_mean_fanout": 4.097799999999999,
       "queries_target_unreachable": 0
     },
     "orion": {
       "fixed_budget": 6,
-      "load_skew_max_over_mean": 1.2074666666666667,
-      "load_skew_cv": 0.1286046482657433,
-      "adaptive_mean_fanout": 3.7379,
+      "adaptive_mean_fanout": 3.7347,
+      "load_skew_max_over_mean": 1.2072,
+      "load_skew_cv": 0.12909605381695877,
       "queries_target_unreachable": 0
     }
-  }
+  },
+  "orion_deployed_tuned_k": 13,
+  "orion_deployed_fanout_mean": 3.788,
+  "orion_deployed_fanout_max": 8,
+  "orion_emergent_fanout_mean": 7.305,
+  "orion_emergent_fanout_max": 8
 }

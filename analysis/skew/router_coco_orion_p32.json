@@ -22,10 +22,15 @@
     },
     "orion": {
       "fixed_budget": 8,
-      "adaptive_mean_fanout": 5.7758,
-      "load_skew_max_over_mean": 2.1728,
-      "load_skew_cv": 0.46497073026159397,
+      "adaptive_mean_fanout": 5.7754,
+      "load_skew_max_over_mean": 2.1748,
+      "load_skew_cv": 0.4647357098394742,
       "queries_target_unreachable": 0
     }
-  }
+  },
+  "orion_deployed_tuned_k": 18,
+  "orion_deployed_fanout_mean": 5.1302,
+  "orion_deployed_fanout_max": 16,
+  "orion_emergent_fanout_mean": 20.5486,
+  "orion_emergent_fanout_max": 32
 }

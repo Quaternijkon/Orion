@@ -92,6 +92,27 @@ set, assuming perfect within-shard search — so it isolates routing and placeme
 from within-shard HNSW approximation. Fidelity caveat as in Finding 5: hnswlib
 upper graph and the Python router, not Rust `router.rs`. One seed per layout.
 
+*Deployed-selection check.* The Orion fan-out above is a recall-truncated prefix of
+the navigation order. The deployed harness (`route_upper_labels_to_shard_eps`)
+instead probes the *set* of shards owning any of the top-`upper_k` L1 hits, where
+`upper_k` is a global tuning knob like nprobe (default 100). Taking the smallest
+`upper_k` that reaches 0.95 routing recall — the deployed operating point — the
+actual fan-out matches the headline within ~10%:
+
+| config | headline (order-prefix) | deployed (tuned upper_k) |
+|---|---|---|
+| sift  P8  | 2.32 | 2.05 (k=6) |
+| sift  P32 | 4.33 | 3.77 (k=12) |
+| glove P8  | 3.73 | 3.79 (k=13) |
+| glove P32 | 9.61 | 9.85 (k=34) |
+| coco  P8  | 2.38 | 2.05 (k=7) |
+| coco  P32 | 5.78 | 5.13 (k=18) |
+
+So the numbers reflect the deployed selection policy, not an idealization. (An
+untuned `upper_k`=200 would over-probe 2–4x — e.g. coco P32 hits 20.5 of 32 shards
+— so `upper_k` must be tuned to the recall target exactly as nprobe is; it is not
+free.)
+
 The sections below decompose the individual techniques in more detail.
 
 Everything here is a property of the layout and the ground truth. No search, no
