@@ -127,6 +127,32 @@ def build_request_bodies(
     return bodies, path, groups
 
 
+def load_prepared_bodies(
+    requests_path: str, *, collection: str, start: int, stop: int
+) -> tuple[list[bytes], str, list[tuple[int, ...]]]:
+    """Read pre-serialized routed request bodies for query offsets [start, stop).
+
+    Each line of the JSONL file is one fully-formed single-search body for the
+    query at that offset, produced by build_routed_requests.py (upper-graph
+    routing, per-shard entry points and ef, already encoded). The routing is
+    therefore entirely outside the measured path, exactly like the broadcast
+    bodies above: the timer only writes prepared bytes and reads responses. This
+    isolates server throughput at a fixed routing decision; the routing itself is
+    a fan-out-independent cost reported separately by the builder.
+    """
+    lines = Path(requests_path).read_bytes().splitlines()
+    if stop > len(lines):
+        raise RuntimeError(
+            f"requests file has {len(lines)} bodies, need offset {stop}"
+        )
+    bodies = [lines[index] for index in range(start, stop)]
+    # Groups carry slice-local offsets, matching build_request_bodies: the caller
+    # adds body_slice start back, so returning global indices here double-counts it.
+    groups = [(index,) for index in range(stop - start)]
+    path = f"/collections/{collection}/points/search"
+    return bodies, path, groups
+
+
 def parse_ids(payloads: Sequence[bytes], batch: int, top_k: int) -> list[list[int]]:
     """Extract result ids from raw responses. Runs after the timer stops."""
     results: list[list[int]] = []
@@ -137,11 +163,27 @@ def parse_ids(payloads: Sequence[bytes], batch: int, top_k: int) -> list[list[in
         result = document["result"]
         hit_lists = result if batch > 1 else [result]
         for hits in hit_lists:
-            ids = [int(hit["id"]) for hit in hits]
+            ids = [_true_id(hit) for hit in hits]
             if len(ids) > top_k:
                 ids = ids[:top_k]
             results.append(ids)
     return results
+
+
+def _true_id(hit: dict) -> int:
+    """Prefer the source_id payload when present.
+
+    Replicated Orion layouts store copied points under encoded ids, so the raw
+    ``id`` is the physical copy id, not the logical point. When the collection
+    carries a ``source_id`` payload (requested by routed bodies) it is the true
+    logical id and must be used for recall; otherwise the id is already logical.
+    """
+    payload = hit.get("payload")
+    if payload:
+        source = payload.get("source_id")
+        if source is not None:
+            return int(source)
+    return int(hit["id"])
 
 
 async def drive_requests(
@@ -225,15 +267,23 @@ def worker_main(
     """Run one client process: pin cores, drive its slice, return a summary."""
     try:
         os.sched_setaffinity(0, set(cores))
-        queries = np.load(config["queries_path"], mmap_mode="r")
         start, stop = body_slice
-        bodies, path, groups = build_request_bodies(
-            np.asarray(queries[start:stop]),
-            collection=config["collection"],
-            top_k=config["top_k"],
-            hnsw_ef=config["hnsw_ef"],
-            batch=config["batch"],
-        )
+        if config["mode"] == "routed":
+            bodies, path, groups = load_prepared_bodies(
+                config["requests_path"],
+                collection=config["collection"],
+                start=start,
+                stop=stop,
+            )
+        else:
+            queries = np.load(config["queries_path"], mmap_mode="r")
+            bodies, path, groups = build_request_bodies(
+                np.asarray(queries[start:stop]),
+                collection=config["collection"],
+                top_k=config["top_k"],
+                hnsw_ef=config["hnsw_ef"],
+                batch=config["batch"],
+            )
         repeat = max(int(config["repeat"]), 1)
         if repeat > 1:
             bodies = bodies * repeat
@@ -335,9 +385,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--collection", required=True)
     parser.add_argument(
+        "--mode",
+        choices=("broadcast", "routed"),
+        default="broadcast",
+        help="broadcast issues a plain search (server fans out to all shards); "
+        "routed replays pre-built per-query requests that select shards and carry "
+        "per-shard entry points and ef (build_routed_requests.py)",
+    )
+    parser.add_argument(
         "--queries-path",
-        required=True,
-        help="npy file of query vectors, prepared by prepare_dataset.py",
+        help="npy of query vectors (broadcast mode; also used to size a routed run)",
+    )
+    parser.add_argument(
+        "--requests-file",
+        help="JSONL of pre-serialized routed request bodies, one per query offset",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--client-cores", required=True, help="e.g. 64-95")
@@ -345,7 +406,7 @@ def main() -> int:
     parser.add_argument("--inflight", type=int, default=64)
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--top-k", type=int, default=10)
-    parser.add_argument("--hnsw-ef", type=int, required=True)
+    parser.add_argument("--hnsw-ef", type=int, default=0, help="required for broadcast")
     parser.add_argument("--queries", type=int, default=0, help="0 uses every query")
     parser.add_argument(
         "--repeat",
@@ -365,10 +426,29 @@ def main() -> int:
         action="store_true",
         help="permit unequal peer core counts (diagnostics only)",
     )
+    parser.add_argument(
+        "--hosts",
+        default="local",
+        help="comma-separated hosts to discover peers on: 'local' and/or ssh "
+        "targets '[user@]host'. Multi-host reads each peer's CPU over ssh, "
+        "keeping G1/G3 fidelity. Default: local (single-host testbed).",
+    )
     parser.add_argument("--tag", default="")
     args = parser.parse_args()
 
-    peers = discover_peers()
+    if args.mode == "routed":
+        if not args.requests_file:
+            raise TestbedError("routed mode requires --requests-file")
+    else:
+        if not args.queries_path:
+            raise TestbedError("broadcast mode requires --queries-path")
+        if args.hnsw_ef <= 0:
+            raise TestbedError("broadcast mode requires --hnsw-ef > 0")
+        if args.batch != 1:
+            pass  # batching allowed in broadcast only
+
+    hosts = [host.strip() for host in args.hosts.split(",") if host.strip()]
+    peers = discover_peers(hosts=hosts)
     client_cores = parse_cores(args.client_cores)
     assert_disjoint(peers, client_cores)
     if not args.allow_asymmetric:
@@ -386,14 +466,19 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    total_queries = int(np.load(args.queries_path, mmap_mode="r").shape[0])
+    if args.mode == "routed":
+        total_queries = len(Path(args.requests_file).read_bytes().splitlines())
+    else:
+        total_queries = int(np.load(args.queries_path, mmap_mode="r").shape[0])
     if args.queries:
         total_queries = min(total_queries, args.queries)
     bounds = np.linspace(0, total_queries, args.procs + 1).astype(int)
 
     config = {
+        "mode": args.mode,
         "collection": args.collection,
-        "queries_path": str(Path(args.queries_path).resolve()),
+        "queries_path": str(Path(args.queries_path).resolve()) if args.queries_path else "",
+        "requests_path": str(Path(args.requests_file).resolve()) if args.requests_file else "",
         "output_dir": str(output_dir.resolve()),
         "endpoints": endpoints,
         "top_k": args.top_k,
@@ -479,7 +564,9 @@ def main() -> int:
 
     summary = {
         "tag": args.tag,
+        "mode": args.mode,
         "collection": args.collection,
+        "requests_file": config["requests_path"] or None,
         "queries": measured_queries,
         "elapsed_s": elapsed_s,
         "qps": measured_queries / elapsed_s,
