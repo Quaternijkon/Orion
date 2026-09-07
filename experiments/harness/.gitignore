@@ -1,0 +1,5 @@
+# Measurement artifacts and prepared data — regenerated, never committed.
+data/
+req/
+runs/
+__pycache__/

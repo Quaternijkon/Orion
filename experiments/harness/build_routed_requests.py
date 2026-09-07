@@ -113,11 +113,14 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument(
         "--router",
-        choices=("navigation", "centroid"),
+        choices=("navigation", "centroid", "broadcast"),
         default="navigation",
         help="navigation = Orion's upper-graph router (entry points + scaled ef); "
         "centroid = rank shards by query-to-centroid distance and probe the top "
-        "--nprobe (a realistic k-means router baseline, uniform ef, no entry points)",
+        "--nprobe (a k-means router baseline, uniform ef, no entry points); "
+        "broadcast = probe all P shards at uniform ef (fan-out = P), the reference. "
+        "broadcast carries the source_id payload so recall is correct on replicated "
+        "collections, which plain --mode broadcast does not.",
     )
     parser.add_argument(
         "--upper-k",
@@ -164,8 +167,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if bool(args.layout_file) == bool(args.from_collection):
-        raise SystemExit("supply exactly one of --layout-file or --from-collection")
+    if args.router == "navigation":
+        if bool(args.layout_file) == bool(args.from_collection):
+            raise SystemExit(
+                "navigation router needs exactly one of --layout-file / --from-collection"
+            )
+    elif args.router == "centroid":
+        if not args.layout_file:
+            raise SystemExit("centroid router requires --layout-file (needs centroids)")
+    else:  # broadcast
+        if not args.layout_file and args.num_shards <= 0:
+            raise SystemExit("broadcast router requires --num-shards or --layout-file")
 
     with h5py.File(args.hdf5, "r") as handle:
         train = np.asarray(handle["train"], dtype=np.float32)
@@ -241,7 +253,7 @@ def main() -> int:
             ep_count = sum(len(eps) for eps in shard_to_eps.values())
             return orjson.dumps(body), len(shard_keys), int(sum(ef_values)), ep_count
 
-    else:  # centroid router (k-means baseline)
+    elif args.router == "centroid":  # k-means baseline
         if layout is None:
             raise SystemExit("centroid router requires --layout-file (needs centroids)")
         if int(args.nprobe) <= 0:
@@ -264,6 +276,24 @@ def main() -> int:
             )
             return orjson.dumps(body), len(shard_keys), uniform_ef * len(shard_keys), 0
 
+    else:  # broadcast (fan-out = P reference)
+        all_keys = [shard_key_for_id(s) for s in range(num_shards)]
+        uniform_ef = int(args.hnsw_ef) if int(args.hnsw_ef) > 0 else base_ef
+        knob_value = uniform_ef  # the swept variable for broadcast is ef, not fan-out
+        ef_by_all = {key: uniform_ef for key in all_keys}
+
+        def build_body(q: int) -> tuple[bytes, int, int, int]:
+            body = experiment.search_request(
+                queries[q].tolist(),
+                int(args.top_k),
+                uniform_ef,
+                all_keys,
+                use_payload_source_id,
+                hnsw_ef_by_shard=ef_by_all,
+                source_id_dedup_block_size=block_size,
+            )
+            return orjson.dumps(body), num_shards, uniform_ef * num_shards, 0
+
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fanout = np.zeros(len(queries), dtype=np.int32)
@@ -279,7 +309,9 @@ def main() -> int:
             ef_sum[q] = efs
             ep_sum[q] = eps
 
-    knob_name = "upper_k" if args.router == "navigation" else "nprobe"
+    knob_name = {"navigation": "upper_k", "centroid": "nprobe", "broadcast": "hnsw_ef"}[
+        args.router
+    ]
     stats = {
         "dataset": Path(args.hdf5).name,
         "collection": args.collection,
