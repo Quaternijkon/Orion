@@ -1,0 +1,21 @@
+# Python deps for the routed-serving harness (experiments/harness) and the
+# offline layout tools (analysis/). Versions are the ones the results in
+# RESULTS.md were produced with (Python 3.10.9). Newer patch releases are
+# usually fine; the one hazard is the NumPy 1.x/2.x ABI (see note below).
+numpy==2.2.6
+h5py==3.15.1
+requests==2.32.3
+orjson==3.11.0
+aiohttp==3.11.18
+scikit-learn==1.7.2   # make_layouts.py (MiniBatchKMeans) only
+hnswlib==0.8.0        # upper-graph build in build_routed_requests.py / build_orion_layout.py
+
+# NOTE (NumPy 2.x): scikit-learn/pandas in this env were compiled against NumPy
+# 1.x and print a loud "_ARRAY_API not found" warning at import under NumPy
+# 2.2.6. It is harmless -- the layout scripts still produce correct output. If
+# you prefer a clean import, pin numpy<2 in a dedicated venv for make_layouts.py.
+#
+# NOTE (hnswlib + libstdc++): hnswlib is built against a newer libstdc++ than
+# conda ships. Prefix any command that imports it with the SYSTEM libstdc++:
+#   LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 python build_routed_requests.py ...
+# The exact path is machine-specific; find it with:  find / -name 'libstdc++.so.6*' 2>/dev/null

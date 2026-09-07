@@ -1,9 +1,12 @@
 # Deploying and running the throughput tests — a new developer's guide
 
-This is the hands-on runbook. For *why* the harness is built this way, read
-`STAGE0.md` (the testbed and validity gates) and `STAGE1.md` (the routed serving
-path and the comparison protocol). This document gets you from a fresh checkout to
-a gate-passing matched-recall QPS number, on one host or several.
+This is the hands-on runbook. Before it, set up the machine with
+[`ENVIRONMENT.md`](ENVIRONMENT.md) (cluster bring-up, Python deps, datasets). For
+*why* the harness is built this way, read `STAGE0.md` (the testbed and validity
+gates) and `STAGE1.md` (the routed serving path and the comparison protocol). The
+exact numbers this runbook reproduces are in [`RESULTS.md`](RESULTS.md). This
+document gets you from a healthy cluster to a matched-recall QPS number, on one
+host or several.
 
 The one idea to keep in mind: **a throughput number only counts if the server is
 the bottleneck.** Every step below exists to keep the load generator, routing, and
@@ -15,37 +18,38 @@ non-result.
 
 ## 0. What you will measure
 
-Three ways of serving the same query, compared at matched Recall@10:
+**Five arms**, each on its own collection, compared at matched Recall@10. Every
+collection is **single-copy, P = 46 shards, identical HNSW params** (`m=32`,
+`ef_construct=100`); arms differ only in *where points land* (layout) and *how a
+query picks shards* (router). This isolates layout+router quality from indexing
+cost and from storage.
 
-| Arm | How the query fans out | Built by | Measured by |
-|---|---|---|---|
-| **broadcast** | server hits every shard (fan-out = P) | `load_collection.py` or the two-level tool | `measure.py --mode broadcast` |
-| **k-means + centroid router** | probe the `nprobe` nearest shards | two-level tool (`kmeans_*`) | `measure.py --mode routed` |
-| **Orion + navigation router** | probe the shards the upper graph navigates to | two-level tool (`faithful_original_rest`) | `measure.py --mode routed` |
+| Arm | Layout | Router | Fan-out | Request `--router` |
+|---|---|---|---|---|
+| **Orion navigation** | Orion norep | upper-graph: entry points + adaptive ef | selective (`--upper-k`) | `navigation` |
+| **k-means centroid** | plain k-means | top-`nprobe` nearest centroids, uniform ef | `--nprobe` | `centroid` |
+| **hash broadcast** | uniform hash | all P shards, uniform ef | P | `broadcast` |
+| **k-means broadcast** | plain k-means | all P shards, uniform ef | P | `broadcast` |
+| **Orion broadcast** | Orion norep | all P shards, uniform ef | P | `broadcast` |
 
-The hypothesis (from the offline analysis in `analysis/FINDINGS.md`): at the same
-recall, Orion reaches it at lower fan-out, so it sustains higher QPS. Throughput
-tracks `P / (fan-out · load_skew · log|shard|)`, and fan-out is the first-order term.
+The hypothesis: at the same recall, routing reaches it at lower fan-out, so it
+sustains higher QPS. Throughput tracks `P / (fan-out · load_skew · log|shard|)`,
+and fan-out is the first-order term. Confirmed result (RESULTS.md): routing beats
+every broadcast arm ~2.5–3.8×; Orion navigation beats k-means centroid 1.49× on
+GloVe (hard) and ties it on SIFT (easy, uniform).
 
 ---
 
 ## 1. Prerequisites
 
-- **A Qdrant cluster of the Orion fork**, one container per peer, each pinned to a
-  cpuset. On the current single host there are four: names match `qdrant-controller*`
-  (`docker ps`). The entry-point / per-shard-ef features that routed serving relies
-  on exist only in this fork's patched Qdrant, not stock Qdrant.
-- **Python deps**: `numpy`, `h5py`, `orjson`, `aiohttp`, `requests`, and `hnswlib`
-  (for building the upper graph in the request builder).
+Do the full machine setup in [`ENVIRONMENT.md`](ENVIRONMENT.md) first: the 4-peer
+Orion cluster (healthy, reachable at `http://127.0.0.1:6833`), `pip install -r
+requirements.txt`, and decoded datasets under `data/<ds>/`. Then, specific to a
+measurement:
+
 - **hnswlib needs the system libstdc++ ahead of conda's.** Prefix every command
-  that imports it (`build_routed_requests.py`) with:
-  ```
-  LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
-  ```
-- **Datasets** (ann-benchmarks HDF5) live in `/home/taig/dry/faiss/datasets/`:
-  `glove-200-angular.hdf5`, `coco-t2i-512-angular.hdf5`, `sift-128-euclidean.hdf5`,
-  `deep-image-96-angular.hdf5`. Angular datasets are served with **cosine** and must
-  be unit-normalized.
+  that builds an upper graph (`build_routed_requests.py --router navigation`,
+  `analysis/build_orion_layout.py`) with `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6`.
 - **A quiet host.** Agent/operator/co-tenant activity counts against gate G4. Close
   other heavy containers/VMs on any participating host.
 - **Multi-host only**: passwordless SSH (`BatchMode`) from the client host to every
@@ -80,102 +84,113 @@ python prepare_dataset.py \
 
 ---
 
-## 3. Build the collections
+## 3. Build the layouts, then the collections
 
-Each arm needs its own collection. **Whatever build params you choose here, the
-request builder in §4 must be told the same ones** (or, better, use
-`--from-collection` so membership is recovered from what is actually stored).
+The clean pipeline has two steps: (1) compute a **point→shard layout** `.npz`,
+(2) upload it into a **custom-shard collection** with `upload_custom_shards.py`.
+All three layouts are single-assignment (one copy per point), so the collections
+are equal-storage and comparable. `P = 46` and distance per dataset (`Cosine` for
+GloVe, `Euclid` for SIFT).
 
-### 3a. Broadcast baseline (hash sharding, quick)
-
-```bash
-python load_collection.py \
-  --collection glove_broadcast_p8 --train-path data/glove/train.npy \
-  --shards 8 --distance Cosine --recreate
-```
-
-This auto-distributes points by hash and lets the server fan out to all shards.
-Good enough as the fan-out = P reference.
-
-### 3b. Routed arms (custom shard keys, via the two-level tool)
-
-Custom-sharded collections (one `shard_key` per point, placed by the layout) are
-built by `tools/qdrant_two_level_routing_experiment.py` via `--routing-mode`:
-
-| `--routing-mode` | Arm |
-|---|---|
-| `faithful_original_rest` | **Orion** (topology-aware placement + upper graph) |
-| `cpp_kmeans_baseline` | balanced k-means |
-| `kmeans_simple_nprobe` | plain k-means |
-| `naive_hash_all_shards` | hash / broadcast |
-
-Representative Orion build (run `--help` for the full arg list; the tool also runs
-its own *client-bound* benchmark afterwards — ignore those QPS numbers, only the
-collection it creates matters):
+### 3a. Layouts
 
 ```bash
-python ../../tools/qdrant_two_level_routing_experiment.py \
-  --base-url http://127.0.0.1:6833 --collection orion_glove_p8 \
+# hash (uniform id%P) and plain k-means, one command:
+python make_layouts.py --train-path data/glove/train.npy --shards 46 --out-dir layouts --seed 0
+# -> layouts/hash_p46.npz, layouts/kmeans_p46.npz  (prints k-means size skew)
+
+# Orion (navigation-derived), single-assignment (norep):
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 python ../../analysis/build_orion_layout.py \
   --hdf5-path /home/taig/dry/faiss/datasets/glove-200-angular.hdf5 \
-  --vector-distance cosine --num-shards 8 --routing-mode faithful_original_rest
-# k-means baselines: same command with --routing-mode cpp_kmeans_baseline (balanced)
-#                    or kmeans_simple_nprobe (plain)
+  --out layouts/orion_glove_p46.npz --shards 46 --vector-distance cosine \
+  --disable-multi-assign --balance-mode capacity_constrained \
+  --balance-min-load-ratio 0.8 --balance-max-load-ratio 1.25 \
+  --balance-max-vote-loss 20 --balance-max-passes 64
 ```
 
-Leave the upper-graph params at their defaults (`--sample-denominator 32`,
-`--upper-sample-seed 100`, `--upper-m 32`, `--upper-ef-construction 100`) — the
-request builder defaults to the same values, so routing will reproduce. The tool
-stores a `source_id` payload and uses `source_id_dedup_block_size = num_points+1`
-by default; the builder defaults match, so don't override unless you did here.
+> Put SIFT layouts in a separate dir (`make_layouts.py --out-dir layouts/sift`) —
+> the filenames (`hash_p46.npz`, `kmeans_p46.npz`) are dataset-agnostic and will
+> otherwise overwrite GloVe's.
+
+### 3b. Collections
+
+Same uploader for all three; only the layout and distance differ. It creates a
+custom-sharded collection, one `centroid_XX` shard key per shard, and upserts
+each point onto the shard its layout assigns (raw ids, no `source_id` encoding —
+single-assignment needs none). HNSW params match across arms.
+
+```bash
+python upload_custom_shards.py --collection glove_hash_p46   --train-path data/glove/train.npy --layout-file layouts/hash_p46.npz        --distance Cosine --m 32 --ef-construct 100 --recreate
+python upload_custom_shards.py --collection glove_kmeans_p46 --train-path data/glove/train.npy --layout-file layouts/kmeans_p46.npz      --distance Cosine --m 32 --ef-construct 100 --recreate
+python upload_custom_shards.py --collection glove_orion_p46  --train-path data/glove/train.npy --layout-file layouts/orion_glove_p46.npz --distance Cosine --m 32 --ef-construct 100 --recreate
+```
+
+Each waits for the collection to go green and prints its point count.
 
 ---
 
 ## 4. Build the routed request files (offline, outside the timer)
 
-For each routed arm and each value of the routing knob you want on the frontier.
-Use `--from-collection` for the Orion arm: it scrolls the live collection to
-recover L1 shard membership, eliminating any layout/collection drift.
+One command per arm per knob value; it writes `<out>.jsonl` plus `<out>.stats.json`
+(fan-out and total-ef — the x-axis you regress QPS against). **`--source-id-dedup-block-size 0`**
+matches the raw-id collections from §3. Broadcast is layout-independent, so **one
+broadcast file is reused across all three collections**.
 
 ```bash
-# Orion navigation arm — sweep --upper-k (e.g. 40 60 80 120)
-LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 python build_routed_requests.py \
-  --hdf5 /home/taig/dry/faiss/datasets/glove-200-angular.hdf5 \
-  --collection orion_glove_p8 --vector-distance cosine \
-  --router navigation --from-collection --num-shards 8 --base-url http://127.0.0.1:6833 \
-  --upper-k 60 --out req/orion_glove_p8_k60.jsonl
+PRE=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+HD=/home/taig/dry/faiss/datasets/glove-200-angular.hdf5
 
-# k-means centroid arm — sweep --nprobe (needs a layout .npz for centroids)
-LD_PRELOAD=… python build_routed_requests.py \
-  --hdf5 /home/taig/dry/faiss/datasets/glove-200-angular.hdf5 \
-  --collection kmeans_glove_p8 --vector-distance cosine \
-  --router centroid --layout-file ../../analysis/layouts/kmeans_glove_p8.npz \
-  --nprobe 3 --out req/kmeans_glove_p8_np3.jsonl
+# broadcast (fan-out = 46), shared by hash/kmeans/orion collections — sweep ef
+for e in 64 128 256; do
+  LD_PRELOAD=$PRE python build_routed_requests.py --hdf5 $HD --collection glove_raw --vector-distance cosine \
+    --router broadcast --num-shards 46 --hnsw-ef $e --source-id-dedup-block-size 0 --out req/rawbcast_ef$e.jsonl
+done
+
+# Orion navigation — sweep --upper-k (uses the Orion layout; builds an upper graph)
+for k in 60 120 200; do
+  LD_PRELOAD=$PRE python build_routed_requests.py --hdf5 $HD --collection glove_orion_p46 --vector-distance cosine \
+    --router navigation --layout-file layouts/orion_glove_p46.npz --upper-k $k --source-id-dedup-block-size 0 --out req/gnav_k$k.jsonl
+done
+
+# k-means centroid — sweep --nprobe × --hnsw-ef (uniform ef; uses the k-means layout for centroids)
+for combo in "12 128" "20 128" "30 128"; do set -- $combo
+  LD_PRELOAD=$PRE python build_routed_requests.py --hdf5 $HD --collection glove_kmeans_p46 --vector-distance cosine \
+    --router centroid --layout-file layouts/kmeans_p46.npz --nprobe $1 --hnsw-ef $2 --source-id-dedup-block-size 0 --out req/kmc_np${1}_ef${2}.jsonl
+done
 ```
 
-Each run also writes `<out>.stats.json` with the fan-out and total-ef distribution
-— record these; they are what you regress QPS against.
+Navigation uses `--base-ef 20 --factor 4` (per-shard `ef = base + factor·L1_hits`);
+centroid uses a uniform `--hnsw-ef`. **Sweep `--hnsw-ef` for the centroid arm too**
+— too small an ef caps its recall regardless of `--nprobe`, which would unfairly
+handicap the baseline.
 
-> The centroid arm needs a layout `.npz` (point→shard) to compute per-shard
-> centroids. Orion/kmeans layouts are produced by `analysis/build_orion_layout.py`;
-> the navigation arm does not need one when using `--from-collection`.
+> Upper-graph params (`--sample-denominator 32`, `--upper-sample-seed 100`,
+> `--upper-m 32`, `--upper-ef-construction 100`) default to the same values
+> `build_orion_layout.py` used, so the navigation router reproduces the layout's
+> L1 set. Don't override on one side only.
 
 ---
 
 ## 5. Measure (timed, gated)
 
-Same command shape for every arm; only the body source differs.
+**Every arm — including broadcast — replays a pre-built request file with `--mode
+routed`.** Only the collection and the request file change. Point each arm's
+request file at the matching collection (broadcast files are shared, so run each
+one against all three collections):
 
 ```bash
-# routed arm
-python measure.py --collection orion_glove_p8 --mode routed \
-  --requests-file req/orion_glove_p8_k60.jsonl \
-  --output-dir runs/orion_glove_p8_k60 \
+# Orion navigation
+python measure.py --collection glove_orion_p46 --mode routed \
+  --requests-file req/gnav_k120.jsonl --output-dir runs/gnav_k120 \
   --client-cores 32-63 --procs 8 --inflight 96 --warmup 2000 --top-k 10
 
-# broadcast baseline — sweep --hnsw-ef instead of a routing knob
-python measure.py --collection glove_broadcast_p8 --mode broadcast \
-  --queries-path data/glove/queries.npy --hnsw-ef 128 \
-  --output-dir runs/glove_bcast_ef128 \
+# broadcast on each layout (same rawbcast file, different collection)
+python measure.py --collection glove_hash_p46   --mode routed --requests-file req/rawbcast_ef64.jsonl --output-dir runs/hash_ef64   --client-cores 32-63 --procs 8 --inflight 96 --warmup 2000 --top-k 10
+python measure.py --collection glove_kmeans_p46 --mode routed --requests-file req/rawbcast_ef64.jsonl --output-dir runs/kmbc_ef64   --client-cores 32-63 --procs 8 --inflight 96 --warmup 2000 --top-k 10
+
+# k-means centroid
+python measure.py --collection glove_kmeans_p46 --mode routed \
+  --requests-file req/kmc_np20_ef128.jsonl --output-dir runs/kmc_np20_ef128 \
   --client-cores 32-63 --procs 8 --inflight 96 --warmup 2000 --top-k 10
 ```
 
@@ -190,18 +205,22 @@ failed.
 Recall is scored offline from persisted ids — never in the timed path.
 
 ```bash
-python score_recall.py --output-dir runs/orion_glove_p8_k60 \
+python score_recall.py --output-dir runs/gnav_k120 \
   --ground-truth data/glove/ground_truth.npy --top-k 10
 ```
 
-Repeat §4–6 across the swept knob for each arm. Keep only runs with
-`gates_passed: true`. Plot QPS vs Recall@10 per arm; the headline is **QPS at
-matched Recall@10 ≥ 0.90** (and 0.95). Confirming result: at matched recall,
-Orion navigation > k-means centroid > broadcast, in the same order as fan-out.
+Repeat §4–6 across the swept knob for each arm. Plot QPS vs Recall@10 per arm and
+read **QPS at a fixed recall target** off each arm's Pareto frontier (interpolate
+between the two bracketing configs). Pick the target where the arms actually
+separate: **GloVe ≈ 0.90**, **SIFT ≈ 0.99** (on SIFT everything clears 0.9, so a
+0.90 target is meaningless). Compare against [`RESULTS.md`](RESULTS.md): the
+frontier tables and the multipliers there are your pass/fail check.
 
-Suggested matrix: **GloVe-200** and **coco-t2i-512** (where Orion should win),
-with **SIFT-1M as a negative control** (near-uniform; Orion is not expected to
-win). Hold total server cores fixed as you vary shard count P ∈ {4, 8, 16, 32}.
+Datasets: **GloVe-200-angular** (hard, Orion wins) and **SIFT-128-euclidean**
+(negative control, near-uniform, Orion ties k-means centroid). Hold total server
+cores fixed. On this single host all G4 gates read ~6–13% (co-tenants), so
+`gates_passed` is strict-false; the ratios are still robust because every arm sees
+the same host — re-certify absolute QPS on a quiet host.
 
 ---
 
@@ -215,7 +234,7 @@ multi-machine cluster is just a longer host list.
 2. **Point discovery at every host.** Pass `--hosts` to `measure.py`:
    ```bash
    python measure.py --hosts local,user@srv2,user@srv3 --coordinator all \
-     --collection orion_glove_p8 --mode routed --requests-file req/... \
+     --collection glove_orion_p46 --mode routed --requests-file req/... \
      --output-dir runs/... --client-cores 0-31 --procs 8 --inflight 128 --top-k 10
    ```
    Each peer's CPU is read where it runs — locally by file, remotely over `ssh` —
@@ -226,8 +245,10 @@ multi-machine cluster is just a longer host list.
    Record the interconnect (bandwidth, latency).
 4. **Keep every host quiet** (G4 is computed on the client host; co-tenants on a
    server host count against that host's saturation).
-5. When generating requests with `--from-collection`, set `--base-url` to a
-   reachable coordinator (`http://srv1:6833`).
+5. Request files are built offline and are host-agnostic; measure against a
+   reachable coordinator via discovery. (If you use `build_routed_requests.py
+   --from-collection` to recover membership from a live collection instead of a
+   layout file, set `--base-url` to a reachable coordinator, e.g. `http://srv1:6833`.)
 
 ---
 
@@ -254,14 +275,17 @@ peers.
   cpusets (32–63 on this host).
 - **`peers have unequal core counts`** → run `configure_testbed.py`, or pass
   `--allow-asymmetric` for a throwaway smoke (never for a reported number).
-- **Recall far below expectation** → the builder's upper-graph params or
-  `--source-id-dedup-block-size` don't match how the collection was built. Rebuild
-  requests with `--from-collection` and the same seeds/M/ef used at build time.
+- **Recall far below expectation** → the builder's `--source-id-dedup-block-size`
+  or upper-graph params don't match how the collection was built. §3 uploads with
+  raw ids, so requests need `--source-id-dedup-block-size 0`; navigation seeds must
+  match `build_orion_layout.py`.
+- **k-means centroid recall plateaus low** → its uniform `--hnsw-ef` is too small.
+  Sweep `--hnsw-ef` (e.g. 64, 128), not just `--nprobe`.
+- **`build_orion_layout.py` "physical-copy bounds not satisfied"** → single-assign
+  balance is too tight; loosen `--balance-max-vote-loss` / `--balance-max-passes`
+  (20 / 64 work for GloVe and SIFT norep).
 - **A gate fails** → do not interpret the QPS. Fix the cause (quiet the host for G4,
   raise `--inflight` for G1, add client cores for G2) and re-run.
-- **`--from-collection` errors "recovered no shard membership"** → wrong
-  `--num-shards`, wrong collection, or the upper-graph seeds don't match, so the
-  recovered L1 point ids aren't the ones stored.
 
 ---
 
@@ -270,10 +294,14 @@ peers.
 ```bash
 cd experiments/harness
 python configure_testbed.py --cores-per-peer 8                      # once
-python prepare_dataset.py --hdf5 <ds>.hdf5 --out-dir data/<ds> --normalize
-# build collections (§3), then per arm and per knob:
-LD_PRELOAD=… python build_routed_requests.py --router <navigation|centroid> … --out req/<name>.jsonl
-python measure.py --collection <c> --mode <routed|broadcast> … --output-dir runs/<name>
-python score_recall.py --output-dir runs/<name> --ground-truth data/<ds>/ground_truth.npy
-# keep runs where gates_passed==true; plot QPS vs recall per arm.
+python prepare_dataset.py --hdf5 <ds>.hdf5 --out-dir data/<ds> [--normalize]
+# layouts (§3a) -> collections (§3b):
+python make_layouts.py --train-path data/<ds>/train.npy --shards 46 --out-dir layouts
+LD_PRELOAD=… python ../../analysis/build_orion_layout.py --hdf5-path <ds>.hdf5 --out layouts/orion_<ds>_p46.npz --shards 46 --vector-distance <cosine|euclid> --disable-multi-assign --balance-mode capacity_constrained --balance-max-vote-loss 20 --balance-max-passes 64
+for L in hash kmeans orion_<ds>; do python upload_custom_shards.py --collection <ds>_${L%_*}_p46 --train-path data/<ds>/train.npy --layout-file layouts/$L*p46.npz --distance <Cosine|Euclid> --m 32 --ef-construct 100 --recreate; done
+# requests (§4) -> measure (§5) -> score (§6), per arm and per knob:
+LD_PRELOAD=… python build_routed_requests.py --router <navigation|centroid|broadcast> --source-id-dedup-block-size 0 … --out req/<name>.jsonl
+python measure.py --collection <c> --mode routed --requests-file req/<name>.jsonl --output-dir runs/<name> --client-cores 32-63 --procs 8 --inflight 96 --warmup 2000 --top-k 10
+python score_recall.py --output-dir runs/<name> --ground-truth data/<ds>/ground_truth.npy --top-k 10
+# read QPS at fixed recall off each arm's Pareto frontier; compare to RESULTS.md.
 ```
