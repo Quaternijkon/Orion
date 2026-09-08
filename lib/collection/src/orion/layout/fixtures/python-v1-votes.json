@@ -1,0 +1,113 @@
+{
+  "provenance": "frozen Python canonical functions before Rust layout migration; 2026-09-07",
+  "numpy_version": "2.2.6",
+  "owners": [
+    0,
+    1,
+    0,
+    1,
+    2
+  ],
+  "cases": [
+    {
+      "hits": [
+        3,
+        0,
+        2,
+        1,
+        4
+      ],
+      "shards": [
+        1,
+        0
+      ],
+      "self_owner": 1
+    },
+    {
+      "hits": [
+        4,
+        0,
+        1
+      ],
+      "shards": [
+        2
+      ],
+      "self_owner": 2
+    },
+    {
+      "hits": [
+        0
+      ],
+      "shards": [
+        0
+      ],
+      "self_owner": 0
+    },
+    {
+      "hits": [
+        1,
+        3,
+        4
+      ],
+      "shards": [
+        1
+      ],
+      "self_owner": 1
+    },
+    {
+      "hits": [
+        0,
+        2,
+        1,
+        3
+      ],
+      "shards": [
+        0,
+        1
+      ],
+      "self_owner": 0
+    },
+    {
+      "hits": [],
+      "error": true
+    }
+  ],
+  "assignments": [
+    [
+      1,
+      0
+    ],
+    [
+      2
+    ],
+    [
+      0
+    ],
+    [
+      1
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "layout_sha256": "d50f113dcd9a158fc707682d1364be8254a5d5aef663ec07dd8759b0a8bb8d06",
+  "sample_n65_m4_seed100": [
+    50,
+    57,
+    13,
+    49,
+    61,
+    28,
+    30,
+    48,
+    60,
+    53,
+    34,
+    37,
+    40,
+    47,
+    31,
+    5
+  ]
+}
