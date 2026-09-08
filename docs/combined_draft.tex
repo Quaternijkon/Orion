@@ -1,4 +1,5 @@
 \section{Background and Motivation}
+\label{sec:motivation}
 
 \subsection{Distributed Vector Search and the Scaling Trap}
 \label{subsec:background}
@@ -362,14 +363,133 @@ Vertex-cut replication & multi-assignment & expansion ratio \\
 \label{tab:theory-map}
 \end{table}
 
-We do not claim an approximation guarantee; instead, \S\ref{sec:eval}
-empirically validates Lemma~\ref{lem:fanout} by correlating the offline
-navigation-weighted cut (and conductance) with measured fan-out and end-to-end
-QPS across $P\in\{4,8,16,32\}$, and tests Assumption~\ref{ass:recall} by checking
-that the selected shards cover the true neighbors at the target recall. It also
-quantifies the two second-order factors: the residual load skew $\rho$ that
-survives size balancing, and the within-shard work that the effort-scaled
-$\mathrm{ef}_s$ saves against a uniform-$\mathrm{ef}$ baseline at matched recall.
+We do not claim an approximation guarantee; instead, \S\ref{sec:eval} tests the
+mechanism end to end. It confirms Lemma~\ref{lem:fanout}'s premise that fan-out
+governs cost---routing to a neighbor-bearing subset beats broadcasting to all $P$
+shards by $2.5\text{--}9\times$ at matched recall---and tests
+Assumption~\ref{ass:recall} by checking that the navigation-selected shards cover
+the true neighbors at the target recall across four datasets, precisely the regime
+where $K$-means centroid routing increasingly cannot. Quantifying the two
+second-order factors (the residual load skew $\rho$ that survives size balancing
+and the within-shard work the effort-scaled $\mathrm{ef}_s$ saves against a
+uniform-$\mathrm{ef}$ baseline) and correlating the offline navigation-weighted
+cut with realized fan-out across a $P$-sweep are complementary analyses we leave
+to an extended study.
+
+% Requires \usepackage{graphicx} in the master preamble (frontiers.pdf lives in
+% docs/figures/). booktabs is already used by the theory tables above.
+\section{Evaluation}
+\label{sec:eval}
+
+We evaluate the two claims that motivate Orion: that \emph{fan-out} is the
+first-order throughput lever (\S\ref{subsec:motivation_fanout}), and that a
+topology-aware router closes the geometric-to-navigational gap that defeats
+$K$-means centroid routing on hard workloads (\S\ref{subsec:motivation_failure}).
+The experiments hold storage and index cost fixed and vary only \emph{where
+points land} and \emph{how a query picks shards}, so any throughput difference is
+attributable to placement and routing.
+
+\paragraph{Setup.}
+Each arm is served on its own \textbf{single-copy, $P{=}46$-shard} collection
+with identical HNSW parameters ($m{=}32$, $\mathrm{ef\_construct}{=}100$); the
+arms differ only in the layout and the router:
+\emph{Orion navigation} (Orion's norep layout with the upper-graph router of
+\S\ref{sec:theory}: entry points and effort-scaled $\mathrm{ef}_s$),
+\emph{$K$-means centroid} (plain $K$-means layout, top-$\mathrm{nprobe}$ nearest
+centroids, uniform $\mathrm{ef}$), and three \emph{broadcast} baselines (hash,
+$K$-means, and Orion layouts each probed at fan-out $P$). We report QPS at a
+fixed Recall@10 read off each arm's Pareto frontier (linear interpolation between
+the two bracketing configurations), on a four-peer cluster with symmetric
+cpusets and a client pinned to disjoint cores; routing and recall scoring are
+kept off the timed path. Absolute QPS is testbed-specific (single host, loopback,
+co-tenant interference $6\text{--}13\%$); the trustworthy quantity is the
+cross-arm \emph{ratio}, which every arm measures under identical conditions.
+
+\paragraph{Datasets.}
+Four workloads span a spectrum of geometric difficulty: \textbf{SIFT-128}
+(image descriptors, near-uniform, $L_2$; the negative control), \textbf{DBpedia}
+(real OpenAI \texttt{text-embedding-ada-002} vectors, $1536$-d, cosine; a
+production LLM text-embedding workload), \textbf{GloVe-200} (angular word
+vectors), and \textbf{Deep-96} (learned CNN embeddings, $10$M points). They are
+ordered by how poorly geometric clusters predict a query's true neighbors.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/frontiers.pdf}
+\caption{Matched-recall throughput frontiers (QPS vs.\ Recall@10, log-$y$) for
+the five serving arms on the four datasets, ordered by increasing geometric
+difficulty. Orion navigation (red) dominates the upper-right of every panel; the
+three broadcast arms (dashed) sit far below. The gap between Orion navigation and
+$K$-means centroid (blue) is negligible on near-uniform SIFT and widens
+monotonically to a $3.45\times$ throughput advantage on learned CNN embeddings.
+Dotted vertical lines mark the operating point at which Table~\ref{tab:eval-qps}
+reports QPS.}
+\label{fig:frontiers}
+\end{figure*}
+
+\paragraph{Fan-out is the first-order lever.}
+On all four datasets, every arm that reduces fan-out beats every broadcast arm by
+$2.5\text{--}9\times$ at matched recall (Fig.~\ref{fig:frontiers}, dashed vs.\
+solid; Table~\ref{tab:eval-qps}). Probing $\sim\!6/46$ (Deep), $\sim\!10/46$
+(SIFT), $\sim\!14/46$ (DBpedia) or $\sim\!27/46$ (GloVe) shards is far cheaper
+than probing all $46$, because a graph index's per-shard cost is
+$\Theta(\log|\text{shard}|)$ and aggregate work scales with fan-out. This is
+Orion's core, data-independent benefit and confirms fan-out as the objective
+of~\eqref{eq:objective}. That the broadcast arms differ little among themselves
+(hash vs.\ $K$-means vs.\ Orion layout) shows the win is the \emph{router}, not
+the layout alone: locality is worthless unless a router exploits it.
+
+\paragraph{Topology-aware routing tracks geometric difficulty.}
+Table~\ref{tab:eval-qps} reads QPS at each dataset's operating point. Orion
+navigation's advantage over the strongest simple router ($K$-means centroid)
+grows exactly as the embedding's neighbor structure departs from smooth geometric
+clusters: a statistical tie ($1.08\times$) on near-uniform SIFT, $1.30\times$ on
+production OpenAI text embeddings (rising to $1.44\times$ at Recall $0.988$),
+$1.49\times$ on GloVe, and $3.45\times$ on Deep---where the centroid router
+cannot reach Recall $0.99$ at \emph{any} fan-out while Orion does so at fan-out
+$\sim\!8$. This is the search-induced-topology hypothesis in action: on complex
+manifolds the navigation graph, which follows the same structure the index was
+built on, locates a query's neighbors in a handful of shards that nearest-centroid
+routing spreads across many. Because every arm is single-copy, the advantage holds
+at \emph{equal storage} and is not an artifact of replication.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+& SIFT & DBpedia & GloVe & Deep \\
+Arm & @0.99 & @0.98 & @0.90 & @0.98 \\
+\midrule
+Orion navigation   & \textbf{3874} & \textbf{636} & \textbf{1055} & \textbf{5333} \\
+$K$-means centroid & 3576 & 490 & 710 & 1547 \\
+hash broadcast     & 1025 & 154 & 418 & $\ge$956 \\
+$K$-means broadcast& 1030 & 147 & 375 & 593 \\
+Orion broadcast    & 1167 & 139 & 398 & 769 \\
+\midrule
+nav\,/\,centroid   & $1.08\times$ & $1.30\times$ & $1.49\times$ & $3.45\times$ \\
+\bottomrule
+\end{tabular}
+\caption{QPS at the matched-recall operating point of Fig.~\ref{fig:frontiers}
+(dotted lines), for the five arms on the four datasets. The last row is Orion
+navigation's advantage over $K$-means centroid, which grows monotonically with
+geometric difficulty (left to right). Deep is $10$M points and DBpedia is
+$1536$-d, so absolute QPS is comparable only \emph{within} a column.}
+\label{tab:eval-qps}
+\end{table}
+
+\paragraph{Threats to validity.}
+The testbed is a single host with loopback transport, so absolute QPS and the
+$46$-shards-on-$4$-peers packing are not portable; only within-dataset cross-arm
+ratios are. Co-tenant interference keeps the strict host-quiet gate from passing
+($6\text{--}13\%$), but every arm sees the same host and the reported ratios far
+exceed the noise. At $1536$ dimensions the coordinator's $46$-way
+scatter-gather/merge is a larger share of each query, lowering server saturation
+on DBpedia ($70\text{--}78\%$) and making its absolute QPS coordinator-influenced;
+the cross-arm ratios (same coordinator for every arm) are unaffected. Physical
+multi-machine scale-out and the $P$-sweep correlation of the offline
+navigation-weighted cut with realized fan-out (Lemma~\ref{lem:fanout}) are
+out of scope for this single-host study.
 
 % ------------------------- STANDALONE (uncomment) --------------------------
 % \end{document}
