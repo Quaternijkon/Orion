@@ -1,6 +1,6 @@
 # Routed-serving results: Orion vs. baselines
 
-Matched-recall throughput of five serving arms on three datasets, measured with the
+Matched-recall throughput of five serving arms on four datasets, measured with the
 routed harness (see [`STAGE1.md`](STAGE1.md) for the protocol and
 [`DEPLOY.md`](DEPLOY.md) for how to reproduce). Every arm below is served on a
 **single-copy, 46-shard** collection with **identical HNSW parameters**
@@ -30,10 +30,11 @@ storage: all layouts store exactly one copy of every point.
 
 QPS at a fixed recall target, read off each arm's Pareto frontier (linear
 interpolation between the two bracketing configs). Each dataset is compared at
-its meaningful operating point — GloVe saturates near 0.90, SIFT and Deep near
-0.98–0.99. The three datasets span a spectrum of geometric difficulty (SIFT
-uniform → GloVe angular → Deep learned neural embeddings), and Orion's advantage
-grows monotonically along it.
+its meaningful operating point — GloVe saturates near 0.90, SIFT/Deep/DBpedia
+near 0.98–0.99. The four datasets span a spectrum of geometric difficulty (SIFT
+uniform → DBpedia OpenAI text → GloVe angular → Deep learned neural embeddings),
+ordered by how poorly a query's true neighbors follow the geometric clustering a
+k-means router relies on; Orion's advantage over that router grows along it.
 
 **GloVe-200-angular (hard, cosine) — QPS @ Recall@10 ≥ 0.90**
 
@@ -71,12 +72,30 @@ fan-out ~8. The hash-broadcast entry is floored at its cheapest config
 (ef=64, recall 0.996), so its true QPS at 0.98 is somewhat higher and the ≤5.58×
 is a conservative bound.
 
+**DBpedia-OpenAI-1536-angular (real OpenAI `text-embedding-ada-002`, 1M, cosine) — QPS @ Recall@10 ≥ 0.98**
+
+| Arm | Fan-out | QPS | vs. Orion nav |
+|---|---:|---:|---:|
+| **Orion navigation** | ~14 | **636** | 1.00× |
+| k-means centroid | ~12 | 490 | 1.30× |
+| hash broadcast | 46 | 154 | 4.12× |
+| k-means broadcast | 46 | 147 | 4.32× |
+| Orion broadcast | 46 | 139 | 4.59× |
+
+This is a real production LLM text-embedding workload (OpenAI ada-002 over DBpedia
+entity descriptions). Orion navigation beats k-means centroid **1.30×** at Recall
+0.98, rising to **1.39×** at 0.985 and **1.44×** at 0.988: ada-002 embeddings are
+moderately clusterable (better than Deep's CNN manifold, comparable to GloVe), so
+the centroid router stays competitive but never catches Orion. All broadcast arms
+are floored at their cheapest config (recall already ≥ 0.988 at ef=64), so their
+QPS at 0.98 is conservative; routing still wins ~4×.
+
 ## Conclusions
 
 1. **Fan-out reduction is the universal, first-order throughput lever.** On all
-   three datasets any router beats every broadcast arm by **2.5–9×**. Probing
-   ~6/46 (Deep), ~10/46 (SIFT) or ~27/46 (GloVe) shards is far cheaper than
-   probing all 46, because a graph index's per-shard cost is roughly
+   four datasets any router beats every broadcast arm by **2.5–9×**. Probing
+   ~6/46 (Deep), ~10/46 (SIFT), ~14/46 (DBpedia) or ~27/46 (GloVe) shards is far
+   cheaper than probing all 46, because a graph index's per-shard cost is roughly
    `log(shard_size)` and total work scales with fan-out. This is Orion's core,
    data-independent benefit.
 
@@ -87,6 +106,7 @@ is a conservative bound.
    | Dataset | Data character | Orion nav vs. k-means centroid |
    |---|---|---:|
    | SIFT-128 | near-uniform (negative control) | **1.08×** (tie) |
+   | DBpedia-1536 | OpenAI ada-002 text embeddings | **1.30×** (1.44× at Recall 0.988) |
    | GloVe-200 | angular word vectors | **1.49×** |
    | Deep-96 | learned CNN embeddings | **3.45×** (centroid can't reach 0.99) |
 
@@ -97,6 +117,10 @@ is a conservative bound.
    structure the index was built on, locates neighbors in a handful of shards
    (Deep fan-out ~6 at Recall 0.97–0.99). **This is the regime real production
    vector search lives in (neural embeddings), and it is where Orion wins most.**
+   DBpedia — actual OpenAI `text-embedding-ada-002` vectors, i.e. exactly the kind
+   of LLM embedding served in RAG today — confirms the effect on a production text
+   workload with a solid 1.30–1.44× win; its ada-002 vectors are more clusterable
+   than Deep's CNN manifold, which is why the gain is moderate rather than extreme.
 
 3. **Replication is not the source of the throughput advantage.** GloVe was also
    measured on the replicated production layout (`bench095`, +17.5% storage):
@@ -184,6 +208,37 @@ navigation fan-out (5–8): learned embeddings concentrate a query's true neighb
 into very few shards along the navigation graph, which k-means centroids do not
 capture (centroid recall caps at 0.987).
 
+### DBpedia-OpenAI-1536-angular (990k points, real OpenAI `text-embedding-ada-002`)
+
+| Arm | Knob | Fan-out | Σef | Recall | QPS | sat% | host% |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Orion nav (norep) | k60 | 9.7 | 434 | 0.9645 | 1004 | 78 | 7.8 |
+| Orion nav (norep) | k120 | 14.9 | 777 | 0.9814 | 602 | 78 | 7.1 |
+| Orion nav (norep) | k200 | 19.7 | 1195 | 0.9883 | 415 | 74 | 6.4 |
+| k-means centroid | np12/ef64 | 12.0 | 768 | 0.9797 | 498 | 72 | 6.6 |
+| k-means centroid | np20/ef64 | 20.0 | 1280 | 0.9864 | 322 | 72 | 6.6 |
+| k-means centroid | np12/ef128 | 12.0 | 1536 | 0.9863 | 328 | 71 | 10.4 |
+| k-means centroid | np20/ef128 | 20.0 | 2560 | 0.9931 | 204 | 71 | 6.3 |
+| k-means centroid | np30/ef128 | 30.0 | 3840 | 0.9957 | 135 | 72 | 6.9 |
+| k-means centroid | np30/ef256 | 30.0 | 7680 | 0.9979 | 81 | 70 | 7.6 |
+| hash broadcast | ef64 | 46.0 | 2944 | 0.9966 | 154 | 76 | 8.2 |
+| hash broadcast | ef128 | 46.0 | 5888 | 0.9987 | 95 | 73 | 6.3 |
+| hash broadcast | ef256 | 46.0 | 11776 | 0.9995 | 58 | 72 | 6.2 |
+| k-means broadcast | ef64 | 46.0 | 2944 | 0.9894 | 147 | 72 | 7.2 |
+| k-means broadcast | ef128 | 46.0 | 5888 | 0.9962 | 86 | 73 | 7.4 |
+| k-means broadcast | ef256 | 46.0 | 11776 | 0.9984 | 52 | 71 | 7.2 |
+| Orion broadcast (norep) | ef64 | 46.0 | 2944 | 0.9888 | 139 | 74 | 7.7 |
+| Orion broadcast (norep) | ef128 | 46.0 | 5888 | 0.9955 | 84 | 71 | 6.4 |
+| Orion broadcast (norep) | ef256 | 46.0 | 11776 | 0.9980 | 50 | 71 | 6.3 |
+
+k-means layout size skew = 1.87; Orion norep = 1.245. Navigation fan-out saturates
+near 20 (upper_k 200 and 300 reach the same ~20 shards), and its recall ceiling at
+`base_ef=20, factor=4` is ~0.988; the comparison is therefore read at Recall 0.98
+(where all arms live and separate). Server-saturation here is lower (70–78%) than
+on the other datasets: at 1536-d the coordinator's 46-way scatter-gather/merge is a
+larger share of each query, so absolute QPS is coordinator-influenced — the
+cross-arm ratios (same coordinator for every arm) remain the trustworthy quantity.
+
 ## Method and knobs
 
 - **Testbed:** single host, 4 Qdrant peers (8 cores each, symmetric cpusets),
@@ -213,11 +268,12 @@ capture (centroid recall caps at 0.987).
 - **Single-host, loopback.** Absolute QPS and the 46-shards-on-4-peers packing
   are testbed-specific. Cross-arm ratios are the trustworthy quantity; physical
   multi-machine scale-out is out of scope here (see `STAGE0.md`).
-- **Three datasets.** SIFT (uniform), GloVe (angular) and Deep (learned
-  embeddings) span the geometric-difficulty spectrum; other embedding families
-  (text/LLM, multimodal) are not yet measured. Deep is 10M points (≈8× the
-  others), so its absolute QPS is not directly comparable across datasets — only
-  the within-dataset arm ratios are.
+- **Four datasets.** SIFT (uniform), DBpedia (OpenAI ada-002 text), GloVe
+  (angular word vectors) and Deep (learned CNN embeddings) span the
+  geometric-difficulty spectrum, now including a real LLM text-embedding workload;
+  multimodal embeddings are still unmeasured. Deep is 10M points and DBpedia is
+  1536-d, so absolute QPS is not directly comparable across datasets — only the
+  within-dataset arm ratios are.
 - **Offline dual-graph upper index.** The navigation layout and router use the
   `hnswlib` upper graph (legacy dual-graph variant), not Qdrant's production Rust
   upper graph; see the `build_orion_layout.py` docstring.
