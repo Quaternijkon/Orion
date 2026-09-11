@@ -129,6 +129,15 @@ def main() -> int:
         help="navigation router: top L1 hits to route on (deployed knob; sweep this)",
     )
     parser.add_argument(
+        "--load-aware",
+        action="store_true",
+        help="navigation router only: when a routed L1 node is replicated across "
+        "shards, cover it from the currently least-loaded replica (consolidating "
+        "onto already-probed shards first). Balances per-shard query load at ~equal "
+        "fan-out; needs a replicated --layout-file. Load is accumulated across the "
+        "query stream and frozen into the request bytes (no routing in the timed path).",
+    )
+    parser.add_argument(
         "--nprobe",
         type=int,
         default=0,
@@ -224,11 +233,38 @@ def main() -> int:
                 args.base_url, args.collection, upper_indices, num_points, num_shards
             )
         knob_value = min(int(args.upper_k), upper_labels.shape[1])
+        nav_load = np.zeros(num_shards, dtype=np.int64)
+
+        def route_load_aware(labels) -> dict[int, list[int]]:
+            """Assign each routed L1 node to one shard: reuse an already-probed
+            owner if possible (consolidate), else its least-loaded replica."""
+            chosen: dict[int, list[int]] = {}
+            touched: list[int] = []
+            for label in labels:
+                pid = int(label)
+                if not (0 <= pid < len(point_to_shards)):
+                    continue
+                owners = point_to_shards[pid]
+                if not owners:
+                    continue
+                inter = [s for s in owners if s in touched]
+                if inter:
+                    s = min(inter, key=lambda x: nav_load[x])
+                else:
+                    s = int(min(owners, key=lambda x: nav_load[x]))
+                    touched.append(s)
+                chosen.setdefault(s, []).append(pid)
+            for s in touched:
+                nav_load[s] += 1
+            return dict(sorted(chosen.items()))
 
         def build_body(q: int) -> tuple[bytes, int, int, int]:
-            shard_to_eps = experiment.route_upper_labels_to_shard_eps(
-                upper_labels[q][:knob_value], point_to_shards
-            )
+            if args.load_aware:
+                shard_to_eps = route_load_aware(upper_labels[q][:knob_value])
+            else:
+                shard_to_eps = experiment.route_upper_labels_to_shard_eps(
+                    upper_labels[q][:knob_value], point_to_shards
+                )
             shard_keys, ef_values = experiment.shard_efs_from_routed_eps(
                 shard_to_eps, num_shards, base_ef, int(args.factor)
             )

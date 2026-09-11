@@ -1,0 +1,117 @@
+{
+  "tag": "",
+  "mode": "routed",
+  "collection": "dbpedia_hash_p46",
+  "requests_file": "/home/taig/wzhzhu/Orion/experiments/harness/req/dbbcast_ef64.jsonl",
+  "queries": 10000,
+  "elapsed_s": 64.75952470488846,
+  "qps": 154.4174396827396,
+  "batch": 1,
+  "repeat": 1,
+  "inflight": 96,
+  "procs": 8,
+  "hnsw_ef": 0,
+  "top_k": 10,
+  "coordinator": "all",
+  "client_cores": [
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63
+  ],
+  "peers": {
+    "qdrant-controller-qdrant_controller-1": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "qdrant-controller-qdrant_shard_1-1": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "qdrant-controller-qdrant_shard_2-1": [
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "qdrant-controller-qdrant_shard_3-1": [
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ]
+  },
+  "request_latency_us": {
+    "p50": 517230.00800000003,
+    "p95": 536085.5826,
+    "p99": 563019.1158
+  },
+  "per_peer_cpu_pct": {
+    "qdrant-controller-qdrant_controller-1": 53.54567093878384,
+    "qdrant-controller-qdrant_shard_1-1": 75.76196856536906,
+    "qdrant-controller-qdrant_shard_2-1": 72.56293026260087,
+    "qdrant-controller-qdrant_shard_3-1": 72.82718656432614
+  },
+  "gates": {
+    "server_saturation_pct": 75.76196856536906,
+    "least_loaded_peer_pct": 53.54567093878384,
+    "peer_imbalance_ratio": 0.7067618747602035,
+    "client_headroom_pct": 0.8459180367620078,
+    "host_interference_pct": 8.223229265143155,
+    "g1_server_saturation": false,
+    "g2_client_headroom": true,
+    "g4_host_interference": false
+  },
+  "gates_passed": false,
+  "note": "recall is scored offline by score_recall.py; G3 needs two runs"
+}
+
+GATES FAILED: this run must not be used for any performance claim.

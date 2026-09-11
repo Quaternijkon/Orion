@@ -42,6 +42,77 @@ from tools import qdrant_two_level_routing_experiment as experiment  # noqa: E40
 DETERMINISTIC_THREADS = native_layout.DETERMINISTIC_ATTACHMENT_BUILD_THREADS
 
 
+def compute_initial_seed(
+    method: str,
+    train: np.ndarray,
+    upper_indices: np.ndarray,
+    up_tier_weights: np.ndarray,
+    num_shards: int,
+    kmeans_iters: int,
+    kmeans_seed: int,
+    max_load_ratio: float,
+    init_seed: int,
+    spectral_knn: int,
+) -> list[int]:
+    """Initial L1->shard assignment (length len(train), -1 for non-upper nodes).
+
+    'kmeans' reproduces the shipped balanced-k-means seed exactly (same function,
+    same args), so passing it back through build_original_routing_state is a
+    no-op relative to the default path. 'random' and 'spectral' are the ablation
+    alternatives, both balanced by construction where possible.
+    """
+    n = len(train)
+    up = upper_indices.tolist()
+    if method == "kmeans":
+        return experiment.initial_l1_shards_by_balanced_kmeans(
+            train, upper_indices, up_tier_weights, num_shards,
+            kmeans_iters, kmeans_seed, max_load_ratio=max_load_ratio,
+        )
+    seed = [-1] * n
+    if method == "random":
+        rng = np.random.default_rng(init_seed)
+        perm = rng.permutation(len(up))
+        for rank, local in enumerate(perm.tolist()):
+            seed[up[local]] = rank % num_shards  # exactly balanced by node count
+        return seed
+    if method == "spectral":
+        from sklearn.neighbors import kneighbors_graph
+        from sklearn.cluster import SpectralClustering
+
+        features = np.asarray(train[upper_indices], dtype=np.float32)
+        affinity = kneighbors_graph(
+            features, n_neighbors=spectral_knn, mode="connectivity",
+            include_self=False,
+        )
+        affinity = 0.5 * (affinity + affinity.T)  # symmetrize the kNN graph
+        labels = SpectralClustering(
+            n_clusters=num_shards, affinity="precomputed",
+            assign_labels="kmeans", random_state=init_seed,
+        ).fit_predict(affinity)
+        for local, label in enumerate(labels.tolist()):
+            seed[up[local]] = int(label)
+        return seed
+    raise ValueError(f"unknown init method {method!r}")
+
+
+def attachment_cut_fraction(
+    assign: list[int], upper_nodes: list[int], point_to_l1s: list[list[int]]
+) -> float:
+    """Fraction of attachment (L1, entry-point) pairs that cross a shard boundary.
+
+    This is exactly the objective the label-propagation refinement minimizes, so
+    it is the intrinsic quality of a partition independent of any downstream
+    serving. Lower is better (neighbors kept together)."""
+    cross = total = 0
+    for node in upper_nodes:
+        home = assign[node]
+        for entry in point_to_l1s[node]:
+            total += 1
+            if assign[int(entry)] != home:
+                cross += 1
+    return cross / max(total, 1)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hdf5-path", required=True)
@@ -80,6 +151,27 @@ def main() -> int:
         type=int,
         default=3,
         help="Shared vote-loss bound for L1 and L0; matches the CLI default.",
+    )
+    parser.add_argument(
+        "--init",
+        choices=("kmeans", "random", "spectral"),
+        default="kmeans",
+        help=(
+            "Initial L1->shard seed fed to topology refinement. 'kmeans' is the "
+            "shipped balanced-k-means seed; 'random' is a balanced round-robin "
+            "cold start; 'spectral' is a normalized-cut partition of the upper "
+            "kNN graph (graph-native seed). Ablation only."
+        ),
+    )
+    parser.add_argument("--init-seed", type=int, default=1)
+    parser.add_argument("--spectral-knn", type=int, default=15)
+    parser.add_argument(
+        "--init-file",
+        help=(
+            "npy of a precomputed initial L1->shard seed (length N, -1 for "
+            "non-upper nodes). Overrides --init; used for seeds that cannot be "
+            "computed in-process under LD_PRELOAD (e.g. spectral via sklearn)."
+        ),
     )
     args = parser.parse_args()
 
@@ -122,6 +214,35 @@ def main() -> int:
         flush=True,
     )
 
+    # Ablation seed: build the initial L1->shard assignment for the chosen init
+    # and pass it into the refinement so kmeans/random/spectral share every
+    # downstream stage. up_tier_weights is recomputed exactly as the refiner does.
+    nearest_l1 = np.asarray([l1s[0] for l1s in point_to_l1s], dtype=np.int64)
+    l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
+    up_tier_weights = l1_weights_map[upper_indices].astype(np.int64, copy=False)
+    init_max_load_ratio = (
+        float(args.balance_max_load_ratio)
+        if str(args.balance_mode) == "capacity_constrained"
+        else 1.5
+    )
+    seeded = time.perf_counter()
+    if args.init_file:
+        loaded = np.load(args.init_file)
+        if loaded.shape[0] != len(train):
+            raise SystemExit(
+                f"--init-file has {loaded.shape[0]} entries, expected {len(train)}"
+            )
+        initial_l1_to_shard = [int(x) for x in loaded.tolist()]
+        init_label = str(args.init) if args.init != "kmeans" else "file"
+    else:
+        initial_l1_to_shard = compute_initial_seed(
+            str(args.init), train, upper_indices, up_tier_weights, int(args.shards),
+            int(args.kmeans_iters), int(args.kmeans_seed), init_max_load_ratio,
+            int(args.init_seed), int(args.spectral_knn),
+        )
+        init_label = str(args.init)
+    print(f"init seed: {init_label} in {time.perf_counter() - seeded:.1f}s", flush=True)
+
     refined = time.perf_counter()
     routing = experiment.build_original_routing_state(
         train,
@@ -131,6 +252,7 @@ def main() -> int:
         int(args.kmeans_iters),
         int(args.kmeans_seed),
         int(args.topology_iters),
+        initial_l1_to_shard=initial_l1_to_shard,
         use_multi_assign=not bool(args.disable_multi_assign),
         enable_fission=bool(args.enable_fission),
         multi_assign_min_max_vote=int(args.multi_assign_min_max_vote),
@@ -160,11 +282,46 @@ def main() -> int:
         count=int(lengths.sum()),
     )
 
+    # Ablation diagnostics: how far the refinement moved the seed, and the
+    # intrinsic partition quality (attachment cut) before vs after refinement.
+    final_l1 = list(routing.l1_to_shard)
+    upper_nodes = upper_indices.tolist()
+    init_churn = sum(
+        1 for node in upper_nodes if initial_l1_to_shard[node] != final_l1[node]
+    ) / max(len(upper_nodes), 1)
+    cut_initial = attachment_cut_fraction(
+        initial_l1_to_shard, upper_nodes, point_to_l1s
+    )
+    cut_final = attachment_cut_fraction(final_l1, upper_nodes, point_to_l1s)
+
+    # Refinement convergence: how many passes ran and the per-pass move/cut curve
+    # (cut present only when ORION_LOG_REFINE_CUT=1 was set).
+    l1_topo = (routing.balance_diagnostics or {}).get("l1_topology") or {}
+    topo_iterations = int(getattr(routing, "topology_iterations", 0))
+    per_pass = l1_topo.get("per_pass") or []
+    l1_move_counts = l1_topo.get("move_counts") or {}
+    if per_pass:
+        print("refinement per pass (pass: changed [cut]):", flush=True)
+        for row in per_pass:
+            cut_str = f" cut={row['cut']:.4f}" if "cut" in row else ""
+            print(f"  pass {int(row['pass']):>3}: changed={int(row['changed']):>7}{cut_str}", flush=True)
+    print(
+        f"refinement: {topo_iterations} passes; move_counts={l1_move_counts}",
+        flush=True,
+    )
+
     shard_count = int(routing.num_shards)
     copies_per_shard = np.bincount(indices, minlength=shard_count).astype(np.int64)
     metadata = {
         "dataset": Path(args.hdf5_path).name,
         "dataset_sha256": dataset_record.get("sha256"),
+        "init_method": init_label,
+        "init_churn_fraction": float(init_churn),
+        "attachment_cut_initial": float(cut_initial),
+        "attachment_cut_final": float(cut_final),
+        "topology_iterations": topo_iterations,
+        "refinement_per_pass": per_pass,
+        "l1_move_counts": {str(k): int(v) for k, v in l1_move_counts.items()},
         "requested_shards": int(args.shards),
         "effective_shards": shard_count,
         "logical_points": int(lengths.size),

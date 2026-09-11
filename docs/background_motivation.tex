@@ -1,0 +1,68 @@
+\section{Coaccessibility-Aware Sharding}
+\label{sec:offline_sharding}
+
+This section formalizes the sharding objective and details how \sysname constructs its distributed index to minimize fan-out while balancing system load.
+
+\subsection{Formulation: Hypergraph Min-Cut}
+Let $X=\{x_1,\dots,x_N\}$ be the dataset, $q\sim Q$ a query drawn from the workload, and $\mathrm{NN}_k(q)\subseteq X$ its true $k$ nearest neighbors under the target metric. A strict sharding is an assignment $\sigma:X\to\{1,\dots,P\}$. To return the true neighbors, a query must touch every shard that holds at least one of them. Thus, its required fan-out is:
+\[
+\mathrm{fanout}^\star_\sigma(q)=\bigl|\{\sigma(x):x\in\mathrm{NN}_k(q)\}\bigr|.
+\]
+
+As established in \S\ref{sec:motivation}, fan-out is the first-order term determining aggregate system work. Our primary objective is to minimize the expected fan-out across the query workload, subject to a strict size balance constraint to distribute storage evenly:
+\begin{equation}
+\label{eq:objective}
+\begin{aligned}
+\min_{\sigma}\quad & \mathbb{E}_{q}\!\left[\mathrm{fanout}^\star_\sigma(q)\right] \\
+\text{s.t.}\quad & (1-\varepsilon)\tfrac{N}{P}\le |\sigma^{-1}(i)| \le (1+\varepsilon)\tfrac{N}{P}\quad \forall i \in \{1,\dots,P\}.
+\end{aligned}
+\end{equation}
+
+This objective naturally maps to a hypergraph $H=(X,\{e_q\}_q)$. The vertices are the vector set $X$, and each query's target set forms a hyperedge $e_q=\mathrm{NN}_k(q)$. Intuitively, if a query's target neighbors are scattered across many different shards, its hyperedge is ``cut'' multiple times, forcing the system to fan out to all those shards to retrieve them. Conversely, if all target neighbors are co-located in a single shard, the hyperedge remains uncut and the fan-out is optimal (i.e., 1). Consequently, minimizing the expected fan-out is mathematically equivalent to minimizing the standard connectivity metric (cut) in hypergraph partitioning.
+
+\subsection{Tractable Surrogate via Navigation Graph}
+\label{sec:nav_graph}
+Optimizing the ideal hypergraph objective directly is impossible in practice. \emph{Offline}, future queries are unknown, so the exact hyperedges $e_q$ do not exist. Even if they did, the problem is NP-hard and inapproximable~\cite{andreev2006}.
+
+\sysname sidesteps both obstacles by replacing the query hypergraph with a small, query-independent \emph{navigation graph} $G=(V,E,w)$ that is built entirely from the data itself. Its construction proceeds in three stages---\emph{sample}, \emph{build}, and \emph{color}.
+
+\noindent\textbf{Sample.} Building and partitioning a graph over all $N$ points is prohibitive at billion scale. \sysname instead draws a uniform random subset $V\subseteq X$ of \emph{navigation nodes} (by default $|V|\approx N/32$, i.e.\ $\sim\!3\%$ of the data). This subset acts as a sparse skeleton that captures the global topology of the dataset while keeping the partitioning problem small.
+
+\noindent\textbf{Build.} \sysname builds a proximity graph (an HNSW index) over $V$, connecting each node to its nearest navigation neighbors. To estimate how strongly two nodes are \emph{co-accessed} by search, \sysname uses the data points themselves as proxy queries---valid under an I.I.D. workload: each point is routed through $G$ and \emph{attached} to the navigation nodes it reaches. Aggregating these attachments defines the \emph{navigation traffic} on a directed edge $(u,v)$:
+\begin{equation}
+\label{eq:traffic}
+w(u,v)=\mathbb{E}_{q\sim X}\bigl[\,\#\{\text{times $q$'s traversal explores }(u,v)\}\,\bigr],
+\end{equation}
+the expected number of times a search evaluates $v$ from $u$. The working hypothesis (\emph{search-induced topology}) is that $w$ is an accurate, computable proxy for co-relevance: points reached together during navigation tend to fall in a common query's target set. Crucially, $w$ is derived from search behavior, not from raw geometric distance.
+
+Concretely, \sysname realizes $w$ through \emph{attachment}: for every data point it records the small set of navigation nodes its self-search reaches (its \emph{attachment set}), so an edge $(u,v)$ accumulates weight whenever $u$ and $v$ are co-attached by the same proxy query. This is the only signal the partitioner consumes---no query log or ground-truth neighbor is ever required---and it is what the offline objective below actually minimizes as the \emph{attachment cut}.
+
+\noindent\textbf{Color.} Finally, \sysname \emph{colors} the navigation graph, assigning each node $v\in V$ a shard label $\pi(v)\in\{1,\dots,P\}$. Under this surrogate, the intractable hypergraph min-cut reduces to a standard \emph{weighted graph edge-cut}: minimize $\sum_{(u,v):\pi(u)\neq\pi(v)} w(u,v)$ subject to the balance band of Eq.~\eqref{eq:objective}. \sysname solves it with a lightweight two-phase procedure. First, a \emph{standard geometric $K$-means} over $V$ produces a locality-preserving initial coloring; the seed only needs to supply geometric coherence, since---as we show in \S\ref{sec:eval}---the deliverable fan-out is insensitive to how (or whether) the seed itself is balanced. Second, an iterative \emph{majority-vote label propagation} refines it: each node moves to the shard holding the majority of its attachment neighbors, directly lowering the attachment cut, under a capacity guard that keeps every shard within the balance band. Balance is thus owned by the refinement, not the seed, which lets \sysname adopt the simplest possible initializer.
+
+The following lemma justifies the reduction: the weighted cut that \sysname minimizes upper-bounds the online fan-out it actually pays.
+
+\begin{lemma}[Realized fan-out is dominated by the weighted cut]
+\label{lem:fanout}
+Let $\mathrm{cut}(\pi)=\{(u,v)\in E:\pi(u)\neq\pi(v)\}$ be the edges cut by the coloring $\pi$. If a query's entry points are selected from its traversal path on $G$, the realized fan-out is bounded by:
+\[
+\mathbb{E}_{q}\!\left[\mathrm{fanout}^\pi(q)\right]
+\ \le\ 1+\!\!\sum_{(u,v)\in\mathrm{cut}(\pi)}\!\! w(u,v).
+\]
+\end{lemma}
+
+\begin{proof}
+For a query $q$, the set of expanded nodes $\mathrm{Vis}(q)$ and explored edges $T(q)$ form a connected component containing a spanning tree rooted at the entry node. Contracting each shard's portion of $\mathrm{Vis}(q)$ into a supernode yields a connected multigraph of $m$ supernodes (where $m$ is the number of shards visited). This multigraph must contain at least $m-1$ edges, all of which are cut edges in $T(q)$. Thus, $m \le 1 + |\{(u,v)\in T(q):\pi(u)\neq\pi(v)\}|$. Since the realized fan-out is at most $m$, taking expectations over $q$ yields the bound.
+\end{proof}
+
+\subsection{Sharding the Full Dataset}
+The coloring $\pi$ partitions only the navigation skeleton $V$ ($\sim\!3\%$ of the data). \sysname propagates it to the full dataset through the same attachment signal: each base-layer (L0) point inherits the shard labels of the navigation nodes it attaches to and is assigned to the majority shard. This extends the low-cut partition from the sparse skeleton to all $N$ points at near-linear cost, without ever materializing a graph over the full dataset.
+
+\noindent\textbf{From size balance to load balance.} The coloring objective enforces \emph{size} balance, but graph search induces a second, subtler imbalance: a small set of ``hub'' vectors are visited far more often than others during routing. If these hubs---and the traffic they attract---concentrate on a few shards, those shards become compute bottlenecks even though every shard holds an equal number of points. \sysname therefore treats \emph{query load} as a first-class \textit{capacity constraint} during L0 assignment: rather than sending every point to its top-voted shard, \sysname bounds the aggregate expected load each shard may absorb and spills excess points to their next-best shard. Hot regions are thus rebalanced before they can form a bottleneck, converting the residual load skew that survives size balancing into an explicitly controlled quantity.
+
+\subsection{Data Multi-Assignment}
+So far, $\sigma$ assigns each point to a single shard, which corresponds to an \emph{edge-cut} formulation. However, graph partitioning theory offers a powerful relaxation: the \emph{vertex-cut} (or overlapping) formulation. 
+
+By allowing a point to be assigned to multiple shards ($\sigma:X\to 2^{\{1,\dots,P\}}$), we can replicate points that sit on heavily trafficked boundaries. This mathematically reduces the cut size, as queries no longer need to cross a partition boundary to reach a replicated neighbor. In \sysname, this translates to \emph{data multi-assignment}: selectively replicating boundary neighborhoods onto their next-nearest shards. This strictly lowers the required fan-out without sacrificing recall, at the cost of a bounded, user-configurable storage expansion.
+
+With the offline index constructed and partitioned, the remaining challenge is how to efficiently route online queries against this topology. We detail \sysname's online navigational routing in the next section.
+

@@ -1572,6 +1572,24 @@ def converge_l1_topology_capacity_constrained(
     rejected_counts = Counter()
     navigation_vote_delta = 0
     maximum_observed_vote_loss = 0
+    # Per-pass diagnostics for the "how many refinement passes are worth it"
+    # ablation. Move count is free; the attachment cut is O(upper * k) per pass
+    # so it is only computed when explicitly requested.
+    log_pass_cut = bool(os.environ.get("ORION_LOG_REFINE_CUT"))
+
+    def _attachment_cut(assignment: list[int]) -> float:
+        cross = total = 0
+        for node in upper_rows:
+            home = assignment[node]
+            for entry in point_to_l1s[node]:
+                total += 1
+                if assignment[int(entry)] != home:
+                    cross += 1
+        return cross / max(total, 1)
+
+    per_pass: list[dict[str, float]] = []
+    if log_pass_cut:
+        per_pass.append({"pass": 0, "changed": -1, "cut": _attachment_cut(current_shard)})
 
     for iteration in range(int(max_iters)):
         proposals: list[tuple[tuple[Any, ...], int, int, int, int, int, str]] = []
@@ -1694,6 +1712,10 @@ def converge_l1_topology_capacity_constrained(
             maximum_observed_vote_loss = max(maximum_observed_vote_loss, -vote_delta)
 
         iteration_count = iteration + 1
+        entry: dict[str, float] = {"pass": iteration + 1, "changed": int(changed_count)}
+        if log_pass_cut:
+            entry["cut"] = _attachment_cut(current_shard)
+        per_pass.append(entry)
         if changed_count == 0:
             break
 
@@ -1735,6 +1757,7 @@ def converge_l1_topology_capacity_constrained(
         "navigation_vote_delta": int(navigation_vote_delta),
         "maximum_observed_vote_loss": int(maximum_observed_vote_loss),
         "moves_without_navigation_evidence": 0,
+        "per_pass": per_pass,
         "weighted_repair": weighted_repair,
         "initial": initial_summary,
         "final": final_summary,
@@ -3264,6 +3287,7 @@ def build_original_routing_state(
     balance_max_vote_loss: int = 3,
     balance_l1_max_vote_loss: int | None = None,
     balance_l0_max_vote_loss: int | None = None,
+    initial_l1_to_shard: list[int] | None = None,
 ) -> OriginalRoutingState:
     normalized_balance_mode = str(balance_mode).strip().lower()
     if normalized_balance_mode not in {
@@ -3296,19 +3320,30 @@ def build_original_routing_state(
     l1_weights_map = np.bincount(nearest_l1, minlength=len(train))
     up_tier_weights = l1_weights_map[upper_indices].astype(np.int64, copy=False)
 
-    l1_to_shard = initial_l1_shards_by_balanced_kmeans(
-        train,
-        upper_indices,
-        up_tier_weights,
-        initial_num_shards,
-        kmeans_iters,
-        kmeans_seed,
-        max_load_ratio=(
-            float(balance_max_load_ratio)
-            if fixed_p_balance
-            else 1.5
-        ),
-    )
+    if initial_l1_to_shard is not None:
+        # Ablation hook: use a caller-supplied initial L1->shard assignment
+        # (e.g. random or spectral) instead of the balanced-k-means seed, while
+        # keeping the topology-refinement and balance-repair stages identical.
+        if len(initial_l1_to_shard) != len(train):
+            raise ValueError(
+                "initial_l1_to_shard must be length len(train) "
+                f"({len(initial_l1_to_shard)}), got {len(initial_l1_to_shard)}"
+            )
+        l1_to_shard = list(initial_l1_to_shard)
+    else:
+        l1_to_shard = initial_l1_shards_by_balanced_kmeans(
+            train,
+            upper_indices,
+            up_tier_weights,
+            initial_num_shards,
+            kmeans_iters,
+            kmeans_seed,
+            max_load_ratio=(
+                float(balance_max_load_ratio)
+                if fixed_p_balance
+                else 1.5
+            ),
+        )
     topology_iteration_count = 0
     l1_balance_diagnostics: dict[str, Any] | None = None
     if enable_topology_refinement:

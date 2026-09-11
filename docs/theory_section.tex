@@ -1,177 +1,51 @@
-% Orion --- Theory / Problem Formalization section (systems-paper style)
-% ---------------------------------------------------------------------------
-% Usage:
-%   1) As an includable section, add to your preamble:
-%        \usepackage{amsmath,amssymb,amsthm,booktabs}
-%        \newtheorem{lemma}{Lemma}
-%        \newtheorem{assumption}{Assumption}
-%      then in the body:  \input{theory_section}
-%   2) To compile this file standalone, uncomment the STANDALONE block below.
-%
-% Note: written in English per systems-venue convention (OSDI/NSDI/SOSP/VLDB/ATC).
-% ---------------------------------------------------------------------------
+\section{Offline Construction: Coaccessibility-Aware Sharding}
+\label{sec:offline_sharding}
 
-% ------------------------- STANDALONE (uncomment) --------------------------
-% \documentclass[11pt]{article}
-% \usepackage[margin=1in]{geometry}
-% \usepackage{amsmath,amssymb,amsthm,booktabs}
-% \newtheorem{lemma}{Lemma}
-% \newtheorem{assumption}{Assumption}
-% \newtheorem{definition}{Definition}
-% \begin{document}
-% ---------------------------------------------------------------------------
+To address Challenge\#1, \sysname's offline phase translates the ideal hypergraph min-cut problem into a tractable, three-phase graph partitioning workflow: (1) building and partitioning a sparse \emph{query traffic graph} derived from the data, (2) propagating the resulting partition to the full dataset under a strict size-balance constraint, and (3) selectively replicating boundary points to further reduce fan-out. We first formalize the objective, then detail this pipeline.
 
-\section{Sharding as Balanced Fan-out Minimization}
-\label{sec:theory}
-
-\paragraph{The sharding problem (mechanism-independent).}
-We first state the problem without reference to any index structure. Let
-$X=\{x_1,\dots,x_N\}$ be the dataset, $q\sim Q$ a query drawn from the workload,
-and $\mathrm{NN}_k(q)\subseteq X$ its true $k$ nearest neighbors under the target
-metric; $R$ denotes the target recall, i.e.\ we require Recall@$k\ge R$. A
-sharding is an assignment $\sigma:X\to\{1,\dots,P\}$; \emph{replication}, which
-lets a point occupy several shards, is a relaxation we treat at the end of this
-section. To return the true neighbors, a
-query must touch every shard that holds one of them, so its \emph{required
-fan-out} is
+\subsection{The Sharding Objective}
+Let $X=\{x_1,\dots,x_N\}$ be the dataset, $q\sim Q$ a query drawn from the workload, and $\mathrm{NN}_k(q)\subseteq X$ its true $k$ nearest neighbors under the target metric. A strict sharding is an assignment $\sigma:X\to\{1,\dots,P\}$. To return the true neighbors, a query must touch every shard that holds at least one of them. Thus, its required fan-out is:
 \[
 \mathrm{fanout}^\star_\sigma(q)=\bigl|\{\sigma(x):x\in\mathrm{NN}_k(q)\}\bigr|.
 \]
-This quantity depends only on the data, the workload, and the assignment---not on
-how any system routes. At fixed recall the per-query server work is
-$\sum_{s\,\text{probed}}\Theta(\mathrm{ef}_s\log|\text{shard}|)$, so with one shard
-per core the throughput at saturation scales as
-$P/\bigl(\mathbb{E}_q[\mathrm{fanout}]\cdot\rho\cdot\bar c\bigr)$, where $\rho$ is
-the \emph{load skew} (busiest-over-mean per-shard query load) and $\bar c$ the
-mean per-shard search cost (\S\ref{sec:motivation}, claim~C1). Fan-out is the
-first-order term---it fixes the aggregate work---so we take it as the objective;
-the load skew $\rho$ and the per-shard search strengths $\mathrm{ef}_s$ are
-second-order factors that the same mechanism also controls (developed below and
-measured in \S\ref{sec:eval}). The first-order sharding problem is
+
+As established in \S\ref{sec:motivation}, fan-out is the first-order term determining aggregate system work. Our primary objective is to minimize the expected fan-out across the query workload, subject to a strict size balance constraint to distribute storage evenly:
 \begin{equation}
 \label{eq:objective}
-\min_{\sigma}\ \mathbb{E}_{q}\!\left[\mathrm{fanout}^\star_\sigma(q)\right]
-\quad\text{s.t.}\quad
-(1-\varepsilon)\tfrac{N}{P}\le |\sigma^{-1}(i)| \le (1+\varepsilon)\tfrac{N}{P}\ \ \forall i .
+\begin{aligned}
+\min_{\sigma}\quad & \mathbb{E}_{q}\!\left[\mathrm{fanout}^\star_\sigma(q)\right] \\
+\text{s.t.}\quad & (1-\varepsilon)\tfrac{N}{P}\le |\sigma^{-1}(i)| \le (1+\varepsilon)\tfrac{N}{P}\quad \forall i \in \{1,\dots,P\}.
+\end{aligned}
 \end{equation}
-The band constrains shard \emph{size} $|\sigma^{-1}(i)|$, a tractable surrogate
-for the per-shard query \emph{load} that actually caps throughput; on a graph
-index the two diverge---equal-sized shards can draw unequal traffic---so we
-enforce size balance offline and report the residual load skew $\rho$ as a
-separate diagnostic rather than fold it into~\eqref{eq:objective}.
-\eqref{eq:objective} is an instance of a classical combinatorial problem, which
-lets us reuse its known hardness and algorithms. A query's neighbor set
-$\mathrm{NN}_k(q)$ ties together up to $k$ points that must be retrieved together,
-a relation an ordinary (two-endpoint) edge cannot express. We therefore model the
-workload as a \emph{hypergraph} $H=(X,\{e_q\}_q)$ whose vertices are the data
-points and whose \emph{hyperedges} $e_q=\mathrm{NN}_k(q)$ each span all neighbors
-of one query, with weight $c(e)=\Pr_q[\mathrm{NN}_k(q)=e]$. For an assignment
-$\sigma$, let $\lambda(e)=|\{\sigma(x):x\in e\}|$ be the number of distinct shards
-a hyperedge spans; by construction this is exactly the query's fan-out,
-$\lambda(e_q)=\mathrm{fanout}^\star_\sigma(q)$. Hypergraph partitioning
-conventionally minimizes the \emph{connectivity} (or ``$\lambda\!-\!1$'') metric
-$\sum_e c(e)\,(\lambda(e)-1)$, i.e.\ how many \emph{extra} shards each hyperedge
-reaches beyond its first---the standard measure of cross-partition communication.
-Since $\sum_e c(e)=1$, this metric equals
-$\mathbb{E}_q[\mathrm{fanout}^\star_\sigma(q)]-1$, so it has the \emph{same
-minimizer} as~\eqref{eq:objective}: minimizing expected fan-out \emph{is}
-minimizing the $\lambda\!-\!1$ objective, and the balance band is the standard
-$(1{+}\varepsilon)$ balance constraint. Hence~\eqref{eq:objective} is a
-$(P,1{+}\varepsilon)$-balanced minimum-connectivity hypergraph partitioning
-instance ($P$ parts, within a $(1{+}\varepsilon)$ balance band)---the problem
-solved by tools such as hMETIS and KaHyPar~\cite{metis,kahypar}. (For a target
-$R<1$, $\mathrm{NN}_k(q)$ is replaced by a recall-$R$ sufficient subset, which can
-only lower fan-out; the full-neighbor version above is the conservative
-reference.) Even for fixed
-$P$ with the relaxed balance constraint this problem is NP-hard, and
-inapproximable under strictly equal parts~\cite{andreev2006}, which is why Orion
-optimizes a computable surrogate rather than~\eqref{eq:objective} itself, as the
-next paragraphs develop.
 
-\paragraph{Why the problem cannot be optimized directly.}
-Two gaps prevent solving~\eqref{eq:objective} as stated. \emph{Offline}, the
-hyperedges $\mathrm{NN}_k(q)$ are query-specific and the workload is not known in
-advance; materializing ground-truth neighbors for a representative query sample
-at scale is expensive, so the partitioner needs a computable, query-independent
-proxy for which points are \emph{co-relevant}. \emph{Online}, $\mathrm{NN}_k(q)$
-is precisely the unknown the query is trying to find, so a router must estimate
-which shards hold the neighbors without an exhaustive scan. Any practical system
-must supply a mechanism for both; the navigation graph is Orion's, and it is a
-component of the \emph{solution}, not a premise of the problem.
+This objective naturally maps to a hypergraph $H=(X,\{e_q\}_q)$. The vertices are the vector set $X$, and each query's target set forms a hyperedge $e_q=\mathrm{NN}_k(q)$. Intuitively, if a query's target neighbors are scattered across many different shards, its hyperedge is ``cut'' multiple times, forcing the system to fan out to all those shards to retrieve them. Conversely, if all target neighbors are co-located in a single shard, the hyperedge remains uncut and the fan-out is optimal (i.e., 1). Consequently, minimizing the expected fan-out is mathematically equivalent to minimizing the standard connectivity metric (cut) in hypergraph partitioning.
 
-\paragraph{Orion's navigation-graph instantiation.}
-Orion introduces a single frozen \emph{upper navigation graph} $G=(V,E,w)$, where
-$V$ are upper navigation points and $E$ is its directed adjacency. We define the
-\emph{navigation traffic}
+\subsection{Phase 1: Navigation Graph Partitioning}
+\label{sec:nav_graph}
+Optimizing the ideal hypergraph objective directly is impossible in practice. \emph{Offline}, future queries are unknown, so the exact hyperedges $e_q$ do not exist. Even if they did, the problem is NP-hard and inapproximable~\cite{andreev2006}.
+
+\sysname sidesteps both obstacles by introducing a small, query-independent \emph{query traffic graph} $G=(V,E,w)$ built entirely from the data itself, which acts as a computable structural proxy rather than a direct mathematical replacement for the query hypergraph. Its construction proceeds in three stages---\emph{sample}, \emph{build}, and \emph{color}.
+
+\noindent\textbf{Sample.} Building and partitioning a graph over all $N$ points is prohibitive at billion scale. \sysname instead draws a uniform random subset $V\subseteq X$ of \emph{navigation nodes} (by default $|V|\approx N/32$, i.e.\ $\sim\!3\%$ of the data). This subset acts as a sparse skeleton that captures the global topology of the dataset while keeping the partitioning problem small.
+
+\noindent\textbf{Build.} To estimate how strongly two navigation nodes are \emph{co-accessed} by search, \sysname leverages the dataset itself as a representative query workload. Concretely, it builds an auxiliary HNSW index over the navigation nodes $V$ and, for every data point $x\in X$, issues a $k$-nearest-neighbor query against it ($k{=}10$ by default). The returned nodes form $x$'s \emph{attachment set} $A(x)\subseteq V$---the navigation nodes through which a search seeded at $x$ would be routed. Aggregating these sets over the entire dataset defines a \emph{query traffic graph} $G=(V,E,w)$ whose edge weight counts how often two nodes are attached by the same point. The \emph{navigation traffic} on an edge $(u,v)$ is:
 \begin{equation}
 \label{eq:traffic}
-w(u,v)=\mathbb{E}_{q}\bigl[\,\#\{\text{times $q$'s traversal explores }(u,v)\}\,\bigr],
+w(u,v)=\mathbb{E}_{q\sim X}\bigl[\,\#\{\text{times } u \text{ and } v \text{ are co-attached by } q\}\,\bigr].
 \end{equation}
-the expected number of times, \emph{per query}, that the frozen navigator
-evaluates $v$ as a neighbor of an expanded node $u$. This is exactly the
-search-induced evidence Orion already materializes as attachment votes; it is not
-raw geometric distance. Its working hypothesis (\emph{search-induced topology}) is
-that $w$ is a computable proxy for co-relevance: points reached together during
-navigation tend to fall in a common query's neighbor set. This closes both gaps
-with one artifact.
+The working hypothesis (\emph{search-induced topology}) is that $w$ is an accurate, computable proxy for co-relevance: points reached together during navigation tend to fall in a common query's target set. Crucially, $w$ is derived entirely from search behavior (co-attachment), not from raw geometric distance. This is the only signal the partitioner consumes---no query log or ground-truth neighbor is ever required---and it is what the offline objective below actually minimizes as the \emph{attachment cut}.
 
-\emph{Offline}, Orion replaces the intractable hypergraph
-objective~\eqref{eq:objective} by a tractable \emph{graph} surrogate on $G$.
-For an upper membership $\pi:V\to\{1,\dots,P\}$, the
-\emph{navigation-weighted cut}
-$\sum_{(u,v):\pi(u)\neq\pi(v)}w(u,v)$ sums the traffic on edges whose endpoints
-lie in different shards---intuitively, how often navigation would have to leave
-one shard for another. Minimizing it under the same balance band is the standard
-approach taken by multilevel partitioners~\cite{metis,kahypar}, and Orion
-implements it in three classical stages:
-\begin{enumerate}
-\item \emph{Initialization.} A geometric $k$-means clustering of the upper
-  vectors into $P$ shards yields a cheap first assignment that ignores graph
-  structure but is already roughly balanced.
-\item \emph{Move-based refinement.} Following the Kernighan--Lin /
-  Fiduccia--Mattheyses family~\cite{kl1970,fm1982}, Orion repeatedly considers
-  moving a single upper point from its current shard to another. A move's
-  \emph{gain} is the change in weighted cut (plus a topology vote from
-  navigation evidence); a move is accepted only if its gain is nonnegative (or
-  repairs a balance violation) and the target shard still has spare capacity.
-  Sequential, capacity-aware acceptance avoids the classic collapse where many
-  nodes race into the same underfull shard in one synchronous round.
-\item \emph{Balance repair.} If some shards still violate the
-  $(1{\pm}\varepsilon)$ band after refinement, Orion solves a small
-  \emph{transportation} (min-cost flow) problem: overloaded shards are sources,
-  underloaded shards are sinks, and admissible arcs are those justified by
-  navigation evidence. Shipping one unit of flow along an arc corresponds to
-  reassigning one point (or a group of points); the optimum restores balance at
-  minimal disruption to the cut.
-\end{enumerate}
-All three stages read only the frozen upper graph, so the offline cost stays
-near-linear and the result is checksum-reproducible.
+\noindent\textbf{Color.} Finally, \sysname \emph{colors} the query traffic graph, assigning each node $v\in V$ a shard label $\pi(v)\in\{1,\dots,P\}$. Under this surrogate, the intractable hypergraph min-cut reduces to a standard \emph{weighted graph edge-cut}: minimize $\sum_{(u,v):\pi(u)\neq\pi(v)} w(u,v)$ subject to the balance band of Eq.~\eqref{eq:objective}. \sysname solves it with a lightweight two-phase procedure. First, a \emph{standard geometric $K$-means} over $V$ produces a locality-preserving initial coloring; the seed only needs to supply geometric coherence, since---as we show in \S\ref{sec:eval}---the deliverable fan-out is insensitive to how (or whether) the seed itself is balanced. Second, an iterative \emph{majority-vote label propagation} refines it: each node moves to the shard holding the majority of its attachment neighbors, directly lowering the attachment cut. Crucially, this refinement is where size balance is actually enforced. Each navigation node is weighted by its \emph{projected load}---the number of base-layer points that will later attach to it---and \sysname tracks the aggregate weight of every shard. A topology-improving move is admitted only if it leaves the source shard above the lower bound and the target shard below the upper bound of the balance band; whenever a shard drifts out of band, a bounded \emph{balance-repair} move (tolerating a small, capped loss in the cut) pulls it back. Because every base point ultimately inherits the color of the navigation node it attaches to, balancing this projected load on the $\sim\!3\%$ skeleton is exactly what yields size balance on the full dataset (\S\ref{sec:base_assignment}). Balance is thus owned by the refinement, not the seed, which lets \sysname adopt the simplest possible initializer.
 
-\emph{Online}, serving is two-stage: a global traversal of $G$ selects shards and
-per-shard entry points $\mathrm{EP}(q)\subseteq\mathrm{Vis}(q)$ (the estimator of
-the neighbor-bearing shards), after which each selected shard runs an
-\emph{independent} local search whose \emph{strength} scales with the same
-evidence: a shard receiving more of $q$'s entry points is searched at a larger
-$\mathrm{ef}_s=\mathrm{ef}_0+\gamma\,|\mathrm{EP}(q)\cap\pi^{-1}(s)|$. The
-navigation signal thus governs both \emph{which} shards are probed (the fan-out)
-and \emph{how hard} each is searched (the effort budget $\sum_s\mathrm{ef}_s$),
-concentrating work on the shards navigation implicates. The \emph{realized}
-fan-out is
-$\mathrm{fanout}^\pi(q)=|\{\pi(v):v\in\mathrm{EP}(q)\}|$; base-layer placement
-follows $\pi$ under the same balance band.
+Note that this refinement is a purely \emph{node-local} operation---it collocates each node with its own attachment neighbors---and never enumerates any query's neighbor set. It is precisely the tractable surrogate for the ideal, but intractable, objective of Eq.~\eqref{eq:objective}: driving down the attachment cut co-locates points that are co-accessed together, which Lemma~\ref{lem:fanout} shows bounds the very per-query fan-out that Eq.~\eqref{eq:objective} seeks to minimize.
 
-\paragraph{A mechanism-side bound and a recall assumption.}
-Two claims connect Orion's mechanism back to the problem. First, the offline
-objective it actually optimizes---the navigation-weighted cut---upper-bounds the
-\emph{realized} online fan-out (Lemma~\ref{lem:fanout}). Second, minimizing that
-realized fan-out is meaningful only if the router still returns the neighbors,
-which we state as an explicit, empirically testable assumption
-(Assumption~\ref{ass:recall}) rather than fold into the definitions.
+Once the coloring $\pi$ is finalized, \sysname builds the actual \emph{navigation graph} (an HNSW index) over the colored nodes $V$. This graph is used during online search to query the neighborhood of the target and determine the shard distribution of the nearest navigation nodes.
 
-\begin{lemma}[Realized fan-out is dominated by the weighted cut]
+The following lemma justifies the reduction: the weighted cut that \sysname minimizes upper-bounds the online fan-out it actually pays.
+
+\begin{lemma}[Realized fan-out is bounded by the attachment cut]
 \label{lem:fanout}
-Let $\mathrm{cut}(\pi)=\{(u,v)\in E:\pi(u)\neq\pi(v)\}$ and let $w$ be the
-navigation traffic of~\eqref{eq:traffic}. Then
+Let $\mathrm{cut}(\pi)=\{(u,v)\in E:\pi(u)\neq\pi(v)\}$ be the edges cut by the coloring $\pi$ in the query traffic graph. If a query's entry points are drawn from its attachment set, the expected realized fan-out is bounded by:
 \[
 \mathbb{E}_{q}\!\left[\mathrm{fanout}^\pi(q)\right]
 \ \le\ 1+\!\!\sum_{(u,v)\in\mathrm{cut}(\pi)}\!\! w(u,v).
@@ -179,123 +53,27 @@ navigation traffic of~\eqref{eq:traffic}. Then
 \end{lemma}
 
 \begin{proof}
-Fix a query $q$, let $\mathrm{Vis}(q)$ be the set of nodes its upper traversal
-expands, and let $T(q)\subseteq E$ be the set of edges the traversal explores.
-Best-first search discovers a node only by exploring an edge out of an
-already-expanded node, so $(\mathrm{Vis}(q),T(q))$ is \emph{connected}: it
-contains a spanning tree rooted at the entry node. We stress that we do not
-assume the expansion order forms a walk in $G$---consecutive expanded nodes need
-not be adjacent, since candidates are popped from a priority queue.
-
-Let $m=\bigl|\{\pi(v):v\in\mathrm{Vis}(q)\}\bigr|$ be the number of shards the
-visited set spans, and contract each shard's portion of $\mathrm{Vis}(q)$ into a
-single supernode. The contracted multigraph has $m$ supernodes and inherits
-connectivity, hence carries at least $m-1$ edges; each of them is an explored
-edge whose endpoints lie in different shards. Therefore
-\[
-m\ \le\ 1+\bigl|\{(u,v)\in T(q):\pi(u)\neq\pi(v)\}\bigr|.
-\]
-Entry points are selected only among expanded nodes, so
-$\mathrm{EP}(q)\subseteq\mathrm{Vis}(q)$ and $\mathrm{fanout}^\pi(q)\le m$. Taking
-expectations over $q$ and applying~\eqref{eq:traffic} edgewise,
-$\mathbb{E}_q\bigl|\{(u,v)\in T(q):\pi(u)\neq\pi(v)\}\bigr|
-=\sum_{(u,v)\in\mathrm{cut}(\pi)}w(u,v)$, which yields the claim.
+For a query $q$, let $A(q) \subseteq V$ be its attachment set (the navigation nodes it co-accesses). By definition, the realized fan-out is the number of distinct shards covering $A(q)$, denoted $m = |\{\pi(v) : v \in A(q)\}|$. Consider the complete subgraph formed by $A(q)$ in the query traffic graph. To span $m$ distinct shards, this subgraph must contain at least $m-1$ edges whose endpoints lie in different shards (i.e., cut edges). Therefore, $m \le 1 + |\{(u,v) \in A(q) \times A(q) : \pi(u) \neq \pi(v)\}|$. Taking expectations over $q$ and applying the definition of $w(u,v)$ from Eq.~\eqref{eq:traffic} yields the bound. Note that this is a conservative upper bound, as $A(q)$ may contain many more than $m-1$ cross-shard edges.
 \end{proof}
 
-The bound is loose in two safe directions: fan-out counts only the shards of the
-selected entry points, a subset of the visited shards, and a traversal that
-repeatedly explores edges between the same two shards pays each time in the cut
-but only once in fan-out. Thus the navigation-weighted cut is a
-\emph{conservative} upper bound on realized fan-out, so optimizing it never
-underestimates online cost.
+\subsection{Phase 2: Base-Layer Assignment}
+\label{sec:base_assignment}
+The coloring $\pi$ labels only the navigation skeleton $V$ ($\sim\!3\%$ of the data); \sysname must now extend it to all $N$ points. Each base-layer (L0) point is placed by the very same attachment signal: it inherits the shard labels of the navigation nodes it attaches to and is assigned to the majority shard. This propagates the low-cut partition from the sparse skeleton to the full dataset at near-linear cost, without ever materializing a graph over all $N$ points.
 
-A natural refinement of the same idea normalizes each shard's cut by its
-\emph{volume} (total incident traffic)
-$\mathrm{vol}(V_i)=\sum_{u\in V_i}\sum_{v}w(u,v)$, yielding the
-\emph{conductance} (or normalized-cut) of the partition:
-\[
-\phi(\pi)=\sum_{i=1}^{P}\frac{\sum_{(u,v):\pi(u)=i,\pi(v)\neq i}w(u,v)}{\mathrm{vol}(V_i)}.
-\]
-Each summand is the probability that a random navigation step taken inside shard
-$i$ immediately leaves it, and $\phi$ sums these escape probabilities over shards
-(the normalized cut of Shi and Malik~\cite{shimalik2000}). Low conductance
-therefore means every
-shard is a \emph{metastable} region of the upper traversal---a set navigation
-enters and then tends to stay in. Under this reading, the search-induced-topology hypothesis
-simply says: shards that are metastable for navigation are the ones whose
-interior points are co-relevant for the same queries, and are therefore the
-right blocks for~\eqref{eq:objective}.
+\noindent\textbf{Enforcing exact size balance.} Phase~1 balances only the \emph{projected} load carried by the skeleton, so the realized L0 counts can still drift from the balance band. \sysname closes this gap with a capacity-constrained assignment pass: it caps each shard's point count at the upper balance bound, and for any point whose top-voted shard is already full it spills the point to the next shard supported by its \emph{own} attachment evidence, resolving any residual violation with a min-cost flow over these evidence-admissible reassignments. The outcome is a full-dataset partition that satisfies the size band of Eq.~\eqref{eq:objective} exactly while preserving the low attachment cut.
 
-\begin{assumption}[Navigation preserves recall]
-\label{ass:recall}
-For target recall $R$, with high probability over $q\sim Q$ the shards selected by
-the upper traversal, $\{\pi(v):v\in\mathrm{EP}(q)\}$, contain a recall-$R$
-sufficient subset of $\mathrm{NN}_k(q)$.
-\end{assumption}
+\noindent\textbf{Why the balance band matters for load.} The size balance band of Eq.~\eqref{eq:objective} is not merely a storage convenience---it is what keeps query load in check. Left unconstrained, the min-cut objective would pull every frequently co-accessed ``hub'' region into a single shard, since keeping hubs together is exactly what minimizes the cut. That shard would then lie on almost every query's path, so even a router that fans out across many shards could not spread its load. Our ablation confirms this failure mode: dropping the band lowers mean fan-out (fewer, larger shards to probe) yet inflates load skew so severely that end-to-end throughput \emph{drops} (\S\ref{sec:eval}). Enforcing the band is therefore the mechanism that prevents hub collapse and keeps the layout spreadable by the router in the first place.
 
-Under Assumption~\ref{ass:recall}, Orion's router attains the target recall, so
-its realized fan-out $\mathrm{fanout}^\pi$ is an \emph{achievable} cost for the
-sharding problem, and by Lemma~\ref{lem:fanout} that cost is controlled by the
-offline cut Orion minimizes. The required fan-out
-$\mathrm{fanout}^\star_\sigma$ remains the mechanism-free reference against which
-we report the residual gap; neither direction of comparison is automatic, since a
-router targeting $R<1$ may deliberately skip a shard that holds a true neighbor.
-The navigation graph thus links the mechanism-independent
-objective to a computable surrogate \emph{without} being assumed in the problem
-statement; Assumption~\ref{ass:recall} is what \S\ref{sec:eval} measures, and it
-can fail---in which case the surrogate is simply a worse proxy, not a redefinition
-of the problem.
+\emph{Concretely, hub dispersal falls directly out of the projected-load weighting of Phase~1.} A hub navigation node is, by definition, one that a disproportionate number of base points attach to, so it carries a large projected load. Because the capacity band caps each shard's \emph{aggregate} projected load, no single shard can absorb more than a few such heavy hubs before saturating its upper bound: any refinement move that would pile another hub onto a saturated shard is rejected, and a balance-repair move actively evicts hub mass until the shard falls back into band. Co-accessed hubs are thereby forced apart onto \emph{distinct} shards rather than collapsed together---even though the raw min-cut objective would prefer to keep them on one. Phase~2 then preserves this dispersal at the base layer: the same per-shard point-count cap prevents the majority-vote assignment from re-concentrating a hub's followers onto its home shard, spilling the overflow to the next shard their own attachment evidence supports. With the hot hubs now living on \emph{different} shards rather than one, no single shard sits on every query's path: each query's fan-out lands on its own handful of shards, so the aggregate traffic---routed online by the fan-out router (\S\ref{sec:online})---spreads across the cluster instead of piling onto one hot shard. (Replication in Phase~3 later adds a complementary lever, letting the router cover a single hot hub from the least-loaded of \emph{its} several copies.)
 
-\paragraph{From theory to mechanism.}
-Table~\ref{tab:theory-map} maps each quantity in the formalization to the
-concrete Orion mechanism and to the metric we report, so the design and the
-evaluation can be read against the same objects.
+Beyond enforcing this band, however, finer load-specific balancing is neither necessary nor effective. Tightening size balance further, or relocating base points by their estimated hub load, barely moves load skew---it is governed by where queries cluster, not by exact shard sizes---while sacrificing locality and inflating fan-out (\S\ref{sec:eval}). \sysname therefore enforces the balance band and stops there: within the band, the router's fan-out already distributes hub traffic, leaving only a second-order residual skew (under $2\times$; \S\ref{sec:online}) that warrants no additional offline effort.
 
-One further design choice maps to a standard graph-partitioning relaxation.
-So far $\sigma$ assigns each point to a single shard (\emph{edge-cut} style:
-the cut is paid by edges that cross the boundary). Orion's
-\emph{multi-assignment} instead lets a point occupy several shards, which is
-the \emph{vertex-cut} (or overlapping) relaxation: a point that sits on a
-search-relevant boundary is \emph{replicated} into the shards that navigation
-evidence nominates. Replication lowers $\lambda$ for the hyperedges that
-contain that point---the query no longer needs an extra hop to reach a copy---at
-the cost of storing more physical copies. Formally, replication generalizes
-$\sigma$ to $X\to 2^{\{1,\dots,P\}}$, the required fan-out becomes the smallest
-number of shards \emph{covering} $\mathrm{NN}_k(q)$, and shard load is measured in
-physical copies: with $M=\sum_{x\in X}|\sigma(x)|$ total copies, the balance band
-in~\eqref{eq:objective} becomes $(1\pm\varepsilon)M/P$. The expansion ratio $M/N$
-is the price of this relaxation, and is reported alongside fan-out so the
-trade-off is explicit.
+\subsection{Phase 3: Data Multi-Assignment}
+\label{sec:multiassign}
+So far, $\sigma$ assigns each point to a single shard, which corresponds to an \emph{edge-cut} formulation. However, graph partitioning theory offers a powerful relaxation: the \emph{vertex-cut} (or overlapping) formulation. 
 
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{@{}lll@{}}
-\toprule
-Theoretical quantity & Orion mechanism & Reported metric \\
-\midrule
-Weighted cut / conductance & CCNB offline objective & cross-shard traffic \\
-$\mathbb{E}[\mathrm{fanout}^\pi]$ (Lem.~\ref{lem:fanout}) & selective routing & visited logical shards \\
-Balance band $(1{\pm}\varepsilon)$ & fixed-$P$ balancing & max/mean, CV \\
-Load skew $\rho$ (2nd order) & size balance as proxy & max/mean query load \\
-Per-shard strength $\mathrm{ef}_s$ (2nd order) & effort-scaled local search & within-shard work \\
-Vertex-cut replication & multi-assignment & expansion ratio \\
-\bottomrule
-\end{tabular}
-\caption{Correspondence between the partitioning formalization
-(\S\ref{sec:theory}) and Orion's system mechanisms and measured quantities.}
-\label{tab:theory-map}
-\end{table}
+By allowing a point to be assigned to multiple shards ($\sigma:X\to 2^{\{1,\dots,P\}}$), we can replicate points that sit on heavily trafficked boundaries. This mathematically reduces the cut size, as queries no longer need to cross a partition boundary to reach a replicated neighbor. \sysname operationalizes this with the same attachment votes used in Phase~2: a point is a \emph{boundary point} when its attachment set does not concentrate on a single shard but instead ties (or nearly ties) across several. Rather than forcing such a point onto one majority shard, \sysname places a replica on \emph{every} shard within a small vote margin of the top---up to a bounded, user-configurable replica count. This strictly lowers the required fan-out without sacrificing recall, at the cost of a controlled storage expansion.
 
-We do not claim an approximation guarantee; instead, \S\ref{sec:eval}
-empirically validates Lemma~\ref{lem:fanout} by correlating the offline
-navigation-weighted cut (and conductance) with measured fan-out and end-to-end
-QPS across $P\in\{4,8,16,32\}$, and tests Assumption~\ref{ass:recall} by checking
-that the selected shards cover the true neighbors at the target recall. It also
-quantifies the two second-order factors: the residual load skew $\rho$ that
-survives size balancing, and the within-shard work that the effort-scaled
-$\mathrm{ef}_s$ saves against a uniform-$\mathrm{ef}$ baseline at matched recall.
+As a secondary benefit, replicating a hot neighborhood onto several shards also gives the online router freedom to cover a query from whichever replica is least loaded, which can further trim the already-modest residual load skew; but the primary and validated gain is the reduction in fan-out.
 
-% ------------------------- STANDALONE (uncomment) --------------------------
-% \end{document}
-% ---------------------------------------------------------------------------
+With the offline index constructed and partitioned, the remaining challenge is how to efficiently route online queries against this topology. We detail \sysname's online navigational routing in the next section.
