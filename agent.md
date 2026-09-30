@@ -175,6 +175,35 @@ requirements. If an experiment changes the upper graph or its navigation semanti
 rebuild and rebind every dependent attachment and layout artifact rather than
 mixing generations.
 
+## CloudLab Cluster Storage Layout
+
+For the current 16-node CloudLab deployment, use node0 for the global navigation
+graph and node1 through node15 as shard workers. Follow this user-selected storage
+layout when configuring builds, imports, and serving:
+
+| Mount point | Device | Approximate usable capacity per node | Purpose |
+| --- | --- | --- | --- |
+| `/mnt/ssd` | `/dev/sdb1` | 439 GiB | Raw datasets, raw shard inputs, import staging, and temporary build files |
+| `/mnt/ssd-extra` | `/dev/sda4` | 368 GiB | Online vectors, graph indexes, and persistent serving data |
+
+- On node0, store the navigation graph, navigation vectors, and shard mappings
+  under `/mnt/ssd-extra`; use `/mnt/ssd` for source datasets and build/import staging.
+- On node1 through node15, store each worker's serving vectors, local graph indexes,
+  and persistent files under `/mnt/ssd-extra`; use `/mnt/ssd` for raw shard inputs
+  and temporary build files.
+- Prefer `/mnt/ssd/datasets` and `/mnt/ssd/tmp` for data preparation, and
+  `/mnt/ssd-extra/orion/data` for serving data. Configure application paths
+  explicitly; existing directory names do not override this policy.
+- These are independent local filesystems on each node, not shared storage.
+  `/mnt/ssd-extra` shares its physical SSD with the operating system.
+- Verify that the intended filesystem is mounted before writing large datasets
+  or starting services, so an absent mount does not redirect writes to the root
+  filesystem.
+
+This layout supersedes the earlier recommendation to put online indexes on
+`/mnt/ssd` and raw data on `/mnt/ssd-extra`. It is a deployment rule for this
+cluster, not a constraint on Orion's general storage architecture.
+
 ## Rule of Thumb
 
 A change is compatible with canonical Orion if it preserves this chain:
