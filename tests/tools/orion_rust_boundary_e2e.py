@@ -31,6 +31,8 @@ def main() -> None:
     parser.add_argument("--qdrant", required=True)
     parser.add_argument("--layout-cli", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--streaming", action="store_true", help="Exercise concurrent build-install and idempotent retry.")
+    parser.add_argument("--uint8", action="store_true", help="Exercise lossless u8bin input, uint8 storage and byte metrics.")
     args = parser.parse_args()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -109,9 +111,9 @@ def main() -> None:
                 process.wait(timeout=10)
 
     try:
-        raw = output / "raw.f32le"
-        vectors = [[i % 16 / 8 - 1, i // 16 - 1.5] for i in range(64)]
-        raw.write_bytes(b"".join(struct.pack("<ff", *row) for row in vectors))
+        raw = output / ("raw.u8bin" if args.uint8 else "raw.f32le")
+        vectors = [[(i % 16) * 16, (i // 16) * 64] for i in range(64)] if args.uint8 else [[i % 16 / 8 - 1, i // 16 - 1.5] for i in range(64)]
+        raw.write_bytes(struct.pack("<II", 64, 2) + bytes(x for row in vectors for x in row) if args.uint8 else b"".join(struct.pack("<ff", *row) for row in vectors))
         request = {"input": {"format_version": 1, "path": str(raw), "rows": 64, "dimension": 2,
                              "sha256": hashlib.sha256(raw.read_bytes()).hexdigest()},
                    "options": {"generation": 1, "shard_count": 2, "distance": "Cosine", "vector_name": "",
@@ -119,48 +121,84 @@ def main() -> None:
                                "upper_seed": 100, "efs": 3, "upper_k": 4, "upper_ef_search": 4,
                                "dynamic_ef_base": 20, "dynamic_ef_factor": 4, "kmeans_iterations": 10,
                                "kmeans_seed": 1, "topology_iterations": 100, "bundle_prefix": "import"}}
+        if args.uint8:
+            request["input"]["encoding"] = "u8bin"
+            request["options"]["distance"] = "Euclid"
         request_path = output / "request.json"
         request_path.write_text(json.dumps(request))
         bundle = output / "bundle"
+        reference = output / "reference" if args.streaming else bundle
         with (output / "builder.log").open("wb") as log:
-            subprocess.run([args.layout_cli, "build", "--request", str(request_path), "--output", str(bundle)],
+            subprocess.run([args.layout_cli, "build", "--request", str(request_path), "--output", str(reference)],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
-        manifest = json.loads((bundle / "import.manifest.json").read_text())
-        artifact = json.loads((bundle / manifest["orion_artifact_file"]).read_text())
+        manifest = json.loads((reference / "import.manifest.json").read_text())
+        artifact = json.loads((reference / manifest["orion_artifact_file"]).read_text())
         for node in range(3):
             start(node)
         wait(lambda: len(api(0, "GET", "/cluster")["peers"]) == 3)
         name = "boundary"
         api(0, "PUT", f"/collections/{name}?timeout=60", {
-            "vectors": {"size": 2, "distance": "Cosine"}, "shard_number": 2,
+            "vectors": {"size": 2, "distance": "Euclid" if args.uint8 else "Cosine", "datatype": "uint8" if args.uint8 else "float32"}, "shard_number": 2,
             "replication_factor": 2, "write_consistency_factor": 1,
             "optimizers_config": {"default_segment_number": 1, "max_optimization_threads": 1},
             "hnsw_config": {"m": 4, "ef_construct": 32},
-            "auto_shard_policy": {"type": "orion", "generation": 1, "artifact_sha256": manifest["orion_artifact_sha256"]},
+            "auto_shard_policy": {"type": "orion", "generation": 1,
+                                  "artifact_sha256": "0" * 64 if args.streaming else manifest["orion_artifact_sha256"]},
         })
+        install_command = ([args.layout_cli, "build-install", "--request", str(request_path), "--output", str(bundle)]
+                           if args.streaming else [args.layout_cli, "install", "--bundle", str(bundle)])
+        install_command += ["--uri", f"http://127.0.0.1:{ports[0][0]}", "--collection", name,
+                            "--timeout-secs", "90", "--api-key", key]
         with (output / "install.log").open("wb") as log:
-            subprocess.run([args.layout_cli, "install", "--bundle", str(bundle), "--uri", f"http://127.0.0.1:{ports[0][0]}",
-                            "--collection", name, "--timeout-secs", "90", "--api-key", key], stdout=log, stderr=subprocess.STDOUT,
-                           check=True, timeout=240)
+            subprocess.run(install_command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=240)
+        if args.streaming:
+            for path in reference.iterdir():
+                assert path.read_bytes() == (bundle / path.name).read_bytes(), path.name
+            with (output / "install-retry.log").open("wb") as log:
+                subprocess.run(install_command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=240)
+            report["checks"]["streamed_bundle_parity_and_retry"] = True
         state = api(0, "GET", f"/collections/{name}/orion")
         assert all(peer["phase"] == "Ready" and peer["active"]["generation"] == 1 for peer in state)
         report["checks"]["consensus_install"] = state
+        if args.uint8:
+            assert artifact["vector_schema"]["datatype"] == "uint8"
+            assert (bundle / manifest["vectors_file"]).stat().st_size == 64 * 2
+            assert not list(bundle.glob("*.f32le"))
+            for start_id in range(0, 64, 16):
+                records = api(0, "POST", f"/collections/{name}/points", {"ids": list(range(start_id,start_id+16)), "with_vector": True})
+                assert len(records) == 16
+                for row in records:
+                    assert row["vector"] == vectors[row["id"]]
+            # Identical lower datatype and metric, independent ordinary hash collection.
+            api(0, "PUT", "/collections/uint8_control?timeout=60", {
+                "vectors": {"size": 2, "distance": "Euclid", "datatype": "uint8"},
+                "shard_number": 2, "hnsw_config": {"m": 4, "ef_construct": 32}})
+            api(0, "PUT", "/collections/uint8_control/points?wait=true", {
+                "points": [{"id": i, "vector": v} for i,v in enumerate(vectors)]})
+            for query in [[0,0], [128,128], [255,255], [127.9,192.0]]:
+                body = {"vector": query, "limit": 5, "params": {"hnsw_ef": 100}}
+                actual = api(0, "POST", f"/collections/{name}/points/search", body)
+                control = api(0, "POST", "/collections/uint8_control/points/search", body)
+                assert [r["score"] for r in actual] == [r["score"] for r in control], (query, actual, control)
+            report["checks"]["uint8_compact_bundle_exact_retrieval_and_hashall_scores"] = True
+        inserted = [123.0, 15.0] if args.uint8 else [123.0, 0.15]
+        updated = [250.0, 15.0] if args.uint8 else [-123.0, 0.15]
         point_id = str(uuid.uuid4())
         api(0, "PUT", f"/collections/{name}/points?wait=true&ordering=strong&timeout=60", {
-            "points": [{"id": point_id, "vector": [123.0, 0.15], "payload": {"marker": "uuid", "value": 1}}]})
+            "points": [{"id": point_id, "vector": inserted, "payload": {"marker": "uuid", "value": 1}}]})
         for node in range(3):
             record = api(node, "POST", f"/collections/{name}/points", {"ids": [point_id], "with_payload": True, "with_vector": True})
             assert len(record) == 1 and record[0]["payload"]["value"] == 1
         api(1, "POST", f"/collections/{name}/points/payload?wait=true&timeout=60", {"points": [point_id], "payload": {"value": 2}})
-        result = wait(lambda: api(2, "POST", f"/collections/{name}/points/search", {"vector": [123.0, 0.15], "limit": 5}))
+        result = wait(lambda: api(2, "POST", f"/collections/{name}/points/search", {"vector": inserted, "limit": 5}))
         assert any(row["id"] == point_id for row in result)
-        api(0, "PUT", f"/collections/{name}/points/vectors?wait=true&timeout=60", {"points": [{"id": point_id, "vector": [-123.0, 0.15]}]})
+        api(0, "PUT", f"/collections/{name}/points/vectors?wait=true&timeout=60", {"points": [{"id": point_id, "vector": updated}]})
         record = api(1, "POST", f"/collections/{name}/points", {"ids": [point_id], "with_payload": True, "with_vector": True})[0]
-        assert record["payload"]["value"] == 2 and record["vector"][0] < 0
+        assert record["payload"]["value"] == 2 and (record["vector"][0] == updated[0] if args.uint8 else record["vector"][0] < 0)
         api(0, "POST", f"/collections/{name}/points/vectors/delete?wait=true&timeout=60", {"points": [point_id], "vector": [""]})
         record = api(2, "POST", f"/collections/{name}/points", {"ids": [point_id], "with_payload": True, "with_vector": True})[0]
         assert record.get("vector") in (None, {}) and record["payload"]["value"] == 2
-        api(1, "PUT", f"/collections/{name}/points/vectors?wait=true&timeout=60", {"points": [{"id": point_id, "vector": [-123.0, 0.15]}]})
+        api(1, "PUT", f"/collections/{name}/points/vectors?wait=true&timeout=60", {"points": [{"id": point_id, "vector": updated}]})
         api(0, "POST", f"/collections/{name}/points/payload?wait=true&timeout=60", {"payload": {"filtered": True}, "filter": {"must": [{"key": "marker", "match": {"value": "uuid"}}]}})
         assert api(2, "POST", f"/collections/{name}/points", {"ids": [point_id], "with_payload": True})[0]["payload"]["filtered"] is True
         report["checks"]["vector_update_delete_restore_and_filtered_payload"] = True

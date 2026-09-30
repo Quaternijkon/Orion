@@ -110,6 +110,16 @@ pub struct FileBinding {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlCommand {
+    /// Reserve an empty collection for a build whose final layout checksum is not yet known.
+    BeginStream {
+        spec: super::streaming::StreamSpec,
+    },
+    /// Import an ordered, retryable batch while the remaining layout is still being computed.
+    StreamBatch {
+        generation: u64,
+        sequence: u64,
+        rows: Vec<super::streaming::StreamRow>,
+    },
     CommitWrite {
         plan: super::membership::WritePlan,
     },
@@ -294,9 +304,11 @@ pub(crate) fn read_bundle(
     bundle::ImportManifest,
     OrionRoutingArtifact,
 )> {
-    let build: bundle::BuildManifest =
-        serde_json::from_reader(File::open(dir.join("build-manifest.json")).map_err(io)?)
-            .map_err(bad)?;
+    let build: bundle::BuildManifest = serde_json::from_reader(BufReader::with_capacity(
+        1024 * 1024,
+        File::open(dir.join("build-manifest.json")).map_err(io)?,
+    ))
+    .map_err(bad)?;
     let import: bundle::ImportManifest =
         serde_json::from_reader(File::open(dir.join(&build.import_manifest_file)).map_err(io)?)
             .map_err(bad)?;
@@ -308,8 +320,25 @@ pub(crate) fn read_bundle(
     Ok((build, import, artifact))
 }
 
-pub(crate) fn memberships(dir: &Path) -> CollectionResult<BTreeMap<ExtendedPointId, Vec<u32>>> {
-    let (_, import, _) = read_bundle(dir)?;
+pub(crate) fn memberships_for_shards(
+    dir: &Path,
+    local: Option<&std::collections::BTreeSet<u32>>,
+) -> CollectionResult<BTreeMap<ExtendedPointId, Vec<u32>>> {
+    // The bundle was independently replayed at Prepare. Loading its catalog need not
+    // materialize the upper graph, nor retain remote-only memberships on a worker.
+    let build: bundle::BuildManifest = serde_json::from_reader(BufReader::with_capacity(
+        1024 * 1024,
+        File::open(dir.join("build-manifest.json")).map_err(io)?,
+    ))
+    .map_err(bad)?;
+    bundle::validate_filename(&build.import_manifest_file).map_err(bad)?;
+    let import_path = dir.join(&build.import_manifest_file);
+    if bundle::file_sha256(&import_path).map_err(io)? != build.import_manifest_sha256 {
+        return Err(io("membership manifest checksum mismatch"));
+    }
+    let import: bundle::ImportManifest =
+        serde_json::from_reader(File::open(import_path).map_err(io)?).map_err(bad)?;
+    bundle::validate_filename(&import.assignments_file).map_err(bad)?;
     if bundle::file_sha256(&dir.join(&import.assignments_file)).map_err(io)?
         != import.assignments_sha256
     {
@@ -318,7 +347,9 @@ pub(crate) fn memberships(dir: &Path) -> CollectionResult<BTreeMap<ExtendedPoint
     let mut result = BTreeMap::new();
     for line in BufReader::new(File::open(dir.join(import.assignments_file)).map_err(io)?).lines() {
         let row: bundle::Assignment = serde_json::from_str(&line.map_err(io)?).map_err(bad)?;
-        result.insert(ExtendedPointId::NumId(row.id), row.shards);
+        if local.is_none_or(|shards| row.shards.iter().any(|s| shards.contains(s))) {
+            result.insert(ExtendedPointId::NumId(row.id), row.shards);
+        }
     }
     Ok(result)
 }
@@ -374,6 +405,18 @@ impl Collection {
         }
         let mut state = read_state(&self.path)?.unwrap_or_default();
         match command {
+            ControlCommand::BeginStream { spec } => {
+                return self.begin_orion_stream(&mut state, spec).await;
+            }
+            ControlCommand::StreamBatch {
+                generation,
+                sequence,
+                rows,
+            } => {
+                return self
+                    .import_orion_stream_batch(&state, generation, sequence, rows)
+                    .await;
+            }
             ControlCommand::CommitWrite { plan } => return self.commit_orion_write(plan).await,
             ControlCommand::RecoverWrite => {
                 if let Some(plan) = super::membership::pending_plan(&self.path)? {
@@ -436,6 +479,23 @@ impl Collection {
                     && state.files == files
                 {
                     return Ok(());
+                }
+                let collection_path = self.path.clone();
+                let mut stream_state = state.clone();
+                let stream_files = files.clone();
+                if let Some(stream_state) = tokio::task::spawn_blocking(move || {
+                    super::streaming::bind_files(
+                        &collection_path,
+                        &mut stream_state,
+                        generation,
+                        &stream_files,
+                    )
+                    .map(|bound| bound.then_some(stream_state))
+                })
+                .await
+                .map_err(io)??
+                {
+                    return save_state(&self.path, &stream_state);
                 }
                 if generation <= state.highest_generation {
                     return Err(bad("generation IDs cannot be reused after rollback"));
@@ -551,21 +611,34 @@ impl Collection {
                         return Err(bad(format!("upload checksum/size mismatch: {name}")));
                     }
                 }
-                let verified = tokio::task::spawn_blocking(move || bundle::verify(&dir))
+                let verified = tokio::task::spawn_blocking(move || bundle::verify_integrity(&dir))
                     .await
                     .map_err(io)?
                     .map_err(bad)?;
                 if verified.orion_generation != generation {
                     return Err(bad("uploaded generation mismatch"));
                 }
-                let (_, _, artifact) = read_bundle(&generation_path(&self.path, generation))?;
+                let (build, _, artifact) = read_bundle(&generation_path(&self.path, generation))?;
+                let collection_path = self.path.clone();
+                let import = verified.clone();
+                let streamed = tokio::task::spawn_blocking(move || {
+                    super::streaming::verify_import(&collection_path, generation, &build, &import)
+                })
+                .await
+                .map_err(io)??;
                 let config = self.collection_config.read().await;
                 if state.active.is_none() {
-                    if !matches!(&config.auto_shard_policy,Some(AutoShardPolicy::Orion {generation:g,artifact_sha256}) if *g==generation&&*artifact_sha256==verified.orion_artifact_sha256)
+                    if !matches!(&config.auto_shard_policy,Some(AutoShardPolicy::Orion {generation:g,artifact_sha256}) if *g==generation&&(*artifact_sha256==verified.orion_artifact_sha256 || (streamed && *artifact_sha256 == "0".repeat(64))))
                     {
                         return Err(bad("initial generation differs from the collection policy"));
                     }
-                    for (_, shard) in self.shards_holder.read().await.get_shards() {
+                    for (_, shard) in self
+                        .shards_holder
+                        .read()
+                        .await
+                        .get_shards()
+                        .filter(|_| !streamed)
+                    {
                         let count = shard
                             .count_local(
                                 Arc::new(shard::count::CountRequestInternal {
@@ -595,11 +668,16 @@ impl Collection {
                     ));
                 }
                 if params.datatype.unwrap_or_default()
-                    != crate::operations::types::Datatype::Float32
+                    != match artifact.vector_schema.datatype {
+                        super::OrionVectorDatatype::Uint8 => {
+                            crate::operations::types::Datatype::Uint8
+                        }
+                        _ => crate::operations::types::Datatype::Float32,
+                    }
                     || config.params.vectors.params_iter().count() != 1
                 {
                     return Err(bad(
-                        "native Orion currently requires exactly one float32 dense vector schema",
+                        "native Orion requires exactly one matching float32/uint8 dense vector schema",
                     ));
                 }
                 if artifact.shard_count as usize != self.shards_holder.read().await.len() {
@@ -629,7 +707,11 @@ impl Collection {
                 drop(config);
                 self.update_optimizer_params(optimizers).await?;
                 self.recreate_optimizers_blocking().await?;
-                state.phase = Phase::BuildingLayout;
+                state.phase = if streamed {
+                    Phase::Indexing
+                } else {
+                    Phase::BuildingLayout
+                };
             }
             ControlCommand::Import { generation } => {
                 if state
@@ -648,6 +730,14 @@ impl Collection {
                     )
                 {
                     return Err(bad("invalid import phase"));
+                }
+                if generation_path(&self.path, generation)
+                    .join("stream")
+                    .is_dir()
+                {
+                    return Err(bad(
+                        "streaming imports must finish and prepare their final bundle first",
+                    ));
                 }
                 state.phase = Phase::Importing;
                 save_state(&self.path, &state)?;
@@ -698,11 +788,13 @@ impl Collection {
                 }
                 let artifact = super::migration::read_artifact(&self.path, generation)?;
                 let artifact_sha256 = artifact.canonical_sha256().map_err(io)?;
-                let router = Arc::new(OrionRouter::new(artifact.clone()).map_err(bad)?);
+                let router = Arc::new(OrionRouter::from_artifact(&artifact).map_err(bad)?);
                 let artifact_path = super::routing_artifact_path(&self.path, generation);
                 fs::create_dir_all(artifact_path.parent().unwrap()).map_err(io)?;
-                let bytes = artifact.canonical_json_bytes().map_err(bad)?;
-                atomic_save(&artifact_path, |out| out.write_all(&bytes)).map_err(io)?;
+                atomic_save(&artifact_path, |out| {
+                    serde_json::to_writer(out, &artifact).map_err(std::io::Error::other)
+                })
+                .map_err(io)?;
                 let mut config = self.collection_config.write().await;
                 config.auto_shard_policy = Some(AutoShardPolicy::Orion {
                     generation,
@@ -847,7 +939,7 @@ impl Collection {
             0;
             import
                 .dimension
-                .checked_mul(4)
+                .checked_mul(import.vector_encoding.element_bytes())
                 .ok_or_else(|| bad("dimension overflow"))?
         ];
         for line in
@@ -856,10 +948,7 @@ impl Collection {
             let assignment: bundle::Assignment =
                 serde_json::from_str(&line.map_err(io)?).map_err(bad)?;
             vectors.read_exact(&mut row_bytes).map_err(io)?;
-            let vector: Vec<f32> = row_bytes
-                .chunks_exact(4)
-                .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
-                .collect();
+            let vector = import.vector_encoding.decode(&row_bytes).map_err(bad)?;
             let vector = if import.vector_name.is_empty() {
                 VectorStructPersisted::Single(vector)
             } else {
@@ -898,17 +987,18 @@ impl Collection {
     async fn validate_orion_local(&self, generation: u64) -> CollectionResult<()> {
         let dir = generation_path(&self.path, generation);
         let artifact = super::migration::read_artifact(&self.path, generation)?;
-        let members = super::membership::Catalog::load(&self.path, generation)?.entries;
-        let assigner = super::migration::Assigner::new(
-            artifact.clone(),
-            super::migration::options(&self.path, generation)?.efs,
-        )?;
+        let local = self.orion_local_shard_ids().await;
+        let members =
+            super::membership::Catalog::load_for_shards(&self.path, generation, &local)?.entries;
         let state = read_state(&self.path)?;
         let retained = if let Some(active) = state
             .and_then(|s| s.active)
             .filter(|g| g.generation != generation)
         {
-            Some(super::membership::Catalog::load(&self.path, active.generation)?.entries)
+            Some(
+                super::membership::Catalog::load_for_shards(&self.path, active.generation, &local)?
+                    .entries,
+            )
         } else {
             None
         };
@@ -917,6 +1007,12 @@ impl Collection {
             if !shard.has_local_shard().await {
                 continue;
             }
+            let anchor_by_id: HashMap<_, _> = artifact
+                .upper_nodes
+                .iter()
+                .filter(|node| node.owner_shard == id)
+                .map(|node| (node.label, node))
+                .collect();
             let anchors = artifact
                 .upper_nodes
                 .iter()
@@ -985,40 +1081,22 @@ impl Collection {
                 for row in &rows {
                     if expected.contains_key(&row.id) {
                         found.insert(row.id);
-                        let point = PointStructPersisted {
-                            id: row.id,
-                            vector: row
-                                .vector
-                                .clone()
-                                .unwrap_or(
-                                    segment::data_types::vectors::VectorStructInternal::Named(
-                                        HashMap::new(),
-                                    ),
-                                )
-                                .into(),
-                            payload: None,
-                        };
-                        if assigner.assign(&point, expected[&row.id])?.shards
-                            != expected[&row.id].shards
-                        {
-                            return Err(bad(
-                                "stored vector does not replay to its declared membership",
-                            ));
-                        }
-                        if let Some(node) = artifact
-                            .upper_nodes
-                            .iter()
-                            .find(|n| n.label == row.id && n.owner_shard == id)
-                        {
+                        if let Some(node) = anchor_by_id.get(&row.id) {
                             let Some(segment::data_types::vectors::VectorRef::Dense(vector)) =
                                 row.get_vector_by_name(&artifact.vector_schema.vector_name)
                             else {
                                 return Err(bad("missing L0 entry vector"));
                             };
-                            let normalized = super::router::preprocess_vector(
-                                artifact.vector_schema.distance,
-                                node.vector.clone(),
-                            );
+                            let normalized = match artifact.vector_schema.datatype {
+                                super::OrionVectorDatatype::Uint8 => artifact
+                                    .vector_schema
+                                    .distance
+                                    .preprocess_vector::<u8>(node.vector.clone()),
+                                _ => super::router::preprocess_vector(
+                                    artifact.vector_schema.distance,
+                                    node.vector.clone(),
+                                ),
+                            };
                             if !dir.join("migration.json").is_file()
                                 && !vector
                                     .iter()

@@ -209,6 +209,22 @@ fn load<T: for<'de> Deserialize<'de> + Serialize>(path: &Path) -> CollectionResu
 
 impl Catalog {
     pub fn load(collection: &Path, generation: u64) -> CollectionResult<Self> {
+        Self::load_filtered(collection, generation, None)
+    }
+    /// Read-only worker view. Committed WAL events still replay in full so clocks,
+    /// moves into/out of local shards, tombstones and pending-tail checks are retained.
+    pub(crate) fn load_for_shards(
+        collection: &Path,
+        generation: u64,
+        shards: &BTreeSet<u32>,
+    ) -> CollectionResult<Self> {
+        Self::load_filtered(collection, generation, Some(shards))
+    }
+    fn load_filtered(
+        collection: &Path,
+        generation: u64,
+        shards: Option<&BTreeSet<u32>>,
+    ) -> CollectionResult<Self> {
         let base_path =
             lifecycle::generation_path(collection, generation).join("catalog-base.json");
         let entries = if base_path.is_file() {
@@ -218,19 +234,22 @@ impl Catalog {
             }
             base.entries
         } else {
-            lifecycle::memberships(&lifecycle::generation_path(collection, generation))?
-                .into_iter()
-                .map(|(id, shards)| {
-                    (
-                        id,
-                        Member {
-                            shards,
-                            live: true,
-                            vector_present: true,
-                        },
-                    )
-                })
-                .collect()
+            lifecycle::memberships_for_shards(
+                &lifecycle::generation_path(collection, generation),
+                shards,
+            )?
+            .into_iter()
+            .map(|(id, shards)| {
+                (
+                    id,
+                    Member {
+                        shards,
+                        live: true,
+                        vector_present: true,
+                    },
+                )
+            })
+            .collect()
         };
         let mut result = Self {
             generation,
@@ -333,9 +352,79 @@ pub fn load_visibility(collection: &Path) -> Visibility {
     };
     state
         .active
-        .and_then(|g| Catalog::load(collection, g.generation).ok())
+        // Original bundle rows are all live and have vectors. Only committed events
+        // (or a migrated base, which still loads in full) can add visibility masks.
+        .and_then(|g| Catalog::load_for_shards(collection, g.generation, &BTreeSet::new()).ok())
         .map(|c| c.visibility())
         .unwrap_or_default()
+}
+
+/// Exact counts from a validated, activated, unchanged initial generation.
+/// Dynamic/migrated generations retain the existing WAL/catalog path.
+pub(crate) fn initial_shard_counts(
+    collection: &Path,
+    state: &lifecycle::ControlState,
+) -> CollectionResult<Option<Vec<usize>>> {
+    let Some(active) = &state.active else {
+        return Ok(None);
+    };
+    let dir = lifecycle::generation_path(collection, active.generation);
+    if active.membership_revision != 0
+        || state.pending_generation.is_some()
+        || state.previous.is_some()
+        || state.phase != Phase::Ready
+        || dir.join("migration.json").exists()
+        || dir.join("catalog-base.json").exists()
+        || pending_path(collection).exists()
+    {
+        return Ok(None);
+    }
+    let wal = journal(collection, active.generation);
+    if wal.is_dir() && fs::read_dir(wal).map_err(io)?.next().is_some() {
+        return Ok(None);
+    }
+    let Some(binding) = state.files.get("build-manifest.json") else {
+        return Ok(None);
+    };
+    let path = dir.join("build-manifest.json");
+    if fs::metadata(&path).map_err(io)?.len() != binding.size
+        || super::bundle::file_sha256(&path).map_err(io)? != binding.sha256
+    {
+        return Err(io("initial counts build manifest checksum mismatch"));
+    }
+    let build: super::bundle::BuildManifest = serde_json::from_reader(
+        std::io::BufReader::with_capacity(1024 * 1024, File::open(path).map_err(io)?),
+    )
+    .map_err(io)?;
+    super::bundle::validate_filename(&build.import_manifest_file).map_err(io)?;
+    let path = dir.join(&build.import_manifest_file);
+    if super::bundle::file_sha256(&path).map_err(io)? != build.import_manifest_sha256 {
+        return Err(io("initial counts import manifest checksum mismatch"));
+    }
+    let import: super::bundle::ImportManifest =
+        serde_json::from_reader(File::open(path).map_err(io)?).map_err(io)?;
+    if build.format_version != 2
+        || build.algorithm_version != super::layout::LAYOUT_ALGORITHM_VERSION
+        || build.options.generation != active.generation
+        || import.orion_generation != active.generation
+        || import.orion_artifact_sha256 != active.artifact_sha256
+        || import.assignments_sha256 != active.layout_sha256
+        || import.shard_count != active.shard_count
+        || build.shard_counts.len() != active.shard_count as usize
+        || build
+            .shard_counts
+            .iter()
+            .try_fold(0_u64, |sum, &n| sum.checked_add(n))
+            != Some(import.total_point_copies)
+    {
+        return Err(io("initial counts do not match activated generation"));
+    }
+    build
+        .shard_counts
+        .into_iter()
+        .map(|n| usize::try_from(n).map_err(io))
+        .collect::<CollectionResult<Vec<_>>>()
+        .map(Some)
 }
 
 fn vectors(vector: VectorStructPersisted) -> CollectionResult<HashMap<String, VectorPersisted>> {
@@ -349,14 +438,35 @@ fn vectors(vector: VectorStructPersisted) -> CollectionResult<HashMap<String, Ve
 }
 
 impl Collection {
+    pub(crate) async fn orion_local_shard_ids(&self) -> BTreeSet<u32> {
+        let holder = self.shards_holder.read().await;
+        let mut ids = BTreeSet::new();
+        for (id, shard) in holder.get_shards() {
+            if shard.has_local_shard().await {
+                ids.insert(id);
+            }
+        }
+        ids
+    }
     /// Repair shard data from the immutable generation and committed full WAL intents.
     /// The caller holds the collection control lock. Clock tags skip already-newer data.
     pub(crate) async fn repair_orion_data(&self) -> CollectionResult<()> {
         let state = lifecycle::read_state(&self.path)?.ok_or_else(|| io("missing repair state"))?;
-        let Some(active) = state.active else {
+        let Some(active) = state.active.clone() else {
             return Ok(());
         };
-        let catalog = Catalog::load(&self.path, active.generation)?;
+        let generation = active.generation;
+        let local = self.orion_local_shard_ids().await;
+        let path = self.path.clone();
+        let (catalog_revision, shard_revisions) = tokio::task::spawn_blocking(move || {
+            if initial_shard_counts(&path, &state)?.is_some() {
+                return CollectionResult::Ok((0, BTreeMap::new()));
+            }
+            let catalog = Catalog::load_for_shards(&path, generation, &local)?;
+            Ok((catalog.revision, catalog.shard_revisions))
+        })
+        .await
+        .map_err(io)??;
         let holder = self.shards_holder.read().await;
         let mut missing_epoch = false;
         let mut behind = false;
@@ -368,8 +478,7 @@ impl Collection {
                 continue;
             }
             let actual = super::clock::observed(shard, active.generation).await?;
-            let expected =
-                super::clock::fence_tick(*catalog.shard_revisions.get(&id).unwrap_or(&0))?;
+            let expected = super::clock::fence_tick(*shard_revisions.get(&id).unwrap_or(&0))?;
             if actual.is_some_and(|tick| tick > expected) {
                 self.orion_refresh_needed
                     .store(true, std::sync::atomic::Ordering::Release);
@@ -396,7 +505,7 @@ impl Collection {
             self.stamp_orion_epoch(active.generation).await?;
         }
         let holder = self.shards_holder.read().await;
-        for revision in 1..=catalog.revision {
+        for revision in 1..=catalog_revision {
             let plan = saved_plan(&self.path, active.generation, revision)?;
             for (&id, ops) in &plan.writes {
                 if let Some(shard) = holder.get_shard(id) {
@@ -648,10 +757,35 @@ impl Collection {
         }
         let generation = state
             .active
+            .as_ref()
             .ok_or_else(|| io("Orion has no active generation"))?
             .generation;
-        let catalog = Catalog::load(&self.path, generation)?;
-        let artifact = super::migration::read_artifact(&self.path, generation)?;
+        let router = self
+            .orion_router
+            .load_full()
+            .ok_or_else(|| io("Orion router has not loaded"))?;
+        if router.generation() != generation {
+            return Err(io("Orion router generation mismatch"));
+        }
+        let local_shards = self.orion_local_shard_ids().await;
+        let collection_path = self.path.clone();
+        // Static generations have no member deltas. Their committed build manifest
+        // binds exact per-shard counts; do not reload N memberships or the upper graph.
+        let (catalog, initial_counts) = tokio::task::spawn_blocking(move || {
+            let initial_counts = initial_shard_counts(&collection_path, &state)?;
+            let catalog = if initial_counts.is_some() {
+                None
+            } else {
+                Some(Catalog::load_for_shards(
+                    &collection_path,
+                    generation,
+                    &local_shards,
+                )?)
+            };
+            CollectionResult::Ok((catalog, initial_counts))
+        })
+        .await
+        .map_err(io)??;
         let holder = self.shards_holder.read().await;
         for (id, shard) in holder.get_shards() {
             if !shard.has_local_shard().await {
@@ -662,8 +796,13 @@ impl Collection {
             {
                 continue;
             }
-            let expected_clock =
-                super::clock::fence_tick(*catalog.shard_revisions.get(&id).unwrap_or(&0))?;
+            let expected_clock = super::clock::fence_tick(
+                catalog
+                    .as_ref()
+                    .and_then(|c| c.shard_revisions.get(&id))
+                    .copied()
+                    .unwrap_or(0),
+            )?;
             let observed = super::clock::observed(shard, generation).await?;
             if observed != Some(expected_clock) {
                 self.orion_refresh_needed
@@ -675,39 +814,39 @@ impl Collection {
             if !indexes {
                 continue;
             }
-            let anchors = artifact
-                .upper_nodes
-                .iter()
-                .filter(|n| n.owner_shard == id)
-                .map(|n| n.label)
-                .collect();
+            let anchors = router.owner_entries(id);
             let proof = lifecycle::check_index(
                 shard
                     .orion_segment_view()
                     .await?
                     .ok_or_else(|| io("missing local Orion index"))?,
-                artifact.vector_schema.vector_name.clone(),
+                router.vector_name().to_owned(),
                 anchors,
                 false,
             )
             .await?;
-            let expected = catalog
-                .entries
-                .iter()
-                .filter(|(point, m)| {
-                    m.shards.contains(&id)
-                        && (m.vector_present
-                            || artifact
-                                .upper_nodes
-                                .iter()
-                                .any(|n| n.label == **point && n.owner_shard == id))
-                })
-                .count();
-            let expected_points = catalog
-                .entries
-                .values()
-                .filter(|m| m.shards.contains(&id))
-                .count();
+            let (expected_points, expected) = if let Some(counts) = &initial_counts {
+                let count = *counts
+                    .get(id as usize)
+                    .ok_or_else(|| io("shard absent from initial counts"))?;
+                (count, count)
+            } else {
+                let catalog = catalog.as_ref().expect("dynamic generation has catalog");
+                let points = catalog
+                    .entries
+                    .values()
+                    .filter(|m| m.shards.contains(&id))
+                    .count();
+                let vectors = catalog
+                    .entries
+                    .iter()
+                    .filter(|(point, m)| {
+                        m.shards.contains(&id)
+                            && (m.vector_present || router.is_owner_entry(**point, id))
+                    })
+                    .count();
+                (points, vectors)
+            };
             if proof.vectors != expected || proof.points != expected_points {
                 return Err(io(
                     "Orion entry update is waiting for the complete local HNSW",

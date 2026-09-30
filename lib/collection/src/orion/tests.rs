@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use segment::types::{Distance, ExtendedPointId};
 
+use super::router::OrionRouteScratch;
 use super::*;
 
 fn id(value: u64) -> ExtendedPointId {

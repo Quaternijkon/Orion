@@ -399,7 +399,6 @@ impl GpuVectorStorage {
             VectorStorageEnum::DenseVolatile(vector_storage) => {
                 Self::new_dense_f32(device, vector_storage, force_half_precision, stopped)
             }
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(vector_storage) => {
                 Self::new_dense(device, vector_storage, stopped)
             }

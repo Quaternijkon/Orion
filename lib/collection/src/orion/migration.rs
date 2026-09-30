@@ -92,7 +92,13 @@ pub(crate) struct Assigner {
     shard_count: u32,
 }
 impl Assigner {
-    pub(crate) fn new(mut artifact: OrionRoutingArtifact, efs: usize) -> CollectionResult<Self> {
+    pub(crate) fn new(artifact: OrionRoutingArtifact, efs: usize) -> CollectionResult<Self> {
+        Self::from_artifact(&artifact, efs)
+    }
+    pub(crate) fn from_artifact(
+        artifact: &OrionRoutingArtifact,
+        efs: usize,
+    ) -> CollectionResult<Self> {
         let labels = artifact
             .upper_nodes
             .iter()
@@ -105,12 +111,10 @@ impl Assigner {
             .iter()
             .map(|n| (n.label, n.owner_shard))
             .collect();
-        artifact.upper_k = efs.min(artifact.upper_nodes.len());
-        artifact.upper_ef_search = efs;
         let vector_name = artifact.vector_schema.vector_name.clone();
         let shard_count = artifact.shard_count;
         Ok(Self {
-            router: OrionRouter::new(artifact).map_err(bad)?,
+            router: OrionRouter::from_artifact_with_ef(artifact, efs).map_err(bad)?,
             labels,
             owners,
             anchors,
@@ -123,6 +127,17 @@ impl Assigner {
         point: &PointStructPersisted,
         old: &Member,
     ) -> CollectionResult<Member> {
+        self.assign_with_scratch(point, old, &mut self.new_scratch())
+    }
+    pub(crate) fn new_scratch(&self) -> super::router::OrionRouteScratch {
+        self.router.new_route_scratch()
+    }
+    pub(crate) fn assign_with_scratch(
+        &self,
+        point: &PointStructPersisted,
+        old: &Member,
+        scratch: &mut super::router::OrionRouteScratch,
+    ) -> CollectionResult<Member> {
         let mut shards = if old.live && old.vector_present {
             let vectors = point.get_vectors();
             let Some(segment::data_types::vectors::VectorRef::Dense(vector)) =
@@ -130,7 +145,10 @@ impl Assigner {
             else {
                 return Err(bad("migration source routing vector is absent"));
             };
-            let hits = self.router.search_upper(vector).map_err(bad)?;
+            let hits = self
+                .router
+                .search_upper_with_scratch(vector, scratch)
+                .map_err(bad)?;
             let hits: Vec<_> = hits.iter().map(|h| self.labels[&h.label]).collect();
             super::layout::strict_targets(&hits, &self.owners).map_err(bad)?
         } else if let Some(&owner) = self.anchors.get(&point.id) {

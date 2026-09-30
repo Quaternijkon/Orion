@@ -7,8 +7,9 @@ use segment::data_types::vectors::{VectorElementType, VectorRef};
 use segment::index::hnsw_index::HnswM;
 use segment::index::hnsw_index::graph_layers_builder::GraphLayersBuilder;
 use segment::index::hnsw_index::point_scorer::FilteredScorer;
-use segment::vector_storage::VectorStorage;
+use segment::vector_storage::dense::volatile_dense_vector_storage::VolatileDenseVectorStorage;
 use segment::vector_storage::dense::volatile_dense_vector_storage::new_volatile_dense_vector_storage;
+use segment::vector_storage::{VectorStorage, VectorStorageEnum};
 
 use super::artifact::{OrionRoutingArtifact, OrionUpperGraphNode, OrionUpperHnswGraph};
 use super::error::{OrionRoutingError, OrionRoutingResult};
@@ -93,7 +94,12 @@ pub fn build_upper_hnsw_graph(
 
     let dimension = artifact.vector_schema.dimension;
     let distance = artifact.vector_schema.distance;
-    let mut vector_storage = new_volatile_dense_vector_storage(dimension, distance);
+    let is_byte = artifact.vector_schema.datatype == super::OrionVectorDatatype::Uint8;
+    let mut vector_storage = if is_byte {
+        VectorStorageEnum::DenseVolatileByte(VolatileDenseVectorStorage::new(dimension, distance))
+    } else {
+        new_volatile_dense_vector_storage(dimension, distance)
+    };
     let build_counter = HardwareCounterCell::disposable();
     for (point_index, node) in artifact.upper_nodes.iter().enumerate() {
         let point_id = PointOffsetType::try_from(point_index).map_err(|_| {
@@ -101,7 +107,11 @@ pub fn build_upper_hnsw_graph(
                 reason: format!("upper point index {point_index} does not fit PointOffsetType"),
             }
         })?;
-        let vector = distance.preprocess_vector::<VectorElementType>(node.vector.clone());
+        let vector = if is_byte {
+            distance.preprocess_vector::<u8>(node.vector.clone())
+        } else {
+            distance.preprocess_vector::<VectorElementType>(node.vector.clone())
+        };
         vector_storage
             .insert_vector(point_id, VectorRef::from(&vector), &build_counter)
             .map_err(|source| OrionRoutingError::UpperGraphBuild {
@@ -136,6 +146,7 @@ pub fn build_upper_hnsw_graph(
             reason: source.to_string(),
         })?;
         graph_builder.link_new_point(point_id, scorer);
+        if (point_id + 1) % 100_000 == 0 { eprintln!("Orion upper HNSW: linked {}/{} nodes", point_id + 1, point_count); }
     }
 
     let portable =

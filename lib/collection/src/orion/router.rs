@@ -29,6 +29,12 @@ pub struct OrionShardTarget {
     pub ef: usize,
 }
 
+#[derive(Clone, Copy)]
+enum UpperQuery<'a> {
+    Float32(&'a [f32]),
+    Uint8(&'a [u8]),
+}
+
 type UpperNodeCandidate = (OrderedFloat<f32>, usize);
 
 /// Dense visited-node bitmap for one upper-HNSW routing task.
@@ -40,17 +46,21 @@ type UpperNodeCandidate = (OrderedFloat<f32>, usize);
 #[derive(Debug)]
 struct UpperVisitedSet {
     words: Vec<usize>,
+    touched_words: Vec<usize>,
 }
 
 impl UpperVisitedSet {
     fn new(node_count: usize) -> Self {
         Self {
             words: vec![0; node_count.div_ceil(usize::BITS as usize)],
+            touched_words: Vec::new(),
         }
     }
 
     fn clear(&mut self) {
-        self.words.fill(0);
+        for word in self.touched_words.drain(..) {
+            self.words[word] = 0;
+        }
     }
 
     /// Returns `true` exactly once for each node between calls to [`Self::clear`].
@@ -58,6 +68,9 @@ impl UpperVisitedSet {
         let word_index = node_index / usize::BITS as usize;
         let bit = 1usize << (node_index % usize::BITS as usize);
         let word = &mut self.words[word_index];
+        if *word == 0 {
+            self.touched_words.push(word_index);
+        }
         let is_new = *word & bit == 0;
         *word |= bit;
         is_new
@@ -72,6 +85,7 @@ impl UpperVisitedSet {
 #[derive(Debug)]
 pub(crate) struct OrionRouteScratch {
     query: Vec<f32>,
+    byte_query: Vec<u8>,
     visited: UpperVisitedSet,
     candidates: BinaryHeap<Reverse<UpperNodeCandidate>>,
     nearest: BinaryHeap<UpperNodeCandidate>,
@@ -82,6 +96,7 @@ impl OrionRouteScratch {
     fn new(dimension: usize, upper_ef_search: usize, upper_node_count: usize) -> Self {
         Self {
             query: Vec::with_capacity(dimension),
+            byte_query: Vec::with_capacity(dimension),
             visited: UpperVisitedSet::new(upper_node_count),
             candidates: BinaryHeap::with_capacity(upper_ef_search),
             nearest: BinaryHeap::with_capacity(upper_ef_search),
@@ -149,23 +164,68 @@ pub struct OrionRouter {
     /// chase and one independently allocated `Vec` per upper node from the distance hot path. Node
     /// indices, vector element order, and per-node preprocessing remain identical to the artifact.
     upper_vectors: Box<[VectorElementType]>,
+    upper_byte_vectors: Option<Box<[u8]>>,
     node_by_label: AHashMap<ExtendedPointId, usize>,
     search_backend: UpperSearchBackend,
+    scratch_pool: parking_lot::Mutex<Vec<OrionRouteScratch>>,
+}
+
+/// Exclusive workspace lease. The router snapshot owns the pool, so a generation
+/// swap cannot mix bitmap shapes or leak search state between concurrent requests.
+pub(crate) struct OrionRouteScratchLease<'a> {
+    router: &'a OrionRouter,
+    scratch: Option<OrionRouteScratch>,
+}
+impl std::ops::Deref for OrionRouteScratchLease<'_> {
+    type Target = OrionRouteScratch;
+    fn deref(&self) -> &Self::Target {
+        self.scratch.as_ref().unwrap()
+    }
+}
+impl std::ops::DerefMut for OrionRouteScratchLease<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.scratch.as_mut().unwrap()
+    }
+}
+impl Drop for OrionRouteScratchLease<'_> {
+    fn drop(&mut self) {
+        let mut pool = self.router.scratch_pool.lock();
+        if pool.len() < *common::defaults::POOL_KEEP_LIMIT {
+            pool.push(self.scratch.take().unwrap());
+        }
+    }
 }
 
 impl OrionRouter {
     /// Build a production router. A complete serialized upper HNSW graph is mandatory.
     pub fn new(artifact: OrionRoutingArtifact) -> OrionRoutingResult<Self> {
-        Self::build(artifact, false)
+        Self::build(&artifact, false)
     }
 
     /// Build an exact upper scanner for tests and artifact diagnostics only.
     pub fn new_brute_force_testing(artifact: OrionRoutingArtifact) -> OrionRoutingResult<Self> {
-        Self::build(artifact, true)
+        Self::build(&artifact, true)
+    }
+
+    pub(crate) fn from_artifact_with_ef(
+        artifact: &OrionRoutingArtifact,
+        ef: usize,
+    ) -> OrionRoutingResult<Self> {
+        if ef == 0 {
+            return Err(OrionRoutingError::EmptyUpperK);
+        }
+        let mut router = Self::from_artifact(artifact)?;
+        router.upper_k = ef.min(artifact.upper_nodes.len());
+        router.upper_ef_search = ef;
+        Ok(router)
+    }
+
+    pub(crate) fn from_artifact(artifact: &OrionRoutingArtifact) -> OrionRoutingResult<Self> {
+        Self::build(artifact, false)
     }
 
     fn build(
-        artifact: OrionRoutingArtifact,
+        artifact: &OrionRoutingArtifact,
         brute_force_testing: bool,
     ) -> OrionRoutingResult<Self> {
         artifact.validate()?;
@@ -194,28 +254,51 @@ impl OrionRouter {
         );
         let upper_vector_element_count =
             checked_upper_vector_element_count(artifact.upper_nodes.len(), dimension)?;
+        let is_byte = artifact.vector_schema.datatype == super::OrionVectorDatatype::Uint8;
+        let mut upper_byte_vectors = is_byte.then(Vec::new);
         let mut upper_vectors = Vec::new();
         upper_vectors
-            .try_reserve_exact(upper_vector_element_count)
+            .try_reserve_exact(if is_byte {
+                0
+            } else {
+                upper_vector_element_count
+            })
             .map_err(|source| OrionRoutingError::UpperVectorStorageAllocation {
                 element_count: upper_vector_element_count,
                 reason: source.to_string(),
             })?;
+        if let Some(bytes) = &mut upper_byte_vectors {
+            bytes
+                .try_reserve_exact(upper_vector_element_count)
+                .map_err(|source| OrionRoutingError::UpperVectorStorageAllocation {
+                    element_count: upper_vector_element_count,
+                    reason: source.to_string(),
+                })?;
+        }
         let mut nodes = Vec::with_capacity(artifact.upper_nodes.len());
-        for node in artifact.upper_nodes {
-            let preprocessed_vector = preprocess_vector(distance, node.vector);
-            debug_assert_eq!(preprocessed_vector.len(), dimension);
-            upper_vectors.extend(preprocessed_vector);
+        for node in &artifact.upper_nodes {
+            if let Some(bytes) = &mut upper_byte_vectors {
+                bytes.extend(node.vector.iter().map(|&x| x as u8));
+            } else {
+                let preprocessed_vector = preprocess_vector(distance, node.vector.clone());
+                debug_assert_eq!(preprocessed_vector.len(), dimension);
+                upper_vectors.extend(preprocessed_vector);
+            }
             nodes.push(RuntimeUpperNode {
                 label: node.label,
                 owner_shard: node.owner_shard,
             });
         }
-        debug_assert_eq!(upper_vectors.len(), upper_vector_element_count);
+        debug_assert_eq!(
+            upper_byte_vectors
+                .as_ref()
+                .map_or(upper_vectors.len(), Vec::len),
+            upper_vector_element_count
+        );
 
         Ok(Self {
             generation: artifact.generation,
-            vector_name: artifact.vector_schema.vector_name,
+            vector_name: artifact.vector_schema.vector_name.clone(),
             dimension,
             distance,
             shard_count: artifact.shard_count,
@@ -226,8 +309,10 @@ impl OrionRouter {
             entry_point_capacity_hint,
             nodes,
             upper_vectors: upper_vectors.into_boxed_slice(),
+            upper_byte_vectors: upper_byte_vectors.map(Vec::into_boxed_slice),
             node_by_label,
             search_backend,
+            scratch_pool: parking_lot::Mutex::new(Vec::new()),
         })
     }
 
@@ -243,8 +328,30 @@ impl OrionRouter {
         self.shard_count
     }
 
+    pub(crate) fn owner_entries(&self, shard: ShardId) -> Vec<ExtendedPointId> {
+        self.nodes
+            .iter()
+            .filter(|node| node.owner_shard == shard)
+            .map(|node| node.label)
+            .collect()
+    }
+
+    pub(crate) fn is_owner_entry(&self, label: ExtendedPointId, shard: ShardId) -> bool {
+        self.node_by_label
+            .get(&label)
+            .is_some_and(|&index| self.nodes[index].owner_shard == shard)
+    }
+
     pub fn upper_k(&self) -> usize {
         self.upper_k
+    }
+
+    pub(crate) fn borrow_route_scratch(&self) -> OrionRouteScratchLease<'_> {
+        let cached = self.scratch_pool.lock().pop();
+        OrionRouteScratchLease {
+            router: self,
+            scratch: Some(cached.unwrap_or_else(|| self.new_route_scratch())),
+        }
     }
 
     pub(crate) fn new_route_scratch(&self) -> OrionRouteScratch {
@@ -253,17 +360,25 @@ impl OrionRouter {
 
     pub fn search_upper(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionUpperHit>> {
         self.validate_query(query)?;
-        let query = preprocess_vector(self.distance, query.to_vec());
+        let float_query;
+        let byte_query;
+        let query = if self.upper_byte_vectors.is_some() {
+            byte_query = query.iter().map(|&x| x as u8).collect::<Vec<_>>();
+            UpperQuery::Uint8(&byte_query)
+        } else {
+            float_query = preprocess_vector(self.distance, query.to_vec());
+            UpperQuery::Float32(&float_query)
+        };
         let hits = match &self.search_backend {
-            UpperSearchBackend::Hnsw(graph) => self.search_hnsw(&query, graph),
-            UpperSearchBackend::BruteForceTesting => self.search_brute_force(&query),
+            UpperSearchBackend::Hnsw(graph) => self.search_hnsw(query, graph),
+            UpperSearchBackend::BruteForceTesting => self.search_brute_force(query),
         }?;
         Ok(hits)
     }
 
     /// Search the upper tier and build the complete configured shard union.
     pub fn route_query(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionShardTarget>> {
-        let mut scratch = self.new_route_scratch();
+        let mut scratch = self.borrow_route_scratch();
         self.route_query_with_scratch(query, &mut scratch)
     }
 
@@ -402,6 +517,7 @@ impl OrionRouter {
 
         let OrionRouteScratch {
             query: normalized_query,
+            byte_query,
             visited,
             candidates,
             nearest,
@@ -411,7 +527,18 @@ impl OrionRouter {
         normalized_query.clear();
         normalized_query.extend_from_slice(query);
         let owned_query = mem::take(normalized_query);
-        *normalized_query = preprocess_vector(self.distance, owned_query);
+        *normalized_query = if self.upper_byte_vectors.is_some() {
+            owned_query
+        } else {
+            preprocess_vector(self.distance, owned_query)
+        };
+        let prepared_query = if self.upper_byte_vectors.is_some() {
+            byte_query.clear();
+            byte_query.extend(normalized_query.iter().map(|&x| x as u8));
+            UpperQuery::Uint8(byte_query)
+        } else {
+            UpperQuery::Float32(normalized_query)
+        };
 
         visited.clear();
         candidates.clear();
@@ -420,7 +547,7 @@ impl OrionRouter {
 
         match &self.search_backend {
             UpperSearchBackend::Hnsw(graph) => self.search_hnsw_indices_into(
-                normalized_query,
+                prepared_query,
                 graph,
                 visited,
                 candidates,
@@ -428,14 +555,13 @@ impl OrionRouter {
                 sorted_nearest,
             )?,
             UpperSearchBackend::BruteForceTesting => {
-                self.search_brute_force_indices_into(normalized_query, sorted_nearest)?
+                self.search_brute_force_indices_into(prepared_query, sorted_nearest)?
             }
         }
 
         Ok(())
     }
 
-    #[cfg(test)]
     pub(crate) fn search_upper_with_scratch(
         &self,
         query: &[f32],
@@ -466,7 +592,7 @@ impl OrionRouter {
         Ok(())
     }
 
-    fn search_brute_force(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionUpperHit>> {
+    fn search_brute_force(&self, query: UpperQuery<'_>) -> OrionRoutingResult<Vec<OrionUpperHit>> {
         let mut hits = self
             .nodes
             .iter()
@@ -492,7 +618,7 @@ impl OrionRouter {
 
     fn search_brute_force_indices_into(
         &self,
-        query: &[f32],
+        query: UpperQuery<'_>,
         sorted_nearest: &mut Vec<UpperNodeCandidate>,
     ) -> OrionRoutingResult<()> {
         sorted_nearest.reserve(self.nodes.len());
@@ -508,7 +634,7 @@ impl OrionRouter {
 
     fn search_hnsw(
         &self,
-        query: &[f32],
+        query: UpperQuery<'_>,
         graph: &RuntimeUpperGraph,
     ) -> OrionRoutingResult<Vec<OrionUpperHit>> {
         let mut current = graph.entry_point;
@@ -574,7 +700,7 @@ impl OrionRouter {
     #[allow(clippy::too_many_arguments)]
     fn search_hnsw_indices_into(
         &self,
-        query: &[f32],
+        query: UpperQuery<'_>,
         graph: &RuntimeUpperGraph,
         visited: &mut UpperVisitedSet,
         candidates: &mut BinaryHeap<Reverse<UpperNodeCandidate>>,
@@ -631,13 +757,31 @@ impl OrionRouter {
         Ok(())
     }
 
-    fn distance_to(&self, query: &[f32], node_index: usize) -> OrionRoutingResult<f32> {
+    fn distance_to(&self, query: UpperQuery<'_>, node_index: usize) -> OrionRoutingResult<f32> {
         let vector_start = node_index * self.dimension;
         let vector_end = vector_start + self.dimension;
-        let node_vector = &self.upper_vectors[vector_start..vector_end];
+
         // Qdrant metrics return a larger-is-better similarity. Negation gives the router's
         // lower-is-better ordering without changing the production SIMD scorer semantics.
-        let distance = -similarity(self.distance, query, node_vector);
+        let distance = -match query {
+            UpperQuery::Float32(query) => similarity(
+                self.distance,
+                query,
+                &self.upper_vectors[vector_start..vector_end],
+            ),
+            UpperQuery::Uint8(query) => {
+                let node = &self
+                    .upper_byte_vectors
+                    .as_ref()
+                    .expect("byte query requires byte storage")[vector_start..vector_end];
+                match self.distance {
+                    Distance::Euclid => <EuclidMetric as Metric<u8>>::similarity(query, node),
+                    Distance::Cosine => <CosineMetric as Metric<u8>>::similarity(query, node),
+                    Distance::Dot => <DotProductMetric as Metric<u8>>::similarity(query, node),
+                    Distance::Manhattan => <ManhattanMetric as Metric<u8>>::similarity(query, node),
+                }
+            }
+        };
         if !distance.is_finite() {
             return Err(OrionRoutingError::NonFiniteDistance {
                 label: self.nodes[node_index].label,
@@ -807,6 +951,127 @@ mod flat_upper_vector_tests {
                 ],
             }),
         }
+    }
+
+    #[test]
+    fn uint8_router_uses_byte_storage_and_native_byte_metrics() {
+        for distance in [
+            Distance::Euclid,
+            Distance::Cosine,
+            Distance::Dot,
+            Distance::Manhattan,
+        ] {
+            let mut artifact = cosine_artifact();
+            artifact.vector_schema.datatype = super::super::OrionVectorDatatype::Uint8;
+            artifact.vector_schema.distance = distance;
+            artifact.vector_schema.dimension = 128;
+            artifact.upper_graph = None;
+            for (i, node) in artifact.upper_nodes.iter_mut().enumerate() {
+                node.vector = (0..128).map(|j| ((i * 67 + j * 13) % 256) as f32).collect();
+            }
+            artifact.upper_k = artifact.upper_nodes.len();
+            artifact.upper_ef_search = artifact.upper_k.max(32);
+            let artifact = artifact
+                .build_upper_hnsw(super::super::OrionUpperGraphBuildOptions {
+                    m: 4,
+                    ef_construct: 32,
+                    seed: 100,
+                })
+                .unwrap();
+            let query: Vec<f32> = (0..128)
+                .map(|i| [-1.5, 0.0, 127.9, 128.0, 255.0, 300.0][i % 6])
+                .collect();
+            let bytes: Vec<u8> = query.iter().map(|&x| x as u8).collect();
+            let mut expected = artifact
+                .upper_nodes
+                .iter()
+                .enumerate()
+                .map(|(i, node)| {
+                    let v: Vec<u8> = node.vector.iter().map(|&x| x as u8).collect();
+                    let score = match distance {
+                        Distance::Euclid => <EuclidMetric as Metric<u8>>::similarity(&bytes, &v),
+                        Distance::Cosine => <CosineMetric as Metric<u8>>::similarity(&bytes, &v),
+                        Distance::Dot => <DotProductMetric as Metric<u8>>::similarity(&bytes, &v),
+                        Distance::Manhattan => {
+                            <ManhattanMetric as Metric<u8>>::similarity(&bytes, &v)
+                        }
+                    };
+                    (OrderedFloat(-score), i, node.label)
+                })
+                .collect::<Vec<_>>();
+            expected.sort_unstable();
+            for router in [
+                OrionRouter::new(artifact.clone()).unwrap(),
+                OrionRouter::new_brute_force_testing(artifact.clone()).unwrap(),
+            ] {
+                assert!(router.upper_vectors.is_empty());
+                assert_eq!(
+                    router.upper_byte_vectors.as_ref().unwrap().len(),
+                    artifact.upper_nodes.len() * 128
+                );
+                let hits = router.search_upper(&query).unwrap();
+                assert_eq!(
+                    hits.iter()
+                        .map(|h| (h.label, h.distance))
+                        .collect::<Vec<_>>(),
+                    expected
+                        .iter()
+                        .map(|(d, _, id)| (*id, d.0))
+                        .collect::<Vec<_>>()
+                );
+                let mut scratch = router.new_route_scratch();
+                assert_eq!(
+                    router
+                        .search_upper_with_scratch(&query, &mut scratch)
+                        .unwrap(),
+                    hits
+                );
+                assert_eq!(
+                    router.route_query(&query).unwrap(),
+                    router.route_upper_hits(&hits).unwrap()
+                );
+            }
+            let mut corrupt = artifact;
+            corrupt.upper_nodes[0].vector[0] = 256.0;
+            assert!(OrionRouter::new(corrupt).is_err());
+        }
+    }
+
+    #[test]
+    fn scratch_pool_reuses_storage_and_isolates_concurrent_queries() {
+        let router = OrionRouter::new(cosine_artifact()).unwrap();
+        let queries = [vec![1.0, -0.5], vec![0.0, 1.0], vec![-1.0, 0.0]];
+        let expected: Vec<_> = queries
+            .iter()
+            .map(|q| {
+                let mut scratch = router.new_route_scratch();
+                router.route_query_with_scratch(q, &mut scratch).unwrap()
+            })
+            .collect();
+        let pointer = {
+            let scratch = router.borrow_route_scratch();
+            scratch.visited.words.as_ptr()
+        };
+        assert_eq!(
+            router.borrow_route_scratch().visited.words.as_ptr(),
+            pointer
+        );
+        assert!(router.route_query(&[f32::NAN, 1.0]).is_err());
+        std::thread::scope(|scope| {
+            for worker in 0..16 {
+                let router = &router;
+                let queries = &queries;
+                let expected = &expected;
+                scope.spawn(move || {
+                    for round in 0..100 {
+                        let i = (worker + round) % queries.len();
+                        assert_eq!(router.route_query(&queries[i]).unwrap(), expected[i]);
+                    }
+                });
+            }
+        });
+        assert!(!router.scratch_pool.lock().is_empty());
+        assert!(router.scratch_pool.lock().len() <= *common::defaults::POOL_KEEP_LIMIT);
     }
 
     #[test]

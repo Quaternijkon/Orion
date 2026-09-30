@@ -55,7 +55,28 @@ pub async fn install(
     timeout: Duration,
     api_key: Option<&str>,
 ) -> Result<()> {
-    let import = bundle::verify(dir)?;
+    install_impl(dir, uri, collection, timeout, api_key, false).await
+}
+
+pub(crate) async fn install_streamed(
+    dir: &Path,
+    uri: &str,
+    collection: &str,
+    timeout: Duration,
+    api_key: Option<&str>,
+) -> Result<()> {
+    install_impl(dir, uri, collection, timeout, api_key, true).await
+}
+
+async fn install_impl(
+    dir: &Path,
+    uri: &str,
+    collection: &str,
+    timeout: Duration,
+    api_key: Option<&str>,
+    streamed: bool,
+) -> Result<()> {
+    let import = bundle::verify_integrity(dir)?;
     let generation = import.orion_generation;
     let client = reqwest::Client::builder().timeout(timeout).build()?;
     let mut url = url::Url::parse(uri)?;
@@ -89,6 +110,7 @@ pub async fn install(
     let mut files = BTreeMap::new();
     let build: bundle::BuildManifest =
         serde_json::from_reader(File::open(dir.join("build-manifest.json"))?)?;
+    let streamed_files = [import.vectors_file.clone(), import.assignments_file.clone()];
     for name in [
         "build-manifest.json".to_string(),
         build.source_artifact_file,
@@ -114,6 +136,9 @@ pub async fn install(
     })
     .await?;
     for (name, binding) in files {
+        if streamed && streamed_files.contains(&name) {
+            continue;
+        }
         let mut input = File::open(dir.join(&name))?;
         let mut offset = 0_u64;
         while offset < binding.size {

@@ -45,5 +45,7 @@ pub fn sample_indices(rows: usize, denominator: usize, seed: u64) -> Result<Vec<
         indices.swap(i, j);
     }
     indices.truncate(rows / denominator);
+    // Do not carry the N-row allocation into graph construction after sampling N/M.
+    indices.shrink_to_fit();
     Ok(indices)
 }

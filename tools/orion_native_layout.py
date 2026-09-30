@@ -64,6 +64,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="cosine",
     )
     parser.add_argument("--vector-name", default="")
+    parser.add_argument("--uri", help="Stream assignments into this Qdrant HTTP endpoint during the build.")
+    parser.add_argument("--collection", help="Fresh Orion collection for --uri; created if absent.")
+    parser.add_argument("--timeout-secs", type=int, default=7200)
 
     parser.add_argument("--sample-denominator", type=int, default=32)
     parser.add_argument("--upper-sample-seed", type=int, default=100)
@@ -207,6 +210,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if bool(getattr(args, "uri", None)) != bool(getattr(args, "collection", None)):
+        raise ValueError("--uri and --collection must be supplied together")
+    if getattr(args, "timeout_secs", 7200) <= 0:
+        raise ValueError("--timeout-secs must be positive")
     positive_fields = {
         "generation": args.generation,
         "num_shards": args.num_shards,
@@ -961,7 +968,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         if getattr(args, field, None):
             raise ValueError(f"--{field.replace('_', '-')} is historical; use --rust-layout-binary")
     output_dir = Path(args.output_dir).expanduser().resolve()
-    if os.path.lexists(output_dir):
+    streaming = bool(getattr(args, "uri", None))
+    if os.path.lexists(output_dir) and not streaming:
         raise FileExistsError(f"refusing to overwrite existing output path: {output_dir}")
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     hdf5_path = Path(args.hdf5_path).expanduser().resolve()
@@ -999,12 +1007,16 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         }
         request_path = Path(staging) / "request.json"
         write_json_new(request_path, request)
-        manifest = run_layout_cli(args, "build", "--request", str(request_path),
-                                  "--output", str(output_dir))
+        command = ["build-install" if streaming else "build", "--request", str(request_path),
+                   "--output", str(output_dir)]
+        if streaming:
+            command += ["--uri", args.uri, "--collection", args.collection,
+                        "--timeout-secs", str(args.timeout_secs)]
+        manifest = run_layout_cli(args, *command)
     import_path = output_dir / manifest["import_manifest_file"]
     imported = json.loads(import_path.read_text(encoding="utf-8"))
     summary = {
-        "output_dir": str(output_dir), "mode": "production_bundle",
+        "output_dir": str(output_dir), "mode": "streamed_install" if streaming else "production_bundle",
         "algorithm_version": manifest["algorithm_version"],
         "production_artifact": str(output_dir / imported["orion_artifact_file"]),
         "production_artifact_sha256": imported["orion_artifact_sha256"],

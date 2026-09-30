@@ -174,6 +174,7 @@ struct ImportManifest {
     vector_name: String,
     vectors_file: PathBuf,
     vectors_sha256: String,
+    vector_encoding: super::layout::VectorEncoding,
     assignments_file: PathBuf,
     assignments_sha256: String,
 }
@@ -224,6 +225,8 @@ struct LegacyOrionImportManifest {
     vector_name: String,
     vectors_file: PathBuf,
     vectors_sha256: String,
+    #[serde(default)]
+    vector_encoding: super::layout::VectorEncoding,
     assignments_file: PathBuf,
     assignments_sha256: String,
 }
@@ -244,6 +247,8 @@ struct GenericImportManifest {
     vector_name: String,
     vectors_file: PathBuf,
     vectors_sha256: String,
+    #[serde(default)]
+    vector_encoding: super::layout::VectorEncoding,
     assignments_file: PathBuf,
     assignments_sha256: String,
 }
@@ -528,6 +533,7 @@ fn read_import_manifest(manifest_path: &Path) -> Result<ImportManifest> {
                 vector_name: legacy.vector_name,
                 vectors_file: legacy.vectors_file,
                 vectors_sha256: legacy.vectors_sha256,
+                vector_encoding: legacy.vector_encoding,
                 assignments_file: legacy.assignments_file,
                 assignments_sha256: legacy.assignments_sha256,
             })
@@ -555,6 +561,7 @@ fn read_import_manifest(manifest_path: &Path) -> Result<ImportManifest> {
                 vector_name: generic.vector_name,
                 vectors_file: generic.vectors_file,
                 vectors_sha256: generic.vectors_sha256,
+                vector_encoding: generic.vector_encoding,
                 assignments_file: generic.assignments_file,
                 assignments_sha256: generic.assignments_sha256,
             })
@@ -577,8 +584,8 @@ fn validate_input(manifest_path: &Path) -> Result<ValidatedInput> {
             .and_then(serde_json::Value::as_u64)
             == Some(2)
         {
-            let verified = super::bundle::verify(native_build.parent().unwrap())
-                .map_err(|e| anyhow!("native bundle replay failed: {e}"))?;
+            let verified = super::bundle::verify_integrity(native_build.parent().unwrap())
+                .map_err(|e| anyhow!("native bundle integrity validation failed: {e}"))?;
             let provided: super::bundle::ImportManifest =
                 serde_json::from_reader(File::open(manifest_path)?)?;
             ensure!(
@@ -609,9 +616,13 @@ fn validate_input(manifest_path: &Path) -> Result<ValidatedInput> {
     let vectors_path = manifest_dir.join(&manifest.vectors_file);
     let assignments_path = manifest_dir.join(&manifest.assignments_file);
     let artifact_path = manifest_dir.join(&manifest.routing.artifact_file);
+    ensure!(
+        manifest.vector_encoding != super::layout::VectorEncoding::U8bin,
+        "import bundle must use headerless encoding"
+    );
     let vector_bytes_per_point = manifest
         .dimension
-        .checked_mul(size_of::<f32>())
+        .checked_mul(manifest.vector_encoding.element_bytes())
         .context("dimension overflows vector row byte length")?;
     let expected_vector_bytes = manifest
         .point_count
@@ -682,7 +693,10 @@ fn validate_input(manifest_path: &Path) -> Result<ValidatedInput> {
         validate_assignment(&record, manifest.shard_count, line_number)?;
         vector_reader.read_exact(&mut row_bytes)?;
         vector_digest.update(&row_bytes);
-        let vector = decode_vector(&row_bytes, line_number)?;
+        let vector = manifest
+            .vector_encoding
+            .decode(&row_bytes)
+            .map_err(|e| anyhow!("{e}"))?;
         let point_id = record.id.external_id()?;
         if let Some(node) = upper_entries.remove(&point_id) {
             ensure!(
@@ -804,8 +818,14 @@ fn validate_artifact_common(
         manifest.dimension
     );
     ensure!(
-        vector_schema.datatype.eq_ignore_ascii_case("float32"),
-        "numeric importer requires a float32 {name} artifact"
+        vector_schema
+            .datatype
+            .eq_ignore_ascii_case(if manifest.vector_encoding.is_default() {
+                "float32"
+            } else {
+                "uint8"
+            }),
+        "numeric importer datatype differs from the {name} artifact"
     );
     Ok(())
 }
@@ -1418,8 +1438,12 @@ fn validate_collection_info(info: &CollectionInfo, input: &ValidatedInput) -> Re
         .context("collection has an unknown vector datatype")?
         .unwrap_or(Datatype::Float32);
     ensure!(
-        matches!(datatype, Datatype::Default | Datatype::Float32),
-        "numeric importer writes f32 vectors, but collection datatype is {}",
+        if input.manifest.vector_encoding.is_default() {
+            matches!(datatype, Datatype::Default | Datatype::Float32)
+        } else {
+            datatype == Datatype::Uint8
+        },
+        "numeric importer datatype differs from collection datatype {}",
         datatype.as_str_name()
     );
     ensure!(
@@ -1663,7 +1687,11 @@ async fn import(
             format!("vector file changed after validation while reading row {row_index}")
         })?;
         vectors_digest.update(&row_bytes);
-        let vector = decode_vector(&row_bytes, line_number)?;
+        let vector = input
+            .manifest
+            .vector_encoding
+            .decode(&row_bytes)
+            .map_err(|e| anyhow!("{e}"))?;
         stats.logical_points += 1;
         stats.point_copies += u64::try_from(record.shards.len()).unwrap();
         for &shard_id in &record.shards {
@@ -1874,6 +1902,7 @@ fn retry_delay_ms(base_ms: u64, retry_index: u32) -> u64 {
     base_ms.saturating_mul(multiplier).min(10_000)
 }
 
+#[cfg(test)]
 fn decode_vector(bytes: &[u8], line_number: usize) -> Result<Vec<f32>> {
     debug_assert_eq!(bytes.len() % size_of::<f32>(), 0);
     let mut vector = Vec::with_capacity(bytes.len() / size_of::<f32>());
@@ -2349,5 +2378,79 @@ mod tests {
         assert_eq!(checkpoint.routing_policy, StaticRoutingPolicy::Orion);
         assert_eq!(checkpoint.routing_generation, 7);
         assert_eq!(checkpoint.routing_artifact_sha256, "d".repeat(64));
+    }
+    #[test]
+    fn numeric_importer_reads_unsigned_compact_vectors_and_binds_datatype() {
+        let directory = tempfile::tempdir().unwrap();
+        let vectors = vec![0_u8, 127, 128, 255];
+        let assignments = b"{\"id\":0,\"shards\":[0,1]}\n{\"id\":1,\"shards\":[1]}\n";
+        fs_err::write(directory.path().join("vectors.f32le"), &vectors).unwrap();
+        fs_err::write(directory.path().join("assignments.jsonl"), assignments).unwrap();
+        let artifact = serde_json::to_vec(&serde_json::json!({
+            "format_version": 2,
+            "generation": 7,
+            "vector_schema": {
+                "vector_name": "",
+                "dimension": 2,
+                "distance": "Cosine",
+                "datatype": "uint8"
+            },
+            "shard_count": 2,
+            "layout_sha256": sha256(assignments),
+            "logical_point_count": 2,
+            "physical_point_count": 3,
+            "upper_k": 1, "upper_ef_search": 1,
+            "dynamic_ef_base": 20, "dynamic_ef_factor": 4,
+            "upper_nodes": [
+                {"label": 0, "vector": [0.0, 127.0], "owner_shard": 0},
+                {"label": 1, "vector": [128.0, 255.0], "owner_shard": 1}
+            ],
+            "upper_graph": {"entry_point": 0, "max_level": 0, "nodes": [
+                {"label": 0, "neighbors_by_level": [[1]]},
+                {"label": 1, "neighbors_by_level": [[0]]}
+            ]}
+        }))
+        .unwrap();
+        fs_err::write(directory.path().join("generation-7.json"), &artifact).unwrap();
+        let manifest_path = directory.path().join("manifest.json");
+        fs_err::write(
+            &manifest_path,
+            serde_json::to_vec(&serde_json::json!({
+                "format_version": 1,
+                "dimension": 2,
+                "point_count": 2,
+                "shard_count": 2,
+                "total_point_copies": 3,
+                "orion_generation": 7,
+                "orion_artifact_file": "generation-7.json",
+                "orion_artifact_sha256": sha256(&artifact),
+                "vector_name": "",
+                "vectors_file": "vectors.f32le",
+                "vector_encoding": "u8",
+                "vectors_sha256": sha256(&vectors),
+                "assignments_file": "assignments.jsonl",
+                "assignments_sha256": sha256(assignments),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let validated = validate_input(&manifest_path).unwrap();
+        assert_eq!(validated.total_copies, 3);
+        assert_eq!(validated.vector_bytes_per_point, 2);
+        let mut changed: serde_json::Value = serde_json::from_slice(&artifact).unwrap();
+        changed["vector_schema"]["datatype"] = serde_json::json!("float32");
+        fs_err::write(
+            directory.path().join("generation-7.json"),
+            serde_json::to_vec(&changed).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            validate_routing_artifact(
+                &directory.path().join("generation-7.json"),
+                &validated.manifest
+            )
+            .is_err()
+        );
     }
 }

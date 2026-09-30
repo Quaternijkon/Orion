@@ -34,7 +34,6 @@ use crate::events::SlowQueryEvent;
 use crate::operations::consistency_params::ReadConsistency;
 use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
-use crate::orion::OrionRouteScratch;
 #[cfg(test)]
 use crate::orion::OrionShardTarget;
 use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
@@ -150,6 +149,10 @@ fn validate_orion_compact_peer_query_vector_config(
         )));
     }
     Ok(())
+}
+
+fn orion_lower_ef(dynamic_ef: usize, requested_ef: Option<usize>) -> usize {
+    requested_ef.unwrap_or(dynamic_ef)
 }
 
 fn specialize_core_search_for_logical_target(
@@ -1982,7 +1985,7 @@ impl Collection {
                 let request = Arc::clone(&request);
                 let cpu_utilization = hw_measurement_acc.cpu_utilization();
                 AbortOnDropHandle::new(self.search_runtime.spawn_blocking(move || {
-                    let mut route_scratch: OrionRouteScratch = router.new_route_scratch();
+                    let mut route_scratch = router.borrow_route_scratch();
                     (chunk_start..chunk_end)
                         .map(|query_index| {
                             let query = orion_eligible_dense_query(
@@ -2040,13 +2043,25 @@ impl Collection {
                     )));
                 }
 
-                plan.push_targets(query_index, targets.into_iter().map(Into::into))
-                    .map_err(|shard_id| {
-                        CollectionError::service_error(format!(
-                            "Orion route target shard {shard_id} is outside configured shard count {}",
-                            plan.shard_count(),
-                        ))
-                    })?;
+                // Honor an explicitly requested lower-search budget without
+                // changing the frozen graph, memberships or upper routing budget.
+                let requested_ef = request.searches[query_index]
+                    .params
+                    .as_ref()
+                    .and_then(|params| params.hnsw_ef);
+                plan.push_targets(
+                    query_index,
+                    targets.into_iter().map(|mut target| {
+                        target.ef = orion_lower_ef(target.ef, requested_ef);
+                        target.into()
+                    }),
+                )
+                .map_err(|shard_id| {
+                    CollectionError::service_error(format!(
+                        "Orion route target shard {shard_id} is outside configured shard count {}",
+                        plan.shard_count(),
+                    ))
+                })?;
             }
         }
 
@@ -3249,6 +3264,15 @@ mod tests {
                 ..Default::default()
             }),
         );
+    }
+
+    #[test]
+    fn orion_explicit_ef_overrides_dynamic_budget_in_both_directions() {
+        assert_eq!(orion_lower_ef(128, None), 128);
+        assert_eq!(orion_lower_ef(128, Some(0)), 0);
+        assert_eq!(orion_lower_ef(128, Some(20)), 20);
+        assert_eq!(orion_lower_ef(128, Some(100)), 100);
+        assert_eq!(orion_lower_ef(128, Some(400)), 400);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::{
     bundle,
-    layout::{LayoutOptions, VectorInput},
+    layout::{LayoutOptions, VectorEncoding, VectorInput},
     lifecycle::{ControlCommand, FileBinding, Phase, generation_path},
     membership,
 };
@@ -32,18 +32,42 @@ use std::sync::Arc;
 use std::time::Duration;
 
 async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
+    fixture_mode(false).await
+}
+
+async fn fixture_mode(streaming: bool) -> (Collection, tempfile::TempDir, std::path::PathBuf) {
+    fixture_encoding(streaming, VectorEncoding::F32le).await
+}
+
+async fn fixture_encoding(
+    streaming: bool,
+    encoding: VectorEncoding,
+) -> (Collection, tempfile::TempDir, std::path::PathBuf) {
+    fixture_schema(streaming, encoding, Distance::Euclid).await
+}
+
+async fn fixture_schema(
+    streaming: bool,
+    encoding: VectorEncoding,
+    distance: Distance,
+) -> (Collection, tempfile::TempDir, std::path::PathBuf) {
     let root = tempfile::tempdir().unwrap();
     let raw = root.path().join("raw.f32le");
     let mut file = File::create(&raw).unwrap();
     for i in 0..64 {
         for x in [(i % 16) as f32 / 8.0 - 1.0, (i / 16) as f32 - 1.5] {
-            file.write_all(&x.to_le_bytes()).unwrap();
+            if encoding == VectorEncoding::U8 {
+                file.write_all(&[((x + 2.0) * 32.0) as u8]).unwrap();
+            } else {
+                file.write_all(&x.to_le_bytes()).unwrap();
+            }
         }
     }
     let output = root.path().join("bundle");
     let request = bundle::BuildRequest {
         input: VectorInput {
             format_version: 1,
+            encoding,
             path: raw.clone(),
             rows: 64,
             dimension: 2,
@@ -52,7 +76,7 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
         options: LayoutOptions {
             generation: 1,
             shard_count: 2,
-            distance: Distance::Euclid,
+            distance,
             vector_name: String::new(),
             sample_denominator: 4,
             sample_seed: 100,
@@ -77,7 +101,15 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
     optimizer_config.max_optimization_threads = Some(1);
     let config = CollectionConfigInternal {
         params: CollectionParams {
-            vectors: VectorsConfig::Single(VectorParamsBuilder::new(2, Distance::Euclid).build()),
+            vectors: VectorsConfig::Single(
+                VectorParamsBuilder::new(2, distance)
+                    .with_datatype(if encoding == VectorEncoding::U8 {
+                        crate::operations::types::Datatype::Uint8
+                    } else {
+                        crate::operations::types::Datatype::Float32
+                    })
+                    .build(),
+            ),
             shard_number: NonZeroU32::new(2).unwrap(),
             replication_factor: NonZeroU32::new(1).unwrap(),
             write_consistency_factor: NonZeroU32::new(1).unwrap(),
@@ -96,7 +128,11 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
         metadata: None,
         auto_shard_policy: Some(AutoShardPolicy::Orion {
             generation: 1,
-            artifact_sha256: import.orion_artifact_sha256,
+            artifact_sha256: if streaming {
+                "0".repeat(64)
+            } else {
+                import.orion_artifact_sha256
+            },
         }),
     };
     let path = root.path().join("collection");
@@ -144,6 +180,138 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
             )
         })
         .collect();
+    if streaming {
+        use super::streaming::{StreamRow, StreamSpec};
+        let begin = ControlCommand::BeginStream {
+            spec: StreamSpec::from(&request),
+        };
+        collection.apply_orion_control(begin.clone()).await.unwrap();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<StreamRow>(1);
+        let (continue_tx, continue_rx) = std::sync::mpsc::channel();
+        let streaming_output = root.path().join("streamed");
+        let producer_output = streaming_output.clone();
+        let producer_request = request.clone();
+        let producer = tokio::task::spawn_blocking(move || {
+            bundle::build_with_sink(
+                &producer_request,
+                &producer_output,
+                &mut |assignment, vector| {
+                    sender.blocking_send(StreamRow {
+                        assignment: assignment.clone(),
+                        vector: vector.to_vec(),
+                    })?;
+                    if assignment.id == 0 {
+                        continue_rx.recv()?;
+                    }
+                    Ok(())
+                },
+            )
+        });
+        let mut sequence = 1;
+        while let Some(row) = receiver.recv().await {
+            let batch = ControlCommand::StreamBatch {
+                generation: 1,
+                sequence,
+                rows: vec![row.clone()],
+            };
+            collection.apply_orion_control(batch.clone()).await.unwrap();
+            if sequence == 1 {
+                assert!(!streaming_output.exists());
+                assert!(
+                    !generation_path(&collection.path, 1)
+                        .join("build-manifest.json")
+                        .exists()
+                );
+                let holder = collection.shards_holder.read().await;
+                for &id in &row.assignment.shards {
+                    let shard = holder.get_shard(id).unwrap();
+                    let count = shard
+                        .count_local(
+                            Arc::new(shard::count::CountRequestInternal {
+                                filter: None,
+                                exact: true,
+                            }),
+                            None,
+                            HwMeasurementAcc::disposable(),
+                            common::types::DeferredBehavior::Exclude,
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(
+                        count.count, 1,
+                        "the first point must reach its shard before the rest are assigned"
+                    );
+                }
+                drop(holder);
+                assert!(collection.ensure_orion_data_ready().await.is_err());
+                assert!(
+                    collection
+                        .apply_orion_control(ControlCommand::Import { generation: 1 })
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    collection
+                        .apply_orion_control(ControlCommand::Begin {
+                            generation: 1,
+                            files: files.clone()
+                        })
+                        .await
+                        .is_err()
+                );
+                let mut changed = row.clone();
+                changed.vector[0] += 1.0;
+                assert!(
+                    collection
+                        .apply_orion_control(ControlCommand::StreamBatch {
+                            generation: 1,
+                            sequence,
+                            rows: vec![changed]
+                        })
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    collection
+                        .apply_orion_control(ControlCommand::StreamBatch {
+                            generation: 1,
+                            sequence: 3,
+                            rows: vec![row]
+                        })
+                        .await
+                        .is_err()
+                );
+                // Each call reloads durable progress, exercising interrupted-client resume.
+                collection.apply_orion_control(begin.clone()).await.unwrap();
+                collection.apply_orion_control(batch).await.unwrap();
+                continue_tx.send(()).unwrap();
+            }
+            sequence += 1;
+        }
+        producer.await.unwrap().unwrap();
+        for name in files.keys() {
+            assert_eq!(
+                fs::read(output.join(name)).unwrap(),
+                fs::read(streaming_output.join(name)).unwrap()
+            );
+        }
+        let receipt =
+            generation_path(&collection.path, 1).join("stream/batch-00000000000000000002.json");
+        let original = fs::read(&receipt).unwrap();
+        let mut rows: Vec<StreamRow> = serde_json::from_slice(&original).unwrap();
+        rows[0].vector[0] += 0.1;
+        fs::write(&receipt, serde_json::to_vec(&rows).unwrap()).unwrap();
+        let build =
+            serde_json::from_reader(File::open(output.join("build-manifest.json")).unwrap())
+                .unwrap();
+        let import = bundle::verify(&output).unwrap();
+        assert!(
+            super::streaming::verify_import(&collection.path, 1, &build, &import).is_err(),
+            "a different streamed vector must not be accepted with a valid final bundle"
+        );
+        fs::write(receipt, original).unwrap();
+    }
     collection
         .apply_orion_control(ControlCommand::Begin {
             generation: 1,
@@ -173,10 +341,42 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
             collection.apply_orion_control(command).await.unwrap();
         }
     }
+    // Files are present but the initial generation is not active. Ordinary reads
+    // and background recovery must not publish or even load its large graph.
+    let serving_path = super::routing_artifact_path(&collection.path, 1);
+    collection.recover_orion_metadata_from_peer().await.unwrap();
+    assert!(collection.orion_router.load().is_none());
+    assert!(!serving_path.exists());
+    fs::create_dir_all(serving_path.parent().unwrap()).unwrap();
+    fs::write(
+        &serving_path,
+        b"stale, incomplete router from a prior process",
+    )
+    .unwrap();
+    let config = collection.collection_config.read().await;
+    assert!(
+        Collection::try_load_orion_router(&collection.path, &config, 2)
+            .unwrap()
+            .is_none()
+    );
+    drop(config);
+    fs::remove_file(serving_path).unwrap();
     collection
         .apply_orion_control(ControlCommand::Prepare { generation: 1 })
         .await
         .unwrap();
+    if streaming {
+        assert_eq!(
+            collection
+                .orion_control_state()
+                .await
+                .unwrap()
+                .unwrap()
+                .phase,
+            Phase::Indexing,
+            "verified streams must skip the ordinary full import pass"
+        );
+    }
     collection
         .apply_orion_control(ControlCommand::Import { generation: 1 })
         .await
@@ -216,6 +416,30 @@ async fn fixture() -> (Collection, tempfile::TempDir, std::path::PathBuf) {
         .await
         .unwrap();
     (collection, root, output)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn streamed_build_imports_before_assignment_finishes_and_activates_only_after_validation() {
+    let (collection, _root, output) = fixture_mode(true).await;
+    assert_eq!(
+        collection
+            .orion_control_state()
+            .await
+            .unwrap()
+            .unwrap()
+            .phase,
+        Phase::Ready
+    );
+    let import = bundle::verify(&output).unwrap();
+    assert_eq!(
+        membership::Catalog::load(&collection.path, 1)
+            .unwrap()
+            .entries
+            .len(),
+        import.point_count
+    );
+    assert_eq!(retrieve(&collection, 0.into()).await.len(), 1);
+    collection.stop_gracefully().await;
 }
 
 fn upsert(id: u64, vector: Vec<f32>) -> CollectionUpdateOperations {
@@ -623,6 +847,192 @@ async fn repartition_preserves_uuid_payload_tombstones_and_immutable_graph() {
         bundle::graph_sha256(&super::migration::read_artifact(&collection.path, 4).unwrap())
             .unwrap(),
         bundle::graph_sha256(&original).unwrap()
+    );
+    collection.stop_gracefully().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn uint8_native_install_and_streaming_preserve_vectors_and_schema() {
+    for streaming in [false, true] {
+        let (collection, root, output) = fixture_encoding(streaming, VectorEncoding::U8).await;
+        assert_eq!(
+            collection
+                .orion_control_state()
+                .await
+                .unwrap()
+                .unwrap()
+                .phase,
+            Phase::Ready
+        );
+        let import = bundle::verify(&output).unwrap();
+        assert_eq!(import.vector_encoding, VectorEncoding::U8);
+        assert_eq!(
+            fs::metadata(output.join(import.vectors_file))
+                .unwrap()
+                .len(),
+            128
+        );
+        let raw = fs::read(root.path().join("raw.f32le")).unwrap();
+        for id in 0..64_u64 {
+            let rows = retrieve(&collection, id.into()).await;
+            assert_eq!(rows.len(), 1);
+            let expected = segment::data_types::vectors::VectorStructInternal::Single(
+                raw[id as usize * 2..id as usize * 2 + 2]
+                    .iter()
+                    .map(|&x| f32::from(x))
+                    .collect(),
+            );
+            assert_eq!(rows[0].vector.as_ref(), Some(&expected));
+        }
+        collection.stop_gracefully().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn uint8_cosine_install_keeps_bytes_without_float_normalization() {
+    let (collection, _root, _output) =
+        fixture_schema(false, VectorEncoding::U8, Distance::Cosine).await;
+    assert_eq!(
+        collection
+            .orion_control_state()
+            .await
+            .unwrap()
+            .unwrap()
+            .phase,
+        Phase::Ready
+    );
+    let record = retrieve(&collection, 0.into()).await;
+    assert_eq!(
+        record[0].vector,
+        Some(segment::data_types::vectors::VectorStructInternal::Single(
+            vec![32.0, 16.0]
+        ))
+    );
+    collection.stop_gracefully().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn local_catalog_view_preserves_wal_moves_visibility_and_clock_revisions() {
+    let (collection, _root, _) = fixture().await;
+    let check = || {
+        let full = membership::Catalog::load(&collection.path, 1).unwrap();
+        for shard in 0..2 {
+            let partial = membership::Catalog::load_for_shards(
+                &collection.path,
+                1,
+                &std::collections::BTreeSet::from([shard]),
+            )
+            .unwrap();
+            assert_eq!(partial.revision, full.revision);
+            assert_eq!(
+                partial.shard_revisions.get(&shard),
+                full.shard_revisions.get(&shard)
+            );
+            let wanted: Vec<_> = full
+                .entries
+                .iter()
+                .filter(|(_, m)| m.shards.contains(&shard))
+                .map(|(id, m)| (*id, m.shards.clone(), m.live, m.vector_present))
+                .collect();
+            let got: Vec<_> = partial
+                .entries
+                .iter()
+                .filter(|(_, m)| m.shards.contains(&shard))
+                .map(|(id, m)| (*id, m.shards.clone(), m.live, m.vector_present))
+                .collect();
+            assert_eq!(wanted, got);
+        }
+        let visible = membership::load_visibility(&collection.path);
+        assert_eq!(visible.deleted, full.visibility().deleted);
+        assert_eq!(visible.no_vector, full.visibility().no_vector);
+    };
+    let empty = membership::Catalog::load_for_shards(
+        &collection.path,
+        1,
+        &std::collections::BTreeSet::new(),
+    )
+    .unwrap();
+    assert!(empty.entries.is_empty());
+    check();
+    write(&collection, upsert(0, vec![100.0, 100.0])).await;
+    check();
+    write(&collection, upsert(0, vec![-100.0, -100.0])).await;
+    check();
+    collection.stop_gracefully().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn active_router_recovery_streams_file_and_preserves_uint8_routes() {
+    let (collection, _root, _) = fixture_encoding(false, VectorEncoding::U8).await;
+    let before = collection
+        .orion_router
+        .load_full()
+        .unwrap()
+        .route_query(&[128.0, 192.0])
+        .unwrap();
+    let path = super::routing_artifact_path(&collection.path, 1);
+    let previous_bytes = fs::read(&path).unwrap();
+    collection.orion_router.store(None);
+    fs::remove_file(&path).unwrap();
+    collection.recover_orion_metadata_from_peer().await.unwrap();
+    assert_eq!(fs::read(path).unwrap(), previous_bytes);
+    assert_eq!(
+        collection
+            .orion_router
+            .load_full()
+            .unwrap()
+            .route_query(&[128.0, 192.0])
+            .unwrap(),
+        before
+    );
+    collection.ensure_orion_worker_ready().await.unwrap();
+    collection.stop_gracefully().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn static_readiness_uses_bound_counts_and_loaded_router_without_graph_reload() {
+    let (collection, _root, output) = fixture_encoding(false, VectorEncoding::U8).await;
+    let state = super::lifecycle::read_state(&collection.path)
+        .unwrap()
+        .unwrap();
+    let counts = membership::initial_shard_counts(&collection.path, &state)
+        .unwrap()
+        .unwrap();
+    let full = membership::Catalog::load(&collection.path, 1).unwrap();
+    for (shard, &count) in counts.iter().enumerate() {
+        assert_eq!(
+            count,
+            full.entries
+                .values()
+                .filter(|m| m.shards.contains(&(shard as u32)))
+                .count()
+        );
+    }
+    let import = bundle::verify_integrity(&output).unwrap();
+    let graph = generation_path(&collection.path, 1).join(import.orion_artifact_file);
+    let moved = graph.with_extension("held");
+    fs::rename(&graph, &moved).unwrap();
+    collection
+        .orion_serving
+        .store(false, std::sync::atomic::Ordering::Release);
+    collection
+        .orion_data_ready
+        .store(false, std::sync::atomic::Ordering::Release);
+    collection.ensure_orion_worker_ready().await.unwrap();
+    fs::rename(moved, graph).unwrap();
+    let build = generation_path(&collection.path, 1).join("build-manifest.json");
+    let bytes = fs::read(&build).unwrap();
+    fs::write(&build, b"{}").unwrap();
+    assert!(membership::initial_shard_counts(&collection.path, &state).is_err());
+    fs::write(&build, bytes).unwrap();
+    write(&collection, upsert(1000, vec![127.0, 255.0])).await;
+    let state = super::lifecycle::read_state(&collection.path)
+        .unwrap()
+        .unwrap();
+    assert!(
+        membership::initial_shard_counts(&collection.path, &state)
+            .unwrap()
+            .is_none()
     );
     collection.stop_gracefully().await;
 }

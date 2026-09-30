@@ -496,7 +496,6 @@ impl QuantizedVectors {
                 max_threads,
                 stopped,
             ),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => Self::create_impl(
                 v,
                 quantization_config,

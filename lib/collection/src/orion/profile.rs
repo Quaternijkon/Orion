@@ -41,7 +41,7 @@ pub fn derive(
     output: &Path,
     profile: &RuntimeProfile,
 ) -> Result<bundle::BuildManifest> {
-    let mut import = bundle::verify(source_dir)?;
+    let mut import = bundle::verify_integrity(source_dir)?;
     let mut build: bundle::BuildManifest =
         serde_json::from_reader(File::open(source_dir.join("build-manifest.json"))?)?;
     let source_artifact = OrionRoutingArtifact::read_json(
@@ -92,7 +92,7 @@ pub fn derive(
     build.options.dynamic_ef_base = profile.dynamic_ef_base;
     build.options.dynamic_ef_factor = profile.dynamic_ef_factor;
     bundle::write_json(&stage.path().join("build-manifest.json"), &build)?;
-    bundle::verify(stage.path())?;
+    bundle::verify_integrity(stage.path())?;
     File::open(stage.path())?.sync_all()?;
     super::durable::publish_directory(stage.path(), output, "build-manifest.json")?;
     File::open(parent)?.sync_all()?;

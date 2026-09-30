@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+use std::io::{BufReader, Write};
 use std::path::Path;
 
 use segment::types::{Distance, ExtendedPointId};
@@ -185,6 +186,16 @@ impl OrionRoutingArtifact {
                     dimension,
                 });
             }
+            if self.vector_schema.datatype == OrionVectorDatatype::Uint8
+                && node
+                    .vector
+                    .iter()
+                    .any(|&x| !(0.0..=255.0).contains(&x) || x.fract() != 0.0)
+            {
+                return Err(OrionRoutingError::InvalidVectorSchema {
+                    reason: "uint8 upper vectors must contain exact integers in [0,255]".into(),
+                });
+            }
             if node.owner_shard >= self.shard_count {
                 return Err(OrionRoutingError::ShardOutOfRange {
                     label: node.label,
@@ -225,7 +236,20 @@ impl OrionRoutingArtifact {
     }
 
     pub fn canonical_sha256(&self) -> OrionRoutingResult<String> {
-        Ok(sha256_hex(&self.canonical_json_bytes()?))
+        self.validate()?;
+        struct DigestWriter(Sha256);
+        impl Write for DigestWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.update(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut writer = DigestWriter(Sha256::new());
+        serde_json::to_writer(&mut writer, self)?;
+        Ok(format!("{:x}", writer.0.finalize()))
     }
 
     pub fn verify_checksum(&self, expected_checksum: &str) -> OrionRoutingResult<()> {
@@ -242,9 +266,12 @@ impl OrionRoutingArtifact {
         expected_checksum: Option<&str>,
     ) -> OrionRoutingResult<Self> {
         let artifact: Self = serde_json::from_slice(json)?;
-        artifact.validate()?;
         if let Some(expected_checksum) = expected_checksum {
+            // verify_checksum includes structural validation; do not traverse the
+            // same billion-edge graph twice during one deserialization.
             artifact.verify_checksum(expected_checksum)?;
+        } else {
+            artifact.validate()?;
         }
         Ok(artifact)
     }
@@ -254,11 +281,17 @@ impl OrionRoutingArtifact {
         expected_checksum: Option<&str>,
     ) -> OrionRoutingResult<Self> {
         let path = path.as_ref();
-        let json = fs_err::read(path).map_err(|source| OrionRoutingError::ArtifactIo {
+        let file = fs_err::File::open(path).map_err(|source| OrionRoutingError::ArtifactIo {
             path: path.to_path_buf(),
             source,
         })?;
-        Self::from_json_slice(&json, expected_checksum)
+        let artifact: Self = serde_json::from_reader(BufReader::with_capacity(1024 * 1024, file))?;
+        if let Some(checksum) = expected_checksum {
+            artifact.verify_checksum(checksum)?;
+        } else {
+            artifact.validate()?;
+        }
+        Ok(artifact)
     }
 }
 

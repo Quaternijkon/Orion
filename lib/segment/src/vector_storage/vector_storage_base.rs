@@ -255,7 +255,6 @@ pub enum VectorStorageEnum {
     #[cfg(feature = "rocksdb")]
     DenseSimpleHalf(SimpleDenseVectorStorage<VectorElementTypeHalf>),
     DenseVolatile(VolatileDenseVectorStorage<VectorElementType>),
-    #[cfg(test)]
     DenseVolatileByte(VolatileDenseVectorStorage<VectorElementTypeByte>),
     #[cfg(test)]
     DenseVolatileHalf(VolatileDenseVectorStorage<VectorElementTypeHalf>),
@@ -308,7 +307,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(_) => None,
             VectorStorageEnum::DenseVolatile(_) => None,
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(_) => None,
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(_) => None,
@@ -360,7 +358,6 @@ impl VectorStorageEnum {
                 VectorInternal::from(vec![1.0; v.vector_dim()])
             }
             VectorStorageEnum::DenseVolatile(v) => VectorInternal::from(vec![1.0; v.vector_dim()]),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => {
                 VectorInternal::from(vec![1.0; v.vector_dim()])
             }
@@ -440,7 +437,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.size_of_available_vectors_in_bytes(),
             VectorStorageEnum::DenseVolatile(v) => v.size_of_available_vectors_in_bytes(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.size_of_available_vectors_in_bytes(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.size_of_available_vectors_in_bytes(),
@@ -502,7 +498,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(_) => {} // Can't populate as it is not mmap
             VectorStorageEnum::DenseVolatile(_) => {} // Can't populate as it is not mmap
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(_) => {} // Can't populate as it is not mmap
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(_) => {} // Can't populate as it is not mmap
@@ -551,7 +546,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(_) => {} // Can't populate as it is not mmap
             VectorStorageEnum::DenseVolatile(_) => {} // Can't populate as it is not mmap
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(_) => {} // Can't populate as it is not mmap
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(_) => {} // Can't populate as it is not mmap
@@ -605,7 +599,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.with_dense_bytes_opt::<P, R>(key, f),
             VectorStorageEnum::DenseVolatile(v) => v.with_dense_bytes_opt::<P, R>(key, f),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.with_dense_bytes_opt::<P, R>(key, f),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.with_dense_bytes_opt::<P, R>(key, f),
@@ -658,7 +651,6 @@ impl VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => return v.get_dense_vector_layout(),
             VectorStorageEnum::DenseVolatile(v) => return v.get_dense_vector_layout(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => return v.get_dense_vector_layout(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => return v.get_dense_vector_layout(),
@@ -711,7 +703,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.distance(),
             VectorStorageEnum::DenseVolatile(v) => v.distance(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.distance(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.distance(),
@@ -759,7 +750,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.datatype(),
             VectorStorageEnum::DenseVolatile(v) => v.datatype(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.datatype(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.datatype(),
@@ -809,7 +799,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.is_on_disk(),
             VectorStorageEnum::DenseVolatile(v) => v.is_on_disk(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.is_on_disk(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.is_on_disk(),
@@ -857,7 +846,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.total_vector_count(),
             VectorStorageEnum::DenseVolatile(v) => v.total_vector_count(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.total_vector_count(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.total_vector_count(),
@@ -905,7 +893,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.get_vector::<P>(key),
             VectorStorageEnum::DenseVolatile(v) => v.get_vector::<P>(key),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.get_vector::<P>(key),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.get_vector::<P>(key),
@@ -957,7 +944,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.read_vectors::<P>(keys, callback),
             VectorStorageEnum::DenseVolatile(v) => v.read_vectors::<P>(keys, callback),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.read_vectors::<P>(keys, callback),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.read_vectors::<P>(keys, callback),
@@ -1009,7 +995,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.get_vector_opt::<P>(key),
             VectorStorageEnum::DenseVolatile(v) => v.get_vector_opt::<P>(key),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.get_vector_opt::<P>(key),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.get_vector_opt::<P>(key),
@@ -1062,7 +1047,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.insert_vector(key, vector, hw_counter),
             VectorStorageEnum::DenseVolatile(v) => v.insert_vector(key, vector, hw_counter),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.insert_vector(key, vector, hw_counter),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.insert_vector(key, vector, hw_counter),
@@ -1128,7 +1112,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.update_from(other_vectors, stopped),
             VectorStorageEnum::DenseVolatile(v) => v.update_from(other_vectors, stopped),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.update_from(other_vectors, stopped),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.update_from(other_vectors, stopped),
@@ -1186,7 +1169,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.flusher(),
             VectorStorageEnum::DenseVolatile(v) => v.flusher(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.flusher(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.flusher(),
@@ -1234,7 +1216,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.files(),
             VectorStorageEnum::DenseVolatile(v) => v.files(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.files(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.files(),
@@ -1282,7 +1263,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.immutable_files(),
             VectorStorageEnum::DenseVolatile(v) => v.immutable_files(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.immutable_files(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.immutable_files(),
@@ -1330,7 +1310,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.delete_vector(key),
             VectorStorageEnum::DenseVolatile(v) => v.delete_vector(key),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.delete_vector(key),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.delete_vector(key),
@@ -1378,7 +1357,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.is_deleted_vector(key),
             VectorStorageEnum::DenseVolatile(v) => v.is_deleted_vector(key),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.is_deleted_vector(key),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.is_deleted_vector(key),
@@ -1426,7 +1404,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.deleted_vector_count(),
             VectorStorageEnum::DenseVolatile(v) => v.deleted_vector_count(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.deleted_vector_count(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.deleted_vector_count(),
@@ -1474,7 +1451,6 @@ impl VectorStorage for VectorStorageEnum {
             #[cfg(feature = "rocksdb")]
             VectorStorageEnum::DenseSimpleHalf(v) => v.deleted_vector_bitslice(),
             VectorStorageEnum::DenseVolatile(v) => v.deleted_vector_bitslice(),
-            #[cfg(test)]
             VectorStorageEnum::DenseVolatileByte(v) => v.deleted_vector_bitslice(),
             #[cfg(test)]
             VectorStorageEnum::DenseVolatileHalf(v) => v.deleted_vector_bitslice(),

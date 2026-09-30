@@ -83,7 +83,6 @@ pub fn new_raw_scorer<'a>(
         #[cfg(feature = "rocksdb")]
         VectorStorageEnum::DenseSimpleHalf(vs) => raw_scorer_impl(query, vs, hc),
         VectorStorageEnum::DenseVolatile(vs) => raw_scorer_impl(query, vs, hc),
-        #[cfg(test)]
         VectorStorageEnum::DenseVolatileByte(vs) => raw_scorer_impl(query, vs, hc),
         #[cfg(test)]
         VectorStorageEnum::DenseVolatileHalf(vs) => raw_scorer_impl(query, vs, hc),

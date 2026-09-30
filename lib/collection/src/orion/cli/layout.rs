@@ -12,6 +12,22 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Build and stream assignments into a fresh collection while local HNSW indexes build.
+    /// Creates the collection if absent; repeating the same command resumes the row stream.
+    BuildInstall {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        uri: String,
+        #[arg(long)]
+        collection: String,
+        #[arg(long, default_value = "7200")]
+        timeout_secs: u64,
+        #[arg(long, env = "QDRANT_API_KEY", hide_env_values = true)]
+        api_key: Option<String>,
+    },
     /// Repartition current records through a new generation of the same graph.
     Repartition {
         #[arg(long)]
@@ -64,17 +80,19 @@ enum Command {
         #[arg(long, env = "QDRANT_API_KEY", hide_env_values = true)]
         api_key: Option<String>,
     },
-    /// Build from checksummed raw f32 input. All output must be new.
+    /// Build from checksummed f32le, u8, or BIGANN u8bin input. All output must be new.
     Build {
         #[arg(long)]
         request: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
-    /// Replay every owner and point assignment through the frozen production graph.
+    /// Check file integrity and counts; optionally replay the full layout algorithm.
     Verify {
         #[arg(long)]
         bundle: PathBuf,
+        #[arg(long)]
+        replay: bool,
     },
     /// Derive a verified runtime profile without rebuilding the graph or assignments.
     Profile {
@@ -97,6 +115,31 @@ enum Command {
 
 pub fn run() -> Result<()> {
     match Args::parse().command {
+        Command::BuildInstall {
+            request,
+            output,
+            uri,
+            collection,
+            timeout_secs,
+            api_key,
+        } => {
+            let mut request: bundle::BuildRequest = serde_json::from_reader(File::open(request)?)?;
+            if !request.input.path.is_absolute() {
+                return Err("raw input path must be absolute".into());
+            }
+            request.input.path = request.input.path.canonicalize()?;
+            let manifest = tokio::runtime::Runtime::new()?.block_on(
+                crate::orion::streaming_client::build_install(
+                    request,
+                    &output,
+                    &uri,
+                    &collection,
+                    std::time::Duration::from_secs(timeout_secs),
+                    api_key.as_deref(),
+                ),
+            )?;
+            println!("{}", serde_json::to_string(&manifest)?);
+        }
         Command::Repartition {
             uri,
             collection,
@@ -177,8 +220,18 @@ pub fn run() -> Result<()> {
                 serde_json::to_string(&bundle::build(&request, &output)?)?
             );
         }
-        Command::Verify { bundle: path } => {
-            println!("{}", serde_json::to_string(&bundle::verify(&path)?)?);
+        Command::Verify {
+            bundle: path,
+            replay,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string(&if replay {
+                    bundle::verify(&path)?
+                } else {
+                    bundle::verify_integrity(&path)?
+                })?
+            );
         }
         Command::Profile {
             source,

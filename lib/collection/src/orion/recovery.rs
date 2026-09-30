@@ -174,10 +174,17 @@ impl Collection {
             return Ok(());
         }
         let existing = lifecycle::read_state(&self.path)?;
+        if existing
+            .as_ref()
+            .is_some_and(|state| state.active.is_none())
+        {
+            // Collecting/Preparing/Indexing initial generations must not trigger an
+            // eager load merely because staging has made artifact files visible.
+            return Ok(());
+        }
         if existing.is_some() && !refreshing {
             // A missing serving file can be reconstructed from the already-bound local generation.
             let artifact = super::migration::read_artifact(&self.path, generation)?;
-            artifact.verify_checksum(&artifact_sha256).map_err(io)?;
             self.install_recovered_router(artifact).await?;
             return Ok(());
         }
@@ -461,13 +468,28 @@ impl Collection {
     ) -> CollectionResult<()> {
         let path = super::routing_artifact_path(&self.path, artifact.generation);
         fs::create_dir_all(path.parent().unwrap()).map_err(io)?;
-        let bytes = artifact.canonical_json_bytes().map_err(io)?;
-        atomic_save(&path, |out| out.write_all(&bytes)).map_err(io)?;
         let config = self.collection_config.read().await;
-        let router =
-            Self::try_load_orion_router(&self.path, &config, self.shards_holder.read().await.len())
-                .map_err(io)?
-                .ok_or_else(|| io("recovered schema does not select Orion"))?;
+        if let Some(AutoShardPolicy::Orion {
+            artifact_sha256, ..
+        }) = &config.auto_shard_policy
+        {
+            artifact.verify_checksum(artifact_sha256).map_err(io)?;
+        }
+        Self::validate_orion_router_artifact(
+            &self.path,
+            &config,
+            self.shards_holder.read().await.len(),
+            &artifact,
+        )
+        .map_err(io)?;
+        drop(config);
+        // Stream canonical JSON directly to the atomic file; do not keep a 32 GB
+        // serialization buffer and do not reload another full graph from that file.
+        atomic_save(&path, |out| {
+            serde_json::to_writer(out, &artifact).map_err(std::io::Error::other)
+        })
+        .map_err(io)?;
+        let router = Arc::new(super::OrionRouter::new(artifact).map_err(io)?);
         self.orion_router.store(Some(router));
         self.orion_data_ready
             .store(false, std::sync::atomic::Ordering::Release);

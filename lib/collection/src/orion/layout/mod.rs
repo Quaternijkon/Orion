@@ -8,7 +8,7 @@ pub(crate) mod vector_input;
 mod voting;
 
 pub use sampler::sample_indices;
-pub use vector_input::VectorInput;
+pub use vector_input::{VectorEncoding, VectorInput};
 pub use voting::{refine_owners, strict_targets};
 
 use segment::types::Distance;

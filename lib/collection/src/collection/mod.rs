@@ -156,10 +156,45 @@ impl Collection {
             .validate()
             .map_err(|err| format!("invalid Orion auto-shard policy: {err}"))?;
 
+        if crate::orion::lifecycle::read_state(collection_path)
+            .map_err(|err| err.to_string())?
+            .is_some_and(|state| state.active.is_none())
+        {
+            // An initial import is not recoverable serving state, even if a previous
+            // process left a serialized router file behind before activation.
+            return Ok(None);
+        }
         let artifact_path = routing_artifact_path(collection_path, *generation);
         let artifact = OrionRoutingArtifact::read_json(&artifact_path, Some(artifact_sha256))
             .map_err(|err| err.to_string())?;
 
+        Self::validate_orion_router_artifact(
+            collection_path,
+            collection_config,
+            actual_shard_count,
+            &artifact,
+        )?;
+
+        OrionRouter::new(artifact)
+            .map(Arc::new)
+            .map(Some)
+            .map_err(|err| err.to_string())
+    }
+
+    pub(crate) fn validate_orion_router_artifact(
+        collection_path: &Path,
+        collection_config: &CollectionConfigInternal,
+        actual_shard_count: usize,
+        artifact: &OrionRoutingArtifact,
+    ) -> Result<(), String> {
+        let Some(AutoShardPolicy::Orion { generation, .. }) =
+            collection_config.auto_shard_policy.as_ref()
+        else {
+            return Err("collection does not select Orion".into());
+        };
+        if collection_config.params.sharding_method.unwrap_or_default() != ShardingMethod::Auto {
+            return Err("Orion requires automatic sharding".into());
+        }
         if artifact.generation != *generation {
             return Err(crate::orion::OrionRoutingError::GenerationMismatch {
                 expected: *generation,
@@ -219,10 +254,7 @@ impl Collection {
             .validate_schema(&expected_schema)
             .map_err(|err| err.to_string())?;
 
-        OrionRouter::new(artifact)
-            .map(Arc::new)
-            .map(Some)
-            .map_err(|err| err.to_string())
+        Ok(())
     }
 
     fn load_orion_router_or_fallback(

@@ -53,6 +53,7 @@ fn request(dir: &std::path::Path, distance: Distance) -> bundle::BuildRequest {
     bundle::BuildRequest {
         input: VectorInput {
             format_version: 1,
+            encoding: Default::default(),
             sha256: bundle::file_sha256(&path).unwrap(),
             path,
             rows: 64,
@@ -79,6 +80,124 @@ fn request(dir: &std::path::Path, distance: Distance) -> bundle::BuildRequest {
             bundle_prefix: "import".into(),
         },
     }
+}
+
+#[test]
+fn uint8_bundle_is_compact_and_replays_the_same_euclidean_layout() {
+    let root = tempfile::tempdir().unwrap();
+    let mut float = request(root.path(), Distance::Euclid);
+    let values: Vec<u8> = (0..64)
+        .flat_map(|i| [((i % 16) * 16) as u8, ((i / 16) * 64) as u8])
+        .collect();
+    fs::write(
+        &float.input.path,
+        values
+            .iter()
+            .flat_map(|&v| f32::from(v).to_le_bytes())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    float.input.sha256 = bundle::file_sha256(&float.input.path).unwrap();
+    let mut byte = float.clone();
+    byte.input.path = root.path().join("raw.u8bin");
+    byte.input.encoding = VectorEncoding::U8bin;
+    let mut raw = [64_u32.to_le_bytes(), 2_u32.to_le_bytes()].concat();
+    raw.extend(&values);
+    fs::write(&byte.input.path, &raw).unwrap();
+    byte.input.sha256 = bundle::file_sha256(&byte.input.path).unwrap();
+    let float_dir = root.path().join("float");
+    let byte_dir = root.path().join("byte");
+    bundle::build(&float, &float_dir).unwrap();
+    bundle::build(&byte, &byte_dir).unwrap();
+    let imported = bundle::verify(&byte_dir).unwrap();
+    assert_eq!(
+        bundle::verify_integrity(&byte_dir).unwrap().vectors_sha256,
+        imported.vectors_sha256
+    );
+    assert_eq!(imported.vector_encoding, VectorEncoding::U8);
+    assert_eq!(
+        fs::read(byte_dir.join(&imported.vectors_file)).unwrap(),
+        values
+    );
+    assert_eq!(
+        fs::read(float_dir.join("import.assignments.jsonl")).unwrap(),
+        fs::read(byte_dir.join("import.assignments.jsonl")).unwrap()
+    );
+    let artifact = crate::orion::OrionRoutingArtifact::read_json(
+        byte_dir.join(imported.orion_artifact_file),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        artifact.vector_schema.datatype,
+        crate::orion::OrionVectorDatatype::Uint8
+    );
+    let float_artifact =
+        crate::orion::OrionRoutingArtifact::read_json(float_dir.join("generation-7.json"), None)
+            .unwrap();
+    assert_eq!(artifact.upper_graph, float_artifact.upper_graph);
+    use sha2::{Digest, Sha256};
+    let legacy_graph_hash = format!(
+        "{:x}",
+        Sha256::digest(
+            serde_json::to_vec(
+                &serde_json::to_value(artifact.upper_graph.as_ref().unwrap()).unwrap()
+            )
+            .unwrap()
+        )
+    );
+    assert_eq!(bundle::graph_sha256(&artifact).unwrap(), legacy_graph_hash);
+
+    // Checksums protect byte input and compact published output independently.
+    raw[8] ^= 1;
+    fs::write(&byte.input.path, &raw).unwrap();
+    assert!(byte.input.visit(|_, _| Ok(())).is_err());
+    fs::write(byte_dir.join(imported.vectors_file), &raw[8..]).unwrap();
+    assert!(bundle::verify(&byte_dir).is_err());
+    assert!(bundle::verify_integrity(&byte_dir).is_err());
+}
+
+#[test]
+fn uint8_input_rejects_header_shape_truncation_and_lossy_values() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("input.u8bin");
+    let mut bytes = [2_u32.to_le_bytes(), 2_u32.to_le_bytes()].concat();
+    bytes.extend([0, 127, 128, 255]);
+    fs::write(&path, &bytes).unwrap();
+    let mut input = VectorInput {
+        format_version: 1,
+        encoding: VectorEncoding::U8bin,
+        path: path.clone(),
+        rows: 2,
+        dimension: 2,
+        sha256: bundle::file_sha256(&path).unwrap(),
+    };
+    let mut rows = Vec::new();
+    input
+        .visit(|_, row| {
+            rows.push(row);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(rows, vec![vec![0.0, 127.0], vec![128.0, 255.0]]);
+    bytes[..4].copy_from_slice(&1_u32.to_le_bytes());
+    fs::write(&path, &bytes).unwrap();
+    input.sha256 = bundle::file_sha256(&path).unwrap();
+    assert!(input.visit(|_, _| Ok(())).is_err());
+    fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+    assert!(input.visit(|_, _| Ok(())).is_err());
+    for invalid in [-1.0, 256.0, 0.5, f32::NAN, f32::INFINITY] {
+        assert!(VectorEncoding::U8.encode(&[invalid]).is_err());
+    }
+    let legacy = serde_json::json!({"format_version":1,"path":"legacy.f32le","rows":1,"dimension":1,"sha256":"0".repeat(64)});
+    let legacy: VectorInput = serde_json::from_value(legacy).unwrap();
+    assert_eq!(legacy.encoding, VectorEncoding::F32le);
+    assert!(
+        serde_json::to_value(legacy)
+            .unwrap()
+            .get("encoding")
+            .is_none()
+    );
 }
 
 #[test]
@@ -126,7 +245,7 @@ fn kmeans_retains_empty_centers_and_is_deterministic() {
         [0, 0, 0, 0]
     );
     assert!(cluster(&[vec![f32::NAN]], 1, 2, 1).is_err());
-    assert!(cluster(&[], 1, 2, 1).is_err());
+    assert!(cluster(&Vec::<Vec<f32>>::new(), 1, 2, 1).is_err());
 }
 
 #[test]
@@ -192,6 +311,67 @@ fn standalone_bundle_replays_and_is_bit_exact_across_repeated_builds() {
             );
         }
         assert!(bundle::build(&r, &first).is_err());
+    }
+}
+
+#[test]
+fn streaming_emits_before_publication_and_preserves_the_entire_bundle() {
+    for distance in [Distance::Euclid, Distance::Cosine] {
+        let dir = tempfile::tempdir().unwrap();
+        let request = request(dir.path(), distance);
+        let reference = dir.path().join("reference");
+        let streamed = dir.path().join("streamed");
+        bundle::build(&request, &reference).unwrap();
+        let mut ids = Vec::new();
+        let mut assignments = Vec::new();
+        let mut vectors = Vec::new();
+        bundle::build_with_sink(&request, &streamed, &mut |row, vector| {
+            assert!(
+                !streamed.exists(),
+                "ingestion must start before bundle publication"
+            );
+            ids.push(row.id);
+            assignments.extend(row.canonical_bytes(request.options.shard_count)?);
+            for value in vector {
+                vectors.extend(value.to_le_bytes());
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(ids, (0..64).collect::<Vec<_>>());
+        let import = bundle::verify(&streamed).unwrap();
+        assert_eq!(
+            assignments,
+            fs::read(streamed.join(import.assignments_file)).unwrap()
+        );
+        assert_eq!(
+            vectors,
+            fs::read(streamed.join(import.vectors_file)).unwrap()
+        );
+        for entry in fs::read_dir(reference).unwrap() {
+            let entry = entry.unwrap();
+            assert_eq!(
+                fs::read(entry.path()).unwrap(),
+                fs::read(streamed.join(entry.file_name())).unwrap()
+            );
+        }
+        let failed = dir.path().join("failed");
+        let mut calls = 0;
+        assert!(
+            bundle::build_with_sink(&request, &failed, &mut |_, _| {
+                calls += 1;
+                if calls == 7 {
+                    return Err("ingestion failed".into());
+                }
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(
+            calls, 7,
+            "a failed consumer must stop assignment production"
+        );
+        assert!(!failed.exists());
     }
 }
 
@@ -288,4 +468,24 @@ fn build_votes_on_actual_hits_when_efs_exceeds_sample_size() {
     let manifest = bundle::build(&r, &output).unwrap();
     assert_eq!(manifest.upper_indices.len(), 16);
     assert_eq!(bundle::verify(&output).unwrap().point_count, 64);
+}
+
+#[test]
+fn integrity_checks_counts_without_reexecuting_layout() {
+    let root = tempfile::tempdir().unwrap();
+    let request = request(root.path(), Distance::Euclid);
+    let dir = root.path().join("integrity");
+    bundle::build(&request, &dir).unwrap();
+    let path = dir.join("build-manifest.json");
+    let mut build: bundle::BuildManifest =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // Audit-only K-Means intermediate data is deliberately not recomputed by integrity mode.
+    build.initial_owners[0] = (build.initial_owners[0] + 1) % 2;
+    fs::write(&path, serde_json::to_vec(&build).unwrap()).unwrap();
+    assert!(bundle::verify_integrity(&dir).is_ok());
+    assert!(bundle::verify(&dir).is_err());
+    // Count validation is still mandatory even when file checksums are intact.
+    build.shard_counts[0] += 1;
+    fs::write(&path, serde_json::to_vec(&build).unwrap()).unwrap();
+    assert!(bundle::verify_integrity(&dir).is_err());
 }
