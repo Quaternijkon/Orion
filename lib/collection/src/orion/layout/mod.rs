@@ -1,6 +1,7 @@
 //! Offline layout authority. No Python state is trusted by this module.
 //!
 //! Version 2 fixes RNG and scalar f64 K-Means arithmetic independently of NumPy/BLAS.
+//! Version 3 preserves tied owners and accepts the last bounded refinement round.
 //! Navigation still uses the Qdrant production graph and segment distance semantics.
 mod kmeans;
 mod sampler;
@@ -15,7 +16,7 @@ use segment::types::Distance;
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-pub const LAYOUT_ALGORITHM_VERSION: &str = "orion-layout-v2-splitmix64-f64";
+pub const LAYOUT_ALGORITHM_VERSION: &str = "orion-layout-v3-stable-ties-bounded";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

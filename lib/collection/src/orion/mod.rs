@@ -1,3 +1,11 @@
+//! Upper ownership and physical data placement are separate contracts.
+//!
+//! Each upper node has exactly one frozen owner shard. Its vector may also exist
+//! as ordinary data in other shards. An upper hit activates only the owner copy
+//! as a local-search entry point; other copies neither activate their shards nor
+//! become entry points there. Another shard participates only when it receives
+//! an upper hit owned by that shard. Once activated, local graph search may visit
+//! any ordinary data copy in that shard.
 mod artifact;
 mod builder;
 pub mod bundle;

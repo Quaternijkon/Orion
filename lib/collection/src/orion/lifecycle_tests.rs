@@ -1036,3 +1036,105 @@ async fn static_readiness_uses_bound_counts_and_loaded_router_without_graph_relo
     );
     collection.stop_gracefully().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn runtime_profile_activation_preserves_lower_graph_files() {
+    fn graphs(path: &std::path::Path) -> BTreeMap<std::path::PathBuf, String> {
+        fn visit(
+            root: &std::path::Path,
+            path: &std::path::Path,
+            out: &mut BTreeMap<std::path::PathBuf, String>,
+        ) {
+            for entry in fs::read_dir(path).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    visit(root, &path, out);
+                } else if path
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .is_some_and(|name| name == "vector_index")
+                {
+                    out.insert(
+                        path.strip_prefix(root).unwrap().to_path_buf(),
+                        bundle::file_sha256(&path).unwrap(),
+                    );
+                }
+            }
+        }
+        let mut out = BTreeMap::new();
+        visit(path, path, &mut out);
+        out
+    }
+    let (collection, root, source) = fixture().await;
+    let before = graphs(&collection.path);
+    assert!(!before.is_empty());
+    for generation in [2, 3] {
+        let target = root.path().join(format!("profile-{generation}"));
+        super::profile::derive(
+            &source,
+            &target,
+            &super::profile::RuntimeProfile {
+                generation,
+                upper_k: generation as usize + 2,
+                upper_ef_search: 16,
+                dynamic_ef_base: 30,
+                dynamic_ef_factor: 2,
+            },
+        )
+        .unwrap();
+        let files: BTreeMap<_, _> = fs::read_dir(&target)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (
+                    entry.file_name().into_string().unwrap(),
+                    FileBinding {
+                        size: entry.metadata().unwrap().len(),
+                        sha256: bundle::file_sha256(&entry.path()).unwrap(),
+                    },
+                )
+            })
+            .collect();
+        collection
+            .apply_orion_control(ControlCommand::Begin {
+                generation,
+                files: files.clone(),
+            })
+            .await
+            .unwrap();
+        for name in files.keys() {
+            fs::copy(
+                target.join(name),
+                generation_path(&collection.path, generation).join(name),
+            )
+            .unwrap();
+        }
+        collection
+            .apply_orion_control(ControlCommand::Prepare { generation })
+            .await
+            .unwrap();
+        collection
+            .apply_orion_control(ControlCommand::Import { generation })
+            .await
+            .unwrap();
+        finish_generation(&collection, generation).await;
+        assert_eq!(graphs(&collection.path), before);
+        assert_eq!(
+            collection.orion_router.load_full().unwrap().upper_k(),
+            generation as usize + 2
+        );
+        assert_eq!(
+            collection
+                .orion_control_state()
+                .await
+                .unwrap()
+                .unwrap()
+                .active
+                .unwrap()
+                .generation,
+            generation
+        );
+    }
+    collection.stop_gracefully().await;
+}

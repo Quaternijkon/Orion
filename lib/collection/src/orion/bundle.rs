@@ -358,6 +358,9 @@ fn build_staged(
         }
         let mut shards = layout::strict_targets(&hits, &owners)?;
         if let Some(&i) = row_to_upper.get(&row) {
+            // Preserve ordinary data replicas, but ensure the unique routing
+            // owner has the physical copy needed as a local-search entry point.
+            // These replica destinations must never replace the upper owner.
             if !shards.contains(&owners[i]) {
                 shards.push(owners[i]);
                 owner_entry_copies_added += 1;

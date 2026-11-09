@@ -305,6 +305,61 @@ fn hnsw_search_runs_greedy_upper_levels_then_level_zero_ef_search() {
 }
 
 #[test]
+fn upper_data_replicas_do_not_activate_non_owner_shards() {
+    let artifact = valid_artifact();
+    // A=10 exists as data on shards 0, 1 and 2; B=20 exists on shard 1.
+    // Physical placement is deliberately independent of upper ownership.
+    let placements = [
+        bundle::Assignment {
+            id: 10,
+            shards: vec![0, 1, 2],
+        },
+        bundle::Assignment {
+            id: 20,
+            shards: vec![1],
+        },
+    ];
+    for placement in &placements {
+        placement.canonical_bytes(artifact.shard_count).unwrap();
+        let node = artifact
+            .upper_nodes
+            .iter()
+            .find(|node| node.label == id(placement.id))
+            .unwrap();
+        assert!(placement.shards.contains(&node.owner_shard));
+    }
+    let router = OrionRouter::new(artifact).unwrap();
+
+    // A alone activates only its owner, even though its data has two replicas.
+    assert_eq!(
+        router.route_upper_labels([id(10)]).unwrap(),
+        vec![OrionShardTarget {
+            shard_id: 0,
+            entry_points: vec![id(10)],
+            ef: 24,
+        }],
+    );
+
+    // B activates shard 1 with B as its entry, never with the replica of A.
+    // Shard 2 remains inactive because none of its owned upper nodes was hit.
+    assert_eq!(
+        router.route_upper_labels([id(10), id(20)]).unwrap(),
+        vec![
+            OrionShardTarget {
+                shard_id: 0,
+                entry_points: vec![id(10)],
+                ef: 24,
+            },
+            OrionShardTarget {
+                shard_id: 1,
+                entry_points: vec![id(20)],
+                ef: 24,
+            },
+        ],
+    );
+}
+
+#[test]
 fn routes_each_upper_hit_to_one_owner_with_dynamic_ef() {
     let router = OrionRouter::new(valid_artifact()).unwrap();
     let targets = router

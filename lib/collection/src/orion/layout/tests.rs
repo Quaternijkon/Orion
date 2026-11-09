@@ -212,8 +212,11 @@ fn strict_votes_preserve_primary_ties_all_one_and_reject_bad_hits() {
 }
 
 #[test]
-fn synchronous_self_vote_preserves_failure_and_last_round_fixed_point() {
-    assert!(refine_owners(&[vec![1], vec![0]], &[0, 1], 8).is_err());
+fn synchronous_self_vote_preserves_last_round_and_fixed_point() {
+    assert_eq!(
+        refine_owners(&[vec![1], vec![0]], &[0, 1], 8).unwrap(),
+        (vec![0, 1], 8)
+    );
     assert_eq!(
         refine_owners(&[vec![1], vec![1]], &[0, 1], 1).unwrap(),
         (vec![1, 1], 1)

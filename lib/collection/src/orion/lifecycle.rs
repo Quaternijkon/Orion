@@ -897,7 +897,34 @@ impl Collection {
 
     pub(crate) async fn import_orion_local(&self, generation: u64) -> CollectionResult<()> {
         let dir = generation_path(&self.path, generation);
-        let (_, import, _) = read_bundle(&dir)?;
+        let (build, import, artifact) = read_bundle(&dir)?;
+        // A verified runtime profile changes only routing budgets. Re-upserting identical
+        // vectors moves points out of immutable segments and rebuilds their HNSW graphs.
+        // Keep the active index when both the complete routing identity and input bytes
+        // prove that this generation is a runtime-only update. Validate and Activate still
+        // check every local index, entry point, and peer's generation binding afterwards.
+        if build.runtime_source_artifact_sha256.is_some()
+            && let Some(active) = read_state(&self.path)?
+                .and_then(|state| state.active)
+                .filter(|active| active.membership_revision == 0)
+        {
+            let (_, previous_import, previous) =
+                read_bundle(&generation_path(&self.path, active.generation))?;
+            let profile = super::profile::RuntimeProfile {
+                generation,
+                upper_k: artifact.upper_k,
+                upper_ef_search: artifact.upper_ef_search,
+                dynamic_ef_base: artifact.dynamic_ef_base,
+                dynamic_ef_factor: artifact.dynamic_ef_factor,
+            };
+            if previous_import.vectors_sha256 == import.vectors_sha256
+                && previous_import.assignments_sha256 == import.assignments_sha256
+                && previous_import.vector_encoding == import.vector_encoding
+                && profile.apply(&previous).map_err(bad)? == artifact
+            {
+                return Ok(());
+            }
+        }
         let holder = Arc::new(self.shards_holder.clone().read_owned().await);
         let mut queues = BTreeMap::new();
         let mut workers = tokio::task::JoinSet::new();
