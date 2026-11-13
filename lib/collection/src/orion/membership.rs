@@ -404,7 +404,7 @@ pub(crate) fn initial_shard_counts(
     let import: super::bundle::ImportManifest =
         serde_json::from_reader(File::open(path).map_err(io)?).map_err(io)?;
     if build.format_version != 2
-        || build.algorithm_version != super::layout::LAYOUT_ALGORITHM_VERSION
+        || super::bundle::validate_build_algorithm(&build).is_err()
         || build.options.generation != active.generation
         || import.orion_generation != active.generation
         || import.orion_artifact_sha256 != active.artifact_sha256

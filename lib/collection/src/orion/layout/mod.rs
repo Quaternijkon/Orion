@@ -31,8 +31,11 @@ pub struct LayoutOptions {
     pub upper_ef_construct: usize,
     pub upper_seed: u64,
     pub efs: usize,
+    /// Nearest upper hits retained for routing and lower-layer entry points.
     pub upper_k: usize,
+    /// Upper traversal breadth, independent of `upper_k` and at least as large.
     pub upper_ef_search: usize,
+    /// Each selected shard receives base + factor * retained owner-hit count.
     pub dynamic_ef_base: usize,
     pub dynamic_ef_factor: usize,
     pub kmeans_iterations: usize,
@@ -43,6 +46,15 @@ pub struct LayoutOptions {
 
 impl LayoutOptions {
     pub fn validate(&self, rows: usize) -> Result<()> {
+        self.validate_common(rows, true)
+    }
+
+    /// Capacity planning does not execute K-Means or self-vote iterations.
+    pub fn validate_capacity(&self, rows: usize) -> Result<()> {
+        self.validate_common(rows, false)
+    }
+
+    fn validate_common(&self, rows: usize, self_votes: bool) -> Result<()> {
         if [
             self.generation as u128,
             self.shard_count as u128,
@@ -53,12 +65,13 @@ impl LayoutOptions {
             self.upper_k as u128,
             self.dynamic_ef_base as u128,
             self.dynamic_ef_factor as u128,
-            self.kmeans_iterations as u128,
-            self.topology_iterations as u128,
         ]
         .contains(&0)
         {
             return Err("layout counts, budgets and dynamic EF factor must be positive".into());
+        }
+        if self_votes && (self.kmeans_iterations == 0 || self.topology_iterations == 0) {
+            return Err("canonical K-Means and self-vote iterations must be positive".into());
         }
         if self.sample_denominator != self.upper_m {
             return Err("canonical N/M sampling requires sample_denominator == upper_m".into());

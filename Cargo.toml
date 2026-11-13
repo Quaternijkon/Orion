@@ -33,6 +33,8 @@ tracing-tracy = ["tracing", "dep:tracing-tracy"]
 tokio-tracing = ["tokio/tracing"]
 stacktrace = ["rstack-self"]
 chaos-testing = []
+# Explicitly opt-in, ground-truth-assisted experiment; never a production router.
+orion-oracle-diagnostics = ["collection/orion-oracle-diagnostics"]
 data-consistency-check = ["collection/data-consistency-check"]
 gpu = ["gpu/gpu", "segment/gpu"]
 deb = []

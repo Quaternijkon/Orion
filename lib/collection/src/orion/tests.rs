@@ -74,6 +74,41 @@ fn valid_artifact() -> OrionRoutingArtifact {
     }
 }
 
+#[test]
+fn smaller_upper_top_k_keeps_search_breadth_and_budgets_only_retained_entries() {
+    let mut full = valid_artifact();
+    full.upper_k = 4;
+    full.upper_ef_search = 4;
+    // The two closest samples share an owner. The other two owners should
+    // disappear from routing when only the nearest two hits are retained.
+    full.upper_nodes[1].owner_shard = 0;
+    let full_router = OrionRouter::new(full.clone()).unwrap();
+    let full_hits = full_router.search_upper(&[0.25, 0.0]).unwrap();
+    assert_eq!(full_hits.len(), 4);
+
+    let mut reduced = full.clone();
+    reduced.upper_k = 2;
+    let reduced_router = OrionRouter::new(reduced.clone()).unwrap();
+    let reduced_hits = reduced_router.search_upper(&[0.25, 0.0]).unwrap();
+    assert_eq!(reduced_hits.as_slice(), &full_hits[..2]);
+    assert_eq!(reduced.upper_ef_search, full.upper_ef_search);
+    let targets = reduced_router.route_query(&[0.25, 0.0]).unwrap();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].shard_id, 0);
+    assert_eq!(targets[0].entry_points, vec![id(10), id(20)]);
+    assert_eq!(targets[0].ef, 20 + 4 * 2);
+
+    let targets = reduced_router.route_query(&[2.8, 0.0]).unwrap();
+    assert_eq!(targets.len(), 2);
+    assert_eq!(
+        targets.iter().map(|t| t.entry_points.len()).sum::<usize>(),
+        2
+    );
+    assert!(targets.iter().all(|t| t.ef == 20 + 4));
+    assert_eq!(reduced.upper_graph, full.upper_graph);
+    assert_eq!(reduced.upper_nodes, full.upper_nodes);
+}
+
 fn route_upper_labels_per_shard_dedup_reference(
     artifact: &OrionRoutingArtifact,
     ordered_labels: &[ExtendedPointId],

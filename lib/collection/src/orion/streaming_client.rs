@@ -17,6 +17,29 @@ struct Client {
     timeout: Duration,
 }
 
+/// Offline capacity builds must finish before any collection or data is created.
+pub(crate) async fn ensure_collection_for_bundle(
+    dir: &Path,
+    uri: &str,
+    collection: &str,
+    timeout: Duration,
+    api_key: Option<&str>,
+) -> Result<()> {
+    let import = bundle::verify_integrity(dir)?;
+    let build: BuildManifest =
+        serde_json::from_reader(File::open(dir.join("build-manifest.json"))?)?;
+    let spec = StreamSpec {
+        vector_encoding: import.vector_encoding,
+        options: build.options,
+        point_count: import.point_count,
+        dimension: import.dimension,
+        raw_vectors_sha256: build.raw_vectors_sha256,
+    };
+    Client::new(uri, collection, timeout, api_key)?
+        .ensure_collection(&spec)
+        .await
+}
+
 impl Client {
     fn new(uri: &str, collection: &str, timeout: Duration, api_key: Option<&str>) -> Result<Self> {
         let mut collection_url = url::Url::parse(uri)?;

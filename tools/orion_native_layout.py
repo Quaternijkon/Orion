@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import struct
 import subprocess
@@ -67,6 +68,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--uri", help="Stream assignments into this Qdrant HTTP endpoint during the build.")
     parser.add_argument("--collection", help="Fresh Orion collection for --uri; created if absent.")
     parser.add_argument("--timeout-secs", type=int, default=7200)
+    parser.add_argument(
+        "--partition-method", choices=("self-vote", "capacity"), default="self-vote",
+        help="Capacity builds directly from raw data and never runs the original self-vote layout.",
+    )
+    parser.add_argument("--capacity-feedback-rounds", type=int, default=5,
+                        help="Maximum feedback rounds, used only if the first actual layout is infeasible.")
+    parser.add_argument("--capacity-max-replication-factor", type=float, default=None,
+                        help="Optional absolute physical/logical copy limit; no prior-layout budget.")
+    parser.add_argument("--capacity-partition-seed", type=int, default=100)
 
     parser.add_argument("--sample-denominator", type=int, default=32)
     parser.add_argument("--upper-sample-seed", type=int, default=100)
@@ -81,14 +91,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "budget and the number of voting results are the same."
         ),
     )
-    parser.add_argument("--upper-search-ef", type=int, default=100)
-    parser.add_argument("--upper-k", type=int, default=100)
+    parser.add_argument(
+        "--upper-search-ef", type=int, default=100,
+        help="Upper HNSW search breadth; must be at least --upper-k.",
+    )
+    parser.add_argument(
+        "--upper-k", type=int, default=100,
+        help="Nearest upper hits retained for shard activation and lower entry points.",
+    )
     parser.add_argument(
         "--allow-decoupled-runtime-upper-search",
         action="store_true",
         help=(
-            "Diagnostic-only: allow runtime upper_search_ef != upper_k. "
-            "Faithful main-idea builds keep both equal to EF_SEARCH_UP."
+            "Compatibility flag: upper search EF and top-k are now independently "
+            "configurable whenever upper_search_ef >= upper_k."
         ),
     )
     parser.add_argument("--k-overlap", type=int, default=10)
@@ -210,6 +226,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    method = getattr(args, "partition_method", "self-vote")
+    if getattr(args, "capacity_feedback_rounds", 5) < 0:
+        raise ValueError("--capacity-feedback-rounds must be nonnegative")
+    limit = getattr(args, "capacity_max_replication_factor", None)
+    if limit is not None and (not math.isfinite(limit) or limit < 1):
+        raise ValueError("--capacity-max-replication-factor must be finite and at least 1")
+    if method != "capacity" and limit is not None:
+        raise ValueError("--capacity-max-replication-factor requires --partition-method capacity")
     if bool(getattr(args, "uri", None)) != bool(getattr(args, "collection", None)):
         raise ValueError("--uri and --collection must be supplied together")
     if getattr(args, "timeout_secs", 7200) <= 0:
@@ -226,25 +250,28 @@ def validate_args(args: argparse.Namespace) -> None:
         "k_overlap": args.k_overlap,
         "upper_build_batch_size": args.upper_build_batch_size,
         "dynamic_ef_base": args.dynamic_ef_base,
+        "dynamic_ef_factor": args.dynamic_ef_factor,
         "kmeans_iters": args.kmeans_iters,
         "topology_iters": args.topology_iters,
         "multi_assign_min_max_vote": args.multi_assign_min_max_vote,
         "bundle_row_chunk_size": args.bundle_row_chunk_size,
     }
     for name, value in positive_fields.items():
+        if method == "capacity" and name in ("kmeans_iters", "topology_iters"):
+            if int(value) < 0:
+                raise ValueError(f"--{name.replace('_', '-')} must be nonnegative")
+            continue
         if int(value) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
     if args.train_limit is not None and int(args.train_limit) <= 0:
         raise ValueError("--train-limit must be positive")
-    if int(args.dynamic_ef_factor) < 0:
-        raise ValueError("--dynamic-ef-factor must be non-negative")
     if int(args.multi_assign_vote_delta) < 0:
         raise ValueError("--multi-assign-vote-delta must be non-negative")
     if int(args.multi_assign_max_shards) < 0:
         raise ValueError("--multi-assign-max-shards must be non-negative")
     if int(args.attachment_search_ef) != int(args.k_overlap):
         raise ValueError("canonical build requires --attachment-search-ef == --k-overlap")
-    if bool(args.disable_topology_refinement):
+    if bool(args.disable_topology_refinement) and method == "self-vote":
         raise ValueError("canonical build requires upper self-vote refinement")
     if bool(args.disable_multi_assign):
         raise ValueError("canonical multi-assignment cannot be disabled")
@@ -258,14 +285,6 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("canonical build currently excludes load-balancing intervention")
     if int(args.upper_search_ef) < int(args.upper_k):
         raise ValueError("--upper-search-ef must be at least --upper-k")
-    if (
-        int(args.upper_search_ef) != int(args.upper_k)
-        and not args.allow_decoupled_runtime_upper_search
-    ):
-        raise ValueError(
-            "faithful Orion requires --upper-search-ef == --upper-k; "
-            "use --allow-decoupled-runtime-upper-search only for diagnostics"
-        )
     if not args.bundle_prefix or Path(args.bundle_prefix).name != args.bundle_prefix:
         raise ValueError("--bundle-prefix must be a non-empty file-name component")
     for field, label in (
@@ -856,6 +875,7 @@ def routing_parameters(args: argparse.Namespace) -> dict[str, Any]:
         "efs": int(args.k_overlap),
         "upper_search_ef": int(args.upper_search_ef),
         "upper_k": int(args.upper_k),
+        "upper_search_decoupled": int(args.upper_search_ef) != int(args.upper_k),
         "allow_decoupled_runtime_upper_search": bool(
             args.allow_decoupled_runtime_upper_search
         ),
@@ -921,7 +941,7 @@ def run_layout_cli(args: argparse.Namespace, *arguments: str) -> dict[str, Any]:
 
 
 def load_verified_rust_bundle(output_dir: Path) -> dict[str, Any]:
-    """Read a Rust replay result for experiment clients; never infer collection readiness."""
+    """Read an integrity-checked bundle; neither full replay nor readiness is implied."""
     args = argparse.Namespace(cargo=os.environ.get("CARGO", "cargo"), cargo_target_dir=None,
                               rust_layout_binary=os.environ.get("ORION_LAYOUT_BINARY"))
     imported = run_layout_cli(args, "verify", "--bundle", str(output_dir))
@@ -951,7 +971,8 @@ def load_verified_rust_bundle(output_dir: Path) -> dict[str, Any]:
         "canonical_navigation_binding": {"single_upper_graph_build": True,
             "upper_graph_sha256": manifest["upper_graph_sha256"],
             "attachments_sha256": manifest["attachments_sha256"],
-            "layout_sha256": imported["assignments_sha256"], "rust_replayed": True},
+            "layout_sha256": imported["assignments_sha256"],
+            "rust_integrity_verified": True, "rust_replayed": False},
         "generation": imported["orion_generation"], "vector_schema": artifact["vector_schema"],
         "shard_count": imported["shard_count"], "logical_point_count": imported["point_count"],
         "physical_point_count": imported["total_point_copies"], "shard_weights": manifest["shard_counts"],
@@ -968,7 +989,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         if getattr(args, field, None):
             raise ValueError(f"--{field.replace('_', '-')} is historical; use --rust-layout-binary")
     output_dir = Path(args.output_dir).expanduser().resolve()
-    streaming = bool(getattr(args, "uri", None))
+    install_requested = bool(getattr(args, "uri", None))
+    capacity = getattr(args, "partition_method", "self-vote") == "capacity"
+    streaming = install_requested and not capacity
     if os.path.lexists(output_dir) and not streaming:
         raise FileExistsError(f"refusing to overwrite existing output path: {output_dir}")
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -1007,16 +1030,30 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         }
         request_path = Path(staging) / "request.json"
         write_json_new(request_path, request)
-        command = ["build-install" if streaming else "build", "--request", str(request_path),
-                   "--output", str(output_dir)]
-        if streaming:
-            command += ["--uri", args.uri, "--collection", args.collection,
-                        "--timeout-secs", str(args.timeout_secs)]
-        manifest = run_layout_cli(args, *command)
+        if capacity:
+            from tools.orion_capacity_partition import build_capacity
+            manifest = build_capacity(
+                request_path, output_dir, lambda *command: run_layout_cli(args, *command),
+                max_feedback_rounds=args.capacity_feedback_rounds,
+                max_replication_factor=args.capacity_max_replication_factor,
+                seed=args.capacity_partition_seed,
+            )
+            if install_requested:
+                # Complete and validate the layout before any data import or lower indexing.
+                run_layout_cli(args, "install", "--create-if-missing", "--bundle", str(output_dir), "--uri", args.uri,
+                               "--collection", args.collection, "--timeout-secs", str(args.timeout_secs))
+        else:
+            command = ["build-install" if streaming else "build", "--request", str(request_path),
+                       "--output", str(output_dir)]
+            if streaming:
+                command += ["--uri", args.uri, "--collection", args.collection,
+                            "--timeout-secs", str(args.timeout_secs)]
+            manifest = run_layout_cli(args, *command)
     import_path = output_dir / manifest["import_manifest_file"]
     imported = json.loads(import_path.read_text(encoding="utf-8"))
     summary = {
-        "output_dir": str(output_dir), "mode": "streamed_install" if streaming else "production_bundle",
+        "output_dir": str(output_dir), "mode": ("streamed_install" if streaming else
+            "validated_then_installed" if install_requested else "production_bundle"),
         "algorithm_version": manifest["algorithm_version"],
         "production_artifact": str(output_dir / imported["orion_artifact_file"]),
         "production_artifact_sha256": imported["orion_artifact_sha256"],

@@ -168,6 +168,8 @@ pub struct OrionRouter {
     node_by_label: AHashMap<ExtendedPointId, usize>,
     search_backend: UpperSearchBackend,
     scratch_pool: parking_lot::Mutex<Vec<OrionRouteScratch>>,
+    learned_pruner: Option<super::learned_pruning::Policy>,
+    whitebox_pruner: Option<super::whitebox_pruning::Policy>,
 }
 
 /// Exclusive workspace lease. The router snapshot owns the pool, so a generation
@@ -296,6 +298,17 @@ impl OrionRouter {
             upper_vector_element_count
         );
 
+        let learned_pruner = super::learned_pruning::configured(artifact)
+            .map_err(|reason| OrionRoutingError::LearnedPruning { reason })?;
+        let whitebox_pruner = super::whitebox_pruning::configured(artifact)
+            .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?;
+        if learned_pruner.is_some() && whitebox_pruner.is_some() {
+            return Err(OrionRoutingError::WhiteboxPruning {
+                reason:
+                    "learned and whitebox selectors cannot both be enabled for the same generation"
+                        .into(),
+            });
+        }
         Ok(Self {
             generation: artifact.generation,
             vector_name: artifact.vector_schema.vector_name.clone(),
@@ -313,6 +326,8 @@ impl OrionRouter {
             node_by_label,
             search_backend,
             scratch_pool: parking_lot::Mutex::new(Vec::new()),
+            learned_pruner,
+            whitebox_pruner,
         })
     }
 
@@ -376,7 +391,9 @@ impl OrionRouter {
         Ok(hits)
     }
 
-    /// Search the upper tier and build the complete configured shard union.
+    /// Search with `upper_ef_search`, then route only the nearest `upper_k` hits.
+    /// Lower budgets depend on retained hits per owner, not the upper beam size.
+    /// Optional learned selection drops whole targets after their budgets are fixed.
     pub fn route_query(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         let mut scratch = self.borrow_route_scratch();
         self.route_query_with_scratch(query, &mut scratch)
@@ -398,6 +415,35 @@ impl OrionRouter {
         )?;
         let actual_upper_hits = scratch.sorted_nearest.len().min(self.upper_k);
         self.validate_target_entry_count(&targets, actual_upper_hits)?;
+        let targets = if let Some(policy) = &self.whitebox_pruner {
+            policy
+                .apply(
+                    scratch
+                        .sorted_nearest
+                        .iter()
+                        .map(|(distance, index)| (self.nodes[*index].owner_shard, distance.0)),
+                    targets,
+                )
+                .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?
+        } else if let Some(policy) = &self.learned_pruner {
+            policy
+                .apply(
+                    scratch
+                        .sorted_nearest
+                        .iter()
+                        .map(|(distance, index)| (self.nodes[*index].owner_shard, distance.0)),
+                    targets,
+                )
+                .map_err(|reason| OrionRoutingError::LearnedPruning { reason })?
+        } else {
+            targets
+        };
+        // Compute and validate the complete original route first. Diagnostics may
+        // remove whole targets, but must never recompute retained entries or EF.
+        #[cfg(feature = "orion-oracle-diagnostics")]
+        let targets =
+            super::oracle_diagnostics::prune(query, self.generation, self.shard_count, targets)
+                .map_err(|reason| OrionRoutingError::DiagnosticPruning { reason })?;
         Ok(targets)
     }
 

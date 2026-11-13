@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "glove200-independent-upper-budget",
+  "dataset": "glove200",
+  "execution_mode": "manual_only",
+  "upper_ef_search": 256,
+  "upper_k_values": [8, 16, 32, 64, 128, 256],
+  "dynamic_ef_base_values": [1, 20, 64, 128, 256],
+  "dynamic_ef_factor_values": [4],
+  "experiment_requirements": {
+    "user_start_instruction_required": true,
+    "wait_for_other_experiment_to_finish": true,
+    "shared_host_lock": "/tmp/orion-eight-host-benchmark.lock",
+    "nodes": 8,
+    "shards_per_node": 1,
+    "physical_service_cores_per_node": 48,
+    "service_cpus": "0-47",
+    "client_cpus": "48-63",
+    "client_threads_per_node": 8,
+    "preserve_graphs_and_assignments": true,
+    "orion_recall_band": [0.9141, 0.91795],
+    "hash_reference_ef": 142,
+    "hash_reference_recall": 0.91795,
+    "calibration_queries": 2000,
+    "validation_queries": 8000,
+    "warmup_seconds": 15,
+    "measurement_seconds": 60,
+    "formal_repeats": 3
+  }
+}

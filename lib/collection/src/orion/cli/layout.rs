@@ -12,6 +12,29 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Build a neutral upper graph and all data attachments directly from raw input.
+    /// Does not run K-Means/self-votes or create an installable layout.
+    PrepareCapacity {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Bind a supplied capacity partition onto the same upper graph and rebuild
+    /// strict full-data assignments. This is an explicitly versioned variant.
+    CapacityPartition {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        owners: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        generation: u64,
+        /// Optional physical/logical copy limit, independent of any original layout.
+        #[arg(long)]
+        max_replication_factor: Option<f64>,
+    },
     /// Build and stream assignments into a fresh collection while local HNSW indexes build.
     /// Creates the collection if absent; repeating the same command resumes the row stream.
     BuildInstall {
@@ -71,6 +94,9 @@ enum Command {
     Install {
         #[arg(long)]
         bundle: PathBuf,
+        /// Create an absent collection only after the completed bundle passes validation.
+        #[arg(long)]
+        create_if_missing: bool,
         #[arg(long)]
         uri: String,
         #[arg(long)]
@@ -115,6 +141,32 @@ enum Command {
 
 pub fn run() -> Result<()> {
     match Args::parse().command {
+        Command::PrepareCapacity { request, output } => {
+            let request: bundle::BuildRequest = serde_json::from_reader(File::open(request)?)?;
+            println!(
+                "{}",
+                serde_json::to_string(&crate::orion::partition::prepare(&request, &output)?)?
+            );
+        }
+        Command::CapacityPartition {
+            source,
+            owners,
+            output,
+            generation,
+            max_replication_factor,
+        } => {
+            let owners: Vec<u32> = serde_json::from_reader(File::open(owners)?)?;
+            println!(
+                "{}",
+                serde_json::to_string(&crate::orion::partition::derive_with_limit(
+                    &source,
+                    &output,
+                    owners,
+                    generation,
+                    max_replication_factor
+                )?)?
+            );
+        }
         Command::BuildInstall {
             request,
             output,
@@ -195,18 +247,33 @@ pub fn run() -> Result<()> {
         }
         Command::Install {
             bundle,
+            create_if_missing,
             uri,
             collection,
             timeout_secs,
             api_key,
         } => {
-            tokio::runtime::Runtime::new()?.block_on(crate::orion::deploy::install(
-                &bundle,
-                &uri,
-                &collection,
-                std::time::Duration::from_secs(timeout_secs),
-                api_key.as_deref(),
-            ))?;
+            tokio::runtime::Runtime::new()?.block_on(async {
+                let timeout = std::time::Duration::from_secs(timeout_secs);
+                if create_if_missing {
+                    crate::orion::streaming_client::ensure_collection_for_bundle(
+                        &bundle,
+                        &uri,
+                        &collection,
+                        timeout,
+                        api_key.as_deref(),
+                    )
+                    .await?;
+                }
+                crate::orion::deploy::install(
+                    &bundle,
+                    &uri,
+                    &collection,
+                    timeout,
+                    api_key.as_deref(),
+                )
+                .await
+            })?;
             println!("{{\"activated\":true}}");
         }
         Command::Build { request, output } => {

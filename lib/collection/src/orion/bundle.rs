@@ -73,6 +73,8 @@ pub struct BuildManifest {
     pub options: LayoutOptions,
     pub raw_vectors_sha256: String,
     pub upper_indices: Vec<usize>,
+    /// V3: initial K-Means owners. V4: supplied capacity partition, with no
+    /// subsequent self-vote refinement (topology_iterations is then zero).
     pub initial_owners: Vec<u32>,
     pub topology_iterations: usize,
     pub owner_entry_copies_added: u64,
@@ -89,6 +91,32 @@ pub struct BuildManifest {
     pub state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_source_artifact_sha256: Option<String>,
+    /// Optional absolute physical/logical copy limit for capacity layouts.
+    /// There is deliberately no dependency on a prior layout's replica count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity_max_replication_factor: Option<f64>,
+}
+
+pub(crate) fn validate_build_algorithm(build: &BuildManifest) -> Result<()> {
+    match build.algorithm_version.as_str() {
+        layout::LAYOUT_ALGORITHM_VERSION => Ok(()),
+        super::capacity::ALGORITHM => {
+            if build.topology_iterations != 0
+                || build.initial_owners.len() != build.upper_indices.len()
+                || build.initial_owners.is_empty()
+                || build
+                    .initial_owners
+                    .iter()
+                    .any(|&s| s >= build.options.shard_count)
+                || build.shard_counts.len() != build.options.shard_count as usize
+            {
+                return Err("invalid capacity-partition owner certificate".into());
+            }
+            super::capacity::validate_counts(&build.shard_counts)?;
+            Ok(())
+        }
+        _ => Err("unsupported layout algorithm".into()),
+    }
 }
 
 pub fn validate_filename(name: &str) -> Result<()> {
@@ -169,7 +197,7 @@ pub(crate) fn write_artifact(path: &Path, artifact: &OrionRoutingArtifact) -> Re
     Ok(checksum)
 }
 
-fn search_indices(
+pub(crate) fn search_indices(
     router: &OrionRouter,
     query: &[f32],
     scratch: &mut super::router::OrionRouteScratch,
@@ -229,11 +257,20 @@ pub fn build_with_sink(
     Ok(manifest)
 }
 
-fn build_staged(
-    request: &BuildRequest,
-    dir: &Path,
-    sink: &mut dyn FnMut(&Assignment, &[f32]) -> Result<()>,
-) -> Result<BuildManifest> {
+pub(crate) struct UpperPreparation {
+    pub normalized: VectorInput,
+    pub upper_indices: Vec<usize>,
+    pub source: OrionRoutingArtifact,
+    pub source_artifact_file: String,
+    pub source_artifact_sha256: String,
+    pub upper_graph_sha256: String,
+    pub upper_identity_sha256: String,
+    pub vectors_file: String,
+    pub vectors_sha256: String,
+}
+
+/// Shared graph/vector preparation, without owners, self-votes or assignments.
+pub(crate) fn prepare_upper(request: &BuildRequest, dir: &Path) -> Result<UpperPreparation> {
     let input = &request.input;
     let o = &request.options;
     eprintln!(
@@ -274,7 +311,7 @@ fn build_staged(
         sha256: vectors_sha256.clone(),
     };
     eprintln!("Orion build: upper HNSW with {} nodes", upper_indices.len());
-    let mut source = OrionRoutingArtifact {
+    let source = OrionRoutingArtifact {
         format_version: ORION_ROUTING_ARTIFACT_FORMAT_VERSION,
         generation: o.generation,
         vector_schema: OrionVectorSchemaFingerprint {
@@ -311,6 +348,43 @@ fn build_staged(
     let source_artifact_sha256 = write_artifact(&dir.join(&source_artifact_file), &source)?;
     let upper_graph_sha256 = graph_sha256(&source)?;
     let upper_identity_sha256 = upper_identity_sha256(&source)?;
+    Ok(UpperPreparation {
+        normalized,
+        upper_indices,
+        source,
+        source_artifact_file,
+        source_artifact_sha256,
+        upper_graph_sha256,
+        upper_identity_sha256,
+        vectors_file,
+        vectors_sha256,
+    })
+}
+
+fn build_staged(
+    request: &BuildRequest,
+    dir: &Path,
+    sink: &mut dyn FnMut(&Assignment, &[f32]) -> Result<()>,
+) -> Result<BuildManifest> {
+    let input = &request.input;
+    let o = &request.options;
+    let UpperPreparation {
+        normalized,
+        upper_indices,
+        mut source,
+        source_artifact_file,
+        source_artifact_sha256,
+        upper_graph_sha256,
+        upper_identity_sha256,
+        vectors_file,
+        vectors_sha256,
+    } = prepare_upper(request, dir)?;
+    let encoding = normalized.encoding;
+    let row_to_upper: HashMap<_, _> = upper_indices
+        .iter()
+        .enumerate()
+        .map(|(i, &row)| (row, i))
+        .collect();
     source.upper_k = o.efs.min(source.upper_nodes.len());
     source.upper_ef_search = o.efs;
     let router = OrionRouter::from_artifact(&source)?;
@@ -439,12 +513,13 @@ fn build_staged(
         import_manifest_file,
         state: "OfflineValidated".into(),
         runtime_source_artifact_sha256: None,
+        capacity_max_replication_factor: None,
     };
     write_json(&dir.join("build-manifest.json"), &manifest)?;
     Ok(manifest)
 }
 
-fn checked_file(dir: &Path, name: &str, expected: &str) -> Result<std::path::PathBuf> {
+pub(crate) fn checked_file(dir: &Path, name: &str, expected: &str) -> Result<std::path::PathBuf> {
     validate_filename(name)?;
     let path = dir.join(name);
     if path.symlink_metadata()?.file_type().is_symlink() || file_sha256(&path)? != expected {
@@ -473,12 +548,10 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
         1024 * 1024,
         File::open(dir.join("build-manifest.json"))?,
     ))?;
-    if build.format_version != 2
-        || build.algorithm_version != layout::LAYOUT_ALGORITHM_VERSION
-        || build.state != "OfflineValidated"
-    {
+    if build.format_version != 2 || build.state != "OfflineValidated" {
         return Err("unsupported build manifest".into());
     }
+    validate_build_algorithm(&build)?;
     let import: ImportManifest = serde_json::from_reader(File::open(checked_file(
         dir,
         &build.import_manifest_file,
@@ -487,7 +560,21 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
     if import.format_version != 1 || import.vector_encoding == VectorEncoding::U8bin {
         return Err("unsupported import manifest".into());
     }
-    build.options.validate(import.point_count)?;
+    if build.capacity_max_replication_factor.is_some()
+        && build.algorithm_version != super::capacity::ALGORITHM
+    {
+        return Err("replication limit requires a capacity layout".into());
+    }
+    super::capacity::validate_replication(
+        import.total_point_copies,
+        import.point_count,
+        build.capacity_max_replication_factor,
+    )?;
+    if build.algorithm_version == super::capacity::ALGORITHM {
+        build.options.validate_capacity(import.point_count)?;
+    } else {
+        build.options.validate(import.point_count)?;
+    }
     let source = OrionRoutingArtifact::read_json(
         &checked_file(
             dir,
@@ -524,6 +611,16 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
         || upper_identity_sha256(&artifact)? != build.upper_identity_sha256
     {
         return Err("final graph or ordered vector identity mismatch".into());
+    }
+    let capacity_partition = build.algorithm_version == super::capacity::ALGORITHM;
+    if capacity_partition
+        && !build
+            .initial_owners
+            .iter()
+            .copied()
+            .eq(artifact.upper_nodes.iter().map(|n| n.owner_shard))
+    {
+        return Err("capacity-partition certificate differs from final owners".into());
     }
     if artifact.generation != import.orion_generation
         || artifact.shard_count != import.shard_count
@@ -625,30 +722,39 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
         .iter()
         .map(|n| n.vector.as_slice())
         .collect();
-    let initial = layout::cluster(
-        &vectors,
-        import.shard_count as usize,
-        o.kmeans_iterations,
-        o.kmeans_seed,
-    )?;
-    if initial != build.initial_owners {
-        return Err("K-Means replay mismatch".into());
-    }
     let router = OrionRouter::from_artifact_with_ef(&artifact, o.efs)?;
     let mut scratch = router.new_route_scratch();
-    let self_hits: Vec<_> = vectors
-        .iter()
-        .map(|v| search_indices(&router, v, &mut scratch, &label_to_upper))
-        .collect::<Result<_>>()?;
-    let (owners, iterations) = layout::refine_owners(&self_hits, &initial, o.topology_iterations)?;
-    if iterations != build.topology_iterations
-        || !owners
+    let owners = if capacity_partition {
+        // The supplied partition is an explicit, bound build input. Replay all
+        // attachments and strict full-data assignments below, without claiming
+        // it was generated by the canonical K-Means/self-vote algorithm.
+        build.initial_owners.clone()
+    } else {
+        let initial = layout::cluster(
+            &vectors,
+            import.shard_count as usize,
+            o.kmeans_iterations,
+            o.kmeans_seed,
+        )?;
+        if initial != build.initial_owners {
+            return Err("K-Means replay mismatch".into());
+        }
+        let self_hits: Vec<_> = vectors
             .iter()
-            .zip(&artifact.upper_nodes)
-            .all(|(&s, n)| s == n.owner_shard)
-    {
-        return Err("self-vote replay mismatch".into());
-    }
+            .map(|v| search_indices(&router, v, &mut scratch, &label_to_upper))
+            .collect::<Result<_>>()?;
+        let (owners, iterations) =
+            layout::refine_owners(&self_hits, &initial, o.topology_iterations)?;
+        if iterations != build.topology_iterations
+            || !owners
+                .iter()
+                .zip(&artifact.upper_nodes)
+                .all(|(&s, n)| s == n.owner_shard)
+        {
+            return Err("self-vote replay mismatch".into());
+        }
+        owners
+    };
     let mut assignments = BufReader::new(File::open(checked_file(
         dir,
         &import.assignments_file,

@@ -1,0 +1,6 @@
+{
+  "prefix_k": 64,
+  "max_prefix_entries": 2,
+  "max_distance_gap": 0.075,
+  "distance": "Cosine"
+}

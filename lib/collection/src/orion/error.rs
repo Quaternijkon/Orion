@@ -8,6 +8,13 @@ use crate::shards::shard::ShardId;
 
 #[derive(Debug, Error)]
 pub enum OrionRoutingError {
+    #[error("Orion whitebox shard selection failed: {reason}")]
+    WhiteboxPruning { reason: String },
+    #[error("Orion learned shard selection failed: {reason}")]
+    LearnedPruning { reason: String },
+    #[cfg(feature = "orion-oracle-diagnostics")]
+    #[error("Orion diagnostic shard pruning failed: {reason}")]
+    DiagnosticPruning { reason: String },
     #[error("failed to read Orion routing artifact {path}: {source}")]
     ArtifactIo {
         path: PathBuf,

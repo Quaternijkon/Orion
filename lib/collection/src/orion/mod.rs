@@ -8,17 +8,24 @@
 //! any ordinary data copy in that shard.
 mod artifact;
 mod builder;
+mod capacity;
 pub mod bundle;
 pub mod cli;
 pub mod clock;
 pub mod deploy;
 pub mod durable;
 mod error;
+#[cfg(feature = "orion-oracle-diagnostics")]
+mod oracle_diagnostics;
 pub mod import;
 pub mod layout;
+pub mod learned_core;
+pub mod learned_pruning;
+pub mod whitebox_pruning;
 pub mod lifecycle;
 pub mod membership;
 pub mod migration;
+pub mod partition;
 pub mod profile;
 pub mod recovery;
 mod router;

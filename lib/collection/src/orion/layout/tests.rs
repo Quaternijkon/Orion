@@ -83,6 +83,61 @@ fn request(dir: &std::path::Path, distance: Distance) -> bundle::BuildRequest {
 }
 
 #[test]
+fn capacity_build_starts_without_a_reference_layout_and_counts_all_copies() {
+    use crate::orion::partition;
+    let root = tempfile::tempdir().unwrap();
+    let mut req = request(root.path(), Distance::Euclid);
+    req.options.efs = 16; // All16 upper entries, evenly split across two owners.
+    req.options.kmeans_iterations = 0;
+    req.options.topology_iterations = 0;
+    let prepared = root.path().join("prepared");
+    let input = partition::prepare(&req, &prepared).unwrap();
+    assert!(!prepared.join("build-manifest.json").exists());
+    assert!(!prepared.join("import.assignments.jsonl").exists());
+    assert!(bundle::verify_integrity(&prepared).is_err());
+    let owners: Vec<_> = (0..input.upper_indices.len())
+        .map(|i| (i % 2) as u32)
+        .collect();
+    let rejected = root.path().join("rejected");
+    assert!(
+        partition::derive_with_limit(&prepared, &rejected, owners.clone(), 8, Some(1.1)).is_err()
+    );
+    assert!(!rejected.exists());
+    let output = root.path().join("final");
+    let built = partition::derive(&prepared, &output, owners, 8).unwrap();
+    assert_eq!(built.topology_iterations, 0);
+    assert_eq!(built.shard_counts, vec![64, 64]);
+    assert_eq!(built.capacity_max_replication_factor, None);
+    assert_eq!(built.upper_graph_sha256, input.upper_graph_sha256);
+    assert_eq!(built.attachments_sha256, input.attachments_sha256);
+    assert_eq!(bundle::verify(&output).unwrap().total_point_copies, 128);
+    // A configured absolute bound must also be enforced when reading a bundle.
+    let mut tampered = built;
+    tampered.capacity_max_replication_factor = Some(1.1);
+    fs::write(
+        output.join("build-manifest.json"),
+        serde_json::to_vec(&tampered).unwrap(),
+    )
+    .unwrap();
+    assert!(bundle::verify_integrity(&output).is_err());
+}
+
+#[test]
+fn direct_capacity_preparation_preserves_the_canonical_graph_and_attachments() {
+    use crate::orion::partition;
+    let root = tempfile::tempdir().unwrap();
+    let req = request(root.path(), Distance::Cosine);
+    let canonical = bundle::build(&req, &root.path().join("canonical")).unwrap();
+    let prepared = root.path().join("prepared");
+    let direct = partition::prepare(&req, &prepared).unwrap();
+    assert_eq!(direct.upper_graph_sha256, canonical.upper_graph_sha256);
+    assert_eq!(direct.attachments_sha256, canonical.attachments_sha256);
+    assert_eq!(direct.upper_indices, canonical.upper_indices);
+    fs::write(prepared.join(&direct.attachments_file), b"corrupt").unwrap();
+    assert!(partition::read_prepared(&prepared).is_err());
+}
+
+#[test]
 fn uint8_bundle_is_compact_and_replays_the_same_euclidean_layout() {
     let root = tempfile::tempdir().unwrap();
     let mut float = request(root.path(), Distance::Euclid);
@@ -433,7 +488,7 @@ fn profile_keeps_graph_memberships_and_vectors_and_rejects_generation_rollback()
     let profile = profile::RuntimeProfile {
         generation: 8,
         upper_k: 5,
-        upper_ef_search: 5,
+        upper_ef_search: 16,
         dynamic_ef_base: 30,
         dynamic_ef_factor: 2,
     };
@@ -441,6 +496,10 @@ fn profile_keeps_graph_memberships_and_vectors_and_rejects_generation_rollback()
     let before = bundle::verify(&source).unwrap();
     let after = bundle::verify(&target).unwrap();
     assert_eq!(after.orion_generation, 8);
+    assert_eq!(derived.options.upper_k, 5);
+    assert_eq!(derived.options.upper_ef_search, 16);
+    assert_eq!(derived.options.dynamic_ef_base, 30);
+    assert_eq!(derived.options.dynamic_ef_factor, 2);
     assert_eq!(before.assignments_sha256, after.assignments_sha256);
     assert_eq!(before.vectors_sha256, after.vectors_sha256);
     assert_eq!(original.upper_graph_sha256, derived.upper_graph_sha256);
