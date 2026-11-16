@@ -32,6 +32,7 @@ fn highest_vote_targets(hits: &[usize], owners: &[u32]) -> Result<(Vec<u32>, usi
     Ok((result, max_vote))
 }
 
+#[cfg(test)] // Retired self-vote strategy: compiled only for historical fixture validation.
 pub fn refine_owners(
     hits: &[Vec<usize>],
     owners: &[u32],

@@ -5,11 +5,11 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use segment::types::Distance;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{OrionRoutingArtifact, OrionShardTarget};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub prefix_k: usize,
@@ -32,6 +32,38 @@ pub struct Policy {
 }
 
 impl Config {
+    pub(crate) fn for_router(
+        &self,
+        distance: Distance,
+        upper_k: usize,
+        upper_ef_search: usize,
+        shard_count: u32,
+        generation: u64,
+    ) -> Result<Policy, String> {
+        self.validate()?;
+        if self
+            .enabled_generations
+            .as_ref()
+            .is_some_and(|g| !g.contains(&generation))
+        {
+            return Err("whitebox configuration does not cover the active generation".into());
+        }
+        if distance != self.distance
+            || self.prefix_k > upper_k
+            || upper_k > upper_ef_search
+            || shard_count == 0
+        {
+            return Err(
+                "whitebox configuration does not match the immutable router schema/budgets".into(),
+            );
+        }
+        Ok(Policy {
+            config: self.clone(),
+            upper_k,
+            shard_count: shard_count as usize,
+        })
+    }
+
     pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
         let config: Self = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         config.validate()?;
@@ -62,7 +94,7 @@ impl Config {
             .as_ref()
             .is_some_and(|g| !g.contains(&artifact.generation))
         {
-            return Ok(None);
+            return Err("whitebox configuration does not cover this generation; disabling the base selector is not supported".into());
         }
         if artifact.vector_schema.distance != self.distance
             || self.prefix_k > artifact.upper_k

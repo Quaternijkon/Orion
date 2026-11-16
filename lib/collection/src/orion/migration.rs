@@ -10,6 +10,7 @@ use crate::operations::point_ops::{
     PointInsertOperationsInternal, PointOperations, PointStructPersisted,
 };
 use crate::operations::types::{CollectionResult, PointRequestInternal};
+#[cfg(test)]
 use crate::shards::replica_set::replica_set_state::ReplicaState;
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use common::fs::atomic_save;
@@ -232,6 +233,21 @@ impl Collection {
         }
         Ok(())
     }
+    #[cfg(not(test))]
+    pub(crate) async fn begin_orion_migration(
+        &self,
+        _state: &mut ControlState,
+        _generation: u64,
+        _shard_count: u32,
+        _source_revision: u64,
+        _peers: Vec<u64>,
+    ) -> CollectionResult<()> {
+        Err(bad(
+            "self-vote repartition is disabled; construct and install the fixed access-probability base",
+        ))
+    }
+
+    #[cfg(test)] // Retained only for historical migration/recovery fixtures.
     pub(crate) async fn begin_orion_migration(
         &self,
         state: &mut ControlState,

@@ -12,6 +12,15 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Generate fixed, data-derived access probes on the frozen production graph.
+    AccessProbes {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        whitebox_config: PathBuf,
+    },
     /// Build a neutral upper graph and all data attachments directly from raw input.
     /// Does not run K-Means/self-votes or create an installable layout.
     PrepareCapacity {
@@ -37,6 +46,7 @@ enum Command {
     },
     /// Build and stream assignments into a fresh collection while local HNSW indexes build.
     /// Creates the collection if absent; repeating the same command resumes the row stream.
+    #[cfg(any())] // Retired self-vote construction; no production strategy switch.
     BuildInstall {
         #[arg(long)]
         request: PathBuf,
@@ -52,6 +62,7 @@ enum Command {
         api_key: Option<String>,
     },
     /// Repartition current records through a new generation of the same graph.
+    #[cfg(any())] // Retired self-vote repartition; use the canonical offline base.
     Repartition {
         #[arg(long)]
         uri: String,
@@ -107,6 +118,7 @@ enum Command {
         api_key: Option<String>,
     },
     /// Build from checksummed f32le, u8, or BIGANN u8bin input. All output must be new.
+    #[cfg(any())] // Retained source for history; the sole builder is the capacity pipeline.
     Build {
         #[arg(long)]
         request: PathBuf,
@@ -141,6 +153,20 @@ enum Command {
 
 pub fn run() -> Result<()> {
     match Args::parse().command {
+        Command::AccessProbes {
+            source,
+            output,
+            whitebox_config,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string(&crate::orion::access::generate(
+                    &source,
+                    &output,
+                    &whitebox_config
+                )?)?
+            );
+        }
         Command::PrepareCapacity { request, output } => {
             let request: bundle::BuildRequest = serde_json::from_reader(File::open(request)?)?;
             println!(
@@ -167,6 +193,7 @@ pub fn run() -> Result<()> {
                 )?)?
             );
         }
+        #[cfg(any())]
         Command::BuildInstall {
             request,
             output,
@@ -192,6 +219,7 @@ pub fn run() -> Result<()> {
             )?;
             println!("{}", serde_json::to_string(&manifest)?);
         }
+        #[cfg(any())]
         Command::Repartition {
             uri,
             collection,
@@ -276,6 +304,7 @@ pub fn run() -> Result<()> {
             })?;
             println!("{{\"activated\":true}}");
         }
+        #[cfg(any())]
         Command::Build { request, output } => {
             let mut request: bundle::BuildRequest = serde_json::from_reader(File::open(&request)?)?;
             if request.input.path.is_relative() {

@@ -46,9 +46,11 @@ impl TableOfContent {
                 let command = serde_json::from_str(&command).map_err(|e| {
                     StorageError::bad_request(format!("invalid Orion control command: {e}"))
                 })?;
-                let collection = self
-                    .get_collection(&crate::rbac::CollectionMultipass.issue_pass(&collection_name))
-                    .await?;
+                // Consensus commands own the lifecycle transition. Starting peer
+                // recovery here can race that transition and export whole bundles
+                // from peers that are merely applying the same command faster.
+                // Data-access paths still use get_collection and retain recovery.
+                let collection = self.get_collection_unchecked(&collection_name).await?;
                 collection.apply_orion_control(command).await?;
                 Ok(true)
             }

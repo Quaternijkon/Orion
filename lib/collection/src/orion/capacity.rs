@@ -1,5 +1,10 @@
-//! Integer checks for the explicit capacity-constrained partition variant.
-pub const ALGORITHM: &str = "orion-layout-v4-capacity-partition";
+//! Integer capacity checks for the fixed access-probability construction base.
+pub const ALGORITHM: &str = "orion-layout-v5-access-probability-capacity";
+pub const LEGACY_ALGORITHM: &str = "orion-layout-v4-capacity-partition";
+
+pub fn is_capacity_algorithm(value: &str) -> bool {
+    matches!(value, ALGORITHM | LEGACY_ALGORITHM)
+}
 
 pub fn validate_replication(
     physical: u64,

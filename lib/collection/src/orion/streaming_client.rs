@@ -230,6 +230,19 @@ async fn consume(
     Ok(())
 }
 
+#[cfg(not(test))]
+pub async fn build_install(
+    _request: BuildRequest,
+    _output: &Path,
+    _uri: &str,
+    _collection: &str,
+    _timeout: Duration,
+    _api_key: Option<&str>,
+) -> Result<BuildManifest> {
+    Err("self-vote streaming construction is disabled; build the canonical access-capacity bundle and install it".into())
+}
+
+#[cfg(test)]
 pub async fn build_install(
     request: BuildRequest,
     output: &Path,

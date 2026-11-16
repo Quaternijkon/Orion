@@ -168,7 +168,7 @@ pub struct OrionRouter {
     node_by_label: AHashMap<ExtendedPointId, usize>,
     search_backend: UpperSearchBackend,
     scratch_pool: parking_lot::Mutex<Vec<OrionRouteScratch>>,
-    learned_pruner: Option<super::learned_pruning::Policy>,
+    // Decision-tree selection was retired; there is no strategy switch.
     whitebox_pruner: Option<super::whitebox_pruning::Policy>,
 }
 
@@ -298,17 +298,42 @@ impl OrionRouter {
             upper_vector_element_count
         );
 
-        let learned_pruner = super::learned_pruning::configured(artifact)
-            .map_err(|reason| OrionRoutingError::LearnedPruning { reason })?;
-        let whitebox_pruner = super::whitebox_pruning::configured(artifact)
-            .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?;
-        if learned_pruner.is_some() && whitebox_pruner.is_some() {
+        if std::env::var_os("ORION_LEARNED_PRUNER").is_some() {
             return Err(OrionRoutingError::WhiteboxPruning {
                 reason:
-                    "learned and whitebox selectors cannot both be enabled for the same generation"
+                    "decision-tree pruning is disabled; use the canonical whitebox configuration"
                         .into(),
             });
         }
+        if std::env::var_os("ORION_DIAGNOSTIC_SHARD_MASKS").is_some() {
+            return Err(OrionRoutingError::WhiteboxPruning {
+                reason: "oracle shard selection is not part of the fixed base".into(),
+            });
+        }
+        let whitebox_pruner = super::whitebox_pruning::configured(artifact)
+            .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?;
+        // Historical routing fixtures use a permissive numeric whitebox rule.
+        // This is test-only; production route_query fails closed without config.
+        #[cfg(test)]
+        let whitebox_pruner = whitebox_pruner.or_else(|| {
+            Some(
+                super::whitebox_pruning::Config {
+                    prefix_k: 1,
+                    max_prefix_entries: 0,
+                    max_distance_gap: f64::MAX,
+                    distance: artifact.vector_schema.distance,
+                    enabled_generations: None,
+                }
+                .for_router(
+                    artifact.vector_schema.distance,
+                    artifact.upper_k,
+                    artifact.upper_ef_search,
+                    artifact.shard_count,
+                    artifact.generation,
+                )
+                .unwrap(),
+            )
+        });
         Ok(Self {
             generation: artifact.generation,
             vector_name: artifact.vector_schema.vector_name.clone(),
@@ -326,7 +351,6 @@ impl OrionRouter {
             node_by_label,
             search_backend,
             scratch_pool: parking_lot::Mutex::new(Vec::new()),
-            learned_pruner,
             whitebox_pruner,
         })
     }
@@ -361,6 +385,27 @@ impl OrionRouter {
         self.upper_k
     }
 
+    /// Configure the only online selection rule. Scalar thresholds are query
+    /// budgets, not an alternative routing algorithm. Offline upper navigation
+    /// may construct a router without this rule, but cannot execute route_query.
+    pub fn with_whitebox(
+        mut self,
+        config: super::whitebox_pruning::Config,
+    ) -> OrionRoutingResult<Self> {
+        self.whitebox_pruner = Some(
+            config
+                .for_router(
+                    self.distance,
+                    self.upper_k,
+                    self.upper_ef_search,
+                    self.shard_count,
+                    self.generation,
+                )
+                .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?,
+        );
+        Ok(self)
+    }
+
     pub(crate) fn borrow_route_scratch(&self) -> OrionRouteScratchLease<'_> {
         let cached = self.scratch_pool.lock().pop();
         OrionRouteScratchLease {
@@ -393,7 +438,7 @@ impl OrionRouter {
 
     /// Search with `upper_ef_search`, then route only the nearest `upper_k` hits.
     /// Lower budgets depend on retained hits per owner, not the upper beam size.
-    /// Optional learned selection drops whole targets after their budgets are fixed.
+    /// Fixed whitebox selection drops whole targets after their budgets are fixed.
     pub fn route_query(&self, query: &[f32]) -> OrionRoutingResult<Vec<OrionShardTarget>> {
         let mut scratch = self.borrow_route_scratch();
         self.route_query_with_scratch(query, &mut scratch)
@@ -415,32 +460,21 @@ impl OrionRouter {
         )?;
         let actual_upper_hits = scratch.sorted_nearest.len().min(self.upper_k);
         self.validate_target_entry_count(&targets, actual_upper_hits)?;
-        let targets = if let Some(policy) = &self.whitebox_pruner {
-            policy
-                .apply(
-                    scratch
-                        .sorted_nearest
-                        .iter()
-                        .map(|(distance, index)| (self.nodes[*index].owner_shard, distance.0)),
-                    targets,
-                )
-                .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?
-        } else if let Some(policy) = &self.learned_pruner {
-            policy
-                .apply(
-                    scratch
-                        .sorted_nearest
-                        .iter()
-                        .map(|(distance, index)| (self.nodes[*index].owner_shard, distance.0)),
-                    targets,
-                )
-                .map_err(|reason| OrionRoutingError::LearnedPruning { reason })?
-        } else {
-            targets
-        };
+        let policy = self.whitebox_pruner.as_ref().ok_or_else(|| OrionRoutingError::WhiteboxPruning {
+            reason: "canonical Orion requires a whitebox configuration; unpruned and learned strategy fallbacks are disabled".into(),
+        })?;
+        let targets = policy
+            .apply(
+                scratch
+                    .sorted_nearest
+                    .iter()
+                    .map(|(distance, index)| (self.nodes[*index].owner_shard, distance.0)),
+                targets,
+            )
+            .map_err(|reason| OrionRoutingError::WhiteboxPruning { reason })?;
         // Compute and validate the complete original route first. Diagnostics may
         // remove whole targets, but must never recompute retained entries or EF.
-        #[cfg(feature = "orion-oracle-diagnostics")]
+        #[cfg(any())] // Retained source only; never compiled into the base.
         let targets =
             super::oracle_diagnostics::prune(query, self.generation, self.shard_count, targets)
                 .map_err(|reason| OrionRoutingError::DiagnosticPruning { reason })?;
@@ -1118,6 +1152,17 @@ mod flat_upper_vector_tests {
         });
         assert!(!router.scratch_pool.lock().is_empty());
         assert!(router.scratch_pool.lock().len() <= *common::defaults::POOL_KEEP_LIMIT);
+    }
+
+    #[test]
+    fn canonical_route_requires_whitebox_even_if_upper_navigation_is_available() {
+        let mut router = OrionRouter::new(cosine_artifact()).unwrap();
+        router.whitebox_pruner = None;
+        assert!(router.search_upper(&[1.0, -0.5]).is_ok());
+        assert!(matches!(
+            router.route_query(&[1.0, -0.5]),
+            Err(OrionRoutingError::WhiteboxPruning { .. })
+        ));
     }
 
     #[test]

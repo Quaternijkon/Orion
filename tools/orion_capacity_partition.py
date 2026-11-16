@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build a capacity layout directly from raw vectors, using native bundle authority.
+"""The single Orion base: capacity, construction-time access balance, whitebox.
 
 PyMetis proposes owner labels. Rust generates strict memberships and validates the
 published layout. Feedback runs only after actual physical capacity is rejected.
-No reference layout, query truth or replica-budget owner repair is used.
+Frozen-graph input-vector probes refine actual shard-request probabilities.
+There is no self-vote/decision-tree/alternate-strategy selector.
 """
 from __future__ import annotations
 
@@ -19,6 +20,10 @@ import tempfile
 from typing import Callable
 
 import numpy as np
+if __package__:
+    from . import orion_access_balance as access
+else:
+    import orion_access_balance as access
 
 MAX_CAPACITY_RATIO = 1.2  # Rust v4 contract; use integer checks in both implementations.
 
@@ -133,7 +138,8 @@ def checked_path(root: Path, name: str, digest: str) -> Path:
 
 
 def plan_prepared(prepared: Path, evidence: Path, *, max_feedback_rounds: int = 5,
-                  max_replication_factor: float | None = None, seed: int = 100) -> tuple[Path, dict]:
+                  max_replication_factor: float | None = None, seed: int = 100,
+                  probes: Path | None = None) -> tuple[Path, dict]:
     # Check dependency before allocating a large graph. Only used at build time.
     try:
         import pymetis
@@ -193,22 +199,42 @@ def plan_prepared(prepared: Path, evidence: Path, *, max_feedback_rounds: int = 
     owners, history = choose_partition(hits, upper_ids, shards, partition,
                                       max_feedback_rounds=max_feedback_rounds,
                                       max_replication_factor=max_replication_factor, record=record)
+    if probes is None:
+        raise ValueError('the fixed base requires construction access probes')
+    probe_hits, distances, probe_manifest=access.load_probes(probes,meta,upper_ids,checked_path)
+    owners, access_report=access.refine(
+        owners,hits,history[-1]['shard_counts'],probe_hits,distances,probe_manifest['whitebox'],
+        xadj,neighbors,edgeweights,
+        max_physical_copies=int(max_replication_factor*rows) if max_replication_factor is not None else None,
+        progress=lambda row:print(json.dumps({'stage':'access_refinement',**row}),file=sys.stderr,flush=True))
+    final_counts,final_added,_=evaluate_memberships(hits,owners,upper_ids,shards)
+    if not feasible(final_counts,rows,max_replication_factor):
+        raise RuntimeError('access refinement violated the native physical-capacity contract')
+    access_report.update(final_shard_counts=final_counts.tolist(),physical_copies=int(final_counts.sum()),
+                         proxy_manifest_sha256=sha256(probes/'access-probes.json'),
+                         upper_graph_sha256=meta['upper_graph_sha256'])
+    (evidence/'access-balance.json').write_text(json.dumps(access_report,indent=2)+'\n')
     owner_file = evidence / "capacity-owners.json"
     owner_file.write_text(json.dumps(owners.tolist()) + "\n")
-    report = dict(algorithm="attachment-cooccurrence-capacity", options=options,
+    report = dict(algorithm="attachment-cooccurrence-access-capacity-v1", options=options,
                   pymetis_version=pymetis.version, prepared_manifest_sha256=sha256(prepared / "capacity-input.json"),
                   owners_sha256=sha256(owner_file), max_feedback_rounds=max_feedback_rounds,
                   max_replication_factor=max_replication_factor, max_physical_capacity_ratio=MAX_CAPACITY_RATIO, history=history,
                   feedback_rounds_used=len(history) - 1, source_layout_required=False,
-                  uses_queries=False, replica_budget_owner_repair=False,
-                  full_data_upper_search_passes=1)
+                  uses_queries=True, replica_budget_owner_repair=False,
+                  full_data_upper_search_passes=1,uses_input_vectors_as_proxies=True,
+                  uses_external_queries=False,uses_ground_truth=False,uses_search_cost=False,
+                  access_probe_count=probe_manifest['query_count'],
+                  final_shard_counts=final_counts.tolist(),
+                  access_balance_report_sha256=sha256(evidence/'access-balance.json'))
     (evidence / "capacity-plan.json").write_text(json.dumps(report, indent=2) + "\n")
     return owner_file, report
 
 
 def build_capacity(request: Path, output: Path, run_native: Callable[..., dict], *,
                    max_feedback_rounds: int = 5, max_replication_factor: float | None = None,
-                   seed: int = 100) -> dict:
+                   seed: int = 100, whitebox_config: Path | None = None,
+                   reuse_prepared: Path | None = None) -> dict:
     check_limit(max_replication_factor)
     if max_feedback_rounds < 0:
         raise ValueError("feedback round limit must be nonnegative")
@@ -222,22 +248,32 @@ def build_capacity(request: Path, output: Path, run_native: Callable[..., dict],
     output.parent.mkdir(parents=True, exist_ok=True)
     workspace = Path(tempfile.mkdtemp(prefix=".orion-capacity-work-", dir=output.parent))
     try:
-        prepared = workspace / "prepared"
-        run_native("prepare-capacity", "--request", str(request), "--output", str(prepared))
+        if whitebox_config is None:raise ValueError('a numeric whitebox configuration is required by the fixed base')
+        prepared = reuse_prepared if reuse_prepared is not None else workspace / "prepared"
+        if reuse_prepared is None:
+            run_native("prepare-capacity", "--request", str(request), "--output", str(prepared))
+        else:
+            requested=json.loads(request.read_text());existing=json.loads((prepared/'capacity-input.json').read_text())
+            if existing['options']!=requested['options'] or existing['raw_vectors_sha256']!=requested['input']['sha256']:
+                raise ValueError('retained preparation does not match requested graph/data/options')
+        probes=workspace/'access-probes'
+        run_native('access-probes','--source',str(prepared),'--output',str(probes),'--whitebox-config',str(whitebox_config))
         owners, report = plan_prepared(prepared, workspace, max_feedback_rounds=max_feedback_rounds,
-                                      max_replication_factor=max_replication_factor, seed=seed)
+                                      max_replication_factor=max_replication_factor, seed=seed,probes=probes)
         meta = json.loads((prepared / "capacity-input.json").read_text())
         args = ["capacity-partition", "--source", str(prepared), "--owners", str(owners),
                 "--output", str(output), "--generation", str(meta["options"]["generation"])]
         if max_replication_factor is not None:
             args += ["--max-replication-factor", str(max_replication_factor)]
         manifest = run_native(*args)
-        if manifest["shard_counts"] != report["history"][-1]["shard_counts"]:
+        if manifest["shard_counts"] != report['final_shard_counts']:
             raise RuntimeError("Python/native physical membership count mismatch")
         # Source vector and attachment bytes are already preserved in the final bundle.
         import shutil
-        for name in ["capacity-plan.json", "capacity-attempts.jsonl", "capacity-owners.json"]:
+        for name in ["capacity-plan.json", "capacity-attempts.jsonl", "capacity-owners.json",'access-balance.json']:
             shutil.copy2(workspace / name, output / name)
+        shutil.copytree(probes,output/'access-probes')
+        shutil.copy2(whitebox_config,output/'whitebox.json')
         shutil.rmtree(workspace)
         return manifest
     except Exception as exc:
@@ -250,16 +286,17 @@ def main() -> None:
     parser.add_argument("--request", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--rust-layout-binary", required=True, type=Path)
-    parser.add_argument("--max-feedback-rounds", type=int, default=5)
     parser.add_argument("--max-replication-factor", type=float)
-    parser.add_argument("--partition-seed", type=int, default=100)
+    parser.add_argument('--whitebox-config',required=True,type=Path)
+    parser.add_argument('--reuse-prepared',type=Path,help='Reuse checksummed frozen graph/data/attachments; identical base algorithm')
     args = parser.parse_args()
     def run(*command):
         result = subprocess.run([str(args.rust_layout_binary.resolve()), *command],
                                 check=True, text=True, stdout=subprocess.PIPE)
         return json.loads(result.stdout)
-    result = build_capacity(args.request, args.output, run, max_feedback_rounds=args.max_feedback_rounds,
-                            max_replication_factor=args.max_replication_factor, seed=args.partition_seed)
+    result = build_capacity(args.request, args.output, run,
+                            max_replication_factor=args.max_replication_factor,
+                            whitebox_config=args.whitebox_config,reuse_prepared=args.reuse_prepared)
     print(json.dumps(result))
 
 

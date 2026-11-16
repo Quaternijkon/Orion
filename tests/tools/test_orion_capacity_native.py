@@ -18,7 +18,7 @@ BINARY = os.environ.get('ORION_LAYOUT_BINARY')
 
 @unittest.skipUnless(BINARY, 'set ORION_LAYOUT_BINARY to exercise real Rust builds')
 class NativeCapacityTests(unittest.TestCase):
-    def test_direct_build_early_acceptance_full_replay_and_original_path(self):
+    def test_fixed_base_full_replay_and_retired_strategy_rejection(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             rng = np.random.default_rng(340)
@@ -37,6 +37,9 @@ class NativeCapacityTests(unittest.TestCase):
                            options=options)
             req = root / 'request.json'
             req.write_text(json.dumps(request))
+            whitebox=root/'whitebox.json'
+            whitebox.write_text(json.dumps(dict(prefix_k=4,max_prefix_entries=1,
+                                               max_distance_gap=100.,distance='Euclid')))
             commands = []
             def native(*args):
                 commands.append(args)
@@ -46,8 +49,8 @@ class NativeCapacityTests(unittest.TestCase):
                 return json.loads(p.stdout)
             final = root / 'capacity'
             built = build_capacity(req, final, native, max_feedback_rounds=0,
-                                   max_replication_factor=1.1)
-            self.assertEqual([c[0] for c in commands], ['prepare-capacity', 'capacity-partition'])
+                                   max_replication_factor=1.1,whitebox_config=whitebox)
+            self.assertEqual([c[0] for c in commands], ['prepare-capacity','access-probes', 'capacity-partition'])
             plan = json.loads((final / 'capacity-plan.json').read_text())
             self.assertEqual(plan['feedback_rounds_used'], 0)
             self.assertEqual(len(plan['history']), 1)
@@ -55,16 +58,18 @@ class NativeCapacityTests(unittest.TestCase):
             self.assertFalse(plan['replica_budget_owner_repair'])
             self.assertEqual(built['topology_iterations'], 0)
             self.assertEqual(built['capacity_max_replication_factor'], 1.1)
+            self.assertEqual(built['algorithm_version'],'orion-layout-v5-access-probability-capacity')
+            self.assertTrue(plan['uses_input_vectors_as_proxies'])
+            self.assertFalse(plan['uses_external_queries'])
+            balance=json.loads((final/'access-balance.json').read_text())
+            self.assertLessEqual(balance['after']['maximum_access_probability'],balance['before']['maximum_access_probability'])
+            self.assertLessEqual(balance['after']['mean_fanout'],balance['before']['mean_fanout'])
             verified = native('verify', '--bundle', str(final), '--replay')
             self.assertEqual(verified['point_count'], 2048)
             self.assertEqual(verified['total_point_copies'], sum(built['shard_counts']))
-            # Build the original path afterwards only for parity checking. It was
-            # not a prerequisite of capacity construction.
-            options.update(kmeans_iterations=10, topology_iterations=50)
-            req.write_text(json.dumps(request))
-            old = native('build', '--request', str(req), '--output', str(root / 'original'))
-            self.assertEqual(old['upper_graph_sha256'], built['upper_graph_sha256'])
-            self.assertEqual(old['attachments_sha256'], built['attachments_sha256'])
+            retired=subprocess.run([BINARY,'build','--request',str(req),'--output',str(root/'retired')],capture_output=True,text=True)
+            self.assertNotEqual(retired.returncode,0)
+            self.assertFalse((root/'retired').exists())
             with self.assertRaises(FileExistsError):
                 build_capacity(req, final, native)
 

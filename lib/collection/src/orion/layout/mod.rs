@@ -3,6 +3,7 @@
 //! Version 2 fixes RNG and scalar f64 K-Means arithmetic independently of NumPy/BLAS.
 //! Version 3 preserves tied owners and accepts the last bounded refinement round.
 //! Navigation still uses the Qdrant production graph and segment distance semantics.
+#[cfg(test)]
 mod kmeans;
 mod sampler;
 pub(crate) mod vector_input;
@@ -10,7 +11,9 @@ mod voting;
 
 pub use sampler::sample_indices;
 pub use vector_input::{VectorEncoding, VectorInput};
-pub use voting::{refine_owners, strict_targets};
+pub use voting::strict_targets;
+#[cfg(test)] // Historical replay fixtures only; disabled in production.
+pub use voting::refine_owners;
 
 use segment::types::Distance;
 use serde::{Deserialize, Serialize};
@@ -38,8 +41,11 @@ pub struct LayoutOptions {
     /// Each selected shard receives base + factor * retained owner-hit count.
     pub dynamic_ef_base: usize,
     pub dynamic_ef_factor: usize,
+    #[serde(default)]
     pub kmeans_iterations: usize,
+    #[serde(default)]
     pub kmeans_seed: u64,
+    #[serde(default)]
     pub topology_iterations: usize,
     pub bundle_prefix: String,
 }
@@ -90,6 +96,7 @@ impl LayoutOptions {
     }
 }
 
+#[cfg(test)]
 pub(crate) use kmeans::cluster;
 
 #[cfg(test)]

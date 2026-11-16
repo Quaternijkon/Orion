@@ -65,18 +65,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="cosine",
     )
     parser.add_argument("--vector-name", default="")
-    parser.add_argument("--uri", help="Stream assignments into this Qdrant HTTP endpoint during the build.")
+    parser.add_argument("--uri", help="Install the completed fixed-base bundle into this Qdrant endpoint.")
     parser.add_argument("--collection", help="Fresh Orion collection for --uri; created if absent.")
     parser.add_argument("--timeout-secs", type=int, default=7200)
-    parser.add_argument(
-        "--partition-method", choices=("self-vote", "capacity"), default="self-vote",
-        help="Capacity builds directly from raw data and never runs the original self-vote layout.",
-    )
-    parser.add_argument("--capacity-feedback-rounds", type=int, default=5,
-                        help="Maximum feedback rounds, used only if the first actual layout is infeasible.")
+    parser.add_argument('--whitebox-config',required=True,type=Path,
+                        help='Numeric configuration for the sole online whitebox selector.')
     parser.add_argument("--capacity-max-replication-factor", type=float, default=None,
                         help="Optional absolute physical/logical copy limit; no prior-layout budget.")
-    parser.add_argument("--capacity-partition-seed", type=int, default=100)
+    parser.set_defaults(partition_method='capacity',capacity_feedback_rounds=5,capacity_partition_seed=100)
 
     parser.add_argument("--sample-denominator", type=int, default=32)
     parser.add_argument("--upper-sample-seed", type=int, default=100)
@@ -99,77 +95,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--upper-k", type=int, default=100,
         help="Nearest upper hits retained for shard activation and lower entry points.",
     )
-    parser.add_argument(
-        "--allow-decoupled-runtime-upper-search",
-        action="store_true",
-        help=(
-            "Compatibility flag: upper search EF and top-k are now independently "
-            "configurable whenever upper_search_ef >= upper_k."
-        ),
-    )
+    parser.set_defaults(allow_decoupled_runtime_upper_search=True)
     parser.add_argument("--k-overlap", type=int, default=10)
     parser.add_argument("--upper-build-batch-size", type=int, default=10_000)
 
     parser.add_argument("--dynamic-ef-base", type=int, default=20)
     parser.add_argument("--dynamic-ef-factor", type=int, default=4)
-    parser.add_argument("--kmeans-iters", type=int, default=10)
-    parser.add_argument("--kmeans-seed", type=int, default=1)
-    parser.add_argument("--topology-iters", type=int, default=50)
-    parser.add_argument(
-        "--disable-topology-refinement",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--disable-multi-assign", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--multi-assign-min-max-vote", type=int, default=2, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--multi-assign-vote-delta", type=int, default=0, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--multi-assign-max-shards", type=int, default=0, help=argparse.SUPPRESS
-    )
-    parser.add_argument("--disable-fission", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--balance-mode",
-        choices=(
-            "none",
-            "capacity_constrained",
-            "post_layout_capacity_constrained",
-        ),
-        default="none",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--balance-min-load-ratio", type=float, default=0.99, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--balance-max-load-ratio", type=float, default=1.01, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--balance-max-passes", type=int, default=8, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--balance-max-vote-loss",
-        type=int,
-        default=3,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--balance-l1-max-vote-loss",
-        type=int,
-        default=None,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--balance-l0-max-vote-loss",
-        type=int,
-        default=None,
-        help=argparse.SUPPRESS,
-    )
+    # Fields retained only for historical audit helpers, never CLI strategy switches.
+    parser.set_defaults(kmeans_iters=0,kmeans_seed=1,topology_iters=0,
+                        disable_topology_refinement=False,disable_multi_assign=False,
+                        multi_assign_min_max_vote=2,multi_assign_vote_delta=0,multi_assign_max_shards=0,
+                        disable_fission=False,balance_mode='none',balance_min_load_ratio=.99,
+                        balance_max_load_ratio=1.01,balance_max_passes=8,balance_max_vote_loss=3,
+                        balance_l1_max_vote_loss=None,balance_l0_max_vote_loss=None)
 
     parser.add_argument(
         "--upper-graph-seed",
@@ -179,31 +117,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--cargo", default="cargo")
     parser.add_argument("--rust-layout-binary", default=None, help="Prebuilt formal orion_build_layout binary.")
-    parser.add_argument(
-        "--rust-builder-binary",
-        default=None,
-        help=(
-            "Optional prebuilt orion_build_artifact executable. Its resolved path and "
-            "SHA-256 are recorded in the build manifest."
-        ),
-    )
-    parser.add_argument(
-        "--rust-upper-hits-binary",
-        default=None,
-        help=(
-            "Optional prebuilt orion_export_upper_hits executable. The canonical "
-            "build uses it to generate every offline attachment from the frozen "
-            "Qdrant upper graph."
-        ),
-    )
-    parser.add_argument(
-        "--rust-rebind-binary",
-        default=None,
-        help=(
-            "Optional prebuilt orion_rebind_memberships executable used only to "
-            "finalize memberships onto the already-built upper graph."
-        ),
-    )
+    # Historical audit helpers keep their fields, without exposing retired builders.
+    parser.set_defaults(rust_builder_binary=None, rust_upper_hits_binary=None,
+                        rust_rebind_binary=None, graphless_only=False)
     parser.add_argument(
         "--cargo-target-dir",
         default=None,
@@ -214,26 +130,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--bundle-prefix", default="orion_numeric_import")
     parser.add_argument("--bundle-row-chunk-size", type=int, default=16_384)
-    parser.add_argument(
-        "--graphless-only",
-        action="store_true",
-        help=(
-            "Historical compatibility flag. Native Rust builds reject graphless-only "
-            "output and publish independently verified bundles."
-        ),
-    )
     return parser.parse_args(argv)
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    method = getattr(args, "partition_method", "self-vote")
+    method = getattr(args, "partition_method", "capacity")
+    if method!='capacity':raise ValueError('only the fixed access-probability capacity base is supported')
     if getattr(args, "capacity_feedback_rounds", 5) < 0:
         raise ValueError("--capacity-feedback-rounds must be nonnegative")
     limit = getattr(args, "capacity_max_replication_factor", None)
     if limit is not None and (not math.isfinite(limit) or limit < 1):
         raise ValueError("--capacity-max-replication-factor must be finite and at least 1")
-    if method != "capacity" and limit is not None:
-        raise ValueError("--capacity-max-replication-factor requires --partition-method capacity")
+    if not Path(args.whitebox_config).is_file():raise FileNotFoundError('whitebox configuration is required')
     if bool(getattr(args, "uri", None)) != bool(getattr(args, "collection", None)):
         raise ValueError("--uri and --collection must be supplied together")
     if getattr(args, "timeout_secs", 7200) <= 0:
@@ -271,8 +179,6 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--multi-assign-max-shards must be non-negative")
     if int(args.attachment_search_ef) != int(args.k_overlap):
         raise ValueError("canonical build requires --attachment-search-ef == --k-overlap")
-    if bool(args.disable_topology_refinement) and method == "self-vote":
-        raise ValueError("canonical build requires upper self-vote refinement")
     if bool(args.disable_multi_assign):
         raise ValueError("canonical multi-assignment cannot be disabled")
     if int(args.multi_assign_min_max_vote) != 2:
@@ -282,7 +188,7 @@ def validate_args(args: argparse.Namespace) -> None:
     if int(args.multi_assign_max_shards) != 0:
         raise ValueError("canonical multi-assignment cannot cap maximum-vote ties")
     if str(args.balance_mode) != "none":
-        raise ValueError("canonical build currently excludes load-balancing intervention")
+        raise ValueError("retired balancing selectors are unavailable; access balancing is fixed")
     if int(args.upper_search_ef) < int(args.upper_k):
         raise ValueError("--upper-search-ef must be at least --upper-k")
     if not args.bundle_prefix or Path(args.bundle_prefix).name != args.bundle_prefix:
@@ -990,8 +896,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError(f"--{field.replace('_', '-')} is historical; use --rust-layout-binary")
     output_dir = Path(args.output_dir).expanduser().resolve()
     install_requested = bool(getattr(args, "uri", None))
-    capacity = getattr(args, "partition_method", "self-vote") == "capacity"
-    streaming = install_requested and not capacity
+    streaming = False
     if os.path.lexists(output_dir) and not streaming:
         raise FileExistsError(f"refusing to overwrite existing output path: {output_dir}")
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -1030,25 +935,13 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         }
         request_path = Path(staging) / "request.json"
         write_json_new(request_path, request)
-        if capacity:
-            from tools.orion_capacity_partition import build_capacity
-            manifest = build_capacity(
-                request_path, output_dir, lambda *command: run_layout_cli(args, *command),
-                max_feedback_rounds=args.capacity_feedback_rounds,
-                max_replication_factor=args.capacity_max_replication_factor,
-                seed=args.capacity_partition_seed,
-            )
-            if install_requested:
-                # Complete and validate the layout before any data import or lower indexing.
-                run_layout_cli(args, "install", "--create-if-missing", "--bundle", str(output_dir), "--uri", args.uri,
-                               "--collection", args.collection, "--timeout-secs", str(args.timeout_secs))
-        else:
-            command = ["build-install" if streaming else "build", "--request", str(request_path),
-                       "--output", str(output_dir)]
-            if streaming:
-                command += ["--uri", args.uri, "--collection", args.collection,
-                            "--timeout-secs", str(args.timeout_secs)]
-            manifest = run_layout_cli(args, *command)
+        from tools.orion_capacity_partition import build_capacity
+        manifest = build_capacity(request_path,output_dir,lambda *command:run_layout_cli(args,*command),
+                                  max_replication_factor=args.capacity_max_replication_factor,
+                                  whitebox_config=Path(args.whitebox_config))
+        if install_requested:
+            run_layout_cli(args,"install","--create-if-missing","--bundle",str(output_dir),"--uri",args.uri,
+                           "--collection",args.collection,"--timeout-secs",str(args.timeout_secs))
     import_path = output_dir / manifest["import_manifest_file"]
     imported = json.loads(import_path.read_text(encoding="utf-8"))
     summary = {

@@ -39,6 +39,7 @@ venv
 **/orion_retired/
 **/.pytest_cache/
 *.md
+!tools/orion_capacity_build.md
 *.rst
 *.pdf
 *.pptx

@@ -6,7 +6,14 @@
 //! become entry points there. Another shard participates only when it receives
 //! an upper hit owned by that shard. Once activated, local graph search may visit
 //! any ordinary data copy in that shard.
+//!
+//! The production base uses capacity partitioning followed by construction-input
+//! access-probability refinement, with equal cost per selected shard request.
+//! Online routing uses whitebox selection and contribution-aware MultiEP HNSW.
+//! Self-vote and decision-tree strategy selection is disabled. See
+//! `tools/orion_capacity_build.md` for construction and compatibility requirements.
 mod artifact;
+pub mod access;
 mod builder;
 mod capacity;
 pub mod bundle;
@@ -15,12 +22,14 @@ pub mod clock;
 pub mod deploy;
 pub mod durable;
 mod error;
-#[cfg(feature = "orion-oracle-diagnostics")]
-mod oracle_diagnostics;
+// No alternate/oracle online selector is part of the fixed base.
+// mod oracle_diagnostics;
 pub mod import;
 pub mod layout;
-pub mod learned_core;
-pub mod learned_pruning;
+// Retained as source history only. The canonical base has one selector:
+// whitebox pruning; decision-tree policies are not compiled or selectable.
+// pub mod learned_core;
+// pub mod learned_pruning;
 pub mod whitebox_pruning;
 pub mod lifecycle;
 pub mod membership;
