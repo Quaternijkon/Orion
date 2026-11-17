@@ -40,6 +40,9 @@ venv
 **/.pytest_cache/
 *.md
 !tools/orion_capacity_build.md
+!tools/orion_navigation_balance.md
+!tools/shard_locality.md
+!tools/orion_fast_build.md
 *.rst
 *.pdf
 *.pptx

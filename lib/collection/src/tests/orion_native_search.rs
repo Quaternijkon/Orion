@@ -99,6 +99,10 @@ fn point_operation(id: u64, vector: Vec<f32>) -> CollectionUpdateOperations {
 }
 
 async fn fixture() -> (Collection, TempDir, TempDir) {
+    fixture_with_lower_points(&[]).await
+}
+
+async fn fixture_with_lower_points(extra: &[(u64, f32)]) -> (Collection, TempDir, TempDir) {
     let collection_dir = Builder::new().prefix("orion_native").tempdir().unwrap();
     let snapshots_path = Builder::new().prefix("orion_snapshots").tempdir().unwrap();
     let routing_artifact = artifact();
@@ -177,6 +181,20 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
             )
             .await
             .unwrap();
+        if shard_id == 0 {
+            for &(id, score) in extra {
+                shard
+                    .update_local(
+                        OperationWithClockTag::from(point_operation(id, vec![0., score])),
+                        WaitUntil::Visible,
+                        None,
+                        HwMeasurementAcc::new(),
+                        false,
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
     }
     for shard_id in 0..SHARD_COUNT {
         collection
@@ -187,7 +205,9 @@ async fn fixture() -> (Collection, TempDir, TempDir) {
 
     for _ in 0..200 {
         let info = collection.info(&ShardSelectorInternal::All).await.unwrap();
-        if info.indexed_vectors_count == info.points_count && info.points_count == Some(2) {
+        if info.indexed_vectors_count == info.points_count
+            && info.points_count == Some(2 + extra.len())
+        {
             return (collection, collection_dir, snapshots_path);
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
@@ -614,6 +634,170 @@ async fn native_orion_routes_standard_search_and_query_through_numeric_replica_s
         .await
         .unwrap();
     assert_eq!(query_result[0].id, 100_u64.into());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn adaptive_navigation_handoff_preserves_results_and_never_forwards_again() {
+    use crate::operations::consistency_params::ReadConsistency;
+    use crate::orion::navigation_balance::{NavigationBalance, NavigationIdentity};
+    use crate::shards::remote_shard::CollectionCoreSearchRequest;
+    use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
+
+    let (mut collection, _collection_dir, _snapshots_path) =
+        fixture_with_lower_points(&[(300, 0.8), (400, 0.5)]).await;
+    collection.navigation_balance = NavigationBalance::new(Default::default(), 48, true);
+    // Enough points in the same built segment distinguish applying the offset
+    // once from twice without changing the upper owner-entry routing.
+    let mut search = core_request(false);
+    search.offset = 1;
+    search.with_payload = Some(WithPayloadInterface::Bool(true));
+    search.with_vector = Some(WithVector::Bool(true));
+    search.params.as_mut().unwrap().hnsw_ef = Some(48);
+    let batch = CoreSearchRequestBatch {
+        searches: vec![search.clone(), core_request(false)],
+    };
+    let expected = collection
+        .core_search_batch(
+            batch.clone(),
+            Some(ReadConsistency::Factor(1)),
+            ShardSelectorInternal::All,
+            Some(Duration::from_secs(5)),
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(expected[0][0].id, 400_u64.into());
+    let before = collection.orion_navigation_load().await;
+    assert!(before.ready);
+    let identity = NavigationIdentity {
+        generation: before.generation,
+        artifact_sha256: before.artifact_sha256.clone(),
+        policy_sha256: before.policy_sha256.clone(),
+    };
+    // Exercise the exact wire conversion used by the P2P coordinator endpoint.
+    let decoded = CoreSearchRequestBatch {
+        searches: batch
+            .searches
+            .iter()
+            .map(|search| {
+                let wire: api::grpc::qdrant::CoreSearchPoints =
+                    CollectionCoreSearchRequest((collection.id.clone(), search)).into();
+                CoreSearchRequest::try_from(wire).unwrap()
+            })
+            .collect(),
+    };
+    let actual = collection
+        .coordinate_orion_search(
+            decoded,
+            Some(ReadConsistency::Factor(1)),
+            identity.clone(),
+            Duration::from_secs(5),
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(actual, expected);
+    let after = collection.orion_navigation_load().await;
+    assert_eq!(after.received_queries, before.received_queries + 2);
+    // Entering the ordinary dispatch wrapper would increment local or forwarded
+    // queries. A forwarded coordinator must enter neither branch.
+    assert_eq!(after.local_queries, before.local_queries);
+    assert_eq!(after.forwarded_queries, before.forwarded_queries);
+    assert_eq!(after.admitted_navigation, before.admitted_navigation);
+
+    // A worker backlog rejects a delegated coordinator before it can start
+    // additional upper/lower searches. Clearing the backlog restores service.
+    let queued_workers: Vec<_> = (0..=collection.navigation_balance.capacity)
+        .map(|_| common::search_load::queued(common::search_load::SearchRole::Worker))
+        .collect();
+    let rejected_hw = HwMeasurementAcc::new();
+    let rejected = collection
+        .coordinate_orion_search(
+            batch.clone(),
+            None,
+            identity.clone(),
+            Duration::from_secs(5),
+            rejected_hw.clone(),
+        )
+        .await;
+    drop(queued_workers);
+    assert!(matches!(
+        rejected,
+        Err(crate::operations::types::CollectionError::RateLimitExceeded { .. })
+    ));
+    assert_eq!(rejected_hw.get_cpu(), 0);
+    assert_eq!(
+        collection.orion_navigation_load().await.received_queries,
+        after.received_queries
+    );
+    let recovered = collection
+        .coordinate_orion_search(
+            batch.clone(),
+            None,
+            identity.clone(),
+            Duration::from_secs(5),
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(recovered, expected);
+
+    let mut wrong = identity.clone();
+    wrong.policy_sha256 = "different policy".into();
+    assert!(
+        collection
+            .coordinate_orion_search(
+                batch.clone(),
+                None,
+                wrong,
+                Duration::from_secs(5),
+                HwMeasurementAcc::new()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        collection
+            .coordinate_orion_search(
+                CoreSearchRequestBatch {
+                    searches: vec![core_request(true)]
+                },
+                None,
+                identity.clone(),
+                Duration::from_secs(5),
+                HwMeasurementAcc::new()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        collection
+            .coordinate_orion_search(
+                batch.clone(),
+                None,
+                identity.clone(),
+                Duration::ZERO,
+                HwMeasurementAcc::new()
+            )
+            .await
+            .is_err()
+    );
+
+    // A configured but unavailable router must fail closed, never broadcast to
+    // all shards and return the unrelated exact winner from shard 1.
+    collection.orion_router.store(None);
+    assert!(
+        collection
+            .coordinate_orion_search(
+                batch,
+                None,
+                identity,
+                Duration::from_secs(5),
+                HwMeasurementAcc::new()
+            )
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

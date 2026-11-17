@@ -32,6 +32,22 @@ ordinary construction parameters and must match controls in comparisons.
 
 ## Build
 
+For the eight-host SIFT100M workflow, use the accelerated launcher and reference
+manual: [orion_fast_build.md](orion_fast_build.md). It uses all available physical
+cores on each of eight hosts for attachment generation and lower indexing, and
+sizes controller materialization to its CPU and memory budget. Affinity and cgroup
+limits are respected; the former 8-thread / 16-process / 48-core caps are removed.
+This accelerates experiment preparation. Search resources, algorithm and budgets
+retain their experimental settings. Actual per-host HNSW build thread counts are
+recorded because insertion scheduling can change graph bytes.
+
+Large Python builds (more than 1,000,000 rows) now require `--reuse-prepared` or
+an explicit `--allow-serial-attachments`. The fast launcher uses the latter only
+to obtain a short native parity prefix before automatically distributing the
+remaining attachment work. Missing or failed parallel execution stops the run;
+it does not silently become a full serial pass. Direct native `prepare-capacity`
+remains a low-level serial phase, not the recommended full-scale entry point.
+
 Build the native layout tool:
 
 ```sh
@@ -48,6 +64,10 @@ python tools/orion_capacity_partition.py \
   --output /absolute/path/new-layout \
   --rust-layout-binary /absolute/path/orion_build_layout
 ```
+
+This direct command is for small inputs. For a large input, use the fast entry
+above or supply an already validated `--reuse-prepared` directory; explicitly
+opting into a full serial pass is intended only for deliberate diagnostics.
 
 The optional `--reuse-prepared` input can reuse the exact checksummed frozen graph,
 normalized vectors and attachments. The algorithm is identical. Existing outputs

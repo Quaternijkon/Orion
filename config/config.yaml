@@ -65,6 +65,20 @@ storage:
     # Number of parallel threads used for search operations. If 0 - auto selection.
     max_search_threads: 0
 
+    # Keep both the complete Orion navigator and local worker shards on each node.
+    # Move whole query coordination toward nodes with spare worker/CPU capacity.
+    # Only eligible distributed Orion searches participate; no index rebuild.
+    orion_navigation:
+      enabled: true
+      refresh_interval_ms: 250
+      stale_after_ms: 1500
+      probe_timeout_ms: 200
+      target_utilization: 0.95
+      imbalance_threshold: 0.05
+      adjustment_rate: 0.15
+      max_inflight_per_cpu: 8
+      max_batch_queries: 1024
+
     # CPU budget, how many CPUs (threads) to allocate for an optimization job.
     # If 0 - auto selection, keep 1 or more CPUs unallocated depending on CPU size
     # If negative - subtract this number of CPUs from the available CPUs.

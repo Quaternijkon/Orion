@@ -1,0 +1,24 @@
+{
+  "format_version": 1,
+  "orion_manifest": "/home/wangyiduo/orion-access-base-sift100m-20261116/layouts/sift100m/import.manifest.json",
+  "queries_npz": "/home/wangyiduo/orion-rust-native-five-20261115/datasets/sift100m/queries.npz",
+  "query_key": "queries",
+  "truth_key": "truth",
+  "top_k": 10,
+  "real_profile": "upper128-base",
+  "collect_ann_diagnostic": false,
+  "distance": "Euclid",
+  "datatype": "float32",
+  "execution": {
+    "mode": "eight_hosts",
+    "hosts": ["10.1.1.1", "10.1.1.2", "10.1.1.3", "10.1.1.4", "10.1.1.5", "10.1.2.3", "10.1.2.4", "10.1.2.5"],
+    "shards_per_host": 1
+  },
+  "lower": {"m": 32, "ef_construct": 200, "kmeans_ef": 64},
+  "kmeans": {"reuse_existing_index": true},
+  "orion_profiles": [
+    {"name": "upper128-base", "upper_k": 128, "upper_ef_search": 256,
+     "dynamic_ef_base": 32, "dynamic_ef_factor": 4,
+     "whitebox": {"prefix_k": 8, "max_prefix_entries": 3, "max_distance_gap": 9339.0}}
+  ]
+}

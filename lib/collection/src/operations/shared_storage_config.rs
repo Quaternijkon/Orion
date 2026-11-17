@@ -42,6 +42,7 @@ pub struct SharedStorageConfig {
     pub hnsw_global_config: HnswGlobalConfig,
     pub load_concurrency_config: LoadConcurrencyConfig,
     pub search_thread_count: usize,
+    pub orion_navigation: crate::orion::navigation_balance::NavigationBalanceConfig,
 }
 
 impl Default for SharedStorageConfig {
@@ -62,6 +63,7 @@ impl Default for SharedStorageConfig {
             hnsw_global_config: HnswGlobalConfig::default(),
             load_concurrency_config: LoadConcurrencyConfig::default(),
             search_thread_count: common::defaults::search_thread_count(common::cpu::get_num_cpus()),
+            orion_navigation: Default::default(),
         }
     }
 }
@@ -105,6 +107,7 @@ impl SharedStorageConfig {
             hnsw_global_config,
             load_concurrency_config,
             search_thread_count,
+            orion_navigation: Default::default(),
         }
     }
 }

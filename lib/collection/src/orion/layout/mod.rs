@@ -28,6 +28,7 @@ pub struct LayoutOptions {
     pub shard_count: u32,
     pub distance: Distance,
     pub vector_name: String,
+    /// Sample floor(N / denominator) vectors, independently of the HNSW degree.
     pub sample_denominator: usize,
     pub sample_seed: u64,
     pub upper_m: usize,
@@ -79,7 +80,9 @@ impl LayoutOptions {
         if self_votes && (self.kmeans_iterations == 0 || self.topology_iterations == 0) {
             return Err("canonical K-Means and self-vote iterations must be positive".into());
         }
-        if self.sample_denominator != self.upper_m {
+        // Retain the historical self-vote recipe, while capacity layouts expose
+        // sampling density and graph connectivity as independent build parameters.
+        if self_votes && self.sample_denominator != self.upper_m {
             return Err("canonical N/M sampling requires sample_denominator == upper_m".into());
         }
         let upper_count = rows / self.sample_denominator;

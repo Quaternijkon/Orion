@@ -49,6 +49,7 @@ fn test_alias_operation() {
         wal: Default::default(),
         performance: PerformanceConfig {
             max_search_threads: 1,
+            orion_navigation: Default::default(),
             max_optimization_runtime_threads: 1,
             optimizer_cpu_budget: 0,
             optimizer_io_budget: 0,

@@ -1694,9 +1694,89 @@ impl Collection {
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let started = Instant::now();
+        let balanced = self.navigation_balance.enabled()
+            && matches!(shard_selection, ShardSelectorInternal::All)
+            && self.orion_navigation_eligible(&request)
+            && self
+                .collection_config
+                .read()
+                .await
+                .auto_shard_policy
+                .as_ref()
+                .is_some_and(AutoShardPolicy::is_orion);
+        let timeout = if balanced {
+            Some(timeout.unwrap_or(self.shared_storage_config.search_timeout))
+        } else {
+            timeout
+        };
+        let _admission = if balanced {
+            common::search_load::enable();
+            let forwarded = tokio::time::timeout(
+                timeout.unwrap(),
+                self.try_forward_orion_coordinator(
+                    &request,
+                    read_consistency,
+                    timeout.unwrap(),
+                    hw_measurement_acc.clone(),
+                ),
+            )
+            .await
+            .map_err(|_| {
+                CollectionError::timeout(timeout.unwrap(), "Orion coordinator dispatch")
+            })??;
+            if let Some(result) = forwarded {
+                return Ok(result);
+            }
+            // A generation pinned by the client must also hold after a failed
+            // handoff, which may have overlapped a routing generation change.
+            for search in &request.searches {
+                self.check_orion_generation(search.params.as_ref())?;
+            }
+            self.navigation_balance.local_queries.fetch_add(
+                request.searches.len() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            common::search_load::admit_navigation(
+                crate::orion::navigation_balance::NavigationBalance::units(request.searches.len()),
+                None,
+            )
+        } else {
+            None
+        };
+        let remaining =
+            remaining_search_timeout(timeout, started.elapsed(), "Orion coordinator dispatch")?;
+        let local = self.do_core_search_batch_local(
+            request,
+            read_consistency,
+            shard_selection,
+            remaining,
+            hw_measurement_acc,
+        );
+        if balanced {
+            tokio::time::timeout(remaining.unwrap(), local)
+                .await
+                .map_err(|_| {
+                    CollectionError::timeout(timeout.unwrap(), "Orion local coordinator")
+                })?
+        } else {
+            local.await
+        }
+    }
+
+    /// Forwarded requests enter here directly. Explicit shard searches never
+    /// participate in coordinator placement, so forwarding cannot recurse.
+    pub(crate) async fn do_core_search_batch_local(
+        &self,
+        request: CoreSearchRequestBatch,
+        read_consistency: Option<ReadConsistency>,
+        shard_selection: &ShardSelectorInternal,
+        timeout: Option<Duration>,
+        hw_measurement_acc: HwMeasurementAcc,
+    ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
+        let instant = Instant::now();
         self.ensure_static_router_available(shard_selection).await?;
         let request = Arc::new(request);
-        let instant = Instant::now();
         let configured_policy = self
             .collection_config
             .read()
@@ -1743,6 +1823,15 @@ impl Collection {
         let filters_refs = request.searches.iter().map(|req| req.filter.as_ref());
         self.post_process_if_slow_request(instant.elapsed(), filters_refs);
         result
+    }
+
+    pub(crate) fn orion_navigation_eligible(&self, request: &CoreSearchRequestBatch) -> bool {
+        !request.searches.is_empty()
+            && self.orion_router.load().as_ref().is_some_and(|router| {
+                request.searches.iter().all(|search| {
+                    orion_eligible_dense_query(search, router.vector_name()).is_some()
+                })
+            })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1984,7 +2073,9 @@ impl Collection {
                 let router = Arc::clone(&router);
                 let request = Arc::clone(&request);
                 let cpu_utilization = hw_measurement_acc.cpu_utilization();
+                let load = common::search_load::queued(common::search_load::SearchRole::Navigation);
                 AbortOnDropHandle::new(self.search_runtime.spawn_blocking(move || {
+                    let _running = load.start();
                     let mut route_scratch = router.borrow_route_scratch();
                     (chunk_start..chunk_end)
                         .map(|query_index| {

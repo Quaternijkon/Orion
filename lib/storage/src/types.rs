@@ -30,6 +30,10 @@ pub type PeerMetadataById = HashMap<PeerId, PeerMetadata>;
 #[derive(Debug, Deserialize, Serialize, Clone, Validate)]
 pub struct PerformanceConfig {
     pub max_search_threads: usize,
+    /// Adaptive Orion query coordination across colocated worker/navigator nodes.
+    #[serde(default)]
+    #[validate(nested)]
+    pub orion_navigation: collection::orion::navigation_balance::NavigationBalanceConfig,
     #[serde(default)]
     pub max_optimization_runtime_threads: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -119,7 +123,7 @@ pub struct StorageConfig {
 
 impl StorageConfig {
     pub fn to_shared_storage_config(&self, is_distributed: bool) -> SharedStorageConfig {
-        SharedStorageConfig::new(
+        let mut shared = SharedStorageConfig::new(
             self.update_queue_size,
             self.node_type,
             self.handle_collection_load_errors,
@@ -137,7 +141,9 @@ impl StorageConfig {
             self.hnsw_global_config.clone(),
             self.performance.load_concurrency.clone(),
             common::defaults::search_thread_count(self.performance.max_search_threads),
-        )
+        );
+        shared.orion_navigation = self.performance.orion_navigation.clone();
+        shared
     }
 }
 

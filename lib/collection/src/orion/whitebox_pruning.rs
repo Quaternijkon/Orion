@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use segment::types::Distance;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::{OrionRoutingArtifact, OrionShardTarget};
 
@@ -27,6 +28,7 @@ pub struct Config {
 #[derive(Debug)]
 pub struct Policy {
     config: Config,
+    fingerprint: String,
     upper_k: usize,
     shard_count: usize,
 }
@@ -59,6 +61,7 @@ impl Config {
         }
         Ok(Policy {
             config: self.clone(),
+            fingerprint: self.fingerprint(),
             upper_k,
             shard_count: shard_count as usize,
         })
@@ -68,6 +71,14 @@ impl Config {
         let config: Self = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         config.validate()?;
         Ok(config)
+    }
+
+    fn fingerprint(&self) -> String {
+        // Only the small validated policy is serialized, never the routing graph.
+        format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(self).expect("valid pruning config"))
+        )
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -105,6 +116,7 @@ impl Config {
         }
         Ok(Some(Policy {
             config: self.clone(),
+            fingerprint: self.fingerprint(),
             upper_k: artifact.upper_k,
             shard_count: artifact.shard_count as usize,
         }))
@@ -112,6 +124,10 @@ impl Config {
 }
 
 impl Policy {
+    pub(crate) fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
     pub fn apply(
         &self,
         hits: impl IntoIterator<Item = (u32, f32)>,
@@ -190,17 +206,23 @@ mod tests {
     use super::*;
     use segment::types::ExtendedPointId;
     fn policy() -> Policy {
-        Policy {
-            config: Config {
-                prefix_k: 4,
-                max_prefix_entries: 1,
-                max_distance_gap: 0.125,
-                distance: Distance::Cosine,
-                enabled_generations: None,
-            },
-            upper_k: 7,
-            shard_count: 8,
+        Config {
+            prefix_k: 4,
+            max_prefix_entries: 1,
+            max_distance_gap: 0.125,
+            distance: Distance::Cosine,
+            enabled_generations: None,
         }
+        .for_router(Distance::Cosine, 7, 7, 8, 1)
+        .unwrap()
+    }
+    #[test]
+    fn navigation_fingerprint_tracks_policy_content() {
+        let original = policy();
+        assert_eq!(original.fingerprint(), policy().fingerprint());
+        let mut changed = original.config.clone();
+        changed.max_distance_gap += 0.01;
+        assert_ne!(original.fingerprint(), changed.fingerprint());
     }
     fn target(s: u32) -> OrionShardTarget {
         OrionShardTarget {

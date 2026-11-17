@@ -234,12 +234,17 @@ def plan_prepared(prepared: Path, evidence: Path, *, max_feedback_rounds: int = 
 def build_capacity(request: Path, output: Path, run_native: Callable[..., dict], *,
                    max_feedback_rounds: int = 5, max_replication_factor: float | None = None,
                    seed: int = 100, whitebox_config: Path | None = None,
-                   reuse_prepared: Path | None = None) -> dict:
+                   reuse_prepared: Path | None = None,
+                   allow_serial_attachments: bool = False) -> dict:
     check_limit(max_replication_factor)
     if max_feedback_rounds < 0:
         raise ValueError("feedback round limit must be nonnegative")
     if os.path.lexists(output):
         raise FileExistsError("refusing to overwrite capacity output: " + str(output))
+    requested_rows = json.loads(request.read_text())["input"]["rows"]
+    if requested_rows > 1_000_000 and reuse_prepared is None and not allow_serial_attachments:
+        raise ValueError("large builds require tools/orion_fast_build.py or --reuse-prepared; "
+                         "--allow-serial-attachments explicitly opts into the slow single-process pass")
     # Fail before the expensive full-data upper pass if the solver is unavailable.
     try:
         import pymetis  # noqa: F401
@@ -289,6 +294,8 @@ def main() -> None:
     parser.add_argument("--max-replication-factor", type=float)
     parser.add_argument('--whitebox-config',required=True,type=Path)
     parser.add_argument('--reuse-prepared',type=Path,help='Reuse checksummed frozen graph/data/attachments; identical base algorithm')
+    parser.add_argument('--allow-serial-attachments',action='store_true',
+                        help='Explicitly allow a large serial attachment pass (the fast launcher uses this only for its parity prefix).')
     args = parser.parse_args()
     def run(*command):
         result = subprocess.run([str(args.rust_layout_binary.resolve()), *command],
@@ -296,7 +303,8 @@ def main() -> None:
         return json.loads(result.stdout)
     result = build_capacity(args.request, args.output, run,
                             max_replication_factor=args.max_replication_factor,
-                            whitebox_config=args.whitebox_config,reuse_prepared=args.reuse_prepared)
+                            whitebox_config=args.whitebox_config,reuse_prepared=args.reuse_prepared,
+                            allow_serial_attachments=args.allow_serial_attachments)
     print(json.dumps(result))
 
 

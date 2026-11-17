@@ -22,6 +22,8 @@ pub mod clock;
 pub mod deploy;
 pub mod durable;
 mod error;
+pub mod navigation_balance;
+mod navigation_rpc;
 // No alternate/oracle online selector is part of the fixed base.
 // mod oracle_diagnostics;
 pub mod import;

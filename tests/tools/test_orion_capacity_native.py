@@ -27,7 +27,7 @@ class NativeCapacityTests(unittest.TestCase):
             raw = root / 'input.f32le'
             raw.write_bytes(vectors.tobytes())
             options = dict(generation=1, shard_count=4, distance='Euclid', vector_name='',
-                           sample_denominator=8, sample_seed=100, upper_m=8,
+                           sample_denominator=16, sample_seed=100, upper_m=8,
                            upper_ef_construct=64, upper_seed=100, efs=10,
                            upper_k=8, upper_ef_search=8, dynamic_ef_base=1,
                            dynamic_ef_factor=4, kmeans_iterations=0, kmeans_seed=1,
@@ -50,6 +50,8 @@ class NativeCapacityTests(unittest.TestCase):
             final = root / 'capacity'
             built = build_capacity(req, final, native, max_feedback_rounds=0,
                                    max_replication_factor=1.1,whitebox_config=whitebox)
+            self.assertEqual(len(built['upper_indices']), 128)
+            self.assertEqual(built['options']['upper_m'], 8)
             self.assertEqual([c[0] for c in commands], ['prepare-capacity','access-probes', 'capacity-partition'])
             plan = json.loads((final / 'capacity-plan.json').read_text())
             self.assertEqual(plan['feedback_rounds_used'], 0)

@@ -511,6 +511,58 @@ fn profile_keeps_graph_memberships_and_vectors_and_rejects_generation_rollback()
 }
 
 #[test]
+fn capacity_sampling_density_is_independent_of_hnsw_degree() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = request(dir.path(), Distance::Euclid);
+    r.options.upper_m = 32;
+    r.options.upper_ef_construct = 100;
+    r.options.shard_count = 8;
+    r.options.upper_k = 16;
+    r.options.upper_ef_search = 32;
+    r.options.kmeans_iterations = 0;
+    r.options.topology_iterations = 0;
+    for denominator in [32, 64, 128, 256] {
+        r.options.sample_denominator = denominator;
+        r.options.validate_capacity(1_000_000).unwrap();
+        assert_eq!(r.options.upper_m, 32);
+    }
+    r.options.sample_denominator = 0;
+    assert!(r.options.validate_capacity(1_000_000).is_err());
+    r.options.sample_denominator = 100_000;
+    assert!(r.options.validate_capacity(1_000_000).is_err());
+}
+
+#[test]
+fn capacity_sampling_replay_preserves_independent_density_and_degree() {
+    use crate::orion::partition;
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = request(dir.path(), Distance::Euclid);
+    r.options.sample_denominator = 8;
+    r.options.efs = 8; // Both owners receive every row; physical capacity is exact.
+    r.options.kmeans_iterations = 0;
+    r.options.topology_iterations = 0;
+    let prepared = dir.path().join("prepared");
+    let input = partition::prepare(&r, &prepared).unwrap();
+    assert_eq!(input.upper_indices.len(), 8);
+    assert_eq!(input.options.upper_m, 4);
+    let owners = (0..8).map(|i| (i % 2) as u32).collect();
+    let output = dir.path().join("final");
+    let built = partition::derive(&prepared, &output, owners, 8).unwrap();
+    assert_eq!(built.shard_counts, vec![64, 64]);
+    assert_eq!(built.upper_graph_sha256, input.upper_graph_sha256);
+    assert_eq!(bundle::verify(&output).unwrap().point_count, 64);
+
+    let mut tampered = input;
+    tampered.options.sample_denominator = 4;
+    fs::write(
+        prepared.join("capacity-input.json"),
+        serde_json::to_vec(&tampered).unwrap(),
+    )
+    .unwrap();
+    assert!(partition::read_prepared(&prepared).is_err());
+}
+
+#[test]
 fn unsafe_bundle_names_and_decoupled_sampling_are_rejected() {
     for name in ["", "..", ".", "../x", "/tmp/x", "a/b", "a\\b"] {
         assert!(bundle::validate_filename(name).is_err());

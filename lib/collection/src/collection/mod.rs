@@ -86,6 +86,7 @@ pub struct Collection {
     /// closed instead of silently changing to all-shards routing. Artifacts are activated on
     /// collection load so all coordinators use the same persisted generation and checksum.
     pub(crate) orion_router: arc_swap::ArcSwapOption<OrionRouter>,
+    pub(crate) navigation_balance: Arc<crate::orion::navigation_balance::NavigationBalance>,
     pub(crate) orion_serving: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) orion_data_ready: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) orion_refresh_needed: std::sync::atomic::AtomicBool,
@@ -494,6 +495,11 @@ impl Collection {
             shards_holder: shared_shard_holder,
             collection_config: shared_collection_config,
             orion_router: arc_swap::ArcSwapOption::from(orion_router),
+            navigation_balance: crate::orion::navigation_balance::NavigationBalance::new(
+                shared_storage_config.orion_navigation.clone(),
+                shared_storage_config.search_thread_count,
+                shared_storage_config.is_distributed,
+            ),
             orion_serving: Arc::new(std::sync::atomic::AtomicBool::new(
                 crate::orion::lifecycle::may_serve(path),
             )),
@@ -656,6 +662,11 @@ impl Collection {
             shards_holder: shared_shard_holder,
             collection_config: shared_collection_config,
             orion_router: arc_swap::ArcSwapOption::from(orion_router),
+            navigation_balance: crate::orion::navigation_balance::NavigationBalance::new(
+                shared_storage_config.orion_navigation.clone(),
+                shared_storage_config.search_thread_count,
+                shared_storage_config.is_distributed,
+            ),
             orion_serving: Arc::new(std::sync::atomic::AtomicBool::new(
                 crate::orion::lifecycle::may_serve(path),
             )),

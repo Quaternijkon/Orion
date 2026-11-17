@@ -202,7 +202,9 @@ impl SegmentsSearcher {
         );
         let is_stopped = is_stopped_guard.get_is_stopped().clone();
         // Do blocking calls in a blocking task: `segment.get().read()` calls might block async runtime
+        let load = common::search_load::queued(common::search_load::SearchRole::Worker);
         let task = AbortOnDropHandle::new(search_runtime_handle.spawn_blocking(move || {
+            let _running = load.start();
             cpu_utilization
                 .measure(|| fill_query_context(query_context, segments, timeout, &is_stopped))
         }))
@@ -290,12 +292,14 @@ impl SegmentsSearcher {
                     let batch_range = batch_range.clone();
                     // update timeout
                     let timeout = timeout.saturating_sub(start.elapsed());
+                    let load = common::search_load::queued(common::search_load::SearchRole::Worker);
                     let search = runtime_handle.spawn_blocking({
                         let (segment, batch_request) = (segment.clone(), batch_request.clone());
                         let cpu_utilization = query_context_arc_segment
                             .hardware_usage_accumulator()
                             .cpu_utilization();
                         move || {
+                            let _running = load.start();
                             cpu_utilization.measure(|| {
                                 let segment_query_context =
                                     query_context_arc_segment.get_segment_query_context();
@@ -370,7 +374,9 @@ impl SegmentsSearcher {
                     let cpu_utilization = query_context_arc_segment
                         .hardware_usage_accumulator()
                         .cpu_utilization();
+                    let load = common::search_load::queued(common::search_load::SearchRole::Worker);
                     let handle = runtime_handle.spawn_blocking(move || {
+                        let _running = load.start();
                         cpu_utilization.measure(|| {
                             let segment_query_context =
                                 query_context_arc_segment.get_segment_query_context();
@@ -444,6 +450,7 @@ impl SegmentsSearcher {
         deferred_behavior: DeferredBehavior,
     ) -> CollectionResult<AHashMap<PointIdType, RecordInternal>> {
         let stopping_guard = StoppingGuard::new();
+        let load = common::search_load::queued(common::search_load::SearchRole::Worker);
         let points = runtime_handle.spawn_blocking({
             let segments = segments.clone();
             let points = points.to_vec();
@@ -452,6 +459,7 @@ impl SegmentsSearcher {
             let is_stopped = stopping_guard.get_is_stopped();
             // TODO create one Task per segment level retrieve
             move || {
+                let _running = load.start();
                 retrieve_blocking(
                     segments,
                     &points,
@@ -478,7 +486,9 @@ impl SegmentsSearcher {
         let stopping_guard = StoppingGuard::new();
         // cloning filter spawning task
         let filter = filter.cloned();
+        let load = common::search_load::queued(common::search_load::SearchRole::Worker);
         let points = runtime_handle.spawn_blocking(move || {
+            let _running = load.start();
             let is_stopped = stopping_guard.get_is_stopped();
 
             // Collect the segments first so we don't lock the segment holder during the operations.
@@ -546,11 +556,13 @@ impl SegmentsSearcher {
             segments
                 .into_iter()
                 .map(|segment| {
+                    let load = common::search_load::queued(common::search_load::SearchRole::Worker);
                     let handle = runtime_handle.spawn_blocking({
                         let arc_ctx = arc_ctx.clone();
                         let hw_counter = hw_measurement_acc.get_counter_cell();
                         let cpu_utilization = hw_measurement_acc.cpu_utilization();
                         move || {
+                            let _running = load.start();
                             cpu_utilization.measure(|| {
                                 segment
                                     .get()

@@ -90,7 +90,7 @@ impl Default for CpuUtilization {
 
 /// Returns current thread's CPU time in nanoseconds.
 #[cfg(target_os = "linux")]
-fn thread_cpu_time_ns() -> u64 {
+pub(crate) fn thread_cpu_time_ns() -> u64 {
     let mut ts = nix::libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
@@ -106,7 +106,7 @@ fn thread_cpu_time_ns() -> u64 {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn thread_cpu_time_ns() -> u64 {
+pub(crate) fn thread_cpu_time_ns() -> u64 {
     0
 }
 

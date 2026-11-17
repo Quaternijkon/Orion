@@ -359,6 +359,12 @@ impl OrionRouter {
         self.generation
     }
 
+    pub(crate) fn navigation_policy_fingerprint(&self) -> Option<&str> {
+        self.whitebox_pruner
+            .as_ref()
+            .map(|policy| policy.fingerprint())
+    }
+
     pub fn vector_name(&self) -> &str {
         &self.vector_name
     }

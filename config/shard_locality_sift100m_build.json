@@ -1,0 +1,29 @@
+{
+  "input": {
+    "format_version": 1,
+    "path": "/home/wangyiduo/orion-five-fixed48-20261113/datasets/sift100m/train.f32le",
+    "rows": 100000000,
+    "dimension": 128,
+    "sha256": "8fc4190703390100b6c51057378a86f9422394ee1794932cc6fe5dfff8e28428"
+  },
+  "options": {
+    "generation": 1,
+    "shard_count": 8,
+    "distance": "Euclid",
+    "vector_name": "",
+    "sample_denominator": 32,
+    "sample_seed": 100,
+    "upper_m": 32,
+    "upper_ef_construct": 200,
+    "upper_seed": 100,
+    "efs": 10,
+    "upper_k": 128,
+    "upper_ef_search": 256,
+    "dynamic_ef_base": 32,
+    "dynamic_ef_factor": 4,
+    "kmeans_iterations": 0,
+    "kmeans_seed": 0,
+    "topology_iterations": 0,
+    "bundle_prefix": "import"
+  }
+}

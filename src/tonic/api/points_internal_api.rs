@@ -6,28 +6,33 @@ use std::time::{Duration, Instant};
 use api::grpc::HardwareUsage;
 use api::grpc::qdrant::points_internal_server::PointsInternal;
 use api::grpc::qdrant::{
-    ClearPayloadPointsInternal, CoreSearchBatchByShardCompactInternal,
+    BatchResult, ClearPayloadPointsInternal, CoreSearchBatchByShardCompactInternal,
     CoreSearchBatchByShardInternal, CoreSearchBatchPointsInternal, CountPointsInternal,
     CountResponse, CreateFieldIndexCollectionInternal, DeleteFieldIndexCollectionInternal,
     DeletePayloadPointsInternal, DeletePointsInternal, DeleteVectorsInternal, FacetCountsInternal,
     FacetResponseInternal, GetPointsInternal, GetResponse, IntermediateResult,
-    PointsOperationResponseInternal, QueryBatchPointsInternal, QueryBatchResponseInternal,
+    OrionCoordinateRequest, OrionCoordinateResponse, OrionNavigationLoadRequest,
+    OrionNavigationLoadResponse, PointsOperationResponseInternal, QueryBatchPointsInternal,
+    QueryBatchResponseInternal,
     QueryResultInternal, QueryShardPoints, RecommendPointsInternal, RecommendResponse,
     ScrollPointsInternal, ScrollResponse, SearchBatchResponse, SetPayloadPointsInternal,
-    SyncPointsInternal, UpdateBatchInternal, UpdateVectorsInternal, UpsertPointsInternal,
+    SyncPointsInternal, UpdateBatchInternal, UpdateVectorsInternal, UpsertPointsInternal, Usage,
 };
 use api::grpc::update_operation::Update;
+use collection::operations::consistency_params::ReadConsistency;
 use collection::operations::shard_selector_internal::ShardSelectorInternal;
 use collection::operations::universal_query::shard_query::ShardQueryRequest;
+use collection::orion::navigation_balance::NavigationIdentity;
 use collection::shards::shard::ShardId;
 use common::counter::hardware_accumulator::HwMeasurementAcc;
 use itertools::Itertools;
 use segment::data_types::facets::{FacetParams, FacetResponse};
 use segment::json_path::JsonPath;
 use segment::types::Filter;
+use shard::search::{CoreSearchRequest, CoreSearchRequestBatch};
 use storage::content_manager::toc::TableOfContent;
 use storage::content_manager::toc::request_hw_counter::RequestHwCounter;
-use storage::rbac::{Access, Auth};
+use storage::rbac::{Access, Auth, CollectionMultipass};
 use tonic::{Request, Response, Status};
 
 use super::query_common::*;
@@ -469,6 +474,81 @@ impl PointsInternalService {
 
 #[tonic::async_trait]
 impl PointsInternal for PointsInternalService {
+    async fn orion_navigation_load(
+        &self,
+        request: Request<OrionNavigationLoadRequest>,
+    ) -> Result<Response<OrionNavigationLoadResponse>, Status> {
+        let request = request.into_inner();
+        let pass = CollectionMultipass.issue_pass(&request.collection_name);
+        let collection = self.toc.get_collection(&pass).await?;
+        Ok(Response::new(collection.orion_navigation_load().await))
+    }
+
+    async fn orion_coordinate(
+        &self,
+        request: Request<OrionCoordinateRequest>,
+    ) -> Result<Response<OrionCoordinateResponse>, Status> {
+        let started = Instant::now();
+        let request = request.into_inner();
+        if request.timeout_millis == 0
+            || request.search_points.is_empty()
+            || request.search_points.len() > 4096
+        {
+            return Err(Status::invalid_argument(
+                "Invalid Orion coordinator batch or timeout",
+            ));
+        }
+        let hw = self
+            .get_request_collection_hw_usage_counter_for_internal(request.collection_name.clone());
+        let pass = CollectionMultipass.issue_pass(&request.collection_name);
+        let collection = self.toc.get_collection(&pass).await?;
+        let identity = NavigationIdentity {
+            generation: request.generation,
+            artifact_sha256: request.artifact_sha256,
+            policy_sha256: request.policy_sha256,
+        };
+        let read_consistency = ReadConsistency::try_from_optional(request.read_consistency)?;
+        let searches = request
+            .search_points
+            .into_iter()
+            .map(|point| {
+                if point.collection_name != request.collection_name {
+                    return Err(Status::invalid_argument(
+                        "Orion coordinator collection mismatch",
+                    ));
+                }
+                CoreSearchRequest::try_from(point)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let timeout = Duration::from_millis(request.timeout_millis)
+            .checked_sub(started.elapsed())
+            .filter(|time| !time.is_zero())
+            .ok_or_else(|| Status::deadline_exceeded("Orion coordination timed out"))?;
+        let points = collection
+            .coordinate_orion_search(
+                CoreSearchRequestBatch { searches },
+                read_consistency,
+                identity,
+                timeout,
+                hw.get_counter(),
+            )
+            .await
+            .map_err(storage::content_manager::errors::StorageError::from)?;
+        Ok(Response::new(OrionCoordinateResponse {
+            response: Some(SearchBatchResponse {
+                result: points
+                    .into_iter()
+                    .map(|points| BatchResult {
+                        result: points.into_iter().map(Into::into).collect(),
+                    })
+                    .collect(),
+                time: started.elapsed().as_secs_f64(),
+                usage: Usage::from_hardware_usage(hw.to_grpc_api()).into_non_empty(),
+            }),
+            load: Some(collection.orion_navigation_load().await),
+        }))
+    }
+
     async fn upsert(
         &self,
         request: Request<UpsertPointsInternal>,

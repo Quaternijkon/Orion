@@ -11099,6 +11099,80 @@ pub struct CoreSearchBatchPointsInternal {
     pub timeout: ::core::option::Option<u64>,
 }
 #[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionNavigationLoadRequest {
+    #[prost(string, tag = "1")]
+    pub collection_name: ::prost::alloc::string::String,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionNavigationLoadResponse {
+    #[prost(uint64, tag = "1")]
+    pub peer_id: u64,
+    #[prost(uint64, tag = "2")]
+    pub generation: u64,
+    #[prost(string, tag = "3")]
+    pub artifact_sha256: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub policy_sha256: ::prost::alloc::string::String,
+    #[prost(bool, tag = "5")]
+    pub ready: bool,
+    #[prost(double, tag = "6")]
+    pub cpu_capacity: f64,
+    #[prost(double, tag = "7")]
+    pub cpu_cores: f64,
+    #[prost(double, tag = "8")]
+    pub worker_cores: f64,
+    #[prost(double, tag = "9")]
+    pub navigation_cores: f64,
+    #[prost(uint64, tag = "10")]
+    pub worker_queued: u64,
+    #[prost(uint64, tag = "11")]
+    pub navigation_queued: u64,
+    #[prost(uint64, tag = "12")]
+    pub admitted_navigation: u64,
+    #[prost(double, tag = "13")]
+    pub forwarding_fraction: f64,
+    #[prost(uint64, tag = "14")]
+    pub local_queries: u64,
+    #[prost(uint64, tag = "15")]
+    pub forwarded_queries: u64,
+    #[prost(uint64, tag = "16")]
+    pub received_queries: u64,
+    #[prost(uint64, tag = "17")]
+    pub forwarding_failures: u64,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionCoordinateRequest {
+    #[prost(string, tag = "1")]
+    pub collection_name: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub search_points: ::prost::alloc::vec::Vec<CoreSearchPoints>,
+    #[prost(message, optional, tag = "3")]
+    pub read_consistency: ::core::option::Option<ReadConsistency>,
+    #[prost(uint64, tag = "4")]
+    pub generation: u64,
+    #[prost(string, tag = "5")]
+    pub artifact_sha256: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub policy_sha256: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "7")]
+    pub timeout_millis: u64,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionCoordinateResponse {
+    #[prost(message, optional, tag = "1")]
+    pub response: ::core::option::Option<SearchBatchResponse>,
+    #[prost(message, optional, tag = "2")]
+    pub load: ::core::option::Option<OrionNavigationLoadResponse>,
+}
+#[derive(serde::Serialize)]
 #[derive(validator::Validate)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -12018,6 +12092,57 @@ pub mod points_internal_client {
                 .insert(GrpcMethod::new("qdrant.PointsInternal", "CoreSearchBatch"));
             self.inner.unary(req, path, codec).await
         }
+        /// Node-local load sampling and single-hop Orion query coordination.
+        pub async fn orion_navigation_load(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OrionNavigationLoadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionNavigationLoadResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/qdrant.PointsInternal/OrionNavigationLoad",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("qdrant.PointsInternal", "OrionNavigationLoad"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn orion_coordinate(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OrionCoordinateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionCoordinateResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/qdrant.PointsInternal/OrionCoordinate",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("qdrant.PointsInternal", "OrionCoordinate"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn core_search_batch_by_shard(
             &mut self,
             request: impl tonic::IntoRequest<super::CoreSearchBatchByShardInternal>,
@@ -12315,6 +12440,21 @@ pub mod points_internal_server {
             request: tonic::Request<super::CoreSearchBatchPointsInternal>,
         ) -> std::result::Result<
             tonic::Response<super::SearchBatchResponse>,
+            tonic::Status,
+        >;
+        /// Node-local load sampling and single-hop Orion query coordination.
+        async fn orion_navigation_load(
+            &self,
+            request: tonic::Request<super::OrionNavigationLoadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionNavigationLoadResponse>,
+            tonic::Status,
+        >;
+        async fn orion_coordinate(
+            &self,
+            request: tonic::Request<super::OrionCoordinateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionCoordinateResponse>,
             tonic::Status,
         >;
         async fn core_search_batch_by_shard(
@@ -13037,6 +13177,103 @@ pub mod points_internal_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = CoreSearchBatchSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/qdrant.PointsInternal/OrionNavigationLoad" => {
+                    #[allow(non_camel_case_types)]
+                    struct OrionNavigationLoadSvc<T: PointsInternal>(pub Arc<T>);
+                    impl<
+                        T: PointsInternal,
+                    > tonic::server::UnaryService<super::OrionNavigationLoadRequest>
+                    for OrionNavigationLoadSvc<T> {
+                        type Response = super::OrionNavigationLoadResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::OrionNavigationLoadRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PointsInternal>::orion_navigation_load(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = OrionNavigationLoadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/qdrant.PointsInternal/OrionCoordinate" => {
+                    #[allow(non_camel_case_types)]
+                    struct OrionCoordinateSvc<T: PointsInternal>(pub Arc<T>);
+                    impl<
+                        T: PointsInternal,
+                    > tonic::server::UnaryService<super::OrionCoordinateRequest>
+                    for OrionCoordinateSvc<T> {
+                        type Response = super::OrionCoordinateResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::OrionCoordinateRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PointsInternal>::orion_coordinate(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = OrionCoordinateSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
