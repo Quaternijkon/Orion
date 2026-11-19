@@ -34,6 +34,8 @@ git rev-parse HEAD
 
 **注意示例配置的适用范围。** `config/shard_locality_sift100m_build.json` 是早期 SIFT 分片局部性模板，其中的采样分母是 32。`tools/orion_fast_build.py` 的完整入口针对 128 维 f32le / Euclid 的 SIFT 物化输入，还串接了局部性测量。执行本次构建前核对生效的分母 256、输入编码和执行阶段，其他数据集按各自的清单生成请求。[分片局部性专项](tools/shard_locality.md)
 
+SIFT1M 另有一项导航图规模对照。其自变量是采样分母 32、64、128、256，使用 `ef_construct=100`，按目标召回 0.95 校准，每组正式测量 3 次。该专项的并行、恢复和分析流程可以参考，100M 工作单的参数以本文件和本次任务协议为准。[SIFT1M 专项配置](config/orion_navigation_size_sift1m.json)
+
 ## 原生搜索路径与参数
 
 | 方法 | 一条 query 的搜索路径 | 采点参数 |
