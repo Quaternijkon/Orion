@@ -45,6 +45,7 @@ impl CollectionContainer for TableOfContent {
             self.remove_shards_at_peer(peer_id).await?;
 
             if self.this_peer_id == peer_id {
+                self.channel_service.orion_permits.withdraw_window();
                 // We are detaching the current peer, so we need to remove all connections
                 // Remove all peers from the channel service
 

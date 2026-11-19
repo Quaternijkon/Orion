@@ -2,6 +2,7 @@ mod collection_container;
 mod collection_meta_ops;
 mod create_collection;
 pub mod dispatcher;
+mod orion_window;
 mod point_ops;
 mod point_ops_internal;
 pub mod request_hw_counter;
@@ -80,6 +81,8 @@ pub struct TableOfContent {
     consensus_proposal_sender: Option<OperationSender>,
     /// Dispatcher for access to table of contents and consensus, if none - single node mode
     toc_dispatcher: parking_lot::Mutex<Option<TocDispatcher>>,
+    orion_window_wakeup: std::sync::atomic::AtomicBool,
+    orion_window_cpu: parking_lot::Mutex<orion_window::AssignedCpu>,
     /// Prevent DDoS of too many concurrent updates in distributed mode.
     /// One external update usually triggers multiple internal updates, which breaks internal
     /// timings. For example, the health check timing and consensus timing.
@@ -238,6 +241,8 @@ impl TableOfContent {
             channel_service,
             consensus_proposal_sender,
             toc_dispatcher: Default::default(),
+            orion_window_wakeup: Default::default(),
+            orion_window_cpu: Default::default(),
             update_rate_limiter: rate_limiter,
             collection_create_lock: Default::default(),
             collection_hw_metrics: DashMap::new(),
@@ -724,7 +729,15 @@ impl TableOfContent {
 
     /// Insert dispatcher for access to table of contents and consensus.
     pub fn with_toc_dispatcher(&self, dispatcher: TocDispatcher) {
-        self.toc_dispatcher.lock().replace(dispatcher);
+        let owner = dispatcher.toc.clone();
+        if self.toc_dispatcher.lock().replace(dispatcher).is_none()
+            && self.storage_config.performance.orion_navigation.enabled
+        {
+            self.general_runtime.spawn(orion_window::control_loop(
+                owner,
+                self.storage_config.performance.orion_navigation.clone(),
+            ));
+        }
     }
 
     pub fn get_channel_service(&self) -> &ChannelService {

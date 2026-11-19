@@ -165,6 +165,26 @@ impl TableOfContent {
             .map_err(|err| err.into())
     }
 
+    /// Apply the same point-level read restrictions to sender-selected coordinators.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn search_on_coordinator(
+        &self,
+        collection_name: &str,
+        mut request: CoreSearchRequest,
+        permit: collection::orion::coordinator_permits::CoordinatorPermit,
+        consistency: Option<ReadConsistency>,
+        auth: Auth,
+        timeout: Option<Duration>,
+        hw: HwMeasurementAcc,
+    ) -> StorageResult<Option<Vec<ScoredPoint>>> {
+        let pass =
+            auth.check_point_op(collection_name, &mut request, "orion_coordinator_search")?;
+        let collection = self.get_collection(&pass).await?;
+        Ok(collection
+            .search_on_coordinator(request, permit, consistency, timeout, hw)
+            .await?)
+    }
+
     /// Revalidate the collection-level safety contract for Orion's compact internal peer RPC and
     /// return the exact collection instance that passed validation.
     ///

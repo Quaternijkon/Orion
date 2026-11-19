@@ -32,6 +32,8 @@ service PointsInternal {
       returns (SearchBatchResponse) {}
   // Node-local load sampling and single-hop Orion query coordination.
   rpc OrionNavigationLoad(OrionNavigationLoadRequest) returns (OrionNavigationLoadResponse) {}
+  // Periodic control-plane exchange for the node's share of the direct query window.
+  rpc OrionQueryWindow(OrionQueryWindowRequest) returns (OrionQueryWindowReport) {}
   rpc OrionCoordinate(OrionCoordinateRequest) returns (OrionCoordinateResponse) {}
   rpc CoreSearchBatchByShard(CoreSearchBatchByShardInternal)
       returns (SearchBatchResponse) {}
@@ -285,6 +287,39 @@ message CoreSearchBatchPointsInternal {
 }
 
 message OrionNavigationLoadRequest { string collection_name = 1; }
+
+message OrionQueryWindowRequest {
+  uint64 leader_id = 1;
+  uint64 term = 2;
+  repeated uint64 members = 3;
+  bool wake = 4;
+  // Without an allocation, sample load and fence outstanding writes from older rounds.
+  optional OrionQueryWindowAllocation allocation = 5;
+}
+
+message OrionQueryWindowAllocation {
+  bytes fence = 1;
+  uint64 node_limit = 2;
+  uint64 cluster_limit = 3;
+}
+
+message OrionQueryWindowReport {
+  uint64 peer_id = 1;
+  bytes fence = 2;
+  uint64 node_limit = 3;
+  uint64 occupied = 4;
+  uint64 peak_occupied = 5;
+  bool demand = 6;
+  bool waiting = 7;
+  uint64 cpu_capacity = 8;
+  double cpu_cores = 9;
+  double coordinator_room = 10;
+  uint64 worker_queued = 11;
+  uint64 cluster_limit = 12;
+  uint64 navigation_queued = 13;
+  uint64 worker_queue_drains = 14;
+  uint64 navigation_queue_drains = 15;
+}
 
 message OrionNavigationLoadResponse {
   uint64 peer_id = 1;

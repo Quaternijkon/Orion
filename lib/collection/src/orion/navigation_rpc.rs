@@ -15,6 +15,9 @@ use futures::{StreamExt, stream};
 use segment::types::ScoredPoint;
 use shard::search::CoreSearchRequestBatch;
 
+use super::coordinator_permits::{
+    CoordinatorGrant, CoordinatorPermit, DirectAdmission, MAX_GRANT,
+};
 use super::navigation_balance::{NavigationBalance, NavigationIdentity};
 use crate::collection::Collection;
 use crate::config::AutoShardPolicy;
@@ -26,6 +29,57 @@ use crate::shards::remote_shard::CollectionCoreSearchRequest;
 use crate::shards::try_scored_point_from_grpc;
 
 impl Collection {
+    /// Reserve upper-search starts on this machine for clients sending here directly.
+    pub async fn coordinator_permits(
+        &self,
+        count: usize,
+        waiting: bool,
+    ) -> CollectionResult<CoordinatorGrant> {
+        if count > MAX_GRANT {
+            return Err(CollectionError::bad_request(
+                "at most 64 coordinator permits per grant",
+            ));
+        }
+        let identity = self.navigation_identity().await.ok_or_else(|| {
+            CollectionError::pre_condition_failed(
+                "Orion coordinator is not ready for direct dispatch",
+            )
+        })?;
+        search_load::enable();
+        let balance = &self.navigation_balance;
+        Ok(self.channel_service.orion_permits.grant(
+            balance.collection_instance,
+            identity,
+            self.this_peer_id,
+            count,
+            waiting,
+            Duration::from_millis(balance.config.direct_permit_ttl_ms),
+            || {
+                (
+                    Instant::now(),
+                    balance.config.direct_start_budget(
+                        balance.capacity,
+                        &search_load::snapshot(balance.capacity),
+                    ),
+                )
+            },
+        ))
+    }
+
+    pub(crate) async fn claim_coordinator_permit(
+        &self,
+        permit: CoordinatorPermit,
+    ) -> Option<(u64, DirectAdmission)> {
+        let identity = self.navigation_identity().await?;
+        let guard = self.channel_service.orion_permits.claim(
+            self.navigation_balance.collection_instance,
+            &identity,
+            permit,
+            Instant::now,
+        )?;
+        Some((identity.generation, guard))
+    }
+
     async fn navigation_identity(&self) -> Option<NavigationIdentity> {
         if !self.navigation_balance.enabled() || !self.orion_serving.load(Ordering::Acquire) {
             return None;
@@ -286,6 +340,7 @@ impl Collection {
                 &ShardSelectorInternal::All,
                 Some(remaining),
                 hw_measurement_acc,
+                None,
             ),
         )
         .await

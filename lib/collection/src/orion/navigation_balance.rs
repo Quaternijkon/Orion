@@ -9,6 +9,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+use super::coordinator_permits::StartBudget;
 use crate::shards::shard::PeerId;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
@@ -29,6 +30,9 @@ pub struct NavigationBalanceConfig {
     pub adjustment_rate: f64,
     #[validate(range(min = 1, max = 128))]
     pub max_inflight_per_cpu: usize,
+    /// Lifetime of a sender's block of unclaimed upper-search start permits.
+    #[validate(range(min = 1, max = 1000))]
+    pub direct_permit_ttl_ms: u64,
     #[validate(range(min = 1, max = 4096))]
     pub max_batch_queries: usize,
 }
@@ -43,7 +47,39 @@ impl Default for NavigationBalanceConfig {
             imbalance_threshold: 0.05,
             adjustment_rate: 0.15,
             max_inflight_per_cpu: 8,
+            direct_permit_ttl_ms: 50,
             max_batch_queries: 1024,
+        }
+    }
+}
+
+impl NavigationBalanceConfig {
+    pub fn cpu_capacity(search_threads: usize) -> usize {
+        search_threads
+            .max(1)
+            .min(common::cpu::get_num_cpus().max(1))
+    }
+
+    pub fn window_lease(&self) -> Duration {
+        Duration::from_millis(
+            self.stale_after_ms
+                .max(self.refresh_interval_ms + 3 * self.probe_timeout_ms),
+        )
+    }
+
+    pub(super) fn direct_start_budget(
+        &self,
+        capacity: usize,
+        load: &common::search_load::SearchLoad,
+    ) -> StartBudget {
+        let other = (load.cpu_cores - load.worker_cores - load.navigation_cores).max(0.);
+        let target = capacity as f64 * self.target_utilization;
+        let weight = (target - load.worker_cores - other - load.worker_queued as f64).max(0.);
+        let limit = (weight * self.max_inflight_per_cpu as f64).floor() as usize;
+        StartBudget {
+            weight,
+            limit,
+            navigation_queued: load.navigation_queued,
         }
     }
 }
@@ -76,6 +112,7 @@ struct State {
 }
 
 pub struct NavigationBalance {
+    pub(super) collection_instance: uuid::Uuid,
     pub config: NavigationBalanceConfig,
     pub capacity: usize,
     distributed: bool,
@@ -112,8 +149,9 @@ impl Drop for PeerReservation {
 impl NavigationBalance {
     pub fn new(config: NavigationBalanceConfig, capacity: usize, distributed: bool) -> Arc<Self> {
         Arc::new(Self {
+            collection_instance: uuid::Uuid::new_v4(),
             config,
-            capacity: capacity.max(1).min(common::cpu::get_num_cpus().max(1)),
+            capacity: NavigationBalanceConfig::cpu_capacity(capacity),
             distributed,
             state: Mutex::new(State {
                 peers: BTreeMap::new(),
@@ -381,6 +419,52 @@ mod tests {
             policy_sha256: "policy".into(),
         }
     }
+    #[test]
+    fn direct_budget_tracks_worker_pressure_and_reopens_with_outstanding_rpc_waiters() {
+        use common::search_load::SearchLoad;
+        let balance = NavigationBalance::new(Default::default(), 48, true);
+        let capacity = balance.capacity as f64;
+        let cool = SearchLoad {
+            cpu_cores: capacity * 0.8,
+            worker_cores: capacity * 0.25,
+            navigation_cores: capacity * 0.5,
+            admitted_navigation: 10_000,
+            ..Default::default()
+        };
+        let available = balance.config.direct_start_budget(balance.capacity, &cool);
+        assert!((available.weight - capacity * 0.65).abs() < 1e-9);
+        let queued = SearchLoad {
+            worker_queued: balance.capacity,
+            ..cool
+        };
+        assert_eq!(
+            balance
+                .config
+                .direct_start_budget(balance.capacity, &queued)
+                .limit,
+            0
+        );
+        let saturated = SearchLoad {
+            cpu_cores: capacity,
+            worker_cores: capacity,
+            ..Default::default()
+        };
+        assert_eq!(
+            balance
+                .config
+                .direct_start_budget(balance.capacity, &saturated)
+                .limit,
+            0
+        );
+        assert!(
+            balance
+                .config
+                .direct_start_budget(balance.capacity, &cool)
+                .limit
+                > 0
+        );
+    }
+
     #[test]
     fn busy_workers_offload_navigation_then_reclaim_it_when_idle() {
         let balance = NavigationBalance::new(Default::default(), 48, true);

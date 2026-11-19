@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::mem;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use ahash::{AHashMap, AHashSet};
@@ -36,6 +37,7 @@ use crate::operations::shard_selector_internal::ShardSelectorInternal;
 use crate::operations::types::*;
 #[cfg(test)]
 use crate::orion::OrionShardTarget;
+use crate::orion::coordinator_permits::{CoordinatorPermit, DirectAdmission, PendingStart};
 use crate::shards::remote_shard::{CollectionCoreSearchRequest, RemoteShard};
 use crate::shards::shard::{PeerId, ShardId};
 use crate::shards::shard_holder::shard_not_found_error;
@@ -1686,6 +1688,83 @@ impl Collection {
         .map(Some)
     }
 
+    /// A sender picked this coordinator before transmitting the query. Execute a
+    /// complete Orion search and merge on this node after validating the start permit.
+    pub async fn search_on_coordinator(
+        &self,
+        mut request: CoreSearchRequest,
+        permit: CoordinatorPermit,
+        read_consistency: Option<ReadConsistency>,
+        timeout: Option<Duration>,
+        hw: HwMeasurementAcc,
+    ) -> CollectionResult<Option<Vec<ScoredPoint>>> {
+        self.check_orion_generation(request.params.as_ref())?;
+        let timeout = timeout.unwrap_or(self.shared_storage_config.search_timeout);
+        let execute = async {
+            let Some((generation, admission)) = self.claim_coordinator_permit(permit).await else {
+                return Ok(None);
+            };
+            // Keep the cluster slot charged through worker replies and the final merge.
+            let DirectAdmission {
+                pending,
+                inflight: _inflight,
+            } = admission;
+            if request.limit == 0 {
+                return Ok(Some(Vec::new()));
+            }
+            let params = request.params.get_or_insert_with(Default::default);
+            if params
+                .orion_generation
+                .is_some_and(|requested| requested != generation)
+            {
+                return Err(CollectionError::pre_condition_failed(
+                    "requested Orion generation differs from permit",
+                ));
+            }
+            params.orion_generation = Some(generation);
+            let batch = CoreSearchRequestBatch {
+                searches: vec![request],
+            };
+            if !self.orion_navigation_eligible(&batch) {
+                return Err(CollectionError::bad_request(
+                    "Direct Orion coordination requires an unfiltered dense nearest-neighbor search with automatic shard selection",
+                ));
+            }
+            self.navigation_balance
+                .local_queries
+                .fetch_add(1, Ordering::Relaxed);
+            let _coordinating = common::search_load::admit_navigation(1, None);
+            let mut results = self
+                .do_core_search_batch_local(
+                    batch,
+                    read_consistency,
+                    &ShardSelectorInternal::All,
+                    Some(timeout),
+                    hw,
+                    Some(pending),
+                )
+                .await?;
+            if !self.orion_serving.load(Ordering::Acquire)
+                || self
+                    .orion_router
+                    .load()
+                    .as_ref()
+                    .is_none_or(|router| router.generation() != generation)
+            {
+                return Err(CollectionError::pre_condition_failed(
+                    "Orion generation changed during direct search",
+                ));
+            }
+            results
+                .pop()
+                .map(Some)
+                .ok_or_else(|| CollectionError::service_error("missing direct search result"))
+        };
+        tokio::time::timeout(timeout, execute)
+            .await
+            .map_err(|_| CollectionError::timeout(timeout, "Orion direct search"))?
+    }
+
     async fn do_core_search_batch(
         &self,
         request: CoreSearchRequestBatch,
@@ -1752,6 +1831,7 @@ impl Collection {
             shard_selection,
             remaining,
             hw_measurement_acc,
+            None,
         );
         if balanced {
             tokio::time::timeout(remaining.unwrap(), local)
@@ -1773,6 +1853,7 @@ impl Collection {
         shard_selection: &ShardSelectorInternal,
         timeout: Option<Duration>,
         hw_measurement_acc: HwMeasurementAcc,
+        direct: Option<PendingStart>,
     ) -> CollectionResult<Vec<Vec<ScoredPoint>>> {
         let instant = Instant::now();
         self.ensure_static_router_available(shard_selection).await?;
@@ -1783,6 +1864,15 @@ impl Collection {
             .await
             .auto_shard_policy
             .clone();
+        if direct.is_some()
+            && !configured_policy
+                .as_ref()
+                .is_some_and(AutoShardPolicy::is_orion)
+        {
+            return Err(CollectionError::pre_condition_failed(
+                "direct Orion collection changed",
+            ));
+        }
         let plan = match AutoShardPolicy::canonical_ref(configured_policy.as_ref()) {
             None => LogicalShardSearchPlan::AllShards,
             Some(AutoShardPolicy::Orion { .. }) => self
@@ -1792,6 +1882,7 @@ impl Collection {
                     timeout,
                     instant,
                     hw_measurement_acc.clone(),
+                    direct,
                 )
                 .await?
                 .unwrap_or(LogicalShardSearchPlan::AllShards),
@@ -2041,16 +2132,39 @@ impl Collection {
         timeout: Option<Duration>,
         request_started: Instant,
         hw_measurement_acc: HwMeasurementAcc,
+        mut direct: Option<PendingStart>,
     ) -> CollectionResult<Option<LogicalShardSearchPlan>> {
         if !matches!(shard_selection, ShardSelectorInternal::All) {
             return Ok(None);
         }
         let Some(router) = self.orion_router.load_full() else {
+            if direct.is_some() {
+                return Err(CollectionError::pre_condition_failed(
+                    "direct Orion router unavailable",
+                ));
+            }
             return Ok(None);
         };
+        if direct.is_some()
+            && (request.searches.len() != 1
+                || request.searches[0]
+                    .params
+                    .as_ref()
+                    .and_then(|p| p.orion_generation)
+                    != Some(router.generation()))
+        {
+            return Err(CollectionError::pre_condition_failed(
+                "direct Orion generation mismatch",
+            ));
+        }
 
         for original in &request.searches {
             if orion_eligible_dense_query(original, router.vector_name()).is_none() {
+                if direct.is_some() {
+                    return Err(CollectionError::pre_condition_failed(
+                        "direct Orion routing contract changed",
+                    ));
+                }
                 return Ok(None);
             }
             original.limit.checked_add(original.offset).ok_or_else(|| {
@@ -2074,8 +2188,12 @@ impl Collection {
                 let request = Arc::clone(&request);
                 let cpu_utilization = hw_measurement_acc.cpu_utilization();
                 let load = common::search_load::queued(common::search_load::SearchRole::Navigation);
+                let direct = direct.take(); // A direct permit covers exactly one query.
                 AbortOnDropHandle::new(self.search_runtime.spawn_blocking(move || {
                     let _running = load.start();
+                    if let Some(permit) = direct {
+                        permit.start();
+                    }
                     let mut route_scratch = router.borrow_route_scratch();
                     (chunk_start..chunk_end)
                         .map(|query_index| {

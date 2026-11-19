@@ -13,11 +13,14 @@ use tonic::transport::{Channel, Uri};
 use tonic::{Request, Status};
 use url::Url;
 
+use crate::orion::coordinator_permits::PermitPool;
 use crate::operations::types::{CollectionError, CollectionResult, PeerMetadata};
 use crate::shards::shard::PeerId;
 
 #[derive(Clone)]
 pub struct ChannelService {
+    /// Shared by every direct sender and collection on this process.
+    pub orion_permits: Arc<PermitPool>,
     // Shared with consensus_state
     pub id_to_address: Arc<parking_lot::RwLock<HashMap<PeerId, Uri>>>,
     // Shared with consensus_state
@@ -44,6 +47,7 @@ impl ChannelService {
         alt_api_key: Option<String>,
     ) -> Self {
         Self {
+            orion_permits: Default::default(),
             id_to_address: Default::default(),
             id_to_metadata: Default::default(),
             channel_pool: Default::default(),
@@ -267,6 +271,7 @@ impl ChannelService {
 impl Default for ChannelService {
     fn default() -> Self {
         Self {
+            orion_permits: Default::default(),
             id_to_address: Default::default(),
             id_to_metadata: Default::default(),
             channel_pool: Default::default(),

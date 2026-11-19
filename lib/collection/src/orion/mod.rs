@@ -16,6 +16,7 @@ mod artifact;
 pub mod access;
 mod builder;
 mod capacity;
+pub mod coordinator_permits;
 pub mod bundle;
 pub mod cli;
 pub mod clock;
@@ -24,6 +25,7 @@ pub mod durable;
 mod error;
 pub mod navigation_balance;
 mod navigation_rpc;
+pub mod query_window;
 // No alternate/oracle online selector is part of the fixed base.
 // mod oracle_diagnostics;
 pub mod import;

@@ -244,6 +244,30 @@ impl<C: CollectionContainer> ConsensusManager<C> {
         Ok(())
     }
 
+    /// Stable authority and complete committed membership for node-wide flow control.
+    pub(crate) fn query_window_view(&self) -> Option<(PeerId, u64, Vec<PeerId>)> {
+        if !self.is_leader_established.check_ready() {
+            return None;
+        }
+        let persistent = self.persistent.read();
+        let leader = self.soft_state.read().as_ref()?.leader_id;
+        let membership = &persistent.state.conf_state;
+        let mut peers: Vec<_> = membership
+            .voters
+            .iter()
+            .chain(&membership.learners)
+            .chain(&membership.voters_outgoing)
+            .chain(&membership.learners_next)
+            .copied()
+            .collect();
+        peers.sort_unstable();
+        peers.dedup();
+        if leader == 0 || !peers.contains(&leader) || !peers.contains(&persistent.this_peer_id) {
+            return None;
+        }
+        Some((leader, persistent.state.hard_state.term, peers))
+    }
+
     /// Report aggregated information about the cluster.
     /// Useful for API reporting.
     pub fn cluster_status(&self) -> ClusterStatus {

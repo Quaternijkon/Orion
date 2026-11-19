@@ -12,6 +12,7 @@ use api::grpc::qdrant::{
     DeletePayloadPointsInternal, DeletePointsInternal, DeleteVectorsInternal, FacetCountsInternal,
     FacetResponseInternal, GetPointsInternal, GetResponse, IntermediateResult,
     OrionCoordinateRequest, OrionCoordinateResponse, OrionNavigationLoadRequest,
+    OrionQueryWindowRequest, OrionQueryWindowReport,
     OrionNavigationLoadResponse, PointsOperationResponseInternal, QueryBatchPointsInternal,
     QueryBatchResponseInternal,
     QueryResultInternal, QueryShardPoints, RecommendPointsInternal, RecommendResponse,
@@ -474,6 +475,13 @@ impl PointsInternalService {
 
 #[tonic::async_trait]
 impl PointsInternal for PointsInternalService {
+    async fn orion_query_window(
+        &self,
+        request: Request<OrionQueryWindowRequest>,
+    ) -> Result<Response<OrionQueryWindowReport>, Status> {
+        Ok(Response::new(self.toc.orion_query_window(request.into_inner())?))
+    }
+
     async fn orion_navigation_load(
         &self,
         request: Request<OrionNavigationLoadRequest>,

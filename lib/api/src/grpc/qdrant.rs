@@ -11108,6 +11108,68 @@ pub struct OrionNavigationLoadRequest {
 #[derive(serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionQueryWindowRequest {
+    #[prost(uint64, tag = "1")]
+    pub leader_id: u64,
+    #[prost(uint64, tag = "2")]
+    pub term: u64,
+    #[prost(uint64, repeated, tag = "3")]
+    pub members: ::prost::alloc::vec::Vec<u64>,
+    #[prost(bool, tag = "4")]
+    pub wake: bool,
+    /// Without an allocation, sample load and fence outstanding writes from older rounds.
+    #[prost(message, optional, tag = "5")]
+    pub allocation: ::core::option::Option<OrionQueryWindowAllocation>,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionQueryWindowAllocation {
+    #[prost(bytes = "vec", tag = "1")]
+    pub fence: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "2")]
+    pub node_limit: u64,
+    #[prost(uint64, tag = "3")]
+    pub cluster_limit: u64,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OrionQueryWindowReport {
+    #[prost(uint64, tag = "1")]
+    pub peer_id: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub fence: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "3")]
+    pub node_limit: u64,
+    #[prost(uint64, tag = "4")]
+    pub occupied: u64,
+    #[prost(uint64, tag = "5")]
+    pub peak_occupied: u64,
+    #[prost(bool, tag = "6")]
+    pub demand: bool,
+    #[prost(bool, tag = "7")]
+    pub waiting: bool,
+    #[prost(uint64, tag = "8")]
+    pub cpu_capacity: u64,
+    #[prost(double, tag = "9")]
+    pub cpu_cores: f64,
+    #[prost(double, tag = "10")]
+    pub coordinator_room: f64,
+    #[prost(uint64, tag = "11")]
+    pub worker_queued: u64,
+    #[prost(uint64, tag = "12")]
+    pub cluster_limit: u64,
+    #[prost(uint64, tag = "13")]
+    pub navigation_queued: u64,
+    #[prost(uint64, tag = "14")]
+    pub worker_queue_drains: u64,
+    #[prost(uint64, tag = "15")]
+    pub navigation_queue_drains: u64,
+}
+#[derive(serde::Serialize)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OrionNavigationLoadResponse {
     #[prost(uint64, tag = "1")]
     pub peer_id: u64,
@@ -12118,6 +12180,32 @@ pub mod points_internal_client {
                 .insert(GrpcMethod::new("qdrant.PointsInternal", "OrionNavigationLoad"));
             self.inner.unary(req, path, codec).await
         }
+        /// Periodic control-plane exchange for the node's share of the direct query window.
+        pub async fn orion_query_window(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OrionQueryWindowRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionQueryWindowReport>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/qdrant.PointsInternal/OrionQueryWindow",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("qdrant.PointsInternal", "OrionQueryWindow"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn orion_coordinate(
             &mut self,
             request: impl tonic::IntoRequest<super::OrionCoordinateRequest>,
@@ -12448,6 +12536,14 @@ pub mod points_internal_server {
             request: tonic::Request<super::OrionNavigationLoadRequest>,
         ) -> std::result::Result<
             tonic::Response<super::OrionNavigationLoadResponse>,
+            tonic::Status,
+        >;
+        /// Periodic control-plane exchange for the node's share of the direct query window.
+        async fn orion_query_window(
+            &self,
+            request: tonic::Request<super::OrionQueryWindowRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OrionQueryWindowReport>,
             tonic::Status,
         >;
         async fn orion_coordinate(
@@ -13227,6 +13323,53 @@ pub mod points_internal_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = OrionNavigationLoadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/qdrant.PointsInternal/OrionQueryWindow" => {
+                    #[allow(non_camel_case_types)]
+                    struct OrionQueryWindowSvc<T: PointsInternal>(pub Arc<T>);
+                    impl<
+                        T: PointsInternal,
+                    > tonic::server::UnaryService<super::OrionQueryWindowRequest>
+                    for OrionQueryWindowSvc<T> {
+                        type Response = super::OrionQueryWindowReport;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::OrionQueryWindowRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PointsInternal>::orion_query_window(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = OrionQueryWindowSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

@@ -17,7 +17,16 @@ pub enum SearchRole {
 struct Counters {
     cpu_ns: AtomicU64,
     queued: AtomicUsize,
+    queue_drains: AtomicU64,
     active: AtomicUsize,
+}
+
+impl Counters {
+    fn leave_queue(&self) {
+        if self.queued.fetch_sub(1, Ordering::Relaxed) == 1 {
+            self.queue_drains.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -48,6 +57,8 @@ pub struct SearchLoad {
     pub navigation_cores: f64,
     pub worker_queued: usize,
     pub navigation_queued: usize,
+    pub worker_queue_drains: u64,
+    pub navigation_queue_drains: u64,
     pub active_tasks: usize,
     pub admitted_navigation: usize,
 }
@@ -111,10 +122,7 @@ pub fn queued(role: SearchRole) -> QueuedSearch {
 impl QueuedSearch {
     pub fn start(mut self) -> Option<RunningSearch> {
         self.state.take().map(|state| {
-            state
-                .counters(self.role)
-                .queued
-                .fetch_sub(1, Ordering::Relaxed);
+            state.counters(self.role).leave_queue();
             state
                 .counters(self.role)
                 .active
@@ -131,10 +139,7 @@ impl QueuedSearch {
 impl Drop for QueuedSearch {
     fn drop(&mut self) {
         if let Some(state) = &self.state {
-            state
-                .counters(self.role)
-                .queued
-                .fetch_sub(1, Ordering::Relaxed);
+            state.counters(self.role).leave_queue();
         }
     }
 }
@@ -216,6 +221,8 @@ pub fn snapshot(capacity: usize) -> SearchLoad {
         navigation_cores: sampler.navigation,
         worker_queued: state.worker.queued.load(Ordering::Relaxed),
         navigation_queued: state.navigation.queued.load(Ordering::Relaxed),
+        worker_queue_drains: state.worker.queue_drains.load(Ordering::Relaxed),
+        navigation_queue_drains: state.navigation.queue_drains.load(Ordering::Relaxed),
         active_tasks: state.worker.active.load(Ordering::Relaxed)
             + state.navigation.active.load(Ordering::Relaxed),
         admitted_navigation: state.admitted.load(Ordering::Relaxed),
@@ -243,6 +250,19 @@ fn process_cpu_ns() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queue_drain_counts_only_the_transition_to_empty() {
+        let counts = Counters::default();
+        counts.queued.store(2, Ordering::Relaxed);
+        counts.leave_queue();
+        assert_eq!(counts.queue_drains.load(Ordering::Relaxed), 0);
+        counts.leave_queue();
+        assert_eq!(counts.queue_drains.load(Ordering::Relaxed), 1);
+        counts.queued.fetch_add(1, Ordering::Relaxed);
+        counts.leave_queue();
+        assert_eq!(counts.queue_drains.load(Ordering::Relaxed), 2);
+    }
+
     #[test]
     fn admission_releases_and_rejects_over_capacity() {
         let start = global().admitted.load(Ordering::Relaxed);

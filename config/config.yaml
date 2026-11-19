@@ -73,11 +73,14 @@ storage:
       refresh_interval_ms: 250
       stale_after_ms: 1500
       probe_timeout_ms: 200
+      # Direct dispatch adjusts total in-flight queries against the busiest node.
       target_utilization: 0.95
       imbalance_threshold: 0.05
       adjustment_rate: 0.15
       max_inflight_per_cpu: 8
       max_batch_queries: 1024
+      # Sender-side grants expire on this node's monotonic clock.
+      direct_permit_ttl_ms: 50
 
     # CPU budget, how many CPUs (threads) to allocate for an optimization job.
     # If 0 - auto selection, keep 1 or more CPUs unallocated depending on CPU size

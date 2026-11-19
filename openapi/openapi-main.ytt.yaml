@@ -287,6 +287,94 @@ paths:
             minimum: 1
       responses: #@ response(reference("ScrollResult"))
 
+  /collections/{collection_name}/orion/coordinator/permits:
+    post:
+      tags: [Search]
+      summary: Reserve Orion coordinator starts on this machine
+      operationId: reserve_orion_coordinator_starts
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [count]
+              properties:
+                count:
+                  type: integer
+                  minimum: 0
+                  maximum: 64
+                  description: Maximum slots requested. Zero reads the current budget.
+                waiting:
+                  type: boolean
+                  description: The sender has a query waiting for admission. Speculative prefetch sends false. Defaults to true for a positive count.
+      responses: #@ response(reference("OrionCoordinatorGrant"))
+
+  /collections/{collection_name}/orion/coordinator/search:
+    post:
+      tags: [Search]
+      summary: Run a single dense Orion search and merge on the selected coordinator
+      operationId: search_on_orion_coordinator
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema: {type: string}
+        - name: consistency
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReadConsistency"
+        - name: timeout
+          in: query
+          description: Search deadline in seconds.
+          schema: {type: integer, minimum: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permit, search]
+              properties:
+                permit:
+                  type: object
+                  required: [lease, slot]
+                  properties:
+                    lease: {type: string, format: uuid}
+                    slot: {type: integer, minimum: 0, maximum: 63}
+                search:
+                  $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Merged nearest neighbors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result: #@ array(reference("ScoredPoint"))
+                  status: {type: string}
+                  time: {type: number}
+                  usage:
+                    $ref: "#/components/schemas/Usage"
+        "412":
+          description: An explicitly unstarted query may be assigned a fresh permit and resubmitted.
+          headers:
+            x-orion-admission:
+              description: Present with this value only when the permit was rejected before execution.
+              schema: {type: string, enum: [not-started]}
+        default:
+          description: Search or authorization error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /collections/{collection_name}/points/search:
     post:
       deprecated: true
@@ -865,6 +953,30 @@ components:
       type: http
       scheme: bearer
   schemas:
+    OrionCoordinatorGrant:
+      type: object
+      required: [peer_id, generation, artifact_sha256, policy_sha256, weight, limit, ttl_ms, count, cluster_window, node_window, inflight, pending, claimed_waiting, started, issued, peak_pending, expired, revoked, cancelled_before_start]
+      properties:
+        peer_id: {type: integer, format: uint64}
+        generation: {type: integer, format: uint64}
+        artifact_sha256: {type: string}
+        policy_sha256: {type: string}
+        weight: {type: number, description: Estimated cores available for coordination}
+        limit: {type: integer, description: Effective local upper-start limit}
+        cluster_window: {type: integer, description: Last installed cluster-wide in-flight target}
+        node_window: {type: integer, description: Local share of the cluster window}
+        inflight: {type: integer, description: Accepted direct queries still executing on this coordinator}
+        ttl_ms: {type: integer, description: Lifetime at issuance on the node clock}
+        lease: {type: string, format: uuid, nullable: true}
+        count: {type: integer, minimum: 0, maximum: 64}
+        pending: {type: integer, description: Unused slots plus accepted queries waiting to start upper search}
+        claimed_waiting: {type: integer}
+        peak_pending: {type: integer}
+        issued: {type: integer, format: uint64}
+        started: {type: integer, format: uint64}
+        expired: {type: integer, format: uint64}
+        revoked: {type: integer, format: uint64}
+        cancelled_before_start: {type: integer, format: uint64}
     ErrorResponse:
       type: object
       properties:

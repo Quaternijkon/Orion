@@ -800,6 +800,72 @@ async fn adaptive_navigation_handoff_preserves_results_and_never_forwards_again(
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn direct_coordinator_preserves_offsets_metadata_and_ownership() {
+    use crate::operations::consistency_params::ReadConsistency;
+    use crate::orion::coordinator_permits::CoordinatorPermit;
+    use crate::orion::navigation_balance::NavigationBalance;
+    use shard::search::CoreSearchRequestBatch;
+
+    let (mut collection, _data, _snapshots) =
+        fixture_with_lower_points(&[(300, 0.8), (400, 0.5)]).await;
+    collection.navigation_balance = NavigationBalance::new(Default::default(), 48, true);
+    let mut query = core_request(false);
+    query.offset = 1;
+    query.with_payload = Some(WithPayloadInterface::Bool(true));
+    query.with_vector = Some(WithVector::Bool(true));
+    let timeout = Some(Duration::from_secs(5));
+    let consistency = Some(ReadConsistency::Factor(1));
+    let expected = collection
+        .core_search_batch(
+            CoreSearchRequestBatch {
+                searches: vec![query.clone()],
+            },
+            consistency,
+            ShardSelectorInternal::All,
+            timeout,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let before = collection.orion_navigation_load().await;
+    collection
+        .channel_service
+        .orion_permits
+        .set_test_window(1, std::time::Instant::now());
+    let grant = collection.coordinator_permits(1, true).await.unwrap();
+    let permit = CoordinatorPermit {
+        lease: grant.lease.unwrap(),
+        slot: 0,
+    };
+    let actual = collection
+        .search_on_coordinator(
+            query.clone(),
+            permit,
+            consistency,
+            timeout,
+            HwMeasurementAcc::new(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(expected, actual);
+    assert_eq!(actual[0].id, 400_u64.into());
+    assert!(
+        collection
+            .search_on_coordinator(query, permit, consistency, timeout, HwMeasurementAcc::new())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let after = collection.orion_navigation_load().await;
+    assert_eq!(after.local_queries, before.local_queries + 1);
+    assert_eq!(after.forwarded_queries, before.forwarded_queries);
+    assert_eq!(after.received_queries, before.received_queries);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn hash_all_policy_does_not_execute_a_loaded_orion_router() {
     let (collection, _collection_dir, _snapshots_path) = fixture().await;
