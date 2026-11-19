@@ -3,7 +3,8 @@
 下次完整构建优先使用 [加速构建入口与手册](orion_fast_build.md)，不要重新走完整
 串行关联记录 pass。`orion_fast_build.py` 自动执行原生一致性检查和 8 机迁移。
 
-最新正式要求：**仅 Orion / KMeans 两组，SIFT100M，8 台机器共 8 个分片，
+八机 100M 构建与端到端 Recall–QPS 的统一规范见仓库根目录的 [AGENTS.md](../AGENTS.md)。
+本分片局部性专项使用 **Orion / KMeans 两组，SIFT100M，8 台机器共 8 个分片，
 每机 1 个分片，统一 M=32、m0=64、ef_construct=200**。只测 Oracle / Real
 召回率，不指定目标召回率，不做 QPS 或吞吐校准，不增加 Orion 参数扫描。
 

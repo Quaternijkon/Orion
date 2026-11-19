@@ -39,6 +39,7 @@ venv
 **/orion_retired/
 **/.pytest_cache/
 *.md
+!/AGENTS.md
 !tools/orion_capacity_build.md
 !tools/orion_navigation_balance.md
 !tools/shard_locality.md
