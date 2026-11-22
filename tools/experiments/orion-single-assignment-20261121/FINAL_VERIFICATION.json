@@ -1,0 +1,50 @@
+{
+  "verified": true,
+  "datasets": {
+    "SIFT100M": {
+      "ready": "/home/wangyiduo/ann100m/sift100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/INDEX_READY.json",
+      "parity": "/home/wangyiduo/ann100m/sift100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/evidence/control-parity.json",
+      "logical": 100000000,
+      "physical": 100000000,
+      "shards": 8,
+      "old_physical": 104232089,
+      "archive_bytes": 67952384000,
+      "layout": "999f751df8be0dcaa8153c43338029e9b9dbc7dd00fa3c1c2cac2eaa835d0362",
+      "frozen_upper": "3b3ed4ade07be5dba2bf5e01ccb9972bcc10962fb1460028a168e3cf00ed75c6"
+    },
+    "DEEP100M": {
+      "ready": "/home/wangyiduo/ann100m/deep100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/INDEX_READY.json",
+      "parity": "/home/wangyiduo/ann100m/deep100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/evidence/control-parity.json",
+      "logical": 100000000,
+      "physical": 100000000,
+      "shards": 8,
+      "old_physical": 102854284,
+      "archive_bytes": 53713459200,
+      "layout": "ec51c0b97be36d6b5adf33b180062fbf5c565d193a64c08953ebbb435b94e59c",
+      "frozen_upper": "7cc13feb0186d5fa5fb9304b1aa5b8f2e069637d98b337d634635fe45c9956d9"
+    },
+    "Text2Image100M": {
+      "ready": "/home/wangyiduo/ann100m/text2image100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/INDEX_READY.json",
+      "parity": "/home/wangyiduo/ann100m/text2image100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/evidence/control-parity.json",
+      "logical": 100000000,
+      "physical": 100000000,
+      "shards": 8,
+      "old_physical": 101594233,
+      "archive_bytes": 95012853760,
+      "layout": "5ac475d7d1f9b2fd45ff024e410051b45dc2d883146f770bc0f76f550568dc88",
+      "frozen_upper": "389ba9c80c344328a0eb92e1d3670178ebf42efe21eb819ff83a99060ffae288"
+    },
+    "LAION100M": {
+      "ready": "/home/wangyiduo/ann100m/laion100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/INDEX_READY.json",
+      "parity": "/home/wangyiduo/ann100m/laion100m/indexes/orion/m32-efc200-s8-d256-v5-singleassign-20261121/evidence/control-parity.json",
+      "logical": 100000000,
+      "physical": 100000000,
+      "shards": 8,
+      "old_physical": 101678324,
+      "archive_bytes": 217700454400,
+      "layout": "d8b53b1e9c77910b10fae9af59c8a075653dc4068e4a37c920556d7aa50e6a6c",
+      "frozen_upper": "40951dc877322a6a32f5ec5f858900cdbf6c25798c9be5a7480dea88a8256ee1"
+    }
+  },
+  "archive_objects_rechecked": 32
+}

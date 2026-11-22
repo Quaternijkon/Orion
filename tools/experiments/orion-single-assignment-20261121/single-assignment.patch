@@ -1,0 +1,184 @@
+--- a/lib/collection/src/orion/bundle.rs
++++ b/lib/collection/src/orion/bundle.rs
+@@ -101,7 +101,13 @@
+     match build.algorithm_version.as_str() {
+         #[cfg(test)]
+         layout::LAYOUT_ALGORITHM_VERSION => Ok(()),
+-        super::capacity::ALGORITHM | super::capacity::LEGACY_ALGORITHM => {
++        algorithm if super::capacity::is_capacity_algorithm(algorithm) => {
++            if algorithm == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM
++                && (build.owner_entry_copies_added != 0
++                    || build.capacity_max_replication_factor != Some(1.0))
++            {
++                return Err("single-assignment metadata requires a copy limit of one and zero extra owner copies".into());
++            }
+             if build.topology_iterations != 0
+                 || build.initial_owners.len() != build.upper_indices.len()
+                 || build.initial_owners.is_empty()
+@@ -691,12 +697,32 @@
+         let mut line = String::new();
+         let mut rows = 0_usize;
+         let mut counts = vec![0_u64; import.shard_count as usize];
++        let single_owners =
++            (build.algorithm_version == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM).then(|| {
++                build
++                    .upper_indices
++                    .iter()
++                    .copied()
++                    .zip(build.initial_owners.iter().copied())
++                    .collect::<HashMap<_, _>>()
++            });
+         while reader.read_line(&mut line)? != 0 {
+             let assignment: Assignment = serde_json::from_str(&line)?;
+             if assignment.id != rows as u64 || rows >= import.point_count {
+                 return Err("assignment IDs or row count differ from manifest".into());
+             }
+             assignment.canonical_bytes(import.shard_count)?;
++            if let Some(owners) = &single_owners {
++                if assignment.shards.len() != 1
++                    || owners
++                        .get(&rows)
++                        .is_some_and(|s| *s != assignment.shards[0])
++                {
++                    return Err(
++                        format!("invalid single-assignment membership at row {rows}").into(),
++                    );
++                }
++            }
+             for shard in assignment.shards {
+                 counts[shard as usize] += 1;
+             }
+@@ -818,7 +844,12 @@
+             }
+         }
+         let mut shards = layout::strict_targets(&hits, &owners)?;
+-        if let Some(&i) = row_to_upper.get(&row) {
++        if build.algorithm_version == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM {
++            shards.truncate(1);
++            if let Some(&i) = row_to_upper.get(&row) {
++                shards[0] = owners[i];
++            }
++        } else if let Some(&i) = row_to_upper.get(&row) {
+             if !shards.contains(&owners[i]) {
+                 shards.push(owners[i]);
+                 repairs += 1;
+--- a/lib/collection/src/orion/capacity.rs
++++ b/lib/collection/src/orion/capacity.rs
+@@ -1,9 +1,14 @@
+ //! Integer capacity checks for the fixed access-probability construction base.
+ pub const ALGORITHM: &str = "orion-layout-v5-access-probability-capacity";
++pub const SINGLE_ASSIGNMENT_ALGORITHM: &str =
++    "orion-layout-v5-access-probability-capacity-single-assignment";
+ pub const LEGACY_ALGORITHM: &str = "orion-layout-v4-capacity-partition";
+ 
+ pub fn is_capacity_algorithm(value: &str) -> bool {
+-    matches!(value, ALGORITHM | LEGACY_ALGORITHM)
++    matches!(
++        value,
++        ALGORITHM | LEGACY_ALGORITHM | SINGLE_ASSIGNMENT_ALGORITHM
++    )
+ }
+ 
+ pub fn validate_replication(
+--- a/lib/collection/src/orion/cli/layout.rs
++++ b/lib/collection/src/orion/cli/layout.rs
+@@ -43,6 +43,9 @@
+         /// Optional physical/logical copy limit, independent of any original layout.
+         #[arg(long)]
+         max_replication_factor: Option<f64>,
++        /// Store one physical copy per ID. Upper anchors stay on their frozen owner.
++        #[arg(long)]
++        single_assignment: bool,
+     },
+     /// Build and stream assignments into a fresh collection while local HNSW indexes build.
+     /// Creates the collection if absent; repeating the same command resumes the row stream.
+@@ -180,16 +183,18 @@
+             output,
+             generation,
+             max_replication_factor,
++            single_assignment,
+         } => {
+             let owners: Vec<u32> = serde_json::from_reader(File::open(owners)?)?;
+             println!(
+                 "{}",
+-                serde_json::to_string(&crate::orion::partition::derive_with_limit(
++                serde_json::to_string(&crate::orion::partition::derive_memberships(
+                     &source,
+                     &output,
+                     owners,
+                     generation,
+-                    max_replication_factor
++                    max_replication_factor,
++                    single_assignment
+                 )?)?
+             );
+         }
+--- a/lib/collection/src/orion/partition.rs
++++ b/lib/collection/src/orion/partition.rs
+@@ -227,10 +227,39 @@
+     generation: u64,
+     max_replication_factor: Option<f64>,
+ ) -> Result<bundle::BuildManifest> {
++    derive_memberships(
++        source_dir,
++        output,
++        owners,
++        generation,
++        max_replication_factor,
++        false,
++    )
++}
++
++pub fn derive_memberships(
++    source_dir: &Path,
++    output: &Path,
++    owners: Vec<u32>,
++    generation: u64,
++    max_replication_factor: Option<f64>,
++    single_assignment: bool,
++) -> Result<bundle::BuildManifest> {
++    if single_assignment && max_replication_factor.is_some_and(|limit| limit != 1.0) {
++        return Err("single assignment requires a replication factor of one".into());
++    }
++    let max_replication_factor = if single_assignment {
++        Some(1.0)
++    } else {
++        max_replication_factor
++    };
+     if generation == 0 || output.symlink_metadata().is_ok() {
+         return Err("partition requires positive generation and a new output directory".into());
+     }
+     let (mut import, mut build) = source_manifests(source_dir)?;
++    if single_assignment && !build.initial_owners.is_empty() && build.initial_owners != owners {
++        return Err("supplied owners differ from the frozen capacity partition".into());
++    }
+     capacity::validate_replication(
+         import.point_count as u64,
+         import.point_count,
+@@ -298,7 +327,11 @@
+             );
+         }
+         let mut shards = layout::strict_targets(&hits, &owners)?;
+-        if let Some(&i) = row_to_upper.get(&row) {
++        if single_assignment {
++            let destination = row_to_upper.get(&row).map_or(shards[0], |&i| owners[i]);
++            shards.clear();
++            shards.push(destination);
++        } else if let Some(&i) = row_to_upper.get(&row) {
+             if !shards.contains(&owners[i]) {
+                 shards.push(owners[i]);
+                 repairs += 1;
+@@ -352,7 +385,12 @@
+     bundle::write_json(&stage.path().join(&build.import_manifest_file), &import)?;
+     build.import_manifest_sha256 =
+         bundle::file_sha256(&stage.path().join(&build.import_manifest_file))?;
+-    build.algorithm_version = capacity::ALGORITHM.into();
++    build.algorithm_version = if single_assignment {
++        capacity::SINGLE_ASSIGNMENT_ALGORITHM
++    } else {
++        capacity::ALGORITHM
++    }
++    .into();
+     build.initial_owners = owners;
+     build.topology_iterations = 0;
+     build.options.generation = generation;
