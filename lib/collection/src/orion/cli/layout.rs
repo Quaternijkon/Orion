@@ -43,6 +43,9 @@ enum Command {
         /// Optional physical/logical copy limit, independent of any original layout.
         #[arg(long)]
         max_replication_factor: Option<f64>,
+        /// Store one physical copy per ID. Upper anchors stay on their frozen owner.
+        #[arg(long)]
+        single_assignment: bool,
     },
     /// Build and stream assignments into a fresh collection while local HNSW indexes build.
     /// Creates the collection if absent; repeating the same command resumes the row stream.
@@ -180,16 +183,18 @@ pub fn run() -> Result<()> {
             output,
             generation,
             max_replication_factor,
+            single_assignment,
         } => {
             let owners: Vec<u32> = serde_json::from_reader(File::open(owners)?)?;
             println!(
                 "{}",
-                serde_json::to_string(&crate::orion::partition::derive_with_limit(
+                serde_json::to_string(&crate::orion::partition::derive_memberships(
                     &source,
                     &output,
                     owners,
                     generation,
-                    max_replication_factor
+                    max_replication_factor,
+                    single_assignment
                 )?)?
             );
         }

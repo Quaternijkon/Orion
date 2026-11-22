@@ -101,7 +101,13 @@ pub(crate) fn validate_build_algorithm(build: &BuildManifest) -> Result<()> {
     match build.algorithm_version.as_str() {
         #[cfg(test)]
         layout::LAYOUT_ALGORITHM_VERSION => Ok(()),
-        super::capacity::ALGORITHM | super::capacity::LEGACY_ALGORITHM => {
+        algorithm if super::capacity::is_capacity_algorithm(algorithm) => {
+            if algorithm == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM
+                && (build.owner_entry_copies_added != 0
+                    || build.capacity_max_replication_factor != Some(1.0))
+            {
+                return Err("single-assignment metadata requires a copy limit of one and zero extra owner copies".into());
+            }
             if build.topology_iterations != 0
                 || build.initial_owners.len() != build.upper_indices.len()
                 || build.initial_owners.is_empty()
@@ -691,12 +697,32 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
         let mut line = String::new();
         let mut rows = 0_usize;
         let mut counts = vec![0_u64; import.shard_count as usize];
+        let single_owners =
+            (build.algorithm_version == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM).then(|| {
+                build
+                    .upper_indices
+                    .iter()
+                    .copied()
+                    .zip(build.initial_owners.iter().copied())
+                    .collect::<HashMap<_, _>>()
+            });
         while reader.read_line(&mut line)? != 0 {
             let assignment: Assignment = serde_json::from_str(&line)?;
             if assignment.id != rows as u64 || rows >= import.point_count {
                 return Err("assignment IDs or row count differ from manifest".into());
             }
             assignment.canonical_bytes(import.shard_count)?;
+            if let Some(owners) = &single_owners {
+                if assignment.shards.len() != 1
+                    || owners
+                        .get(&rows)
+                        .is_some_and(|s| *s != assignment.shards[0])
+                {
+                    return Err(
+                        format!("invalid single-assignment membership at row {rows}").into(),
+                    );
+                }
+            }
             for shard in assignment.shards {
                 counts[shard as usize] += 1;
             }
@@ -818,7 +844,12 @@ fn verify_impl(dir: &Path, replay: bool) -> Result<ImportManifest> {
             }
         }
         let mut shards = layout::strict_targets(&hits, &owners)?;
-        if let Some(&i) = row_to_upper.get(&row) {
+        if build.algorithm_version == super::capacity::SINGLE_ASSIGNMENT_ALGORITHM {
+            shards.truncate(1);
+            if let Some(&i) = row_to_upper.get(&row) {
+                shards[0] = owners[i];
+            }
+        } else if let Some(&i) = row_to_upper.get(&row) {
             if !shards.contains(&owners[i]) {
                 shards.push(owners[i]);
                 repairs += 1;

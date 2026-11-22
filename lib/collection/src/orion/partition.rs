@@ -227,10 +227,39 @@ pub fn derive_with_limit(
     generation: u64,
     max_replication_factor: Option<f64>,
 ) -> Result<bundle::BuildManifest> {
+    derive_memberships(
+        source_dir,
+        output,
+        owners,
+        generation,
+        max_replication_factor,
+        false,
+    )
+}
+
+pub fn derive_memberships(
+    source_dir: &Path,
+    output: &Path,
+    owners: Vec<u32>,
+    generation: u64,
+    max_replication_factor: Option<f64>,
+    single_assignment: bool,
+) -> Result<bundle::BuildManifest> {
+    if single_assignment && max_replication_factor.is_some_and(|limit| limit != 1.0) {
+        return Err("single assignment requires a replication factor of one".into());
+    }
+    let max_replication_factor = if single_assignment {
+        Some(1.0)
+    } else {
+        max_replication_factor
+    };
     if generation == 0 || output.symlink_metadata().is_ok() {
         return Err("partition requires positive generation and a new output directory".into());
     }
     let (mut import, mut build) = source_manifests(source_dir)?;
+    if single_assignment && !build.initial_owners.is_empty() && build.initial_owners != owners {
+        return Err("supplied owners differ from the frozen capacity partition".into());
+    }
     capacity::validate_replication(
         import.point_count as u64,
         import.point_count,
@@ -298,7 +327,11 @@ pub fn derive_with_limit(
             );
         }
         let mut shards = layout::strict_targets(&hits, &owners)?;
-        if let Some(&i) = row_to_upper.get(&row) {
+        if single_assignment {
+            let destination = row_to_upper.get(&row).map_or(shards[0], |&i| owners[i]);
+            shards.clear();
+            shards.push(destination);
+        } else if let Some(&i) = row_to_upper.get(&row) {
             if !shards.contains(&owners[i]) {
                 shards.push(owners[i]);
                 repairs += 1;
@@ -352,7 +385,12 @@ pub fn derive_with_limit(
     bundle::write_json(&stage.path().join(&build.import_manifest_file), &import)?;
     build.import_manifest_sha256 =
         bundle::file_sha256(&stage.path().join(&build.import_manifest_file))?;
-    build.algorithm_version = capacity::ALGORITHM.into();
+    build.algorithm_version = if single_assignment {
+        capacity::SINGLE_ASSIGNMENT_ALGORITHM
+    } else {
+        capacity::ALGORITHM
+    }
+    .into();
     build.initial_owners = owners;
     build.topology_iterations = 0;
     build.options.generation = generation;
